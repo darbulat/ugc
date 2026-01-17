@@ -1,0 +1,1 @@
+"""UGC Telegram bot package."""

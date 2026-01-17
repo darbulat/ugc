@@ -1,0 +1,38 @@
+"""Application configuration loading."""
+
+from __future__ import annotations
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AppConfig(BaseSettings):
+    """Application configuration container."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    bot_token: str = Field(alias="BOT_TOKEN")
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    database_url: str = Field(default="", alias="DATABASE_URL")
+
+    @field_validator("bot_token")
+    @classmethod
+    def validate_bot_token(cls, value: str) -> str:
+        """Ensure bot token is provided."""
+
+        if not value.strip():
+            raise ValueError("BOT_TOKEN is required to start the bot.")
+        return value.strip()
+
+    @field_validator("log_level")
+    @classmethod
+    def normalize_log_level(cls, value: str) -> str:
+        """Normalize log level to uppercase."""
+
+        return value.strip().upper()
+
+
+def load_config() -> AppConfig:
+    """Load configuration from environment variables."""
+
+    return AppConfig.model_validate({})
