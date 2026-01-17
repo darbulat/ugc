@@ -1,0 +1,5 @@
+.env
+.idea
+.cursor
+.coverage
+src/ugc_bot.egg-info
