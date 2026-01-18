@@ -29,6 +29,22 @@ def test_set_role_creates_new_user() -> None:
     assert repo.get_by_id(user.user_id) is not None
 
 
+def test_set_role_new_advertiser_status() -> None:
+    """New advertiser should be marked as NEW."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+
+    user = service.set_role(
+        external_id="321",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        role=UserRole.ADVERTISER,
+    )
+
+    assert user.status == UserStatus.NEW
+
+
 def test_set_role_updates_existing_user() -> None:
     """Ensure existing users are updated."""
 

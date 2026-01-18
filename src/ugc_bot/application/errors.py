@@ -13,3 +13,7 @@ class BloggerRegistrationError(ValueError):
 
 class AdvertiserRegistrationError(ValueError):
     """Raised when advertiser registration data is invalid."""
+
+
+class OrderCreationError(ValueError):
+    """Raised when order creation data is invalid."""

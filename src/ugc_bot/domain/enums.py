@@ -24,6 +24,7 @@ class UserRole(StrEnum):
 class UserStatus(StrEnum):
     """User status for anti-fraud and access control."""
 
+    NEW = "new"
     ACTIVE = "active"
     PAUSE = "pause"
     BLOCKED = "blocked"

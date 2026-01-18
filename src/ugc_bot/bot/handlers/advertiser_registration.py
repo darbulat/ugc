@@ -94,5 +94,7 @@ async def handle_contact(
 
     await state.clear()
     await message.answer(
-        "Профиль рекламодателя создан.\n" f"Контакт: {profile.contact}"
+        "Профиль рекламодателя создан.\n"
+        f"Контакт: {profile.contact}\n"
+        "Создать заказ: /create_order"
     )

@@ -28,26 +28,38 @@ class UserRoleService:
 
         existing = self.user_repo.get_by_external(external_id, messenger_type)
         if existing:
+            status = existing.status
+            if (
+                role in {UserRole.ADVERTISER, UserRole.BOTH}
+                and existing.role not in {UserRole.ADVERTISER, UserRole.BOTH}
+                and existing.status == UserStatus.ACTIVE
+            ):
+                status = UserStatus.NEW
             updated = User(
                 user_id=existing.user_id,
                 external_id=existing.external_id,
                 messenger_type=existing.messenger_type,
                 username=username,
                 role=role,
-                status=existing.status,
+                status=status,
                 issue_count=existing.issue_count,
                 created_at=existing.created_at,
             )
             self.user_repo.save(updated)
             return updated
 
+        status = (
+            UserStatus.NEW
+            if role in {UserRole.ADVERTISER, UserRole.BOTH}
+            else UserStatus.ACTIVE
+        )
         new_user = User(
             user_id=uuid4(),
             external_id=external_id,
             messenger_type=messenger_type,
             username=username,
             role=role,
-            status=UserStatus.ACTIVE,
+            status=status,
             issue_count=0,
             created_at=datetime.now(timezone.utc),
         )

@@ -9,19 +9,28 @@ from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
     InstagramVerificationCode,
+    Order,
     User,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    OrderStatus,
+    UserRole,
+    UserStatus,
+)
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInstagramVerificationRepository,
+    SqlAlchemyOrderRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     InstagramVerificationCodeModel,
+    OrderModel,
     UserModel,
 )
 
@@ -301,3 +310,47 @@ def test_instagram_verification_repository_mark_used() -> None:
     repo = SqlAlchemyInstagramVerificationRepository(session_factory=factory)
     repo.mark_used(model.code_id)
     assert model.used is True
+
+
+def test_order_repository_save_and_get() -> None:
+    """Save and fetch order."""
+
+    session = FakeSession(None)
+
+    def factory():  # type: ignore[no-untyped-def]
+        return session
+
+    repo = SqlAlchemyOrderRepository(session_factory=factory)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000170"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000171"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    repo.save(order)
+    assert session.merged is not None
+    assert session.committed is True
+
+    model = OrderModel(
+        order_id=order.order_id,
+        advertiser_id=order.advertiser_id,
+        product_link=order.product_link,
+        offer_text=order.offer_text,
+        ugc_requirements=None,
+        barter_description=None,
+        price=order.price,
+        bloggers_needed=order.bloggers_needed,
+        status=order.status,
+        created_at=order.created_at,
+        contacts_sent_at=None,
+    )
+    repo_get = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
+    fetched = repo_get.get_by_id(order.order_id)
+    assert fetched is not None

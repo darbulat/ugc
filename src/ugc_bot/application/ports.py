@@ -73,6 +73,10 @@ class OrderRepository(ABC):
         """List active orders."""
 
     @abstractmethod
+    def count_by_advertiser(self, advertiser_id: UUID) -> int:
+        """Count orders by advertiser."""
+
+    @abstractmethod
     def save(self, order: Order) -> None:
         """Persist order."""
 

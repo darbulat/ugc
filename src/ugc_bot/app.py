@@ -17,6 +17,7 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
+from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.handlers.advertiser_registration import (
@@ -26,12 +27,14 @@ from ugc_bot.bot.handlers.blogger_registration import router as blogger_router
 from ugc_bot.bot.handlers.instagram_verification import (
     router as instagram_router,
 )
+from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.config import load_config
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInstagramVerificationRepository,
+    SqlAlchemyOrderRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
@@ -54,6 +57,7 @@ def build_dispatcher(database_url: str) -> Dispatcher:
     instagram_repo = SqlAlchemyInstagramVerificationRepository(
         session_factory=session_factory
     )
+    order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
     dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
         user_repo=user_repo,
@@ -68,10 +72,15 @@ def build_dispatcher(database_url: str) -> Dispatcher:
         blogger_repo=blogger_repo,
         verification_repo=instagram_repo,
     )
+    dispatcher["order_service"] = OrderService(
+        user_repo=user_repo,
+        order_repo=order_repo,
+    )
     dispatcher.include_router(start_router)
     dispatcher.include_router(blogger_router)
     dispatcher.include_router(advertiser_router)
     dispatcher.include_router(instagram_router)
+    dispatcher.include_router(order_router)
     return dispatcher
 
 

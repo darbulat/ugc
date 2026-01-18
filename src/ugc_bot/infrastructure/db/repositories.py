@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -15,19 +15,23 @@ from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
     InstagramVerificationRepository,
+    OrderRepository,
     UserRepository,
 )
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
     InstagramVerificationCode,
+    Order,
     User,
 )
+from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     InstagramVerificationCodeModel,
+    OrderModel,
     UserModel,
 )
 
@@ -170,6 +174,48 @@ class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository)
             session.commit()
 
 
+@dataclass(slots=True)
+class SqlAlchemyOrderRepository(OrderRepository):
+    """SQLAlchemy-backed order repository."""
+
+    session_factory: sessionmaker[Session]
+
+    def get_by_id(self, order_id: UUID) -> Optional[Order]:
+        """Fetch order by ID."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(OrderModel).where(OrderModel.order_id == order_id)
+            ).scalar_one_or_none()
+            return _to_order_entity(result) if result else None
+
+    def list_active(self) -> Iterable[Order]:
+        """List active orders."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(OrderModel).where(OrderModel.status == OrderStatus.ACTIVE)
+            ).scalars()
+            return [_to_order_entity(item) for item in result]
+
+    def count_by_advertiser(self, advertiser_id: UUID) -> int:
+        """Count orders by advertiser."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(OrderModel).where(OrderModel.advertiser_id == advertiser_id)
+            ).scalars()
+            return len(list(result))
+
+    def save(self, order: Order) -> None:
+        """Persist order."""
+
+        with self.session_factory() as session:
+            model = _to_order_model(order)
+            session.merge(model)
+            session.commit()
+
+
 def _to_user_entity(model: UserModel) -> User:
     """Map user ORM model to domain entity."""
 
@@ -284,4 +330,40 @@ def _to_verification_model(
         expires_at=code.expires_at,
         used=code.used,
         created_at=code.created_at,
+    )
+
+
+def _to_order_entity(model: OrderModel) -> Order:
+    """Map order ORM model to domain entity."""
+
+    return Order(
+        order_id=model.order_id,
+        advertiser_id=model.advertiser_id,
+        product_link=model.product_link,
+        offer_text=model.offer_text,
+        ugc_requirements=model.ugc_requirements,
+        barter_description=model.barter_description,
+        price=float(model.price),
+        bloggers_needed=model.bloggers_needed,
+        status=model.status,
+        created_at=model.created_at,
+        contacts_sent_at=model.contacts_sent_at,
+    )
+
+
+def _to_order_model(order: Order) -> OrderModel:
+    """Map domain order entity to ORM model."""
+
+    return OrderModel(
+        order_id=order.order_id,
+        advertiser_id=order.advertiser_id,
+        product_link=order.product_link,
+        offer_text=order.offer_text,
+        ugc_requirements=order.ugc_requirements,
+        barter_description=order.barter_description,
+        price=order.price,
+        bloggers_needed=order.bloggers_needed,
+        status=order.status,
+        created_at=order.created_at,
+        contacts_sent_at=order.contacts_sent_at,
     )

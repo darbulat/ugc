@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 from uuid import UUID
 
 from datetime import datetime, timezone
@@ -12,15 +12,17 @@ from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
     InstagramVerificationRepository,
+    OrderRepository,
     UserRepository,
 )
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
     InstagramVerificationCode,
+    Order,
     User,
 )
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.domain.enums import MessengerType, OrderStatus
 
 
 @dataclass
@@ -126,3 +128,40 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
             used=True,
             created_at=existing.created_at,
         )
+
+
+@dataclass
+class InMemoryOrderRepository(OrderRepository):
+    """In-memory implementation of order repository."""
+
+    orders: Dict[UUID, Order] = field(default_factory=dict)
+
+    def get_by_id(self, order_id: UUID) -> Optional[Order]:
+        """Fetch order by id."""
+
+        return self.orders.get(order_id)
+
+    def list_active(self) -> Iterable[Order]:
+        """List active orders."""
+
+        return [
+            order
+            for order in self.orders.values()
+            if order.status == OrderStatus.ACTIVE
+        ]
+
+    def count_by_advertiser(self, advertiser_id: UUID) -> int:
+        """Count orders by advertiser."""
+
+        return len(
+            [
+                order
+                for order in self.orders.values()
+                if order.advertiser_id == advertiser_id
+            ]
+        )
+
+    def save(self, order: Order) -> None:
+        """Persist order in memory."""
+
+        self.orders[order.order_id] = order
