@@ -14,17 +14,24 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.instagram_verification_service import (
+    InstagramVerificationService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.handlers.advertiser_registration import (
     router as advertiser_router,
 )
 from ugc_bot.bot.handlers.blogger_registration import router as blogger_router
+from ugc_bot.bot.handlers.instagram_verification import (
+    router as instagram_router,
+)
 from ugc_bot.config import load_config
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
+    SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
@@ -44,6 +51,9 @@ def build_dispatcher(database_url: str) -> Dispatcher:
     advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
         session_factory=session_factory
     )
+    instagram_repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=session_factory
+    )
     dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
         user_repo=user_repo,
@@ -53,9 +63,15 @@ def build_dispatcher(database_url: str) -> Dispatcher:
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
     )
+    dispatcher["instagram_verification_service"] = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=instagram_repo,
+    )
     dispatcher.include_router(start_router)
     dispatcher.include_router(blogger_router)
     dispatcher.include_router(advertiser_router)
+    dispatcher.include_router(instagram_router)
     return dispatcher
 
 

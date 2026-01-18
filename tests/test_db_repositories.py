@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
+from ugc_bot.domain.entities import (
+    AdvertiserProfile,
+    BloggerProfile,
+    InstagramVerificationCode,
+    User,
+)
 from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
+    SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    InstagramVerificationCodeModel,
     UserModel,
 )
 
@@ -45,6 +52,9 @@ class FakeSession:
 
     def execute(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
         return FakeResult(self._result)
+
+    def get(self, _model, _key):  # type: ignore[no-untyped-def]
+        return self._result
 
     def merge(self, model):  # type: ignore[no-untyped-def]
         self.merged = model
@@ -204,3 +214,90 @@ def test_advertiser_profile_repository_save_and_get() -> None:
     fetched = repo_get.get_by_user_id(profile.user_id)
     assert fetched is not None
     assert fetched.contact == "@contact"
+
+
+def test_instagram_verification_repository_save_and_get() -> None:
+    """Save and fetch verification code."""
+
+    session = FakeSession(None)
+
+    def factory():  # type: ignore[no-untyped-def]
+        return session
+
+    repo = SqlAlchemyInstagramVerificationRepository(session_factory=factory)
+    code = InstagramVerificationCode(
+        code_id=UUID("00000000-0000-0000-0000-000000000117"),
+        user_id=UUID("00000000-0000-0000-0000-000000000118"),
+        code="ABC123",
+        expires_at=datetime.now(timezone.utc),
+        used=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo.save(code)
+    assert session.merged is not None
+    assert session.committed is True
+
+    model = InstagramVerificationCodeModel(
+        code_id=code.code_id,
+        user_id=code.user_id,
+        code=code.code,
+        expires_at=code.expires_at + timedelta(minutes=5),
+        used=False,
+        created_at=code.created_at,
+    )
+    repo_get = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(model)
+    )
+    fetched = repo_get.get_valid_code(code.user_id, code.code)
+    assert fetched is not None
+
+
+def test_instagram_verification_repository_get_invalid() -> None:
+    """Return None for used or expired codes."""
+
+    expired_model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000140"),
+        user_id=UUID("00000000-0000-0000-0000-000000000141"),
+        code="OLD123",
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        used=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(expired_model)
+    )
+    assert repo.get_valid_code(expired_model.user_id, expired_model.code) is None
+
+    used_model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000142"),
+        user_id=UUID("00000000-0000-0000-0000-000000000143"),
+        code="USED123",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+        used=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo_used = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(used_model)
+    )
+    assert repo_used.get_valid_code(used_model.user_id, used_model.code) is None
+
+
+def test_instagram_verification_repository_mark_used() -> None:
+    """Mark verification code as used."""
+
+    model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000119"),
+        user_id=UUID("00000000-0000-0000-0000-000000000120"),
+        code="ABC999",
+        expires_at=datetime.now(timezone.utc),
+        used=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    session = FakeSession(model)
+
+    def factory():  # type: ignore[no-untyped-def]
+        return session
+
+    repo = SqlAlchemyInstagramVerificationRepository(session_factory=factory)
+    repo.mark_used(model.code_id)
+    assert model.used is True

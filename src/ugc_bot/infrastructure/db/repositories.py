@@ -9,16 +9,25 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from datetime import datetime, timezone
+
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    InstagramVerificationRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
+from ugc_bot.domain.entities import (
+    AdvertiserProfile,
+    BloggerProfile,
+    InstagramVerificationCode,
+    User,
+)
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    InstagramVerificationCodeModel,
     UserModel,
 )
 
@@ -113,6 +122,54 @@ class SqlAlchemyAdvertiserProfileRepository(AdvertiserProfileRepository):
             session.commit()
 
 
+@dataclass(slots=True)
+class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository):
+    """SQLAlchemy-backed Instagram verification repository."""
+
+    session_factory: sessionmaker[Session]
+
+    def save(self, code: InstagramVerificationCode) -> None:
+        """Persist verification code."""
+
+        with self.session_factory() as session:
+            model = _to_verification_model(code)
+            session.merge(model)
+            session.commit()
+
+    def get_valid_code(
+        self, user_id: UUID, code: str
+    ) -> Optional[InstagramVerificationCode]:
+        """Fetch a valid, unexpired verification code."""
+
+        now = datetime.now(timezone.utc)
+        with self.session_factory() as session:
+            result = session.execute(
+                select(InstagramVerificationCodeModel).where(
+                    InstagramVerificationCodeModel.user_id == user_id,
+                    InstagramVerificationCodeModel.code == code,
+                    InstagramVerificationCodeModel.used.is_(False),
+                    InstagramVerificationCodeModel.expires_at > now,
+                )
+            ).scalar_one_or_none()
+            if result is None:
+                return None
+            if result.used or result.expires_at <= now:
+                return None
+            if result.code != code or result.user_id != user_id:
+                return None
+            return _to_verification_entity(result)
+
+    def mark_used(self, code_id: UUID) -> None:
+        """Mark verification code as used."""
+
+        with self.session_factory() as session:
+            model = session.get(InstagramVerificationCodeModel, code_id)
+            if model is None:
+                return
+            model.used = True
+            session.commit()
+
+
 def _to_user_entity(model: UserModel) -> User:
     """Map user ORM model to domain entity."""
 
@@ -197,4 +254,34 @@ def _to_advertiser_profile_model(
     return AdvertiserProfileModel(
         user_id=profile.user_id,
         contact=profile.contact,
+    )
+
+
+def _to_verification_entity(
+    model: InstagramVerificationCodeModel,
+) -> InstagramVerificationCode:
+    """Map verification ORM model to domain entity."""
+
+    return InstagramVerificationCode(
+        code_id=model.code_id,
+        user_id=model.user_id,
+        code=model.code,
+        expires_at=model.expires_at,
+        used=model.used,
+        created_at=model.created_at,
+    )
+
+
+def _to_verification_model(
+    code: InstagramVerificationCode,
+) -> InstagramVerificationCodeModel:
+    """Map domain verification entity to ORM model."""
+
+    return InstagramVerificationCodeModel(
+        code_id=code.code_id,
+        user_id=code.user_id,
+        code=code.code,
+        expires_at=code.expires_at,
+        used=code.used,
+        created_at=code.created_at,
     )

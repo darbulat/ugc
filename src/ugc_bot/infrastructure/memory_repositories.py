@@ -6,12 +6,20 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 from uuid import UUID
 
+from datetime import datetime, timezone
+
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    InstagramVerificationRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
+from ugc_bot.domain.entities import (
+    AdvertiserProfile,
+    BloggerProfile,
+    InstagramVerificationCode,
+    User,
+)
 from ugc_bot.domain.enums import MessengerType
 
 
@@ -75,3 +83,46 @@ class InMemoryAdvertiserProfileRepository(AdvertiserProfileRepository):
         """Persist advertiser profile in memory."""
 
         self.profiles[profile.user_id] = profile
+
+
+@dataclass
+class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
+    """In-memory implementation of Instagram verification repository."""
+
+    codes: Dict[UUID, InstagramVerificationCode] = field(default_factory=dict)
+
+    def save(self, code: InstagramVerificationCode) -> None:
+        """Persist verification code in memory."""
+
+        self.codes[code.code_id] = code
+
+    def get_valid_code(
+        self, user_id: UUID, code: str
+    ) -> Optional[InstagramVerificationCode]:
+        """Fetch a valid, unexpired verification code."""
+
+        now = datetime.now(timezone.utc)
+        for item in self.codes.values():
+            if (
+                item.user_id == user_id
+                and item.code == code
+                and not item.used
+                and item.expires_at > now
+            ):
+                return item
+        return None
+
+    def mark_used(self, code_id: UUID) -> None:
+        """Mark verification code as used."""
+
+        if code_id not in self.codes:
+            return
+        existing = self.codes[code_id]
+        self.codes[code_id] = InstagramVerificationCode(
+            code_id=existing.code_id,
+            user_id=existing.user_id,
+            code=existing.code,
+            expires_at=existing.expires_at,
+            used=True,
+            created_at=existing.created_at,
+        )

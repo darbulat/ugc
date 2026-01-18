@@ -104,6 +104,16 @@ class InstagramVerificationRepository(ABC):
     def save(self, code: InstagramVerificationCode) -> None:
         """Persist verification code."""
 
+    @abstractmethod
+    def get_valid_code(
+        self, user_id: UUID, code: str
+    ) -> Optional[InstagramVerificationCode]:
+        """Fetch a valid, unexpired verification code."""
+
+    @abstractmethod
+    def mark_used(self, code_id: UUID) -> None:
+        """Mark verification code as used."""
+
 
 class ComplaintRepository(ABC):
     """Port for complaint persistence."""
