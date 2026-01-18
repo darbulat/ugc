@@ -61,3 +61,11 @@ class ComplaintStatus(StrEnum):
     REVIEWED = "reviewed"
     DISMISSED = "dismissed"
     ACTION_TAKEN = "action_taken"
+
+
+class PaymentStatus(StrEnum):
+    """Payment status enum."""
+
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"

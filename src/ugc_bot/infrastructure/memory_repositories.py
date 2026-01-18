@@ -12,7 +12,9 @@ from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
     InstagramVerificationRepository,
+    OfferBroadcaster,
     OrderRepository,
+    PaymentRepository,
     UserRepository,
 )
 from ugc_bot.domain.entities import (
@@ -20,6 +22,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     InstagramVerificationCode,
     Order,
+    Payment,
     User,
 )
 from ugc_bot.domain.enums import MessengerType, OrderStatus
@@ -165,3 +168,33 @@ class InMemoryOrderRepository(OrderRepository):
         """Persist order in memory."""
 
         self.orders[order.order_id] = order
+
+
+@dataclass
+class InMemoryPaymentRepository(PaymentRepository):
+    """In-memory implementation of payment repository."""
+
+    payments: Dict[UUID, Payment] = field(default_factory=dict)
+
+    def get_by_order(self, order_id: UUID) -> Optional[Payment]:
+        """Fetch payment by order id."""
+
+        for payment in self.payments.values():
+            if payment.order_id == order_id:
+                return payment
+        return None
+
+    def save(self, payment: Payment) -> None:
+        """Persist payment in memory."""
+
+        self.payments[payment.payment_id] = payment
+
+
+@dataclass
+class NoopOfferBroadcaster(OfferBroadcaster):
+    """No-op broadcaster for MVP."""
+
+    def broadcast_order(self, order: Order) -> None:
+        """No-op implementation."""
+
+        return None

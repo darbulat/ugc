@@ -13,6 +13,7 @@ from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    PaymentStatus,
     UserRole,
     UserStatus,
 )
@@ -121,3 +122,18 @@ class Complaint:
     status: ComplaintStatus
     created_at: datetime
     reviewed_at: Optional[datetime]
+
+
+@dataclass(frozen=True)
+class Payment:
+    """Payment entity."""
+
+    payment_id: UUID
+    order_id: UUID
+    provider: str
+    status: PaymentStatus
+    amount: float
+    currency: str
+    external_id: str
+    created_at: datetime
+    paid_at: Optional[datetime]

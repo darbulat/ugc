@@ -25,6 +25,7 @@ def test_build_dispatcher_sets_services() -> None:
     assert dispatcher["advertiser_registration_service"] is not None
     assert dispatcher["instagram_verification_service"] is not None
     assert dispatcher["order_service"] is not None
+    assert dispatcher["payment_service"] is not None
 
 
 @pytest.mark.asyncio

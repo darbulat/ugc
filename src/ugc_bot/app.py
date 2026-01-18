@@ -18,6 +18,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.handlers.advertiser_registration import (
@@ -28,13 +29,16 @@ from ugc_bot.bot.handlers.instagram_verification import (
     router as instagram_router,
 )
 from ugc_bot.bot.handlers.order_creation import router as order_router
+from ugc_bot.bot.handlers.payments import router as payments_router
 from ugc_bot.config import load_config
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.infrastructure.db.repositories import (
+    NoopOfferBroadcaster,
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyOrderRepository,
+    SqlAlchemyPaymentRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
@@ -58,6 +62,7 @@ def build_dispatcher(database_url: str) -> Dispatcher:
         session_factory=session_factory
     )
     order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
+    payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
     dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
         user_repo=user_repo,
@@ -76,11 +81,18 @@ def build_dispatcher(database_url: str) -> Dispatcher:
         user_repo=user_repo,
         order_repo=order_repo,
     )
+    dispatcher["payment_service"] = PaymentService(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        payment_repo=payment_repo,
+        broadcaster=NoopOfferBroadcaster(),
+    )
     dispatcher.include_router(start_router)
     dispatcher.include_router(blogger_router)
     dispatcher.include_router(advertiser_router)
     dispatcher.include_router(instagram_router)
     dispatcher.include_router(order_router)
+    dispatcher.include_router(payments_router)
     return dispatcher
 
 

@@ -28,6 +28,7 @@ from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    PaymentStatus,
     UserRole,
     UserStatus,
 )
@@ -42,6 +43,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     OrderStatus: "order_status",
     InteractionStatus: "interaction_status",
     ComplaintStatus: "complaint_status",
+    PaymentStatus: "payment_status",
 }
 
 
@@ -275,5 +277,36 @@ class ComplaintModel(Base):
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class PaymentModel(Base):
+    """Payment ORM model."""
+
+    __tablename__ = "payments"
+
+    payment_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("orders.order_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[PaymentStatus] = mapped_column(
+        _enum_column(PaymentStatus), nullable=False
+    )
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    external_id: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

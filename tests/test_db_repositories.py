@@ -10,12 +10,14 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     InstagramVerificationCode,
     Order,
+    Payment,
     User,
 )
 from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
     OrderStatus,
+    PaymentStatus,
     UserRole,
     UserStatus,
 )
@@ -24,6 +26,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyOrderRepository,
+    SqlAlchemyPaymentRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.models import (
@@ -31,6 +34,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     InstagramVerificationCodeModel,
     OrderModel,
+    PaymentModel,
     UserModel,
 )
 
@@ -353,4 +357,44 @@ def test_order_repository_save_and_get() -> None:
     )
     repo_get = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
     fetched = repo_get.get_by_id(order.order_id)
+    assert fetched is not None
+
+
+def test_payment_repository_save_and_get() -> None:
+    """Save and fetch payment."""
+
+    session = FakeSession(None)
+
+    def factory():  # type: ignore[no-untyped-def]
+        return session
+
+    repo = SqlAlchemyPaymentRepository(session_factory=factory)
+    payment = Payment(
+        payment_id=UUID("00000000-0000-0000-0000-000000000180"),
+        order_id=UUID("00000000-0000-0000-0000-000000000181"),
+        provider="mock",
+        status=PaymentStatus.PAID,
+        amount=1000.0,
+        currency="RUB",
+        external_id="mock:1",
+        created_at=datetime.now(timezone.utc),
+        paid_at=datetime.now(timezone.utc),
+    )
+    repo.save(payment)
+    assert session.merged is not None
+    assert session.committed is True
+
+    model = PaymentModel(
+        payment_id=payment.payment_id,
+        order_id=payment.order_id,
+        provider=payment.provider,
+        status=payment.status,
+        amount=payment.amount,
+        currency=payment.currency,
+        external_id=payment.external_id,
+        created_at=payment.created_at,
+        paid_at=payment.paid_at,
+    )
+    repo_get = SqlAlchemyPaymentRepository(session_factory=_session_factory(model))
+    fetched = repo_get.get_by_order(payment.order_id)
     assert fetched is not None

@@ -14,6 +14,7 @@ from ugc_bot.domain.entities import (
     Interaction,
     Order,
     OrderResponse,
+    Payment,
     User,
 )
 from ugc_bot.domain.enums import MessengerType
@@ -117,6 +118,26 @@ class InstagramVerificationRepository(ABC):
     @abstractmethod
     def mark_used(self, code_id: UUID) -> None:
         """Mark verification code as used."""
+
+
+class PaymentRepository(ABC):
+    """Port for payment persistence."""
+
+    @abstractmethod
+    def get_by_order(self, order_id: UUID) -> Optional[Payment]:
+        """Fetch payment by order id."""
+
+    @abstractmethod
+    def save(self, payment: Payment) -> None:
+        """Persist payment."""
+
+
+class OfferBroadcaster(ABC):
+    """Port for broadcasting offers to bloggers."""
+
+    @abstractmethod
+    def broadcast_order(self, order: Order) -> None:
+        """Broadcast offer to eligible bloggers."""
 
 
 class ComplaintRepository(ABC):

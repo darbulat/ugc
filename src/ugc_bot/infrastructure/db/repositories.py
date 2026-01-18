@@ -15,7 +15,9 @@ from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
     InstagramVerificationRepository,
+    OfferBroadcaster,
     OrderRepository,
+    PaymentRepository,
     UserRepository,
 )
 from ugc_bot.domain.entities import (
@@ -23,6 +25,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     InstagramVerificationCode,
     Order,
+    Payment,
     User,
 )
 from ugc_bot.domain.enums import OrderStatus
@@ -32,6 +35,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     InstagramVerificationCodeModel,
     OrderModel,
+    PaymentModel,
     UserModel,
 )
 
@@ -216,6 +220,40 @@ class SqlAlchemyOrderRepository(OrderRepository):
             session.commit()
 
 
+@dataclass(slots=True)
+class SqlAlchemyPaymentRepository(PaymentRepository):
+    """SQLAlchemy-backed payment repository."""
+
+    session_factory: sessionmaker[Session]
+
+    def get_by_order(self, order_id: UUID) -> Optional[Payment]:
+        """Fetch payment by order id."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(PaymentModel).where(PaymentModel.order_id == order_id)
+            ).scalar_one_or_none()
+            return _to_payment_entity(result) if result else None
+
+    def save(self, payment: Payment) -> None:
+        """Persist payment."""
+
+        with self.session_factory() as session:
+            model = _to_payment_model(payment)
+            session.merge(model)
+            session.commit()
+
+
+@dataclass(slots=True)
+class NoopOfferBroadcaster(OfferBroadcaster):
+    """No-op broadcaster for MVP."""
+
+    def broadcast_order(self, order: Order) -> None:
+        """No-op implementation."""
+
+        return None
+
+
 def _to_user_entity(model: UserModel) -> User:
     """Map user ORM model to domain entity."""
 
@@ -366,4 +404,36 @@ def _to_order_model(order: Order) -> OrderModel:
         status=order.status,
         created_at=order.created_at,
         contacts_sent_at=order.contacts_sent_at,
+    )
+
+
+def _to_payment_entity(model: PaymentModel) -> Payment:
+    """Map payment ORM model to domain entity."""
+
+    return Payment(
+        payment_id=model.payment_id,
+        order_id=model.order_id,
+        provider=model.provider,
+        status=model.status,
+        amount=float(model.amount),
+        currency=model.currency,
+        external_id=model.external_id,
+        created_at=model.created_at,
+        paid_at=model.paid_at,
+    )
+
+
+def _to_payment_model(payment: Payment) -> PaymentModel:
+    """Map domain payment entity to ORM model."""
+
+    return PaymentModel(
+        payment_id=payment.payment_id,
+        order_id=payment.order_id,
+        provider=payment.provider,
+        status=payment.status,
+        amount=payment.amount,
+        currency=payment.currency,
+        external_id=payment.external_id,
+        created_at=payment.created_at,
+        paid_at=payment.paid_at,
     )
