@@ -9,7 +9,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AppConfig(BaseSettings):
     """Application configuration container."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     bot_token: str = Field(alias="BOT_TOKEN")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
@@ -18,8 +22,6 @@ class AppConfig(BaseSettings):
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     admin_secret: str = Field(default="", alias="ADMIN_SECRET")
     admin_site_name: str = Field(default="UGC Admin", alias="ADMIN_SITE_NAME")
-    admin_database_url: str = Field(default="", alias="ADMIN_DATABASE_URL")
-    redis_url: str = Field(default="", alias="REDIS_URL")
 
     @field_validator("bot_token")
     @classmethod
