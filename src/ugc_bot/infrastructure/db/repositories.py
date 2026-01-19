@@ -13,6 +13,7 @@ from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
     InstagramVerificationRepository,
+    InteractionRepository,
     OfferBroadcaster,
     OrderRepository,
     OrderResponseRepository,
@@ -23,6 +24,7 @@ from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
     InstagramVerificationCode,
+    Interaction,
     Order,
     OrderResponse,
     Payment,
@@ -34,6 +36,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     InstagramVerificationCodeModel,
+    InteractionModel,
     OrderModel,
     OrderResponseModel,
     PaymentModel,
@@ -223,6 +226,18 @@ class SqlAlchemyOrderRepository(OrderRepository):
             ).scalars()
             return [_to_order_entity(item) for item in result]
 
+    def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
+        """List orders with contacts_sent_at before cutoff."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(OrderModel).where(
+                    OrderModel.contacts_sent_at.is_not(None),
+                    OrderModel.contacts_sent_at <= cutoff,
+                )
+            ).scalars()
+            return [_to_order_entity(item) for item in result]
+
     def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 
@@ -319,6 +334,56 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
 
 
 @dataclass(slots=True)
+class SqlAlchemyInteractionRepository(InteractionRepository):
+    """SQLAlchemy-backed interaction repository."""
+
+    session_factory: sessionmaker[Session]
+
+    def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
+        """Fetch interaction by id."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.interaction_id == interaction_id
+                )
+            ).scalar_one_or_none()
+            return _to_interaction_entity(result) if result else None
+
+    def get_by_participants(
+        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+    ) -> Optional[Interaction]:
+        """Fetch interaction by order/blogger/advertiser."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.order_id == order_id,
+                    InteractionModel.blogger_id == blogger_id,
+                    InteractionModel.advertiser_id == advertiser_id,
+                )
+            ).scalar_one_or_none()
+            return _to_interaction_entity(result) if result else None
+
+    def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
+        """List interactions for order."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(InteractionModel).where(InteractionModel.order_id == order_id)
+            ).scalars()
+            return [_to_interaction_entity(item) for item in results]
+
+    def save(self, interaction: Interaction) -> None:
+        """Persist interaction."""
+
+        with self.session_factory() as session:
+            model = _to_interaction_model(interaction)
+            session.merge(model)
+            session.commit()
+
+
+@dataclass(slots=True)
 class NoopOfferBroadcaster(OfferBroadcaster):
     """No-op broadcaster for MVP."""
 
@@ -391,6 +456,36 @@ def _to_blogger_profile_model(
         audience_geo=profile.audience_geo,
         price=profile.price,
         updated_at=profile.updated_at,
+    )
+
+
+def _to_interaction_entity(model: InteractionModel) -> Interaction:
+    """Map interaction ORM model to domain entity."""
+
+    return Interaction(
+        interaction_id=model.interaction_id,
+        order_id=model.order_id,
+        blogger_id=model.blogger_id,
+        advertiser_id=model.advertiser_id,
+        status=model.status,
+        from_advertiser=model.from_advertiser,
+        from_blogger=model.from_blogger,
+        created_at=model.created_at,
+    )
+
+
+def _to_interaction_model(interaction: Interaction) -> InteractionModel:
+    """Map domain interaction to ORM model."""
+
+    return InteractionModel(
+        interaction_id=interaction.interaction_id,
+        order_id=interaction.order_id,
+        blogger_id=interaction.blogger_id,
+        advertiser_id=interaction.advertiser_id,
+        status=interaction.status,
+        from_advertiser=interaction.from_advertiser,
+        from_blogger=interaction.from_blogger,
+        created_at=interaction.created_at,
     )
 
 

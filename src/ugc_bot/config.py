@@ -20,7 +20,7 @@ class AppConfig(BaseSettings):
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     admin_secret: str = Field(default="", alias="ADMIN_SECRET")
     admin_site_name: str = Field(default="UGC Admin", alias="ADMIN_SITE_NAME")
-    kafka_enabled: bool = Field(default=False, alias="KAFKA_ENABLED")
+    kafka_enabled: bool = Field(default=True, alias="KAFKA_ENABLED")
     kafka_bootstrap_servers: str = Field(
         default="kafka:9092", alias="KAFKA_BOOTSTRAP_SERVERS"
     )
@@ -31,6 +31,11 @@ class AppConfig(BaseSettings):
     kafka_send_retry_delay_seconds: float = Field(
         default=1.0, alias="KAFKA_SEND_RETRY_DELAY_SECONDS"
     )
+    feedback_delay_hours: int = Field(default=72, alias="FEEDBACK_DELAY_HOURS")
+    feedback_poll_interval_seconds: int = Field(
+        default=300, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
+    )
+    feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
 
     @field_validator("bot_token")
     @classmethod

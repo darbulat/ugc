@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    InteractionRepository,
     InstagramVerificationRepository,
     OfferBroadcaster,
     OrderRepository,
@@ -19,6 +20,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    Interaction,
     InstagramVerificationCode,
     Order,
     OrderResponse,
@@ -174,6 +176,15 @@ class InMemoryOrderRepository(OrderRepository):
             if order.advertiser_id == advertiser_id
         ]
 
+    def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
+        """List orders with contacts_sent_at before cutoff."""
+
+        return [
+            order
+            for order in self.orders.values()
+            if order.contacts_sent_at and order.contacts_sent_at <= cutoff
+        ]
+
     def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 
@@ -219,6 +230,44 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
         """Count responses by order."""
 
         return len([resp for resp in self.responses if resp.order_id == order_id])
+
+
+@dataclass
+class InMemoryInteractionRepository(InteractionRepository):
+    """In-memory implementation of interaction repository."""
+
+    interactions: Dict[UUID, Interaction] = field(default_factory=dict)
+
+    def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
+        """Fetch interaction by id."""
+
+        return self.interactions.get(interaction_id)
+
+    def get_by_participants(
+        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+    ) -> Optional[Interaction]:
+        """Fetch interaction by order/blogger/advertiser."""
+
+        for item in self.interactions.values():
+            if (
+                item.order_id == order_id
+                and item.blogger_id == blogger_id
+                and item.advertiser_id == advertiser_id
+            ):
+                return item
+        return None
+
+    def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
+        """List interactions for order."""
+
+        return [
+            item for item in self.interactions.values() if item.order_id == order_id
+        ]
+
+    def save(self, interaction: Interaction) -> None:
+        """Persist interaction in memory."""
+
+        self.interactions[interaction.interaction_id] = interaction
 
 
 @dataclass

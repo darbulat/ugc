@@ -43,6 +43,15 @@ services:
     command: ["python", "-m", "ugc_bot.kafka_consumer"]
     restart: unless-stopped
 
+  feedback_scheduler:
+    build: .
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "ugc_bot.feedback_scheduler"]
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:

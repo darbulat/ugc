@@ -15,6 +15,7 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
+from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.order_service import OrderService
@@ -35,6 +36,7 @@ from ugc_bot.bot.handlers.profile import router as profile_router
 from ugc_bot.bot.handlers.offer_responses import router as offer_response_router
 from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
+from ugc_bot.bot.handlers.feedback import router as feedback_router
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.infrastructure.db.repositories import (
@@ -42,6 +44,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInstagramVerificationRepository,
+    SqlAlchemyInteractionRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyOrderResponseRepository,
     SqlAlchemyPaymentRepository,
@@ -78,6 +81,7 @@ def build_dispatcher(
     order_response_repo = SqlAlchemyOrderResponseRepository(
         session_factory=session_factory
     )
+    interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
     payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
     dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
@@ -107,6 +111,9 @@ def build_dispatcher(
         order_repo=order_repo,
         response_repo=order_response_repo,
     )
+    dispatcher["interaction_service"] = InteractionService(
+        interaction_repo=interaction_repo
+    )
     dispatcher["payment_service"] = PaymentService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
@@ -135,6 +142,7 @@ def build_dispatcher(
         dispatcher.include_router(instagram_router)
         dispatcher.include_router(my_orders_router)
         dispatcher.include_router(profile_router)
+        dispatcher.include_router(feedback_router)
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(order_router)
         dispatcher.include_router(payments_router)

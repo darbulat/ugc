@@ -1,6 +1,7 @@
 """Repository ports for the application layer."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Iterable, Optional
 from uuid import UUID
 
@@ -85,6 +86,10 @@ class OrderRepository(ABC):
         """List orders by advertiser."""
 
     @abstractmethod
+    def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
+        """List orders with contacts_sent_at before cutoff."""
+
+    @abstractmethod
     def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 
@@ -115,6 +120,20 @@ class OrderResponseRepository(ABC):
 
 class InteractionRepository(ABC):
     """Port for interaction persistence."""
+
+    @abstractmethod
+    def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
+        """Fetch interaction by id."""
+
+    @abstractmethod
+    def get_by_participants(
+        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+    ) -> Optional[Interaction]:
+        """Fetch interaction by order/blogger/advertiser."""
+
+    @abstractmethod
+    def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
+        """List interactions for order."""
 
     @abstractmethod
     def save(self, interaction: Interaction) -> None:
