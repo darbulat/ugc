@@ -21,7 +21,7 @@ from ugc_bot.bot.handlers.blogger_registration import (
     start_registration,
 )
 from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
@@ -73,8 +73,8 @@ class FakeFSMContext:
 
 
 @pytest.mark.asyncio
-async def test_start_registration_requires_blogger_role() -> None:
-    """Require blogger role before registration."""
+async def test_start_registration_requires_user() -> None:
+    """Require existing user before registration."""
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
@@ -84,7 +84,7 @@ async def test_start_registration_requires_blogger_role() -> None:
     await start_registration(message, state, service)
 
     assert message.answers
-    assert "Please choose role" in message.answers[0]
+    assert "Пользователь не найден" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -93,11 +93,10 @@ async def test_start_registration_sets_state() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    service.set_role(
+    service.set_user(
         external_id="7",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
-        role=UserRole.BLOGGER,
     )
     message = FakeMessage(text=None, user=FakeUser(7, "alice", "Alice"))
     state = FakeFSMContext()
@@ -118,7 +117,6 @@ async def test_start_registration_blocked_user() -> None:
         external_id="8",
         messenger_type=MessengerType.TELEGRAM,
         username="blocked",
-        role=UserRole.BLOGGER,
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -144,7 +142,6 @@ async def test_start_registration_paused_user() -> None:
         external_id="9",
         messenger_type=MessengerType.TELEGRAM,
         username="paused",
-        role=UserRole.BLOGGER,
         status=UserStatus.PAUSE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -304,11 +301,10 @@ async def test_handle_agreements_creates_profile() -> None:
         user_repo=user_repo, blogger_repo=blogger_repo
     )
 
-    user = user_role_service.set_role(
+    user = user_role_service.set_user(
         external_id="42",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
-        role=UserRole.BLOGGER,
     )
 
     message = FakeMessage(text="Согласен", user=FakeUser(42, "bob", "Bob"))
@@ -316,7 +312,6 @@ async def test_handle_agreements_creates_profile() -> None:
     await state.update_data(
         user_id=user.user_id,
         external_id="42",
-        role=UserRole.BLOGGER,
         nickname="bob",
         instagram_url="https://instagram.com/test_user",
         topics={"selected": ["fitness"]},

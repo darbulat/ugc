@@ -7,15 +7,20 @@ import pytest
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.order_service import OrderService
-from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.entities import AdvertiserProfile, User
+from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
 
 
-def _seed_advertiser(repo: InMemoryUserRepository, status: UserStatus) -> UUID:
+def _seed_advertiser(
+    repo: InMemoryUserRepository,
+    advertiser_repo: InMemoryAdvertiserProfileRepository,
+    status: UserStatus,
+) -> UUID:
     """Seed an advertiser user."""
 
     user = User(
@@ -23,12 +28,12 @@ def _seed_advertiser(repo: InMemoryUserRepository, status: UserStatus) -> UUID:
         external_id="888",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
         status=status,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
     repo.save(user)
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
     return user.user_id
 
 
@@ -36,10 +41,15 @@ def test_create_order_success() -> None:
     """Create order with valid data."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, UserStatus.ACTIVE)
+    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
 
-    service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
     order = service.create_order(
         advertiser_id=user_id,
         product_link="https://example.com",
@@ -58,6 +68,7 @@ def test_create_order_invalid_user() -> None:
 
     service = OrderService(
         user_repo=InMemoryUserRepository(),
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         order_repo=InMemoryOrderRepository(),
     )
 
@@ -77,10 +88,15 @@ def test_create_order_new_advertiser_restrictions() -> None:
     """Enforce NEW advertiser restrictions."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, UserStatus.ACTIVE)
+    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
 
-    service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
 
     with pytest.raises(OrderCreationError):
         service.create_order(
@@ -109,10 +125,15 @@ def test_create_order_validation_errors() -> None:
     """Validate required fields and price."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, UserStatus.ACTIVE)
+    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
 
-    service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
 
     with pytest.raises(OrderCreationError):
         service.create_order(
@@ -159,28 +180,20 @@ def test_create_order_validation_errors() -> None:
         )
 
 
-def test_create_order_requires_advertiser_role() -> None:
-    """Reject non-advertiser user."""
+def test_create_order_requires_advertiser_profile() -> None:
+    """Reject users without advertiser profile."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, UserStatus.ACTIVE)
-    non_adv = user_repo.get_by_id(user_id)
-    assert non_adv is not None
-    user_repo.save(
-        User(
-            user_id=non_adv.user_id,
-            external_id=non_adv.external_id,
-            messenger_type=non_adv.messenger_type,
-            username=non_adv.username,
-            role=UserRole.BLOGGER,
-            status=non_adv.status,
-            issue_count=non_adv.issue_count,
-            created_at=non_adv.created_at,
-        )
-    )
+    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
+    advertiser_repo.profiles.clear()
 
-    service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
     with pytest.raises(OrderCreationError):
         service.create_order(
             advertiser_id=user_id,

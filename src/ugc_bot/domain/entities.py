@@ -12,7 +12,6 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     PaymentStatus,
-    UserRole,
     UserStatus,
 )
 
@@ -25,7 +24,6 @@ class User:
     external_id: str
     messenger_type: MessengerType
     username: str
-    role: UserRole
     status: UserStatus
     issue_count: int
     created_at: datetime

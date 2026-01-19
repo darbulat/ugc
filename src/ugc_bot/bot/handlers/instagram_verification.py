@@ -12,9 +12,10 @@ from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundErr
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import cancel_keyboard, with_cancel_keyboard
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 router = Router()
@@ -33,6 +34,7 @@ async def start_verification(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
+    profile_service: ProfileService,
     instagram_verification_service: InstagramVerificationService,
 ) -> None:
     """Start Instagram verification flow."""
@@ -44,8 +46,8 @@ async def start_verification(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
-    if user is None or user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
-        await message.answer("Please choose role 'Я блогер' first.")
+    if user is None:
+        await message.answer("Пользователь не найден. Начните с /start.")
         return
     if user.status == UserStatus.BLOCKED:
         await message.answer(
@@ -55,11 +57,9 @@ async def start_verification(
     if user.status == UserStatus.PAUSE:
         await message.answer("Пользователи на паузе не могут подтверждать аккаунт.")
         return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer("Заблокированные пользователи не могут подтверждаться.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут подтверждаться.")
+    blogger_profile = profile_service.get_blogger_profile(user.user_id)
+    if blogger_profile is None:
+        await message.answer("Профиль блогера не заполнен. Команда: /register")
         return
 
     try:

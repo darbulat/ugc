@@ -1,4 +1,4 @@
-"""Service for user role management."""
+"""Service for user creation and lookup."""
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -6,39 +6,31 @@ from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import UserRepository
 from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 @dataclass(slots=True)
 class UserRoleService:
-    """Manage user role assignment."""
+    """Manage user creation and lookup."""
 
     user_repo: UserRepository
 
-    def set_role(
+    def set_user(
         self,
         external_id: str,
         messenger_type: MessengerType,
         username: str,
-        role: UserRole,
     ) -> User:
-        """Create or update a user with the selected role."""
+        """Create or update a user."""
 
         existing = self.user_repo.get_by_external(external_id, messenger_type)
         if existing:
             status = existing.status
-            if (
-                role in {UserRole.ADVERTISER, UserRole.BOTH}
-                and existing.role not in {UserRole.ADVERTISER, UserRole.BOTH}
-                and existing.status == UserStatus.ACTIVE
-            ):
-                status = UserStatus.NEW
             updated = User(
                 user_id=existing.user_id,
                 external_id=existing.external_id,
                 messenger_type=existing.messenger_type,
                 username=username,
-                role=role,
                 status=status,
                 issue_count=existing.issue_count,
                 created_at=existing.created_at,
@@ -46,17 +38,12 @@ class UserRoleService:
             self.user_repo.save(updated)
             return updated
 
-        status = (
-            UserStatus.NEW
-            if role in {UserRole.ADVERTISER, UserRole.BOTH}
-            else UserStatus.ACTIVE
-        )
+        status = UserStatus.ACTIVE
         new_user = User(
             user_id=uuid4(),
             external_id=external_id,
             messenger_type=messenger_type,
             username=username,
-            role=role,
             status=status,
             issue_count=0,
             created_at=datetime.now(timezone.utc),

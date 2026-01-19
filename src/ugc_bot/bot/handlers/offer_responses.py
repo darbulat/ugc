@@ -8,8 +8,9 @@ from aiogram.types import CallbackQuery
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
 
 router = Router()
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 async def handle_offer_response(
     callback: CallbackQuery,
     user_role_service: UserRoleService,
+    profile_service: ProfileService,
     offer_response_service: OfferResponseService,
 ) -> None:
     """Handle blogger response to offer."""
@@ -33,8 +35,8 @@ async def handle_offer_response(
         external_id=str(callback.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
-    if user is None or user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
-        await callback.answer("Вы не можете откликаться на офферы.")
+    if user is None:
+        await callback.answer("Пользователь не найден.")
         return
     if user.status == UserStatus.BLOCKED:
         await callback.answer("Заблокированные пользователи не могут откликаться.")
@@ -42,11 +44,12 @@ async def handle_offer_response(
     if user.status == UserStatus.PAUSE:
         await callback.answer("Пользователи на паузе не могут откликаться.")
         return
-    if user.status == UserStatus.BLOCKED:
-        await callback.answer("Заблокированные пользователи не могут откликаться.")
+    blogger_profile = profile_service.get_blogger_profile(user.user_id)
+    if blogger_profile is None:
+        await callback.answer("Профиль блогера не заполнен. Команда: /register")
         return
-    if user.status == UserStatus.PAUSE:
-        await callback.answer("Пользователи на паузе не могут откликаться.")
+    if not blogger_profile.confirmed:
+        await callback.answer("Подтвердите Instagram перед откликом.")
         return
 
     raw = callback.data.split("offer:", 1)[-1] if callback.data else ""

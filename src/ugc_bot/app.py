@@ -95,6 +95,7 @@ def build_dispatcher(
     )
     dispatcher["order_service"] = OrderService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
     )
     dispatcher["offer_dispatch_service"] = OfferDispatchService(
@@ -108,6 +109,7 @@ def build_dispatcher(
     )
     dispatcher["payment_service"] = PaymentService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),

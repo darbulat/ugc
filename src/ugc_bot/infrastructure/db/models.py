@@ -27,7 +27,6 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     PaymentStatus,
-    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.base import Base
@@ -35,7 +34,6 @@ from ugc_bot.infrastructure.db.base import Base
 
 _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     MessengerType: "messenger_type",
-    UserRole: "user_role",
     UserStatus: "user_status",
     AudienceGender: "audience_gender",
     OrderStatus: "order_status",
@@ -73,7 +71,6 @@ class UserModel(Base):
         nullable=False,
     )
     username: Mapped[str] = mapped_column(String, nullable=False)
-    role: Mapped[UserRole] = mapped_column(_enum_column(UserRole), nullable=False)
     status: Mapped[UserStatus] = mapped_column(_enum_column(UserStatus), nullable=False)
     issue_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"

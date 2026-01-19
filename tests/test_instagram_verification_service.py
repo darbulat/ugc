@@ -10,7 +10,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.domain.entities import BloggerProfile, InstagramVerificationCode, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramVerificationRepository,
@@ -26,7 +26,6 @@ def _seed_user(user_repo: InMemoryUserRepository) -> UUID:
         external_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),

@@ -12,7 +12,6 @@ from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
     OrderStatus,
-    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
@@ -55,7 +54,6 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
         external_id="100",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -112,7 +110,7 @@ def test_dispatch_requires_active_order() -> None:
 
 
 def test_dispatch_skips_ineligible_bloggers() -> None:
-    """Skip bloggers with missing user or invalid role/status."""
+    """Skip bloggers with missing user or invalid status."""
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
@@ -160,8 +158,7 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
             external_id="101",
             messenger_type=MessengerType.TELEGRAM,
             username="advertiser",
-            role=UserRole.ADVERTISER,
-            status=UserStatus.ACTIVE,
+            status=UserStatus.BLOCKED,
             issue_count=0,
             created_at=datetime.now(timezone.utc),
         )

@@ -10,9 +10,10 @@ from aiogram.types import KeyboardButton, Message
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import cancel_keyboard, with_cancel_keyboard
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 router = Router()
@@ -36,6 +37,7 @@ async def start_order_creation(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
+    profile_service: ProfileService,
     order_service: OrderService,
 ) -> None:
     """Start order creation flow."""
@@ -47,14 +49,21 @@ async def start_order_creation(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
-    if user is None or user.role not in {UserRole.ADVERTISER, UserRole.BOTH}:
-        await message.answer("Please choose role 'Я рекламодатель' first.")
+    if user is None:
+        await message.answer("Пользователь не найден. Выберите роль через /role.")
         return
     if user.status == UserStatus.BLOCKED:
         await message.answer("Заблокированные пользователи не могут создавать заказы.")
         return
     if user.status == UserStatus.PAUSE:
         await message.answer("Пользователи на паузе не могут создавать заказы.")
+        return
+
+    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    if advertiser is None:
+        await message.answer(
+            "Профиль рекламодателя не заполнен. Команда: /register_advertiser"
+        )
         return
 
     is_new = order_service.is_new_advertiser(user.user_id)

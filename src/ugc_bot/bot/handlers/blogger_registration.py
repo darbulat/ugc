@@ -19,7 +19,7 @@ from ugc_bot.bot.handlers.keyboards import (
     profile_keyboard,
     with_cancel_keyboard,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 
 
 router = Router()
@@ -58,8 +58,8 @@ async def start_registration(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
-    if user is None or user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
-        await message.answer("Please choose role 'Я блогер' first.")
+    if user is None:
+        await message.answer("Пользователь не найден. Начните с /start.")
         return
     if user.status == UserStatus.BLOCKED:
         await message.answer("Заблокированные пользователи не могут регистрироваться.")
@@ -74,11 +74,7 @@ async def start_registration(
         await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
-    await state.update_data(
-        user_id=user.user_id,
-        external_id=str(message.from_user.id),
-        role=user.role,
-    )
+    await state.update_data(user_id=user.user_id, external_id=str(message.from_user.id))
     await message.answer(
         "Введите ваш ник / имя для профиля:",
         reply_markup=cancel_keyboard(),
@@ -242,11 +238,10 @@ async def handle_agreements(
 
     data = await state.get_data()
     try:
-        user_role_service.set_role(
+        user_role_service.set_user(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
             username=data["nickname"],
-            role=data["role"],
         )
         profile = blogger_registration_service.register_blogger(
             user_id=data["user_id"],

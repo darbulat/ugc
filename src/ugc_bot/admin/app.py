@@ -26,7 +26,6 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.external_id,
         UserModel.messenger_type,
         UserModel.username,
-        UserModel.role,
         UserModel.status,
         UserModel.issue_count,
         UserModel.created_at,

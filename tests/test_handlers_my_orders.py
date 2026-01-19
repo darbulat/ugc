@@ -10,7 +10,7 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.my_orders import paginate_orders, show_my_orders
 from ugc_bot.domain.entities import AdvertiserProfile, Order, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
@@ -74,13 +74,16 @@ async def test_my_orders_no_advertiser_profile() -> None:
         blogger_repo=InMemoryBloggerProfileRepository(),
         advertiser_repo=advertiser_repo,
     )
-    order_service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    order_service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
 
-    user_service.set_role(
+    user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
     )
 
     message = FakeMessage(text="Мои заказы")
@@ -103,13 +106,16 @@ async def test_my_orders_empty() -> None:
         blogger_repo=InMemoryBloggerProfileRepository(),
         advertiser_repo=advertiser_repo,
     )
-    order_service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    order_service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
 
-    user = user_service.set_role(
+    user = user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
     )
     advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
 
@@ -133,14 +139,17 @@ async def test_my_orders_list() -> None:
         blogger_repo=InMemoryBloggerProfileRepository(),
         advertiser_repo=advertiser_repo,
     )
-    order_service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    order_service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000900"),
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -182,14 +191,17 @@ async def test_my_orders_pagination() -> None:
         blogger_repo=InMemoryBloggerProfileRepository(),
         advertiser_repo=advertiser_repo,
     )
-    order_service = OrderService(user_repo=user_repo, order_repo=order_repo)
+    order_service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000910"),
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),

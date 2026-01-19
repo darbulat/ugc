@@ -7,7 +7,7 @@ import pytest
 
 from ugc_bot.bot.handlers.profile import show_profile
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 
 
 class FakeUser:
@@ -72,7 +72,6 @@ async def test_show_profile_both_roles() -> None:
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
-        role=UserRole.BOTH,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -112,7 +111,6 @@ async def test_show_profile_missing_profiles() -> None:
                 external_id="2",
                 messenger_type=MessengerType.TELEGRAM,
                 username="user",
-                role=UserRole.BOTH,
                 status=UserStatus.ACTIVE,
                 issue_count=0,
                 created_at=datetime.now(timezone.utc),

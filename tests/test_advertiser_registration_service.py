@@ -13,7 +13,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
 from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryUserRepository,
@@ -28,7 +28,6 @@ def _seed_user(repo: InMemoryUserRepository) -> UUID:
         external_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),

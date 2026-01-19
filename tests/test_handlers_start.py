@@ -9,7 +9,7 @@ from ugc_bot.bot.handlers.start import (
     role_command,
     start_command,
 )
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
 
 
@@ -75,7 +75,7 @@ async def test_choose_role_persists_role() -> None:
 
     user = service.get_user("42", MessengerType.TELEGRAM)
     assert user is not None
-    assert user.role == UserRole.BLOGGER
+    assert user.username == "bob"
 
 
 @pytest.mark.asyncio

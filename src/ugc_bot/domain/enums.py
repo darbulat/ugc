@@ -11,14 +11,6 @@ class MessengerType(StrEnum):
     WHATSAPP = "whatsapp"
 
 
-class UserRole(StrEnum):
-    """User roles in the system."""
-
-    BLOGGER = "blogger"
-    ADVERTISER = "advertiser"
-    BOTH = "both"
-
-
 class UserStatus(StrEnum):
     """User status for anti-fraud and access control."""
 

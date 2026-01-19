@@ -8,7 +8,6 @@ from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
     OrderStatus,
-    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.repositories import (
@@ -29,7 +28,6 @@ def test_user_mapping_roundtrip() -> None:
         external_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=1,
         created_at=datetime.now(timezone.utc),
@@ -40,7 +38,7 @@ def test_user_mapping_roundtrip() -> None:
 
     assert entity.external_id == user.external_id
     assert entity.messenger_type == user.messenger_type
-    assert entity.role == user.role
+    assert entity.username == user.username
 
 
 def test_blogger_profile_mapping_roundtrip() -> None:

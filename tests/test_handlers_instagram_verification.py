@@ -8,6 +8,7 @@ import pytest
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.instagram_verification import (
     InstagramVerificationStates,
@@ -16,8 +17,9 @@ from ugc_bot.bot.handlers.instagram_verification import (
     verify_code,
 )
 from ugc_bot.domain.entities import BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
@@ -68,24 +70,41 @@ class FakeFSMContext:
         self.state = None
 
 
+def _profile_service(
+    user_repo: InMemoryUserRepository,
+    blogger_repo: InMemoryBloggerProfileRepository,
+) -> ProfileService:
+    """Build profile service for tests."""
+
+    return ProfileService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+    )
+
+
 @pytest.mark.asyncio
 async def test_start_verification_requires_role() -> None:
     """Require blogger role before verification."""
 
     repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     user_service = UserRoleService(user_repo=repo)
     verification_service = InstagramVerificationService(
         user_repo=repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
+        blogger_repo=blogger_repo,
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
+    profile_service = _profile_service(repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await start_verification(message, state, user_service, verification_service)
+    await start_verification(
+        message, state, user_service, profile_service, verification_service
+    )
 
     assert message.answers
-    assert "Please choose role" in message.answers[0]
+    assert "Пользователь не найден" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -93,25 +112,29 @@ async def test_start_verification_user_not_found() -> None:
     """Show business error when user is missing."""
 
     user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    user_service.set_role(
+    user_service.set_user(
         external_id="3",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
-        role=UserRole.BLOGGER,
     )
     verification_service = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
-        blogger_repo=InMemoryBloggerProfileRepository(),
+        blogger_repo=blogger_repo,
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
+    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(3, "user", "User"))
     state = FakeFSMContext()
 
-    await start_verification(message, state, user_service, verification_service)
+    await start_verification(
+        message, state, user_service, profile_service, verification_service
+    )
 
     assert message.answers
-    assert "Ошибка подтверждения" in message.answers[0]
+    assert "Профиль блогера не заполнен" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -119,12 +142,12 @@ async def test_start_verification_blocked_user() -> None:
     """Reject verification for blocked user."""
 
     user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     blocked_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000730"),
         external_id="4",
         messenger_type=MessengerType.TELEGRAM,
         username="blocked",
-        role=UserRole.BLOGGER,
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -133,13 +156,16 @@ async def test_start_verification_blocked_user() -> None:
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
+        blogger_repo=blogger_repo,
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
+    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(4, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await start_verification(message, state, user_service, verification_service)
+    await start_verification(
+        message, state, user_service, profile_service, verification_service
+    )
 
     assert message.answers
     assert "Заблокированные" in message.answers[0]
@@ -150,12 +176,12 @@ async def test_start_verification_paused_user() -> None:
     """Reject verification for paused user."""
 
     user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     paused_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000731"),
         external_id="5",
         messenger_type=MessengerType.TELEGRAM,
         username="paused",
-        role=UserRole.BLOGGER,
         status=UserStatus.PAUSE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -164,13 +190,16 @@ async def test_start_verification_paused_user() -> None:
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
+        blogger_repo=blogger_repo,
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
+    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(5, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await start_verification(message, state, user_service, verification_service)
+    await start_verification(
+        message, state, user_service, profile_service, verification_service
+    )
 
     assert message.answers
     assert "паузе" in message.answers[0]
@@ -219,11 +248,10 @@ async def test_verify_code_success_flow() -> None:
         verification_repo=verification_repo,
     )
 
-    user = user_service.set_role(
+    user = user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
-        role=UserRole.BLOGGER,
     )
     blogger_repo.save(
         BloggerProfile(
@@ -263,11 +291,10 @@ async def test_verify_code_attempts_regen() -> None:
         verification_repo=verification_repo,
     )
 
-    user = user_service.set_role(
+    user = user_service.set_user(
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
-        role=UserRole.BLOGGER,
     )
     blogger_repo.save(
         BloggerProfile(

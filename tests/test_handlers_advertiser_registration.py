@@ -14,7 +14,7 @@ from ugc_bot.bot.handlers.advertiser_registration import (
     start_advertiser_registration,
 )
 from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryUserRepository,
@@ -66,8 +66,8 @@ class FakeFSMContext:
 
 
 @pytest.mark.asyncio
-async def test_start_advertiser_registration_requires_role() -> None:
-    """Require advertiser role before registration."""
+async def test_start_advertiser_registration_requires_user() -> None:
+    """Require existing user before registration."""
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
@@ -77,7 +77,7 @@ async def test_start_advertiser_registration_requires_role() -> None:
     await start_advertiser_registration(message, state, service)
 
     assert message.answers
-    assert "Please choose role" in message.answers[0]
+    assert "Пользователь не найден" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -86,11 +86,10 @@ async def test_start_advertiser_registration_sets_state() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    service.set_role(
+    service.set_user(
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
     )
     message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
     state = FakeFSMContext()
@@ -111,7 +110,6 @@ async def test_start_advertiser_registration_blocked_user() -> None:
         external_id="11",
         messenger_type=MessengerType.TELEGRAM,
         username="blocked",
-        role=UserRole.ADVERTISER,
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -137,7 +135,6 @@ async def test_start_advertiser_registration_paused_user() -> None:
         external_id="12",
         messenger_type=MessengerType.TELEGRAM,
         username="paused",
-        role=UserRole.ADVERTISER,
         status=UserStatus.PAUSE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -180,11 +177,10 @@ async def test_handle_contact_success() -> None:
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
     )
-    user = user_service.set_role(
+    user = user_service.set_user(
         external_id="20",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
     )
 
     message = FakeMessage(text="@contact", user=FakeUser(20, "adv", "Adv"))

@@ -17,7 +17,6 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     PaymentStatus,
-    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.repositories import (
@@ -100,7 +99,6 @@ def test_user_repository_get_by_external() -> None:
         external_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -120,7 +118,6 @@ def test_user_repository_get_by_id() -> None:
         external_id="321",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
@@ -146,7 +143,6 @@ def test_user_repository_save() -> None:
         external_id="555",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
-        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),

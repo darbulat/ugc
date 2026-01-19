@@ -10,7 +10,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import OrderStatus, UserRole, UserStatus
+from ugc_bot.domain.enums import OrderStatus, UserStatus
 
 
 @dataclass(slots=True)
@@ -40,8 +40,6 @@ class OfferDispatchService:
             if user is None:
                 continue
             if user.status != UserStatus.ACTIVE:
-                continue
-            if user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
                 continue
             users.append(user)
         return users

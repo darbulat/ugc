@@ -9,8 +9,9 @@ from aiogram.types import Message
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.payment_service import PaymentService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
 
 router = Router()
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 async def mock_pay_order(
     message: Message,
     user_role_service: UserRoleService,
+    profile_service: ProfileService,
     payment_service: PaymentService,
 ) -> None:
     """Mock payment for an order."""
@@ -32,8 +34,8 @@ async def mock_pay_order(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
-    if user is None or user.role not in {UserRole.ADVERTISER, UserRole.BOTH}:
-        await message.answer("Please choose role 'Я рекламодатель' first.")
+    if user is None:
+        await message.answer("Пользователь не найден. Выберите роль через /role.")
         return
     if user.status == UserStatus.BLOCKED:
         await message.answer("Заблокированные пользователи не могут оплачивать заказы.")
@@ -41,11 +43,12 @@ async def mock_pay_order(
     if user.status == UserStatus.PAUSE:
         await message.answer("Пользователи на паузе не могут оплачивать заказы.")
         return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer("Заблокированные пользователи не могут оплачивать.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут оплачивать.")
+
+    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    if advertiser is None:
+        await message.answer(
+            "Профиль рекламодателя не заполнен. Команда: /register_advertiser"
+        )
         return
 
     args = (message.text or "").split()

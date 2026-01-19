@@ -6,7 +6,7 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType
 
 
 router = Router()
@@ -39,16 +39,14 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
 
     external_id = str(message.from_user.id)
     username = message.from_user.username or message.from_user.first_name or "user"
-    role = UserRole.BLOGGER if message.text == "Я блогер" else UserRole.ADVERTISER
-
-    user_role_service.set_role(
+    is_blogger = message.text == "Я блогер"
+    user_role_service.set_user(
         external_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
         username=username,
-        role=role,
     )
 
-    if role == UserRole.BLOGGER:
+    if is_blogger:
         await message.answer(
             "Role saved. To register as a blogger, send /register.",
             reply_markup=ReplyKeyboardMarkup(

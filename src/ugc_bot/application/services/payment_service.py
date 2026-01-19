@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
+    AdvertiserProfileRepository,
     OfferBroadcaster,
     OrderActivationPublisher,
     OrderRepository,
@@ -13,7 +14,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.domain.entities import Order, Payment
-from ugc_bot.domain.enums import OrderStatus, PaymentStatus, UserRole
+from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 
 
 @dataclass(slots=True)
@@ -21,6 +22,7 @@ class PaymentService:
     """Mock payment service for activating orders."""
 
     user_repo: UserRepository
+    advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
     payment_repo: PaymentRepository
     broadcaster: OfferBroadcaster
@@ -32,8 +34,8 @@ class PaymentService:
         user = self.user_repo.get_by_id(user_id)
         if user is None:
             raise UserNotFoundError("Advertiser not found.")
-        if user.role not in {UserRole.ADVERTISER, UserRole.BOTH}:
-            raise OrderCreationError("User is not an advertiser.")
+        if self.advertiser_repo.get_by_user_id(user_id) is None:
+            raise OrderCreationError("Advertiser profile is not set.")
 
         order = self.order_repo.get_by_id(order_id)
         if order is None:

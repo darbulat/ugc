@@ -8,8 +8,10 @@ import pytest
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
     InMemoryOrderRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
@@ -18,7 +20,10 @@ from ugc_bot.infrastructure.memory_repositories import (
 from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
 
 
-def _seed_user(repo: InMemoryUserRepository) -> UUID:
+def _seed_user(
+    repo: InMemoryUserRepository,
+    advertiser_repo: InMemoryAdvertiserProfileRepository,
+) -> UUID:
     """Seed advertiser user."""
 
     user = User(
@@ -26,12 +31,12 @@ def _seed_user(repo: InMemoryUserRepository) -> UUID:
         external_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
     repo.save(user)
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
     return user.user_id
 
 
@@ -59,14 +64,16 @@ def test_mock_pay_success() -> None:
     """Mock payment activates order."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     broadcaster = NoopOfferBroadcaster()
-    user_id = _seed_user(user_repo)
+    user_id = _seed_user(user_repo, advertiser_repo)
     order_id = _seed_order(order_repo, user_id)
 
     service = PaymentService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=broadcaster,
@@ -83,6 +90,7 @@ def test_mock_pay_invalid_user() -> None:
 
     service = PaymentService(
         user_repo=InMemoryUserRepository(),
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
@@ -97,9 +105,10 @@ def test_mock_pay_wrong_order_status() -> None:
     """Fail when order not NEW."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo)
+    user_id = _seed_user(user_repo, advertiser_repo)
     order_id = _seed_order(order_repo, user_id)
     order = order_repo.get_by_id(order_id)
     order_repo.save(
@@ -120,6 +129,7 @@ def test_mock_pay_wrong_order_status() -> None:
 
     service = PaymentService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),

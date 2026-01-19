@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from ugc_bot.application.services.profile_service import ProfileService
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType
 
 
 router = Router()
@@ -31,9 +31,9 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
     advertiser = profile_service.get_advertiser_profile(user.user_id)
     roles: list[str] = []
     if blogger is not None:
-        roles.append(UserRole.BLOGGER.value)
+        roles.append("blogger")
     if advertiser is not None:
-        roles.append(UserRole.ADVERTISER.value)
+        roles.append("advertiser")
     if not roles:
         roles.append("—")
     parts = [
