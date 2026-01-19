@@ -7,13 +7,14 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import KeyboardButton, Message
 
 from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import cancel_keyboard, with_cancel_keyboard
 from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
 
 
@@ -74,7 +75,10 @@ async def start_registration(
         external_id=str(message.from_user.id),
         role=user.role,
     )
-    await message.answer("Введите ваш ник / имя для профиля:")
+    await message.answer(
+        "Введите ваш ник / имя для профиля:",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(BloggerRegistrationStates.name)
 
 
@@ -88,7 +92,7 @@ async def handle_name(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(nickname=nickname)
-    await message.answer("Введите ссылку на Instagram:")
+    await message.answer("Введите ссылку на Instagram:", reply_markup=cancel_keyboard())
     await state.set_state(BloggerRegistrationStates.instagram)
 
 
@@ -111,7 +115,7 @@ async def handle_instagram(message: Message, state: FSMContext) -> None:
         "Выберите тематики через запятую:\n"
         "fitness, beauty, travel, food, fashion, kids, tech, other"
     )
-    await message.answer(topics_text)
+    await message.answer(topics_text, reply_markup=cancel_keyboard())
     await state.set_state(BloggerRegistrationStates.topics)
 
 
@@ -129,14 +133,12 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         "Укажите пол ЦА:",
-        reply_markup=ReplyKeyboardMarkup(
+        reply_markup=with_cancel_keyboard(
             keyboard=[
                 [KeyboardButton(text="м")],
                 [KeyboardButton(text="ж")],
                 [KeyboardButton(text="все")],
             ],
-            resize_keyboard=True,
-            one_time_keyboard=True,
         ),
     )
     await state.set_state(BloggerRegistrationStates.audience_gender)
@@ -157,7 +159,10 @@ async def handle_gender(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(audience_gender=gender_map[gender_text])
-    await message.answer("Введите возрастной диапазон, например 18-35:")
+    await message.answer(
+        "Введите возрастной диапазон, например 18-35:",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(BloggerRegistrationStates.audience_age)
 
 
@@ -173,7 +178,10 @@ async def handle_age(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(audience_age_min=min_age, audience_age_max=max_age)
-    await message.answer("Введите географию ЦА (страна / город):")
+    await message.answer(
+        "Введите географию ЦА (страна / город):",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(BloggerRegistrationStates.audience_geo)
 
 
@@ -187,7 +195,7 @@ async def handle_geo(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(audience_geo=geo)
-    await message.answer("Введите цену за 1 UGC-видео:")
+    await message.answer("Введите цену за 1 UGC-видео:", reply_markup=cancel_keyboard())
     await state.set_state(BloggerRegistrationStates.price)
 
 
@@ -208,7 +216,8 @@ async def handle_price(message: Message, state: FSMContext) -> None:
 
     await state.update_data(price=price)
     await message.answer(
-        "Подтвердите согласие с офертой и политиками: напишите 'Согласен'."
+        "Подтвердите согласие с офертой и политиками: напишите 'Согласен'.",
+        reply_markup=cancel_keyboard(),
     )
     await state.set_state(BloggerRegistrationStates.agreements)
 

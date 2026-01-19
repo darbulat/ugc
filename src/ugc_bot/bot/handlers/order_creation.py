@@ -6,11 +6,12 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import KeyboardButton, Message
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import cancel_keyboard, with_cancel_keyboard
 from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 
 
@@ -58,7 +59,7 @@ async def start_order_creation(
 
     is_new = order_service.is_new_advertiser(user.user_id)
     await state.update_data(user_id=user.user_id, is_new=is_new)
-    await message.answer("Введите ссылку на продукт:")
+    await message.answer("Введите ссылку на продукт:", reply_markup=cancel_keyboard())
     await state.set_state(OrderCreationStates.product_link)
 
 
@@ -72,7 +73,10 @@ async def handle_product_link(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(product_link=product_link)
-    await message.answer("Введите краткий offer для блогеров:")
+    await message.answer(
+        "Введите краткий offer для блогеров:",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(OrderCreationStates.offer_text)
 
 
@@ -86,7 +90,10 @@ async def handle_offer_text(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(offer_text=offer_text)
-    await message.answer("Введите требования к UGC или напишите 'пропустить':")
+    await message.answer(
+        "Введите требования к UGC или напишите 'пропустить':",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(OrderCreationStates.ugc_requirements)
 
 
@@ -101,19 +108,20 @@ async def handle_ugc_requirements(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     if data.get("is_new"):
         await state.update_data(barter_description=None)
-        await message.answer("Введите цену за 1 UGC-видео:")
+        await message.answer(
+            "Введите цену за 1 UGC-видео:",
+            reply_markup=cancel_keyboard(),
+        )
         await state.set_state(OrderCreationStates.price)
         return
 
     await message.answer(
         "Есть бартер? Выберите:",
-        reply_markup=ReplyKeyboardMarkup(
+        reply_markup=with_cancel_keyboard(
             keyboard=[
                 [KeyboardButton(text="Да")],
                 [KeyboardButton(text="Нет")],
             ],
-            resize_keyboard=True,
-            one_time_keyboard=True,
         ),
     )
     await state.set_state(OrderCreationStates.barter_choice)
@@ -134,7 +142,10 @@ async def handle_barter_choice(message: Message, state: FSMContext) -> None:
         await state.set_state(OrderCreationStates.price)
         return
 
-    await message.answer("Опишите бартерную продукцию:")
+    await message.answer(
+        "Опишите бартерную продукцию:",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(OrderCreationStates.barter_description)
 
 
@@ -148,7 +159,10 @@ async def handle_barter_description(message: Message, state: FSMContext) -> None
         return
 
     await state.update_data(barter_description=barter_description)
-    await message.answer("Введите цену за 1 UGC-видео:")
+    await message.answer(
+        "Введите цену за 1 UGC-видео:",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(OrderCreationStates.price)
 
 
@@ -181,10 +195,8 @@ async def handle_price(message: Message, state: FSMContext) -> None:
         ]
     await message.answer(
         "Выберите количество блогеров:",
-        reply_markup=ReplyKeyboardMarkup(
+        reply_markup=with_cancel_keyboard(
             keyboard=bloggers_keyboard,
-            resize_keyboard=True,
-            one_time_keyboard=True,
         ),
     )
     await state.set_state(OrderCreationStates.bloggers_needed)

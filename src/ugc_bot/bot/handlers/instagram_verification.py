@@ -13,6 +13,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import cancel_keyboard, with_cancel_keyboard
 from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 
 
@@ -92,7 +93,10 @@ async def sent_code(message: Message, state: FSMContext) -> None:
     if message.from_user is None:
         return
 
-    await message.answer("Введите код, полученный в Instagram:")
+    await message.answer(
+        "Введите код, полученный в Instagram:",
+        reply_markup=cancel_keyboard(),
+    )
     await state.set_state(InstagramVerificationStates.waiting_code)
 
 
@@ -106,7 +110,10 @@ async def verify_code(
 
     code = (message.text or "").strip().upper()
     if not code:
-        await message.answer("Код не может быть пустым. Введите снова:")
+        await message.answer(
+            "Код не может быть пустым. Введите снова:",
+            reply_markup=cancel_keyboard(),
+        )
         return
 
     data = await state.get_data()
@@ -154,10 +161,8 @@ async def verify_code(
 def _sent_keyboard() -> ReplyKeyboardMarkup:
     """Build keyboard for confirmation action."""
 
-    return ReplyKeyboardMarkup(
+    return with_cancel_keyboard(
         keyboard=[[KeyboardButton(text="Я отправил код")]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
     )
 
 

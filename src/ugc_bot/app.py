@@ -20,6 +20,7 @@ from ugc_bot.application.services.offer_response_service import OfferResponseSer
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.cancel import router as cancel_router
 from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.handlers.advertiser_registration import (
     router as advertiser_router,
@@ -105,6 +106,7 @@ def build_dispatcher(
         broadcaster=NoopOfferBroadcaster(),
     )
     if include_routers:
+        dispatcher.include_router(cancel_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(blogger_router)
         dispatcher.include_router(advertiser_router)
