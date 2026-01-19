@@ -51,7 +51,10 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
         await message.answer(
             "Role saved. To register as a blogger, send /register.",
             reply_markup=ReplyKeyboardMarkup(
-                keyboard=[[KeyboardButton(text="/register")]],
+                keyboard=[
+                    [KeyboardButton(text="/register")],
+                    [KeyboardButton(text="Мой профиль")],
+                ],
                 resize_keyboard=True,
             ),
         )
@@ -60,7 +63,10 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
     await message.answer(
         "Role saved. To register as an advertiser, send /register_advertiser.",
         reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="/register_advertiser")]],
+            keyboard=[
+                [KeyboardButton(text="/register_advertiser")],
+                [KeyboardButton(text="Мой профиль")],
+            ],
             resize_keyboard=True,
         ),
     )

@@ -19,6 +19,7 @@ from ugc_bot.application.services.offer_dispatch_service import OfferDispatchSer
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.payment_service import PaymentService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.cancel import router as cancel_router
 from ugc_bot.bot.handlers.start import router as start_router
@@ -29,6 +30,7 @@ from ugc_bot.bot.handlers.blogger_registration import router as blogger_router
 from ugc_bot.bot.handlers.instagram_verification import (
     router as instagram_router,
 )
+from ugc_bot.bot.handlers.profile import router as profile_router
 from ugc_bot.bot.handlers.offer_responses import router as offer_response_router
 from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
@@ -105,12 +107,18 @@ def build_dispatcher(
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
     )
+    dispatcher["profile_service"] = ProfileService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        advertiser_repo=advertiser_repo,
+    )
     if include_routers:
         dispatcher.include_router(cancel_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(blogger_router)
         dispatcher.include_router(advertiser_router)
         dispatcher.include_router(instagram_router)
+        dispatcher.include_router(profile_router)
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(order_router)
         dispatcher.include_router(payments_router)

@@ -26,3 +26,13 @@ def with_cancel_keyboard(
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,
     )
+
+
+def profile_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
+    """Build a reply keyboard with a profile button."""
+
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Мой профиль")]],
+        resize_keyboard=True,
+        one_time_keyboard=one_time_keyboard,
+    )
