@@ -15,6 +15,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
     NoopOfferBroadcaster,
 )
+from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
 
 
 def _seed_user(repo: InMemoryUserRepository) -> UUID:
@@ -69,6 +70,7 @@ def test_mock_pay_success() -> None:
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=broadcaster,
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     payment = service.mock_pay(user_id, order_id)
@@ -84,6 +86,7 @@ def test_mock_pay_invalid_user() -> None:
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     with pytest.raises(UserNotFoundError):
@@ -120,6 +123,7 @@ def test_mock_pay_wrong_order_status() -> None:
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     with pytest.raises(OrderCreationError):

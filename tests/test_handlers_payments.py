@@ -23,6 +23,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
     NoopOfferBroadcaster,
 )
+from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
 
 
 class FakeUser:
@@ -63,6 +64,7 @@ async def test_mock_pay_handler_success() -> None:
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(
@@ -160,6 +162,7 @@ async def test_mock_pay_handler_blocked_user() -> None:
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(
@@ -202,6 +205,7 @@ async def test_mock_pay_handler_order_not_found() -> None:
         order_repo=order_repo,
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(
@@ -246,6 +250,7 @@ async def test_mock_pay_handler_order_wrong_owner() -> None:
         order_repo=order_repo,
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(
@@ -316,6 +321,7 @@ async def test_mock_pay_handler_order_not_new() -> None:
         order_repo=order_repo,
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(
@@ -375,6 +381,7 @@ async def test_mock_pay_handler_missing_args() -> None:
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(
@@ -414,6 +421,7 @@ async def test_mock_pay_handler_invalid_order_id() -> None:
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(
@@ -459,6 +467,7 @@ async def test_mock_pay_handler_no_bloggers() -> None:
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=NoopOrderActivationPublisher(),
     )
 
     offer_dispatch_service = OfferDispatchService(

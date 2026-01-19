@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
     OfferBroadcaster,
+    OrderActivationPublisher,
     OrderRepository,
     PaymentRepository,
     UserRepository,
@@ -23,6 +24,7 @@ class PaymentService:
     order_repo: OrderRepository
     payment_repo: PaymentRepository
     broadcaster: OfferBroadcaster
+    activation_publisher: OrderActivationPublisher
 
     def mock_pay(self, user_id: UUID, order_id: UUID) -> Payment:
         """Mock payment for a specific order."""
@@ -75,4 +77,5 @@ class PaymentService:
         )
         self.order_repo.save(activated)
         self.broadcaster.broadcast_order(activated)
+        self.activation_publisher.publish(activated)
         return payment

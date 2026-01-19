@@ -159,6 +159,14 @@ class OfferBroadcaster(ABC):
         """Broadcast offer to eligible bloggers."""
 
 
+class OrderActivationPublisher(ABC):
+    """Port for publishing order activation events."""
+
+    @abstractmethod
+    def publish(self, order: Order) -> None:
+        """Publish order activation message."""
+
+
 class ComplaintRepository(ABC):
     """Port for complaint persistence."""
 

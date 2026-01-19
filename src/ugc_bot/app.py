@@ -48,6 +48,10 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
+from ugc_bot.infrastructure.kafka.publisher import (
+    KafkaOrderActivationPublisher,
+    NoopOrderActivationPublisher,
+)
 
 
 def build_dispatcher(
@@ -107,6 +111,14 @@ def build_dispatcher(
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
+        activation_publisher=(
+            KafkaOrderActivationPublisher(
+                bootstrap_servers=config.kafka_bootstrap_servers,
+                topic=config.kafka_topic,
+            )
+            if config.kafka_enabled
+            else NoopOrderActivationPublisher()
+        ),
     )
     dispatcher["profile_service"] = ProfileService(
         user_repo=user_repo,
