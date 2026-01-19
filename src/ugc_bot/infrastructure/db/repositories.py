@@ -214,6 +214,15 @@ class SqlAlchemyOrderRepository(OrderRepository):
             ).scalars()
             return [_to_order_entity(item) for item in result]
 
+    def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
+        """List orders by advertiser."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(OrderModel).where(OrderModel.advertiser_id == advertiser_id)
+            ).scalars()
+            return [_to_order_entity(item) for item in result]
+
     def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 

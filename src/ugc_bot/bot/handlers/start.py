@@ -5,6 +5,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard
 from ugc_bot.domain.enums import MessengerType, UserRole
 
 
@@ -62,13 +63,7 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
 
     await message.answer(
         "Role saved. To register as an advertiser, send /register_advertiser.",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="/register_advertiser")],
-                [KeyboardButton(text="Мой профиль")],
-            ],
-            resize_keyboard=True,
-        ),
+        reply_markup=advertiser_menu_keyboard(),
     )
 
 

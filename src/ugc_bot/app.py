@@ -30,6 +30,7 @@ from ugc_bot.bot.handlers.blogger_registration import router as blogger_router
 from ugc_bot.bot.handlers.instagram_verification import (
     router as instagram_router,
 )
+from ugc_bot.bot.handlers.my_orders import router as my_orders_router
 from ugc_bot.bot.handlers.profile import router as profile_router
 from ugc_bot.bot.handlers.offer_responses import router as offer_response_router
 from ugc_bot.bot.handlers.order_creation import router as order_router
@@ -118,6 +119,7 @@ def build_dispatcher(
         dispatcher.include_router(blogger_router)
         dispatcher.include_router(advertiser_router)
         dispatcher.include_router(instagram_router)
+        dispatcher.include_router(my_orders_router)
         dispatcher.include_router(profile_router)
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(order_router)

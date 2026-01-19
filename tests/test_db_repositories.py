@@ -367,6 +367,29 @@ def test_order_repository_save_and_get() -> None:
     assert fetched is not None
 
 
+def test_order_repository_list_by_advertiser() -> None:
+    """List orders by advertiser."""
+
+    advertiser_id = UUID("00000000-0000-0000-0000-000000000172")
+    model = OrderModel(
+        order_id=UUID("00000000-0000-0000-0000-000000000173"),
+        advertiser_id=advertiser_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    repo = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
+
+    orders = list(repo.list_by_advertiser(advertiser_id))
+    assert orders
+
+
 def test_payment_repository_save_and_get() -> None:
     """Save and fetch payment."""
 

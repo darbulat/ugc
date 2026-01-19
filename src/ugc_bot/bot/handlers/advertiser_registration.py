@@ -17,7 +17,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import cancel_keyboard, profile_keyboard
+from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard, cancel_keyboard
 from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 
 
@@ -114,5 +114,5 @@ async def handle_contact(
         "Профиль рекламодателя создан.\n"
         f"Контакт: {profile.contact}\n"
         "Создать заказ: /create_order",
-        reply_markup=profile_keyboard(),
+        reply_markup=advertiser_menu_keyboard(),
     )

@@ -81,6 +81,10 @@ class OrderRepository(ABC):
         """List active orders."""
 
     @abstractmethod
+    def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
+        """List orders by advertiser."""
+
+    @abstractmethod
     def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 

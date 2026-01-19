@@ -165,6 +165,15 @@ class InMemoryOrderRepository(OrderRepository):
             if order.status == OrderStatus.ACTIVE
         ]
 
+    def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
+        """List orders by advertiser."""
+
+        return [
+            order
+            for order in self.orders.values()
+            if order.advertiser_id == advertiser_id
+        ]
+
     def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 

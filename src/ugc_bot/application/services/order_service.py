@@ -26,6 +26,11 @@ class OrderService:
 
         return self.order_repo.count_by_advertiser(advertiser_id) == 0
 
+    def list_by_advertiser(self, advertiser_id: UUID) -> list[Order]:
+        """List orders for advertiser."""
+
+        return list(self.order_repo.list_by_advertiser(advertiser_id))
+
     def create_order(
         self,
         advertiser_id: UUID,
