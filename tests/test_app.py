@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from aiogram import Router
 
 from ugc_bot.app import build_dispatcher, run_bot
 from ugc_bot.config import AppConfig
@@ -12,7 +13,10 @@ def test_build_dispatcher_requires_database_url() -> None:
     """Ensure build_dispatcher requires database url."""
 
     with pytest.raises(ValueError):
-        build_dispatcher(AppConfig.model_validate({"BOT_TOKEN": "token"}))
+        build_dispatcher(
+            AppConfig.model_validate({"BOT_TOKEN": "token", "DATABASE_URL": ""}),
+            include_routers=False,
+        )
 
 
 def test_build_dispatcher_sets_services() -> None:
@@ -25,7 +29,8 @@ def test_build_dispatcher_sets_services() -> None:
                 "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
                 "OPENAI_ENABLED": False,
             }
-        )
+        ),
+        include_routers=False,
     )
 
     assert dispatcher["user_role_service"] is not None
@@ -38,14 +43,62 @@ def test_build_dispatcher_sets_services() -> None:
     assert dispatcher["payment_service"] is not None
 
 
+def test_build_dispatcher_includes_routers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Include routers when enabled."""
+
+    monkeypatch.setattr("ugc_bot.app.start_router", Router())
+    monkeypatch.setattr("ugc_bot.app.blogger_router", Router())
+    monkeypatch.setattr("ugc_bot.app.advertiser_router", Router())
+    monkeypatch.setattr("ugc_bot.app.instagram_router", Router())
+    monkeypatch.setattr("ugc_bot.app.offer_response_router", Router())
+    monkeypatch.setattr("ugc_bot.app.order_router", Router())
+    monkeypatch.setattr("ugc_bot.app.payments_router", Router())
+
+    dispatcher = build_dispatcher(
+        AppConfig.model_validate(
+            {
+                "BOT_TOKEN": "token",
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "OPENAI_ENABLED": False,
+            }
+        ),
+        include_routers=True,
+    )
+
+    assert dispatcher is not None
+
+
+def test_build_dispatcher_openai_enabled() -> None:
+    """Allow OpenAI selector when enabled."""
+
+    dispatcher = build_dispatcher(
+        AppConfig.model_validate(
+            {
+                "BOT_TOKEN": "token",
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "OPENAI_ENABLED": True,
+                "OPENAI_API_KEY": "test",
+            }
+        ),
+        include_routers=False,
+    )
+
+    assert dispatcher["offer_dispatch_service"] is not None
+
+
 def test_build_dispatcher_requires_openai_key() -> None:
     """Ensure build_dispatcher requires OPENAI_API_KEY."""
 
     with pytest.raises(ValueError):
         build_dispatcher(
             AppConfig.model_validate(
-                {"BOT_TOKEN": "token", "DATABASE_URL": "postgresql://db"}
-            )
+                {
+                    "BOT_TOKEN": "token",
+                    "DATABASE_URL": "postgresql://db",
+                    "OPENAI_ENABLED": True,
+                }
+            ),
+            include_routers=False,
         )
 
 

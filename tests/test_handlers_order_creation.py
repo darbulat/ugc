@@ -7,6 +7,8 @@ import pytest
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.order_creation import (
+    handle_barter_choice,
+    handle_barter_description,
     handle_bloggers_needed,
     handle_offer_text,
     handle_price,
@@ -14,7 +16,11 @@ from ugc_bot.bot.handlers.order_creation import (
     handle_ugc_requirements,
     start_order_creation,
 )
-from ugc_bot.domain.enums import MessengerType, UserRole
+from datetime import datetime, timezone
+from uuid import UUID
+
+from ugc_bot.domain.entities import Order, User
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOrderRepository,
     InMemoryUserRepository,
@@ -106,3 +112,92 @@ async def test_order_creation_flow_new_advertiser() -> None:
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state, order_service)
 
     assert len(order_repo.orders) == 1
+
+
+@pytest.mark.asyncio
+async def test_order_creation_flow_with_barter() -> None:
+    """Handle barter flow for existing advertisers."""
+
+    repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    user_service = UserRoleService(user_repo=repo)
+    order_service = OrderService(user_repo=repo, order_repo=order_repo)
+    user = user_service.set_role(
+        external_id="6",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        role=UserRole.ADVERTISER,
+    )
+    order_repo.save(
+        Order(
+            order_id=UUID("00000000-0000-0000-0000-000000000801"),
+            advertiser_id=user.user_id,
+            product_link="https://example.com",
+            offer_text="Old",
+            ugc_requirements=None,
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=3,
+            status=OrderStatus.NEW,
+            created_at=datetime.now(timezone.utc),
+            contacts_sent_at=None,
+        )
+    )
+
+    message = FakeMessage(text=None, user=FakeUser(6, "adv", "Adv"))
+    state = FakeFSMContext()
+    await start_order_creation(message, state, user_service, order_service)
+
+    await handle_product_link(FakeMessage(text="https://example.com", user=None), state)
+    await handle_offer_text(FakeMessage(text="Offer", user=None), state)
+    await handle_ugc_requirements(FakeMessage(text="пропустить", user=None), state)
+    await handle_barter_choice(FakeMessage(text="Да", user=None), state)
+    await handle_barter_description(FakeMessage(text="Barter", user=None), state)
+    await handle_price(FakeMessage(text="1500", user=None), state)
+    await handle_bloggers_needed(
+        FakeMessage(text="20", user=None), state, order_service
+    )
+
+    assert len(order_repo.orders) == 2
+
+
+@pytest.mark.asyncio
+async def test_start_order_creation_blocked_user() -> None:
+    """Block order creation for blocked users."""
+
+    repo = InMemoryUserRepository()
+    order_service = OrderService(user_repo=repo, order_repo=InMemoryOrderRepository())
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000701"),
+        external_id="7",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blocked",
+        role=UserRole.ADVERTISER,
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo.save(user)
+    user_service = UserRoleService(user_repo=repo)
+
+    message = FakeMessage(text=None, user=FakeUser(7, "blocked", "Blocked"))
+    state = FakeFSMContext()
+
+    await start_order_creation(message, state, user_service, order_service)
+
+    assert "Заблокированные" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_bloggers_needed_limit_for_new_advertiser() -> None:
+    """Reject invalid bloggers count for NEW advertisers."""
+
+    repo = InMemoryUserRepository()
+    order_service = OrderService(user_repo=repo, order_repo=InMemoryOrderRepository())
+    state = FakeFSMContext()
+    await state.update_data(is_new=True)
+
+    message = FakeMessage(text="20", user=None)
+    await handle_bloggers_needed(message, state, order_service)
+
+    assert "NEW рекламодатели" in message.answers[0]

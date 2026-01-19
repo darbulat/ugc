@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
 
 
 router = Router()
@@ -38,12 +38,41 @@ async def handle_offer_response(
     if user is None or user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
         await callback.answer("Вы не можете откликаться на офферы.")
         return
+    if user.status == UserStatus.BLOCKED:
+        await callback.answer("Заблокированные пользователи не могут откликаться.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await callback.answer("Пользователи на паузе не могут откликаться.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await callback.answer("Заблокированные пользователи не могут откликаться.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await callback.answer("Пользователи на паузе не могут откликаться.")
+        return
 
     raw = callback.data.split("offer:", 1)[-1] if callback.data else ""
     try:
         order_id = UUID(raw)
     except ValueError:
         await callback.answer("Неверный идентификатор заказа.")
+        return
+
+    order = offer_response_service.order_repo.get_by_id(order_id)
+    if order is None:
+        await callback.answer("Заказ не найден.")
+        return
+    if order.status != OrderStatus.ACTIVE:
+        await callback.answer("Заказ не активен.")
+        return
+    if offer_response_service.response_repo.exists(order_id, user.user_id):
+        await callback.answer("Вы уже откликались на этот заказ.")
+        return
+    if (
+        offer_response_service.response_repo.count_by_order(order_id)
+        >= order.bloggers_needed
+    ):
+        await callback.answer("Лимит откликов по заказу достигнут.")
         return
 
     try:

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from uuid import UUID
+
 import pytest
 
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -12,7 +15,8 @@ from ugc_bot.bot.handlers.advertiser_registration import (
     handle_contact,
     start_advertiser_registration,
 )
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryUserRepository,
@@ -97,6 +101,58 @@ async def test_start_advertiser_registration_sets_state() -> None:
 
     assert state._data["user_id"] is not None
     assert state.state is not None
+
+
+@pytest.mark.asyncio
+async def test_start_advertiser_registration_blocked_user() -> None:
+    """Reject registration for blocked advertiser."""
+
+    repo = InMemoryUserRepository()
+    blocked_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000720"),
+        external_id="11",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blocked",
+        role=UserRole.ADVERTISER,
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo.save(blocked_user)
+    service = UserRoleService(user_repo=repo)
+    message = FakeMessage(text=None, user=FakeUser(11, "blocked", "Blocked"))
+    state = FakeFSMContext()
+
+    await start_advertiser_registration(message, state, service)
+
+    assert message.answers
+    assert "Заблокированные" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_start_advertiser_registration_paused_user() -> None:
+    """Reject registration for paused advertiser."""
+
+    repo = InMemoryUserRepository()
+    paused_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000721"),
+        external_id="12",
+        messenger_type=MessengerType.TELEGRAM,
+        username="paused",
+        role=UserRole.ADVERTISER,
+        status=UserStatus.PAUSE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo.save(paused_user)
+    service = UserRoleService(user_repo=repo)
+    message = FakeMessage(text=None, user=FakeUser(12, "paused", "Paused"))
+    state = FakeFSMContext()
+
+    await start_advertiser_registration(message, state, service)
+
+    assert message.answers
+    assert "паузе" in message.answers[0]
 
 
 @pytest.mark.asyncio

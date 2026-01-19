@@ -13,7 +13,7 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 
 
 router = Router()
@@ -50,6 +50,12 @@ async def start_order_creation(
     )
     if user is None or user.role not in {UserRole.ADVERTISER, UserRole.BOTH}:
         await message.answer("Please choose role 'Я рекламодатель' first.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут создавать заказы.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут создавать заказы.")
         return
 
     is_new = order_service.is_new_advertiser(user.user_id)
@@ -164,16 +170,21 @@ async def handle_price(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(price=price)
+    data = await state.get_data()
+    if data.get("is_new"):
+        bloggers_keyboard = [[KeyboardButton(text="3")], [KeyboardButton(text="10")]]
+    else:
+        bloggers_keyboard = [
+            [KeyboardButton(text="3")],
+            [KeyboardButton(text="10")],
+            [KeyboardButton(text="20")],
+            [KeyboardButton(text="30")],
+            [KeyboardButton(text="50")],
+        ]
     await message.answer(
         "Выберите количество блогеров:",
         reply_markup=ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="3")],
-                [KeyboardButton(text="10")],
-                [KeyboardButton(text="20")],
-                [KeyboardButton(text="30")],
-                [KeyboardButton(text="50")],
-            ],
+            keyboard=bloggers_keyboard,
             resize_keyboard=True,
             one_time_keyboard=True,
         ),
@@ -196,6 +207,12 @@ async def handle_bloggers_needed(
 
     bloggers_needed = int(raw)
     data = await state.get_data()
+    if bloggers_needed not in {3, 10, 20, 30, 50}:
+        await message.answer("Выберите одно из значений: 3/10/20/30/50.")
+        return
+    if data.get("is_new") and bloggers_needed > 10:
+        await message.answer("NEW рекламодатели могут выбрать только 3 или 10.")
+        return
 
     try:
         order = order_service.create_order(

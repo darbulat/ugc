@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
 
 
 router = Router()
@@ -41,6 +41,18 @@ async def mock_pay_order(
     if user is None or user.role not in {UserRole.ADVERTISER, UserRole.BOTH}:
         await message.answer("Please choose role 'Я рекламодатель' first.")
         return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут оплачивать заказы.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут оплачивать заказы.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут оплачивать.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут оплачивать.")
+        return
 
     args = (message.text or "").split()
     if len(args) < 2:
@@ -51,6 +63,17 @@ async def mock_pay_order(
         order_id = UUID(args[1])
     except ValueError:
         await message.answer("Неверный формат order_id.")
+        return
+
+    order = payment_service.order_repo.get_by_id(order_id)
+    if order is None:
+        await message.answer("Заказ не найден.")
+        return
+    if order.advertiser_id != user.user_id:
+        await message.answer("Заказ не принадлежит рекламодателю.")
+        return
+    if order.status != OrderStatus.NEW:
+        await message.answer("Заказ не в статусе NEW.")
         return
 
     try:

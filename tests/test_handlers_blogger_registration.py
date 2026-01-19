@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from uuid import UUID
+
 import pytest
 
 from ugc_bot.application.services.blogger_registration_service import (
@@ -19,7 +22,8 @@ from ugc_bot.bot.handlers.blogger_registration import (
     handle_topics,
     start_registration,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
@@ -104,6 +108,58 @@ async def test_start_registration_sets_state() -> None:
 
     assert state._data["external_id"] == "7"
     assert state.state is not None
+
+
+@pytest.mark.asyncio
+async def test_start_registration_blocked_user() -> None:
+    """Reject registration for blocked user."""
+
+    repo = InMemoryUserRepository()
+    blocked_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000710"),
+        external_id="8",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blocked",
+        role=UserRole.BLOGGER,
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo.save(blocked_user)
+    service = UserRoleService(user_repo=repo)
+    message = FakeMessage(text=None, user=FakeUser(8, "blocked", "Blocked"))
+    state = FakeFSMContext()
+
+    await start_registration(message, state, service)
+
+    assert message.answers
+    assert "Заблокированные" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_start_registration_paused_user() -> None:
+    """Reject registration for paused user."""
+
+    repo = InMemoryUserRepository()
+    paused_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000711"),
+        external_id="9",
+        messenger_type=MessengerType.TELEGRAM,
+        username="paused",
+        role=UserRole.BLOGGER,
+        status=UserStatus.PAUSE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo.save(paused_user)
+    service = UserRoleService(user_repo=repo)
+    message = FakeMessage(text=None, user=FakeUser(9, "paused", "Paused"))
+    state = FakeFSMContext()
+
+    await start_registration(message, state, service)
+
+    assert message.answers
+    assert "паузе" in message.answers[0]
 
 
 @pytest.mark.asyncio

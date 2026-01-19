@@ -15,7 +15,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 
 
 router = Router()
@@ -48,8 +48,37 @@ async def start_verification(
     if user is None or user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
         await message.answer("Please choose role 'Я блогер' first.")
         return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer(
+            "Заблокированные пользователи не могут подтверждать аккаунт."
+        )
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут подтверждать аккаунт.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут подтверждаться.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут подтверждаться.")
+        return
 
-    verification = instagram_verification_service.generate_code(user.user_id)
+    try:
+        verification = instagram_verification_service.generate_code(user.user_id)
+    except (BloggerRegistrationError, UserNotFoundError) as exc:
+        logger.warning(
+            "Instagram verification start failed",
+            extra={"user_id": user.user_id, "reason": str(exc)},
+        )
+        await message.answer(f"Ошибка подтверждения: {exc}")
+        return
+    except Exception:
+        logger.exception(
+            "Unexpected error during instagram verification start",
+            extra={"user_id": user.user_id},
+        )
+        await message.answer("Произошла неожиданная ошибка. Попробуйте позже.")
+        return
     await state.update_data(user_id=user.user_id, attempts=0)
     await message.answer(
         _verification_instruction(verification.code),

@@ -16,7 +16,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
 
 
 router = Router()
@@ -57,6 +57,18 @@ async def start_registration(
     )
     if user is None or user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
         await message.answer("Please choose role 'Я блогер' first.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут регистрироваться.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут регистрироваться.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут регистрироваться.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
     await state.update_data(

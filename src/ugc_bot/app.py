@@ -57,6 +57,7 @@ from ugc_bot.infrastructure.llm.openai_relevance_selector import (
 
 def build_dispatcher(
     config: AppConfig,
+    include_routers: bool = True,
 ) -> Dispatcher:
     """Build the aiogram dispatcher."""
 
@@ -124,13 +125,14 @@ def build_dispatcher(
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
     )
-    dispatcher.include_router(start_router)
-    dispatcher.include_router(blogger_router)
-    dispatcher.include_router(advertiser_router)
-    dispatcher.include_router(instagram_router)
-    dispatcher.include_router(offer_response_router)
-    dispatcher.include_router(order_router)
-    dispatcher.include_router(payments_router)
+    if include_routers:
+        dispatcher.include_router(start_router)
+        dispatcher.include_router(blogger_router)
+        dispatcher.include_router(advertiser_router)
+        dispatcher.include_router(instagram_router)
+        dispatcher.include_router(offer_response_router)
+        dispatcher.include_router(order_router)
+        dispatcher.include_router(payments_router)
     return dispatcher
 
 
@@ -152,5 +154,5 @@ def main() -> None:
     asyncio.run(run_bot())
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

@@ -19,7 +19,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 
 
 router = Router()
@@ -49,6 +49,18 @@ async def start_advertiser_registration(
     )
     if user is None or user.role not in {UserRole.ADVERTISER, UserRole.BOTH}:
         await message.answer("Please choose role 'Я рекламодатель' first.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут регистрироваться.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут регистрироваться.")
+        return
+    if user.status == UserStatus.BLOCKED:
+        await message.answer("Заблокированные пользователи не могут регистрироваться.")
+        return
+    if user.status == UserStatus.PAUSE:
+        await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
     await state.update_data(user_id=user.user_id)

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from uuid import UUID
+
 import pytest
 
 from ugc_bot.application.services.instagram_verification_service import (
@@ -14,15 +17,13 @@ from ugc_bot.bot.handlers.instagram_verification import (
     start_verification,
     verify_code,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole
+from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
 )
-from datetime import datetime, timezone
-
-from ugc_bot.domain.entities import BloggerProfile
 
 
 class FakeUser:
@@ -87,6 +88,94 @@ async def test_start_verification_requires_role() -> None:
 
     assert message.answers
     assert "Please choose role" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_start_verification_user_not_found() -> None:
+    """Show business error when user is missing."""
+
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    user_service.set_role(
+        external_id="3",
+        messenger_type=MessengerType.TELEGRAM,
+        username="user",
+        role=UserRole.BLOGGER,
+    )
+    verification_service = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+    message = FakeMessage(text=None, user=FakeUser(3, "user", "User"))
+    state = FakeFSMContext()
+
+    await start_verification(message, state, user_service, verification_service)
+
+    assert message.answers
+    assert "Ошибка подтверждения" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_start_verification_blocked_user() -> None:
+    """Reject verification for blocked user."""
+
+    user_repo = InMemoryUserRepository()
+    blocked_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000730"),
+        external_id="4",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blocked",
+        role=UserRole.BLOGGER,
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(blocked_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    verification_service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+    message = FakeMessage(text=None, user=FakeUser(4, "blocked", "Blocked"))
+    state = FakeFSMContext()
+
+    await start_verification(message, state, user_service, verification_service)
+
+    assert message.answers
+    assert "Заблокированные" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_start_verification_paused_user() -> None:
+    """Reject verification for paused user."""
+
+    user_repo = InMemoryUserRepository()
+    paused_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000731"),
+        external_id="5",
+        messenger_type=MessengerType.TELEGRAM,
+        username="paused",
+        role=UserRole.BLOGGER,
+        status=UserStatus.PAUSE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(paused_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    verification_service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+    message = FakeMessage(text=None, user=FakeUser(5, "paused", "Paused"))
+    state = FakeFSMContext()
+
+    await start_verification(message, state, user_service, verification_service)
+
+    assert message.answers
+    assert "паузе" in message.answers[0]
 
 
 @pytest.mark.asyncio
