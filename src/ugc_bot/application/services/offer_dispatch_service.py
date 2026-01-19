@@ -39,9 +39,9 @@ class OfferDispatchService:
             user = self.user_repo.get_by_id(user_id)
             if user is None:
                 continue
-            if user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
-                continue
             if user.status != UserStatus.ACTIVE:
+                continue
+            if user.role not in {UserRole.BLOGGER, UserRole.BOTH}:
                 continue
             users.append(user)
         return users

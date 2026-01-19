@@ -25,6 +25,7 @@ def test_build_dispatcher_sets_services() -> None:
             {
                 "BOT_TOKEN": "token",
                 "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "KAFKA_ENABLED": False,
             }
         ),
         include_routers=False,
@@ -56,6 +57,7 @@ def test_build_dispatcher_includes_routers(monkeypatch: pytest.MonkeyPatch) -> N
             {
                 "BOT_TOKEN": "token",
                 "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "KAFKA_ENABLED": False,
             }
         ),
         include_routers=True,

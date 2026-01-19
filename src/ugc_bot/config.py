@@ -25,6 +25,12 @@ class AppConfig(BaseSettings):
         default="kafka:9092", alias="KAFKA_BOOTSTRAP_SERVERS"
     )
     kafka_topic: str = Field(default="order_activated", alias="KAFKA_TOPIC")
+    kafka_group_id: str = Field(default="ugc-bot", alias="KAFKA_GROUP_ID")
+    kafka_dlq_topic: str = Field(default="order_activated_dlq", alias="KAFKA_DLQ_TOPIC")
+    kafka_send_retries: int = Field(default=3, alias="KAFKA_SEND_RETRIES")
+    kafka_send_retry_delay_seconds: float = Field(
+        default=1.0, alias="KAFKA_SEND_RETRY_DELAY_SECONDS"
+    )
 
     @field_validator("bot_token")
     @classmethod

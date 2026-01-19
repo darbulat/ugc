@@ -4,20 +4,12 @@ import pytest
 from uuid import UUID
 from datetime import datetime, timezone
 
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import mock_pay_order
-from ugc_bot.domain.entities import BloggerProfile, Order, User
-from ugc_bot.domain.enums import (
-    AudienceGender,
-    MessengerType,
-    OrderStatus,
-    UserRole,
-    UserStatus,
-)
+from ugc_bot.domain.entities import Order, User
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryBloggerProfileRepository,
     InMemoryOrderRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
@@ -55,7 +47,6 @@ async def test_mock_pay_handler_success() -> None:
     """Mock payment handler activates order."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
@@ -65,12 +56,6 @@ async def test_mock_pay_handler_success() -> None:
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
         activation_publisher=NoopOrderActivationPublisher(),
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        order_repo=order_repo,
     )
 
     user = User(
@@ -89,32 +74,6 @@ async def test_mock_pay_handler_success() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         role=UserRole.ADVERTISER,
-    )
-
-    blogger = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000502"),
-        external_id="2",
-        messenger_type=MessengerType.TELEGRAM,
-        username="blogger",
-        role=UserRole.BLOGGER,
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    user_repo.save(blogger)
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=blogger.user_id,
-            instagram_url="https://instagram.com/blogger",
-            confirmed=True,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=datetime.now(timezone.utc),
-        )
     )
 
     order = Order(
@@ -148,7 +107,7 @@ async def test_mock_pay_handler_success() -> None:
         bot=bot,
     )
 
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
+    await mock_pay_order(message, user_service, payment_service)
     assert message.answers
 
 
@@ -163,12 +122,6 @@ async def test_mock_pay_handler_blocked_user() -> None:
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
         activation_publisher=NoopOrderActivationPublisher(),
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=InMemoryOrderRepository(),
     )
 
     blocked_user = User(
@@ -188,7 +141,7 @@ async def test_mock_pay_handler_blocked_user() -> None:
         text="/pay_order 123", user=FakeUser(5, "adv", "Adv"), bot=None
     )
 
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
+    await mock_pay_order(message, user_service, payment_service)
 
     assert message.answers
     assert "Заблокированные" in message.answers[0]
@@ -206,12 +159,6 @@ async def test_mock_pay_handler_order_not_found() -> None:
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
         activation_publisher=NoopOrderActivationPublisher(),
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=order_repo,
     )
 
     user = User(
@@ -233,7 +180,7 @@ async def test_mock_pay_handler_order_not_found() -> None:
         bot=None,
     )
 
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
+    await mock_pay_order(message, user_service, payment_service)
 
     assert message.answers
     assert "Заказ не найден" in message.answers[0]
@@ -251,12 +198,6 @@ async def test_mock_pay_handler_order_wrong_owner() -> None:
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
         activation_publisher=NoopOrderActivationPublisher(),
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=order_repo,
     )
 
     user = User(
@@ -304,7 +245,7 @@ async def test_mock_pay_handler_order_wrong_owner() -> None:
         bot=None,
     )
 
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
+    await mock_pay_order(message, user_service, payment_service)
 
     assert message.answers
     assert "не принадлежит" in message.answers[0]
@@ -322,12 +263,6 @@ async def test_mock_pay_handler_order_not_new() -> None:
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
         activation_publisher=NoopOrderActivationPublisher(),
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=order_repo,
     )
 
     user = User(
@@ -364,7 +299,7 @@ async def test_mock_pay_handler_order_not_new() -> None:
         bot=None,
     )
 
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
+    await mock_pay_order(message, user_service, payment_service)
 
     assert message.answers
     assert "статусе NEW" in message.answers[0]
@@ -384,12 +319,6 @@ async def test_mock_pay_handler_missing_args() -> None:
         activation_publisher=NoopOrderActivationPublisher(),
     )
 
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=InMemoryOrderRepository(),
-    )
-
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000528"),
         external_id="10",
@@ -404,7 +333,7 @@ async def test_mock_pay_handler_missing_args() -> None:
 
     message = FakeMessage(text="/pay_order", user=FakeUser(10, "adv", "Adv"), bot=None)
 
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
+    await mock_pay_order(message, user_service, payment_service)
 
     assert message.answers
     assert "Использование" in message.answers[0]
@@ -422,12 +351,6 @@ async def test_mock_pay_handler_invalid_order_id() -> None:
         payment_repo=InMemoryPaymentRepository(),
         broadcaster=NoopOfferBroadcaster(),
         activation_publisher=NoopOrderActivationPublisher(),
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=InMemoryOrderRepository(),
     )
 
     user = User(
@@ -448,73 +371,7 @@ async def test_mock_pay_handler_invalid_order_id() -> None:
         bot=None,
     )
 
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
+    await mock_pay_order(message, user_service, payment_service)
 
     assert message.answers
     assert "Неверный формат" in message.answers[0]
-
-
-@pytest.mark.asyncio
-async def test_mock_pay_handler_no_bloggers() -> None:
-    """Handle no bloggers found during dispatch."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
-    user_service = UserRoleService(user_repo=user_repo)
-    payment_service = PaymentService(
-        user_repo=user_repo,
-        order_repo=order_repo,
-        payment_repo=payment_repo,
-        broadcaster=NoopOfferBroadcaster(),
-        activation_publisher=NoopOrderActivationPublisher(),
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=order_repo,
-    )
-
-    user = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000530"),
-        external_id="12",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-        role=UserRole.ADVERTISER,
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    user_repo.save(user)
-    user_service.set_role(
-        external_id="12",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-        role=UserRole.ADVERTISER,
-    )
-
-    order = Order(
-        order_id=UUID("00000000-0000-0000-0000-000000000531"),
-        advertiser_id=user.user_id,
-        product_link="https://example.com",
-        offer_text="Offer",
-        ugc_requirements=None,
-        barter_description=None,
-        price=1000.0,
-        bloggers_needed=3,
-        status=OrderStatus.NEW,
-        created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
-    )
-    order_repo.save(order)
-
-    message = FakeMessage(
-        text=f"/pay_order {order.order_id}",
-        user=FakeUser(12, "adv", "Adv"),
-        bot=None,
-    )
-
-    await mock_pay_order(message, user_service, payment_service, offer_dispatch_service)
-
-    assert any("Нет доступных блогеров" in answer for answer in message.answers)

@@ -32,6 +32,17 @@ services:
       - "8001:8001"
     restart: unless-stopped
 
+  kafka_consumer:
+    build: .
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    command: ["python", "-m", "ugc_bot.kafka_consumer"]
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:
