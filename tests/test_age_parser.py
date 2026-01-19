@@ -1,7 +1,5 @@
 """Tests for age range parsing helper."""
 
-from __future__ import annotations
-
 import pytest
 
 from ugc_bot.bot.handlers.blogger_registration import _parse_age_range

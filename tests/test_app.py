@@ -1,7 +1,5 @@
 """Tests for application setup."""
 
-from __future__ import annotations
-
 import pytest
 from aiogram import Router
 

@@ -1,7 +1,5 @@
 """Tests for logging setup."""
 
-from __future__ import annotations
-
 import logging
 
 from ugc_bot.logging_setup import configure_logging

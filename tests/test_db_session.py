@@ -1,7 +1,5 @@
 """Tests for database session helpers."""
 
-from __future__ import annotations
-
 from sqlalchemy.engine import Engine
 
 from ugc_bot.infrastructure.db.session import create_db_engine, create_session_factory

@@ -1,7 +1,5 @@
 """Tests for scheduler stub."""
 
-from __future__ import annotations
-
 from ugc_bot.scheduler.scheduler import Scheduler
 
 

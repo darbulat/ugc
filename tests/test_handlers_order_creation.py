@@ -1,7 +1,5 @@
 """Tests for order creation handlers."""
 
-from __future__ import annotations
-
 import pytest
 
 from ugc_bot.application.services.order_service import OrderService

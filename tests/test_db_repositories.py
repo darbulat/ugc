@@ -1,7 +1,5 @@
 """Tests for SQLAlchemy repositories with fake sessions."""
 
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 

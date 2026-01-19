@@ -1,7 +1,5 @@
 """Service for blogger registration."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any

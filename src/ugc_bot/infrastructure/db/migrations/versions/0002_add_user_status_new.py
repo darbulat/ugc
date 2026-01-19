@@ -1,7 +1,5 @@
 """Add NEW value to user_status enum."""
 
-from __future__ import annotations
-
 from alembic import op
 
 

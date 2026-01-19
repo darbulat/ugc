@@ -1,7 +1,5 @@
 """Order creation flow handlers."""
 
-from __future__ import annotations
-
 import logging
 
 from aiogram import Router

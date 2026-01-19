@@ -1,7 +1,5 @@
 """Tests for mock payment service."""
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from uuid import UUID
 

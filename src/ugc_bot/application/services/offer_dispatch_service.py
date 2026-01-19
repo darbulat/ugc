@@ -1,7 +1,5 @@
 """Service for dispatching offers to bloggers."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from uuid import UUID
 

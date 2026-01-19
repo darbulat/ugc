@@ -1,7 +1,5 @@
 """Tests for start and role handlers."""
 
-from __future__ import annotations
-
 import pytest
 
 from ugc_bot.application.services.user_role_service import UserRoleService

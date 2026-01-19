@@ -1,7 +1,5 @@
 """Application-specific exceptions."""
 
-from __future__ import annotations
-
 
 class UserNotFoundError(RuntimeError):
     """Raised when a user cannot be found."""

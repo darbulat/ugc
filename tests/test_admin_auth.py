@@ -1,7 +1,5 @@
 """Tests for SQLAdmin auth backend."""
 
-from __future__ import annotations
-
 import pytest
 
 from ugc_bot.admin.auth import AdminAuth

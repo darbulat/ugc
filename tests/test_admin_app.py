@@ -1,7 +1,5 @@
 """Tests for admin app setup."""
 
-from __future__ import annotations
-
 from fastapi import FastAPI
 import pytest
 

@@ -1,7 +1,5 @@
 """SQLAdmin application setup."""
 
-from __future__ import annotations
-
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 from sqladmin import Admin, ModelView

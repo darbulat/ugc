@@ -1,7 +1,5 @@
 """Scheduler stub for future background jobs."""
 
-from __future__ import annotations
-
 
 class Scheduler:
     """Scheduler facade for background tasks."""

@@ -1,7 +1,5 @@
 """Advertiser registration flow handlers."""
 
-from __future__ import annotations
-
 import logging
 from uuid import UUID
 

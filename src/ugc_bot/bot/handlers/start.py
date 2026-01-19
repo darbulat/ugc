@@ -1,7 +1,5 @@
 """Start and role selection handlers."""
 
-from __future__ import annotations
-
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup

@@ -1,7 +1,5 @@
 """Tests for Instagram verification handlers."""
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from uuid import UUID
 

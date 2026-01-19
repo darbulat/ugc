@@ -1,7 +1,5 @@
 """SQLAlchemy base and naming conventions."""
 
-from __future__ import annotations
-
 from sqlalchemy.orm import DeclarativeBase
 
 

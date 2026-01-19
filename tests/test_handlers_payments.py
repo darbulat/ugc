@@ -1,7 +1,5 @@
 """Tests for mock payment handler."""
 
-from __future__ import annotations
-
 import pytest
 from uuid import UUID
 from datetime import datetime, timezone

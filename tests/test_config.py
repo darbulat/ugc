@@ -1,7 +1,5 @@
 """Tests for configuration loading."""
 
-from __future__ import annotations
-
 import pytest
 
 from ugc_bot.config import load_config

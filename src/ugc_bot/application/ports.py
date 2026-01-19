@@ -1,7 +1,5 @@
 """Repository ports for the application layer."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import Iterable, Optional
 from uuid import UUID

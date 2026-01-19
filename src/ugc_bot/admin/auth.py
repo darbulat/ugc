@@ -1,7 +1,5 @@
 """Authentication backend for SQLAdmin."""
 
-from __future__ import annotations
-
 import hashlib
 import hmac
 

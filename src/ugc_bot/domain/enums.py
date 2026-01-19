@@ -1,7 +1,5 @@
 """Domain enums for the UGC bot."""
 
-from __future__ import annotations
-
 from enum import StrEnum
 
 
