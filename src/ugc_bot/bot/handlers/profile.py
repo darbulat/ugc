@@ -27,42 +27,47 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
         await message.answer("Профиль не найден. Выберите роль через /role.")
         return
 
+    blogger = profile_service.get_blogger_profile(user.user_id)
+    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    roles: list[str] = []
+    if blogger is not None:
+        roles.append(UserRole.BLOGGER.value)
+    if advertiser is not None:
+        roles.append(UserRole.ADVERTISER.value)
+    if not roles:
+        roles.append("—")
     parts = [
         "Ваш профиль:",
         f"Username: {user.username}",
-        f"Role: {user.role.value}",
+        f"Roles: {', '.join(roles)}",
         f"Status: {user.status.value}",
     ]
 
-    if user.role in {UserRole.BLOGGER, UserRole.BOTH}:
-        blogger = profile_service.get_blogger_profile(user.user_id)
-        if blogger is None:
-            parts.append("Профиль блогера не заполнен. Команда: /register")
-        else:
-            topics = ", ".join(blogger.topics.get("selected", []))
-            confirmed = "Да" if blogger.confirmed else "Нет"
-            parts.extend(
-                [
-                    "Блогер:",
-                    f"Instagram: {blogger.instagram_url}",
-                    f"Подтвержден: {confirmed}",
-                    f"Тематики: {topics or '—'}",
-                    f"ЦА: {blogger.audience_gender.value} {blogger.audience_age_min}-{blogger.audience_age_max}",
-                    f"Гео: {blogger.audience_geo}",
-                    f"Цена: {blogger.price}",
-                ]
-            )
+    if blogger is None:
+        parts.append("Профиль блогера не заполнен. Команда: /register")
+    else:
+        topics = ", ".join(blogger.topics.get("selected", []))
+        confirmed = "Да" if blogger.confirmed else "Нет"
+        parts.extend(
+            [
+                "Блогер:",
+                f"Instagram: {blogger.instagram_url}",
+                f"Подтвержден: {confirmed}",
+                f"Тематики: {topics or '—'}",
+                f"ЦА: {blogger.audience_gender.value} {blogger.audience_age_min}-{blogger.audience_age_max}",
+                f"Гео: {blogger.audience_geo}",
+                f"Цена: {blogger.price}",
+            ]
+        )
 
-    if user.role in {UserRole.ADVERTISER, UserRole.BOTH}:
-        advertiser = profile_service.get_advertiser_profile(user.user_id)
-        if advertiser is None:
-            parts.append("Профиль рекламодателя не заполнен. Команда: /register_advertiser")
-        else:
-            parts.extend(
-                [
-                    "Рекламодатель:",
-                    f"Контакт: {advertiser.contact}",
-                ]
-            )
+    if advertiser is None:
+        parts.append("Профиль рекламодателя не заполнен. Команда: /register_advertiser")
+    else:
+        parts.extend(
+            [
+                "Рекламодатель:",
+                f"Контакт: {advertiser.contact}",
+            ]
+        )
 
     await message.answer("\n".join(parts))
