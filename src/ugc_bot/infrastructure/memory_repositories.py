@@ -86,11 +86,6 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
             profile.user_id for profile in self.profiles.values() if profile.confirmed
         ]
 
-    def list_confirmed_profiles(self) -> list[BloggerProfile]:
-        """List confirmed blogger profiles."""
-
-        return [profile for profile in self.profiles.values() if profile.confirmed]
-
 
 @dataclass
 class InMemoryAdvertiserProfileRepository(AdvertiserProfileRepository):

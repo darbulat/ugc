@@ -22,9 +22,6 @@ class AppConfig(BaseSettings):
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     admin_secret: str = Field(default="", alias="ADMIN_SECRET")
     admin_site_name: str = Field(default="UGC Admin", alias="ADMIN_SITE_NAME")
-    openai_enabled: bool = Field(default=False, alias="OPENAI_ENABLED")
-    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
 
     @field_validator("bot_token")
     @classmethod

@@ -58,10 +58,6 @@ class BloggerProfileRepository(ABC):
     def list_confirmed_user_ids(self) -> list[UUID]:
         """List user ids with confirmed blogger profiles."""
 
-    @abstractmethod
-    def list_confirmed_profiles(self) -> list[BloggerProfile]:
-        """List confirmed blogger profiles."""
-
 
 class AdvertiserProfileRepository(ABC):
     """Port for advertiser profile persistence."""
@@ -159,19 +155,6 @@ class OfferBroadcaster(ABC):
     @abstractmethod
     def broadcast_order(self, order: Order) -> None:
         """Broadcast offer to eligible bloggers."""
-
-
-class BloggerRelevanceSelector(ABC):
-    """Port for selecting relevant bloggers via LLM."""
-
-    @abstractmethod
-    def select(
-        self,
-        order: Order,
-        profiles: list[BloggerProfile],
-        limit: int,
-    ) -> list[UUID]:
-        """Select relevant blogger user ids."""
 
 
 class ComplaintRepository(ABC):

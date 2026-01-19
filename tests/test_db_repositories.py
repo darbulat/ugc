@@ -208,27 +208,6 @@ def test_blogger_profile_repository_get() -> None:
     assert profile.instagram_url.endswith("test")
 
 
-def test_blogger_profile_repository_list_confirmed_profiles() -> None:
-    """List confirmed blogger profiles."""
-
-    model = BloggerProfileModel(
-        user_id=UUID("00000000-0000-0000-0000-000000000114"),
-        instagram_url="https://instagram.com/test",
-        confirmed=True,
-        topics={"selected": ["fitness"]},
-        audience_gender=AudienceGender.ALL,
-        audience_age_min=18,
-        audience_age_max=35,
-        audience_geo="Moscow",
-        price=1000.0,
-        updated_at=datetime.now(timezone.utc),
-    )
-    repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))
-
-    profiles = repo.list_confirmed_profiles()
-    assert profiles
-
-
 def test_advertiser_profile_repository_save_and_get() -> None:
     """Save and fetch advertiser profile."""
 

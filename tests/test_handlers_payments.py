@@ -6,7 +6,6 @@ import pytest
 from uuid import UUID
 from datetime import datetime, timezone
 
-from ugc_bot.application.ports import BloggerRelevanceSelector
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -68,17 +67,10 @@ async def test_mock_pay_handler_success() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return [profile.user_id for profile in profiles][:limit]
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
-        relevance_selector=FakeSelector(),
     )
 
     user = User(
@@ -172,17 +164,10 @@ async def test_mock_pay_handler_blocked_user() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return []
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=InMemoryOrderRepository(),
-        relevance_selector=FakeSelector(),
     )
 
     blocked_user = User(
@@ -221,17 +206,10 @@ async def test_mock_pay_handler_order_not_found() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return []
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=order_repo,
-        relevance_selector=FakeSelector(),
     )
 
     user = User(
@@ -272,17 +250,10 @@ async def test_mock_pay_handler_order_wrong_owner() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return []
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=order_repo,
-        relevance_selector=FakeSelector(),
     )
 
     user = User(
@@ -349,17 +320,10 @@ async def test_mock_pay_handler_order_not_new() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return []
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=order_repo,
-        relevance_selector=FakeSelector(),
     )
 
     user = User(
@@ -415,17 +379,10 @@ async def test_mock_pay_handler_missing_args() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return []
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=InMemoryOrderRepository(),
-        relevance_selector=FakeSelector(),
     )
 
     user = User(
@@ -461,17 +418,10 @@ async def test_mock_pay_handler_invalid_order_id() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return []
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=InMemoryOrderRepository(),
-        relevance_selector=FakeSelector(),
     )
 
     user = User(
@@ -513,17 +463,10 @@ async def test_mock_pay_handler_no_bloggers() -> None:
         broadcaster=NoopOfferBroadcaster(),
     )
 
-    class FakeSelector(BloggerRelevanceSelector):
-        """Fake selector for tests."""
-
-        def select(self, order, profiles, limit):  # type: ignore[no-untyped-def]
-            return []
-
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=order_repo,
-        relevance_selector=FakeSelector(),
     )
 
     user = User(

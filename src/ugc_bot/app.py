@@ -17,7 +17,6 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
-from ugc_bot.application.ports import BloggerRelevanceSelector
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.order_service import OrderService
@@ -47,12 +46,6 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
-from ugc_bot.infrastructure.llm.local_relevance_selector import (
-    LocalBloggerRelevanceSelector,
-)
-from ugc_bot.infrastructure.llm.openai_relevance_selector import (
-    OpenAIBloggerRelevanceSelector,
-)
 
 
 def build_dispatcher(
@@ -63,8 +56,6 @@ def build_dispatcher(
 
     if not config.database_url:
         raise ValueError("DATABASE_URL is required for repository setup.")
-    if config.openai_enabled and not config.openai_api_key:
-        raise ValueError("OPENAI_API_KEY is required for blogger matching.")
 
     storage = MemoryStorage()
     dispatcher = Dispatcher(storage=storage)
@@ -100,20 +91,10 @@ def build_dispatcher(
         user_repo=user_repo,
         order_repo=order_repo,
     )
-    relevance_selector: BloggerRelevanceSelector
-    if config.openai_enabled:
-        relevance_selector = OpenAIBloggerRelevanceSelector(
-            api_key=config.openai_api_key,
-            model=config.openai_model,
-        )
-    else:
-        relevance_selector = LocalBloggerRelevanceSelector()
-
     dispatcher["offer_dispatch_service"] = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
-        relevance_selector=relevance_selector,
     )
     dispatcher["offer_response_service"] = OfferResponseService(
         order_repo=order_repo,

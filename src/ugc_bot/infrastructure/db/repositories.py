@@ -117,17 +117,6 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
             ).scalars()
             return list(results)
 
-    def list_confirmed_profiles(self) -> list[BloggerProfile]:
-        """List confirmed blogger profiles."""
-
-        with self.session_factory() as session:
-            results = session.execute(
-                select(BloggerProfileModel).where(
-                    BloggerProfileModel.confirmed.is_(True)
-                )
-            ).scalars()
-            return [_to_blogger_profile_entity(item) for item in results]
-
 
 @dataclass(slots=True)
 class SqlAlchemyAdvertiserProfileRepository(AdvertiserProfileRepository):

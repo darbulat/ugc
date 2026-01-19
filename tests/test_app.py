@@ -27,7 +27,6 @@ def test_build_dispatcher_sets_services() -> None:
             {
                 "BOT_TOKEN": "token",
                 "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
-                "OPENAI_ENABLED": False,
             }
         ),
         include_routers=False,
@@ -59,47 +58,12 @@ def test_build_dispatcher_includes_routers(monkeypatch: pytest.MonkeyPatch) -> N
             {
                 "BOT_TOKEN": "token",
                 "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
-                "OPENAI_ENABLED": False,
             }
         ),
         include_routers=True,
     )
 
     assert dispatcher is not None
-
-
-def test_build_dispatcher_openai_enabled() -> None:
-    """Allow OpenAI selector when enabled."""
-
-    dispatcher = build_dispatcher(
-        AppConfig.model_validate(
-            {
-                "BOT_TOKEN": "token",
-                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
-                "OPENAI_ENABLED": True,
-                "OPENAI_API_KEY": "test",
-            }
-        ),
-        include_routers=False,
-    )
-
-    assert dispatcher["offer_dispatch_service"] is not None
-
-
-def test_build_dispatcher_requires_openai_key() -> None:
-    """Ensure build_dispatcher requires OPENAI_API_KEY."""
-
-    with pytest.raises(ValueError):
-        build_dispatcher(
-            AppConfig.model_validate(
-                {
-                    "BOT_TOKEN": "token",
-                    "DATABASE_URL": "postgresql://db",
-                    "OPENAI_ENABLED": True,
-                }
-            ),
-            include_routers=False,
-        )
 
 
 @pytest.mark.asyncio
@@ -131,7 +95,6 @@ async def test_run_bot_uses_dispatcher(monkeypatch: pytest.MonkeyPatch) -> None:
                 "BOT_TOKEN": "token",
                 "LOG_LEVEL": "INFO",
                 "DATABASE_URL": "db",
-                "OPENAI_API_KEY": "test",
             }
         ),
     )
