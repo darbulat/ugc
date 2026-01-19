@@ -8,7 +8,10 @@ import pytest
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.offer_responses import handle_offer_response
+from ugc_bot.bot.handlers.offer_responses import (
+    _maybe_send_contacts_and_close,
+    handle_offer_response,
+)
 from ugc_bot.domain.entities import BloggerProfile, Order, OrderResponse, User
 from ugc_bot.domain.enums import AudienceGender, MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
@@ -32,9 +35,15 @@ class FakeMessage:
 
     def __init__(self) -> None:
         self.answers: list[str] = []
+        self.bot = None
 
     async def answer(self, text: str) -> None:
         """Capture response."""
+
+        self.answers.append(text)
+
+    async def send_message(self, chat_id: int, text: str) -> None:  # type: ignore[no-untyped-def]
+        """Capture advertiser messages."""
 
         self.answers.append(text)
 
@@ -88,6 +97,81 @@ def _add_blogger_profile(
             updated_at=datetime.now(timezone.utc),
         )
     )
+
+
+@pytest.mark.asyncio
+async def test_contacts_sent_and_order_closed() -> None:
+    """Send contacts and close order when limit reached."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    response_service = OfferResponseService(
+        order_repo=order_repo, response_repo=response_repo
+    )
+    profile_service = _profile_service(user_repo, blogger_repo)
+
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000740"),
+        external_id="777",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(advertiser)
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000741"),
+        external_id="10",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(blogger)
+    _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000742"),
+        advertiser_id=advertiser.user_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    order_repo.save(order)
+    response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000743"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    bot = FakeMessage()
+    await _maybe_send_contacts_and_close(
+        order_id=order.order_id,
+        offer_response_service=response_service,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        bot=bot,
+    )
+
+    updated = order_repo.get_by_id(order.order_id)
+    assert updated is not None
+    assert updated.status == OrderStatus.CLOSED
+    assert updated.contacts_sent_at is not None
+    assert any("Контакты блогеров" in answer for answer in bot.answers)
 
 
 @pytest.mark.asyncio

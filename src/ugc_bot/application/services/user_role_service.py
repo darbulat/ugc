@@ -63,3 +63,8 @@ class UserRoleService:
 
         user = self.user_repo.get_by_external(external_id, messenger_type)
         return user.user_id if user else None
+
+    def get_user_by_id(self, user_id: UUID) -> User | None:
+        """Fetch a user by internal id."""
+
+        return self.user_repo.get_by_id(user_id)
