@@ -16,9 +16,7 @@ depends_on = None
 def upgrade() -> None:
     """Upgrade database schema."""
 
-    payment_status = postgresql.ENUM(
-        "pending", "paid", "failed", name="payment_status"
-    )
+    payment_status = postgresql.ENUM("pending", "paid", "failed", name="payment_status")
     payment_status.create(op.get_bind(), checkfirst=True)
 
     op.create_table(

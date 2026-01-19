@@ -37,6 +37,11 @@ class UserRepository(ABC):
     def save(self, user: User) -> None:
         """Persist a user."""
 
+    def iter_all(self) -> Iterable[User]:
+        """Iterate all users (optional)."""
+
+        raise NotImplementedError
+
 
 class BloggerProfileRepository(ABC):
     """Port for blogger profile persistence."""
@@ -48,6 +53,14 @@ class BloggerProfileRepository(ABC):
     @abstractmethod
     def save(self, profile: BloggerProfile) -> None:
         """Persist blogger profile."""
+
+    @abstractmethod
+    def list_confirmed_user_ids(self) -> list[UUID]:
+        """List user ids with confirmed blogger profiles."""
+
+    @abstractmethod
+    def list_confirmed_profiles(self) -> list[BloggerProfile]:
+        """List confirmed blogger profiles."""
 
 
 class AdvertiserProfileRepository(ABC):
@@ -92,6 +105,14 @@ class OrderResponseRepository(ABC):
     @abstractmethod
     def list_by_order(self, order_id: UUID) -> Iterable[OrderResponse]:
         """List responses by order."""
+
+    @abstractmethod
+    def exists(self, order_id: UUID, blogger_id: UUID) -> bool:
+        """Check if blogger already responded."""
+
+    @abstractmethod
+    def count_by_order(self, order_id: UUID) -> int:
+        """Count responses by order."""
 
 
 class InteractionRepository(ABC):
@@ -138,6 +159,19 @@ class OfferBroadcaster(ABC):
     @abstractmethod
     def broadcast_order(self, order: Order) -> None:
         """Broadcast offer to eligible bloggers."""
+
+
+class BloggerRelevanceSelector(ABC):
+    """Port for selecting relevant bloggers via LLM."""
+
+    @abstractmethod
+    def select(
+        self,
+        order: Order,
+        profiles: list[BloggerProfile],
+        limit: int,
+    ) -> list[UUID]:
+        """Select relevant blogger user ids."""
 
 
 class ComplaintRepository(ABC):

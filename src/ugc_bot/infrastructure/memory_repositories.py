@@ -14,6 +14,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     OfferBroadcaster,
     OrderRepository,
+    OrderResponseRepository,
     PaymentRepository,
     UserRepository,
 )
@@ -22,6 +23,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     InstagramVerificationCode,
     Order,
+    OrderResponse,
     Payment,
     User,
 )
@@ -55,6 +57,11 @@ class InMemoryUserRepository(UserRepository):
         self.users[user.user_id] = user
         self.external_index[(user.external_id, user.messenger_type)] = user.user_id
 
+    def iter_all(self) -> Iterable[User]:
+        """Iterate all users."""
+
+        return list(self.users.values())
+
 
 @dataclass
 class InMemoryBloggerProfileRepository(BloggerProfileRepository):
@@ -71,6 +78,18 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
         """Persist blogger profile in memory."""
 
         self.profiles[profile.user_id] = profile
+
+    def list_confirmed_user_ids(self) -> list[UUID]:
+        """List confirmed blogger user ids."""
+
+        return [
+            profile.user_id for profile in self.profiles.values() if profile.confirmed
+        ]
+
+    def list_confirmed_profiles(self) -> list[BloggerProfile]:
+        """List confirmed blogger profiles."""
+
+        return [profile for profile in self.profiles.values() if profile.confirmed]
 
 
 @dataclass
@@ -168,6 +187,36 @@ class InMemoryOrderRepository(OrderRepository):
         """Persist order in memory."""
 
         self.orders[order.order_id] = order
+
+
+@dataclass
+class InMemoryOrderResponseRepository(OrderResponseRepository):
+    """In-memory implementation of order response repository."""
+
+    responses: list[OrderResponse] = field(default_factory=list)
+
+    def save(self, response: OrderResponse) -> None:
+        """Persist order response."""
+
+        self.responses.append(response)
+
+    def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
+        """List responses by order."""
+
+        return [resp for resp in self.responses if resp.order_id == order_id]
+
+    def exists(self, order_id: UUID, blogger_id: UUID) -> bool:
+        """Check if blogger already responded."""
+
+        return any(
+            resp.order_id == order_id and resp.blogger_id == blogger_id
+            for resp in self.responses
+        )
+
+    def count_by_order(self, order_id: UUID) -> int:
+        """Count responses by order."""
+
+        return len([resp for resp in self.responses if resp.order_id == order_id])
 
 
 @dataclass

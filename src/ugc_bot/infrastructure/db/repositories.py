@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from datetime import datetime, timezone
@@ -17,6 +17,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     OfferBroadcaster,
     OrderRepository,
+    OrderResponseRepository,
     PaymentRepository,
     UserRepository,
 )
@@ -25,6 +26,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     InstagramVerificationCode,
     Order,
+    OrderResponse,
     Payment,
     User,
 )
@@ -35,6 +37,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     InstagramVerificationCodeModel,
     OrderModel,
+    OrderResponseModel,
     PaymentModel,
     UserModel,
 )
@@ -102,6 +105,28 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
             model = _to_blogger_profile_model(profile)
             session.merge(model)
             session.commit()
+
+    def list_confirmed_user_ids(self) -> list[UUID]:
+        """List confirmed blogger user ids."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(BloggerProfileModel.user_id).where(
+                    BloggerProfileModel.confirmed.is_(True)
+                )
+            ).scalars()
+            return list(results)
+
+    def list_confirmed_profiles(self) -> list[BloggerProfile]:
+        """List confirmed blogger profiles."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(BloggerProfileModel).where(
+                    BloggerProfileModel.confirmed.is_(True)
+                )
+            ).scalars()
+            return [_to_blogger_profile_entity(item) for item in results]
 
 
 @dataclass(slots=True)
@@ -207,9 +232,11 @@ class SqlAlchemyOrderRepository(OrderRepository):
 
         with self.session_factory() as session:
             result = session.execute(
-                select(OrderModel).where(OrderModel.advertiser_id == advertiser_id)
-            ).scalars()
-            return len(list(result))
+                select(func.count())
+                .select_from(OrderModel)
+                .where(OrderModel.advertiser_id == advertiser_id)
+            ).scalar_one()
+            return int(result)
 
     def save(self, order: Order) -> None:
         """Persist order."""
@@ -242,6 +269,57 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
             model = _to_payment_model(payment)
             session.merge(model)
             session.commit()
+
+
+@dataclass(slots=True)
+class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
+    """SQLAlchemy-backed order response repository."""
+
+    session_factory: sessionmaker[Session]
+
+    def save(self, response: OrderResponse) -> None:
+        """Persist order response."""
+
+        with self.session_factory() as session:
+            model = _to_order_response_model(response)
+            session.merge(model)
+            session.commit()
+
+    def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
+        """List responses by order."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(OrderResponseModel).where(
+                    OrderResponseModel.order_id == order_id
+                )
+            ).scalars()
+            return [_to_order_response_entity(item) for item in results]
+
+    def exists(self, order_id: UUID, blogger_id: UUID) -> bool:
+        """Check if blogger already responded."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(func.count())
+                .select_from(OrderResponseModel)
+                .where(
+                    OrderResponseModel.order_id == order_id,
+                    OrderResponseModel.blogger_id == blogger_id,
+                )
+            ).scalar_one()
+            return int(result) > 0
+
+    def count_by_order(self, order_id: UUID) -> int:
+        """Count responses by order."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(func.count())
+                .select_from(OrderResponseModel)
+                .where(OrderResponseModel.order_id == order_id)
+            ).scalar_one()
+            return int(result)
 
 
 @dataclass(slots=True)
@@ -389,6 +467,19 @@ def _to_order_entity(model: OrderModel) -> Order:
     )
 
 
+def _to_order_response_entity(
+    model: OrderResponseModel,
+) -> OrderResponse:
+    """Map order response ORM model to domain entity."""
+
+    return OrderResponse(
+        response_id=model.response_id,
+        order_id=model.order_id,
+        blogger_id=model.blogger_id,
+        responded_at=model.responded_at,
+    )
+
+
 def _to_order_model(order: Order) -> OrderModel:
     """Map domain order entity to ORM model."""
 
@@ -436,4 +527,17 @@ def _to_payment_model(payment: Payment) -> PaymentModel:
         external_id=payment.external_id,
         created_at=payment.created_at,
         paid_at=payment.paid_at,
+    )
+
+
+def _to_order_response_model(
+    response: OrderResponse,
+) -> OrderResponseModel:
+    """Map domain order response entity to ORM model."""
+
+    return OrderResponseModel(
+        response_id=response.response_id,
+        order_id=response.order_id,
+        blogger_id=response.blogger_id,
+        responded_at=response.responded_at,
     )

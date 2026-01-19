@@ -10,6 +10,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     InstagramVerificationCode,
     Order,
+    OrderResponse,
     Payment,
     User,
 )
@@ -26,6 +27,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyOrderRepository,
+    SqlAlchemyOrderResponseRepository,
     SqlAlchemyPaymentRepository,
     SqlAlchemyUserRepository,
 )
@@ -34,6 +36,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     InstagramVerificationCodeModel,
     OrderModel,
+    OrderResponseModel,
     PaymentModel,
     UserModel,
 )
@@ -47,6 +50,12 @@ class FakeResult:
 
     def scalar_one_or_none(self):  # type: ignore[no-untyped-def]
         return self._value
+
+    def scalar_one(self):  # type: ignore[no-untyped-def]
+        return self._value
+
+    def scalars(self):  # type: ignore[no-untyped-def]
+        return [self._value]
 
 
 class FakeSession:
@@ -197,6 +206,27 @@ def test_blogger_profile_repository_get() -> None:
     profile = repo.get_by_user_id(model.user_id)
     assert profile is not None
     assert profile.instagram_url.endswith("test")
+
+
+def test_blogger_profile_repository_list_confirmed_profiles() -> None:
+    """List confirmed blogger profiles."""
+
+    model = BloggerProfileModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000114"),
+        instagram_url="https://instagram.com/test",
+        confirmed=True,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))
+
+    profiles = repo.list_confirmed_profiles()
+    assert profiles
 
 
 def test_advertiser_profile_repository_save_and_get() -> None:
@@ -398,3 +428,40 @@ def test_payment_repository_save_and_get() -> None:
     repo_get = SqlAlchemyPaymentRepository(session_factory=_session_factory(model))
     fetched = repo_get.get_by_order(payment.order_id)
     assert fetched is not None
+
+
+def test_order_response_repository_methods() -> None:
+    """Save and query order responses."""
+
+    session = FakeSession(None)
+
+    def factory():  # type: ignore[no-untyped-def]
+        return session
+
+    repo = SqlAlchemyOrderResponseRepository(session_factory=factory)
+    response = OrderResponse(
+        response_id=UUID("00000000-0000-0000-0000-000000000190"),
+        order_id=UUID("00000000-0000-0000-0000-000000000191"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000192"),
+        responded_at=datetime.now(timezone.utc),
+    )
+    repo.save(response)
+    assert session.merged is not None
+    assert session.committed is True
+
+    model = OrderResponseModel(
+        response_id=response.response_id,
+        order_id=response.order_id,
+        blogger_id=response.blogger_id,
+        responded_at=response.responded_at,
+    )
+    repo_get = SqlAlchemyOrderResponseRepository(
+        session_factory=_session_factory(model)
+    )
+    assert repo_get.list_by_order(response.order_id)
+
+    repo_exists = SqlAlchemyOrderResponseRepository(session_factory=_session_factory(1))
+    assert repo_exists.exists(response.order_id, response.blogger_id) is True
+
+    repo_count = SqlAlchemyOrderResponseRepository(session_factory=_session_factory(2))
+    assert repo_count.count_by_order(response.order_id) == 2

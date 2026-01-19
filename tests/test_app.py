@@ -12,20 +12,41 @@ def test_build_dispatcher_requires_database_url() -> None:
     """Ensure build_dispatcher requires database url."""
 
     with pytest.raises(ValueError):
-        build_dispatcher("")
+        build_dispatcher(AppConfig.model_validate({"BOT_TOKEN": "token"}))
 
 
 def test_build_dispatcher_sets_services() -> None:
     """Ensure dispatcher is built with required services."""
 
-    dispatcher = build_dispatcher("postgresql+psycopg://user:pass@localhost/db")
+    dispatcher = build_dispatcher(
+        AppConfig.model_validate(
+            {
+                "BOT_TOKEN": "token",
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "OPENAI_ENABLED": False,
+            }
+        )
+    )
 
     assert dispatcher["user_role_service"] is not None
     assert dispatcher["blogger_registration_service"] is not None
     assert dispatcher["advertiser_registration_service"] is not None
     assert dispatcher["instagram_verification_service"] is not None
     assert dispatcher["order_service"] is not None
+    assert dispatcher["offer_dispatch_service"] is not None
+    assert dispatcher["offer_response_service"] is not None
     assert dispatcher["payment_service"] is not None
+
+
+def test_build_dispatcher_requires_openai_key() -> None:
+    """Ensure build_dispatcher requires OPENAI_API_KEY."""
+
+    with pytest.raises(ValueError):
+        build_dispatcher(
+            AppConfig.model_validate(
+                {"BOT_TOKEN": "token", "DATABASE_URL": "postgresql://db"}
+            )
+        )
 
 
 @pytest.mark.asyncio
@@ -53,7 +74,12 @@ async def test_run_bot_uses_dispatcher(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "ugc_bot.app.load_config",
         lambda: AppConfig.model_validate(
-            {"BOT_TOKEN": "token", "LOG_LEVEL": "INFO", "DATABASE_URL": "db"}
+            {
+                "BOT_TOKEN": "token",
+                "LOG_LEVEL": "INFO",
+                "DATABASE_URL": "db",
+                "OPENAI_API_KEY": "test",
+            }
         ),
     )
 
