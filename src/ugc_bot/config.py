@@ -20,7 +20,7 @@ class AppConfig(BaseSettings):
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     admin_secret: str = Field(default="", alias="ADMIN_SECRET")
     admin_site_name: str = Field(default="UGC Admin", alias="ADMIN_SITE_NAME")
-    kafka_enabled: bool = Field(default=True, alias="KAFKA_ENABLED")
+    kafka_enabled: bool = Field(default=False, alias="KAFKA_ENABLED")
     kafka_bootstrap_servers: str = Field(
         default="kafka:9092", alias="KAFKA_BOOTSTRAP_SERVERS"
     )

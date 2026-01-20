@@ -70,6 +70,9 @@ class PaymentService:
             created_at=now,
             paid_at=now,
         )
+
+        # Important: in MVP, publishing is treated as part of the use-case.
+        # If publishing fails, raise to surface error to caller.
         self.payment_repo.save(payment)
         self._activate_order(order)
         return payment

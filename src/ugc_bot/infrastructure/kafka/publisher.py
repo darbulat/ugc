@@ -35,11 +35,14 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
             "status": order.status.value,
             "created_at": order.created_at.isoformat(),
         }
+
         try:
-            self._producer.send(self._topic, payload)
-            self._producer.flush()
+            future = self._producer.send(self._topic, payload)
+            # Ensure send errors are surfaced to caller.
+            future.get(timeout=10)
         except Exception:
             logger.exception("Failed to publish order activation to Kafka")
+            raise
 
 
 class NoopOrderActivationPublisher(OrderActivationPublisher):
