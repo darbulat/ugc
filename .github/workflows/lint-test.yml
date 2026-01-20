@@ -17,12 +17,15 @@ jobs:
     
     strategy:
       matrix:
-        python-version: ['3.11']
+        python-version: ['3.13']
     
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      
+      - name: Copy env.example to .env
+        run: cp config/env.example .env || echo "config/env.example not found, skipping"
       
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
