@@ -45,16 +45,12 @@ jobs:
       - name: Run linters (format check, lint, typecheck)
         run: |
           source .venv/bin/activate
-          make lint
-      
+          make lint typecheck
+
       - name: Run tests with coverage
         run: |
           source .venv/bin/activate
           make coverage
-      
-      - name: Verify coverage.xml exists
-        run: |
-          ls -la coverage.xml || (echo "coverage.xml not found!"; exit 1)
       
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
