@@ -10,9 +10,12 @@ from aiogram.types import KeyboardButton, Message
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import cancel_keyboard, with_cancel_keyboard
+from ugc_bot.bot.handlers.payments import send_order_invoice
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
@@ -216,6 +219,8 @@ async def handle_bloggers_needed(
     message: Message,
     state: FSMContext,
     order_service: OrderService,
+    config: AppConfig,
+    contact_pricing_service: ContactPricingService,
 ) -> None:
     """Finalize order creation."""
 
@@ -260,3 +265,16 @@ async def handle_bloggers_needed(
 
     await state.clear()
     await message.answer(f"Заказ создан со статусом NEW. Номер: {order.order_id}")
+    contact_price = contact_pricing_service.get_price(bloggers_needed)
+    if contact_price is None or contact_price <= 0:
+        await message.answer(
+            "Стоимость доступа к контактам не настроена. Свяжитесь с поддержкой."
+        )
+        return
+    await send_order_invoice(
+        message=message,
+        order_id=order.order_id,
+        offer_text=order.offer_text,
+        price_value=contact_price,
+        config=config,
+    )

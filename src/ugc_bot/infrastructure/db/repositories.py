@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    ContactPricingRepository,
     InstagramVerificationRepository,
     InteractionRepository,
     OfferBroadcaster,
@@ -23,6 +24,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    ContactPricing,
     InstagramVerificationCode,
     Interaction,
     Order,
@@ -35,6 +37,7 @@ from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    ContactPricingModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     OrderModel,
@@ -273,6 +276,15 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
             ).scalar_one_or_none()
             return _to_payment_entity(result) if result else None
 
+    def get_by_external_id(self, external_id: str) -> Optional[Payment]:
+        """Fetch payment by provider external id."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(PaymentModel).where(PaymentModel.external_id == external_id)
+            ).scalar_one_or_none()
+            return _to_payment_entity(result) if result else None
+
     def save(self, payment: Payment) -> None:
         """Persist payment."""
 
@@ -280,6 +292,24 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
             model = _to_payment_model(payment)
             session.merge(model)
             session.commit()
+
+
+@dataclass(slots=True)
+class SqlAlchemyContactPricingRepository(ContactPricingRepository):
+    """SQLAlchemy-backed contact pricing repository."""
+
+    session_factory: sessionmaker[Session]
+
+    def get_by_bloggers_count(self, bloggers_count: int) -> Optional[ContactPricing]:
+        """Fetch pricing by bloggers count."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(ContactPricingModel).where(
+                    ContactPricingModel.bloggers_count == bloggers_count
+                )
+            ).scalar_one_or_none()
+            return _to_contact_pricing_entity(result) if result else None
 
 
 @dataclass(slots=True)
@@ -616,6 +646,16 @@ def _to_payment_model(payment: Payment) -> PaymentModel:
         external_id=payment.external_id,
         created_at=payment.created_at,
         paid_at=payment.paid_at,
+    )
+
+
+def _to_contact_pricing_entity(model: ContactPricingModel) -> ContactPricing:
+    """Map contact pricing ORM model to entity."""
+
+    return ContactPricing(
+        bloggers_count=model.bloggers_count,
+        price=float(model.price),
+        updated_at=model.updated_at,
     )
 
 

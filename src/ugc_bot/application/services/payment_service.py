@@ -1,4 +1,4 @@
-"""Service for mock payments and order activation."""
+"""Service for Telegram payments and order activation."""
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,7 +19,7 @@ from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 
 @dataclass(slots=True)
 class PaymentService:
-    """Mock payment service for activating orders."""
+    """Telegram payment service for activating orders."""
 
     user_repo: UserRepository
     advertiser_repo: AdvertiserProfileRepository
@@ -27,9 +27,17 @@ class PaymentService:
     payment_repo: PaymentRepository
     broadcaster: OfferBroadcaster
     activation_publisher: OrderActivationPublisher
+    provider: str = "yookassa_telegram"
 
-    def mock_pay(self, user_id: UUID, order_id: UUID) -> Payment:
-        """Mock payment for a specific order."""
+    def confirm_telegram_payment(
+        self,
+        user_id: UUID,
+        order_id: UUID,
+        provider_payment_charge_id: str,
+        total_amount: int,
+        currency: str,
+    ) -> Payment:
+        """Confirm a Telegram payment and activate order."""
 
         user = self.user_repo.get_by_id(user_id)
         if user is None:
@@ -43,27 +51,30 @@ class PaymentService:
         if order.advertiser_id != user_id:
             raise OrderCreationError("Order does not belong to advertiser.")
 
+        if order.status != OrderStatus.NEW:
+            raise OrderCreationError("Order is not in NEW status.")
+
         existing = self.payment_repo.get_by_order(order_id)
         if existing and existing.status == PaymentStatus.PAID:
             return existing
 
-        if order.status != OrderStatus.NEW:
-            raise OrderCreationError("Order is not in NEW status.")
-
         now = datetime.now(timezone.utc)
         payment = Payment(
-            payment_id=uuid4(),
+            payment_id=existing.payment_id if existing else uuid4(),
             order_id=order_id,
-            provider="mock",
+            provider=self.provider,
             status=PaymentStatus.PAID,
-            amount=order.price,
-            currency="RUB",
-            external_id=f"mock:{order_id}",
+            amount=round(total_amount / 100, 2),
+            currency=currency,
+            external_id=provider_payment_charge_id,
             created_at=now,
             paid_at=now,
         )
         self.payment_repo.save(payment)
+        self._activate_order(order)
+        return payment
 
+    def _activate_order(self, order: Order) -> None:
         activated = Order(
             order_id=order.order_id,
             advertiser_id=order.advertiser_id,
@@ -80,4 +91,3 @@ class PaymentService:
         self.order_repo.save(activated)
         self.broadcaster.broadcast_order(activated)
         self.activation_publisher.publish(activated)
-        return payment

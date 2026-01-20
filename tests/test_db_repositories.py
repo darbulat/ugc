@@ -22,6 +22,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
+    SqlAlchemyContactPricingRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyOrderResponseRepository,
@@ -31,6 +32,7 @@ from ugc_bot.infrastructure.db.repositories import (
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    ContactPricingModel,
     InstagramVerificationCodeModel,
     OrderModel,
     OrderResponseModel,
@@ -424,6 +426,22 @@ def test_payment_repository_save_and_get() -> None:
     repo_get = SqlAlchemyPaymentRepository(session_factory=_session_factory(model))
     fetched = repo_get.get_by_order(payment.order_id)
     assert fetched is not None
+    fetched_external = repo_get.get_by_external_id(payment.external_id)
+    assert fetched_external is not None
+
+
+def test_contact_pricing_repository_get() -> None:
+    """Fetch contact pricing by bloggers count."""
+
+    model = ContactPricingModel(
+        bloggers_count=10,
+        price=3000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyContactPricingRepository(session_factory=_session_factory(model))
+    pricing = repo.get_by_bloggers_count(10)
+    assert pricing is not None
+    assert pricing.bloggers_count == 10
 
 
 def test_order_response_repository_methods() -> None:

@@ -36,6 +36,7 @@ class AppConfig(BaseSettings):
         default=300, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
     )
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
+    telegram_provider_token: str = Field(default="", alias="TELEGRAM_PROVIDER_TOKEN")
 
     @field_validator("bot_token")
     @classmethod

@@ -9,6 +9,7 @@ from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
     Complaint,
+    ContactPricing,
     InstagramVerificationCode,
     Interaction,
     Order,
@@ -166,8 +167,20 @@ class PaymentRepository(ABC):
         """Fetch payment by order id."""
 
     @abstractmethod
+    def get_by_external_id(self, external_id: str) -> Optional[Payment]:
+        """Fetch payment by provider external id."""
+
+    @abstractmethod
     def save(self, payment: Payment) -> None:
         """Persist payment."""
+
+
+class ContactPricingRepository(ABC):
+    """Port for contact pricing persistence."""
+
+    @abstractmethod
+    def get_by_bloggers_count(self, bloggers_count: int) -> Optional[ContactPricing]:
+        """Fetch pricing by bloggers count."""
 
 
 class OfferBroadcaster(ABC):

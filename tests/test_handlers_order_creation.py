@@ -3,6 +3,7 @@
 import pytest
 
 from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.order_creation import (
@@ -18,11 +19,13 @@ from ugc_bot.bot.handlers.order_creation import (
 from datetime import datetime, timezone
 from uuid import UUID
 
-from ugc_bot.domain.entities import AdvertiserProfile, Order, User
+from ugc_bot.config import AppConfig
+from ugc_bot.domain.entities import AdvertiserProfile, ContactPricing, Order, User
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
+    InMemoryContactPricingRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
@@ -37,13 +40,27 @@ class FakeUser:
         self.first_name = first_name
 
 
+class FakeBot:
+    """Minimal bot stub for invoices."""
+
+    def __init__(self) -> None:
+        self.invoices: list[dict] = []
+
+    async def send_invoice(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        self.invoices.append(kwargs)
+
+
 class FakeMessage:
     """Minimal message stub for handler tests."""
 
-    def __init__(self, text: str | None, user: FakeUser | None) -> None:
+    def __init__(
+        self, text: str | None, user: FakeUser | None, bot: FakeBot | None = None
+    ) -> None:
         self.text = text
         self.from_user = user
         self.answers: list[str] = []
+        self.bot = bot
+        self.chat = type("Chat", (), {"id": user.id if user else 0})()
 
     async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
         """Capture response text."""
@@ -91,6 +108,21 @@ def _add_advertiser_profile(
     """Seed advertiser profile."""
 
     advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
+
+
+def _pricing_service(prices: dict[int, float]) -> ContactPricingService:
+    """Build contact pricing service."""
+
+    repo = InMemoryContactPricingRepository()
+    for count, price in prices.items():
+        repo.save(
+            ContactPricing(
+                bloggers_count=count,
+                price=price,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+    return ContactPricingService(pricing_repo=repo)
 
 
 @pytest.mark.asyncio
@@ -147,7 +179,23 @@ async def test_order_creation_flow_new_advertiser() -> None:
     await handle_offer_text(FakeMessage(text="Offer", user=None), state)
     await handle_ugc_requirements(FakeMessage(text="пропустить", user=None), state)
     await handle_price(FakeMessage(text="1000", user=None), state)
-    await handle_bloggers_needed(FakeMessage(text="3", user=None), state, order_service)
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    bot = FakeBot()
+    pricing_service = _pricing_service({3: 1500.0})
+    await handle_bloggers_needed(
+        FakeMessage(text="3", user=FakeUser(5, "adv", "Adv"), bot=bot),
+        state,
+        order_service,
+        config,
+        pricing_service,
+    )
+    assert bot.invoices
 
     assert len(order_repo.orders) == 1
 
@@ -200,9 +248,23 @@ async def test_order_creation_flow_with_barter() -> None:
     await handle_barter_choice(FakeMessage(text="Да", user=None), state)
     await handle_barter_description(FakeMessage(text="Barter", user=None), state)
     await handle_price(FakeMessage(text="1500", user=None), state)
-    await handle_bloggers_needed(
-        FakeMessage(text="20", user=None), state, order_service
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
     )
+    bot = FakeBot()
+    pricing_service = _pricing_service({20: 5000.0})
+    await handle_bloggers_needed(
+        FakeMessage(text="20", user=FakeUser(6, "adv", "Adv"), bot=bot),
+        state,
+        order_service,
+        config,
+        pricing_service,
+    )
+    assert bot.invoices
 
     assert len(order_repo.orders) == 2
 
@@ -256,6 +318,14 @@ async def test_bloggers_needed_limit_for_new_advertiser() -> None:
     await state.update_data(is_new=True)
 
     message = FakeMessage(text="20", user=None)
-    await handle_bloggers_needed(message, state, order_service)
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    pricing_service = _pricing_service({20: 5000.0})
+    await handle_bloggers_needed(message, state, order_service, config, pricing_service)
 
     assert "NEW рекламодатели" in message.answers[0]

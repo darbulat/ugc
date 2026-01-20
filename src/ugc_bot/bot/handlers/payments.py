@@ -1,16 +1,18 @@
-"""Mock payment handlers."""
+"""Telegram payment handlers."""
 
 import logging
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import UUID
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
 
@@ -18,14 +20,67 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+async def send_order_invoice(
+    message: Message,
+    order_id: UUID,
+    offer_text: str,
+    price_value: float,
+    config: AppConfig,
+) -> None:
+    """Send Telegram invoice for order."""
+
+    if not config.telegram_provider_token:
+        await message.answer("Платежный провайдер не настроен.")
+        return
+
+    if message.bot is None:
+        return
+
+    try:
+        price_decimal = Decimal(str(price_value)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    except InvalidOperation:
+        await message.answer("Некорректная сумма заказа.")
+        return
+
+    price = int(price_decimal * 100)
+    if price <= 0:
+        await message.answer("Некорректная сумма заказа.")
+        return
+    if price > 100_000_000:
+        await message.answer(
+            "Сумма заказа слишком большая для выставления счета в Telegram."
+        )
+        return
+
+    try:
+        await message.bot.send_invoice(
+            chat_id=message.chat.id,
+            title=f"Оплата заказа {order_id}",
+            description=offer_text[:255],
+            payload=str(order_id),
+            provider_token=config.telegram_provider_token,
+            currency="RUB",
+            prices=[LabeledPrice(label="Заказ UGC", amount=price)],
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send invoice",
+            extra={"order_id": str(order_id), "price_minor": price},
+        )
+        await message.answer("Не удалось создать счет. Попробуйте позже.")
+
+
 @router.message(Command("pay_order"))
-async def mock_pay_order(
+async def pay_order(
     message: Message,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     payment_service: PaymentService,
+    config: AppConfig,
 ) -> None:
-    """Mock payment for an order."""
+    """Send Telegram invoice for an order."""
 
     if message.from_user is None:
         return
@@ -73,23 +128,73 @@ async def mock_pay_order(
         await message.answer("Заказ не в статусе NEW.")
         return
 
+    await send_order_invoice(
+        message=message,
+        order_id=order.order_id,
+        offer_text=order.offer_text,
+        price_value=order.price,
+        config=config,
+    )
+
+
+@router.pre_checkout_query()
+async def pre_checkout_query_handler(pre_checkout_query: PreCheckoutQuery) -> None:
+    """Confirm pre-checkout query from Telegram."""
+
+    if pre_checkout_query.bot is None:
+        return
+    await pre_checkout_query.bot.answer_pre_checkout_query(
+        pre_checkout_query_id=pre_checkout_query.id, ok=True
+    )
+
+
+@router.message(F.successful_payment)
+async def successful_payment_handler(
+    message: Message,
+    user_role_service: UserRoleService,
+    payment_service: PaymentService,
+) -> None:
+    """Handle successful Telegram payment."""
+
+    if message.from_user is None or message.successful_payment is None:
+        return
+
+    user = user_role_service.get_user(
+        external_id=str(message.from_user.id),
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await message.answer("Пользователь не найден. Выберите роль через /role.")
+        return
+
+    payload = message.successful_payment.invoice_payload
     try:
-        payment = payment_service.mock_pay(user.user_id, order_id)
+        order_id = UUID(payload)
+    except ValueError:
+        await message.answer("Не удалось определить заказ.")
+        return
+
+    try:
+        payment_service.confirm_telegram_payment(
+            user_id=user.user_id,
+            order_id=order_id,
+            provider_payment_charge_id=message.successful_payment.provider_payment_charge_id,
+            total_amount=message.successful_payment.total_amount,
+            currency=message.successful_payment.currency,
+        )
     except (OrderCreationError, UserNotFoundError) as exc:
         logger.warning(
-            "Mock payment failed",
+            "Payment confirmation failed",
             extra={"user_id": user.user_id, "reason": str(exc)},
         )
-        await message.answer(f"Ошибка оплаты: {exc}")
+        await message.answer(f"Ошибка подтверждения оплаты: {exc}")
         return
     except Exception:
         logger.exception(
-            "Unexpected error during mock payment",
+            "Unexpected error during payment confirmation",
             extra={"user_id": user.user_id},
         )
         await message.answer("Произошла неожиданная ошибка. Попробуйте позже.")
         return
 
-    await message.answer(
-        f"Оплата зафиксирована (mock). Заказ активирован.\nPayment ID: {payment.payment_id}"
-    )
+    await message.answer("Оплата подтверждена. Заказ активирован и отправлен блогерам.")

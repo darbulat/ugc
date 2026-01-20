@@ -133,3 +133,12 @@ class Payment:
     external_id: str
     created_at: datetime
     paid_at: Optional[datetime]
+
+
+@dataclass(frozen=True)
+class ContactPricing:
+    """Contact pricing entity."""
+
+    bloggers_count: int
+    price: float
+    updated_at: datetime

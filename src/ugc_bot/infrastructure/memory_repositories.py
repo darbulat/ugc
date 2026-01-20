@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    ContactPricingRepository,
     InteractionRepository,
     InstagramVerificationRepository,
     OfferBroadcaster,
@@ -20,6 +21,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    ContactPricing,
     Interaction,
     InstagramVerificationCode,
     Order,
@@ -284,10 +286,35 @@ class InMemoryPaymentRepository(PaymentRepository):
                 return payment
         return None
 
+    def get_by_external_id(self, external_id: str) -> Optional[Payment]:
+        """Fetch payment by provider external id."""
+
+        for payment in self.payments.values():
+            if payment.external_id == external_id:
+                return payment
+        return None
+
     def save(self, payment: Payment) -> None:
         """Persist payment in memory."""
 
         self.payments[payment.payment_id] = payment
+
+
+@dataclass
+class InMemoryContactPricingRepository(ContactPricingRepository):
+    """In-memory contact pricing repository."""
+
+    prices: Dict[int, ContactPricing] = field(default_factory=dict)
+
+    def get_by_bloggers_count(self, bloggers_count: int) -> Optional[ContactPricing]:
+        """Fetch pricing by bloggers count."""
+
+        return self.prices.get(bloggers_count)
+
+    def save(self, pricing: ContactPricing) -> None:
+        """Persist pricing in memory."""
+
+        self.prices[pricing.bloggers_count] = pricing
 
 
 @dataclass

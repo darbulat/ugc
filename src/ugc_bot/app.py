@@ -21,6 +21,7 @@ from ugc_bot.application.services.offer_response_service import OfferResponseSer
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.cancel import router as cancel_router
 from ugc_bot.bot.handlers.start import router as start_router
@@ -43,6 +44,7 @@ from ugc_bot.infrastructure.db.repositories import (
     NoopOfferBroadcaster,
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
+    SqlAlchemyContactPricingRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyOrderRepository,
@@ -68,6 +70,7 @@ def build_dispatcher(
 
     storage = MemoryStorage()
     dispatcher = Dispatcher(storage=storage)
+    dispatcher["config"] = config
     session_factory = create_session_factory(config.database_url)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
     blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
@@ -83,6 +86,7 @@ def build_dispatcher(
     )
     interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
     payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
+    pricing_repo = SqlAlchemyContactPricingRepository(session_factory=session_factory)
     dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
         user_repo=user_repo,
@@ -128,6 +132,9 @@ def build_dispatcher(
             if config.kafka_enabled
             else NoopOrderActivationPublisher()
         ),
+    )
+    dispatcher["contact_pricing_service"] = ContactPricingService(
+        pricing_repo=pricing_repo
     )
     dispatcher["profile_service"] = ProfileService(
         user_repo=user_repo,

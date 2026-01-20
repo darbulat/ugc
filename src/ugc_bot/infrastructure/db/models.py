@@ -152,6 +152,18 @@ class OrderModel(Base):
     )
 
 
+class ContactPricingModel(Base):
+    """Contact pricing ORM model."""
+
+    __tablename__ = "contact_pricing"
+
+    bloggers_count: Mapped[int] = mapped_column(Integer, primary_key=True)
+    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class OrderResponseModel(Base):
     """Order response ORM model."""
 

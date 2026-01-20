@@ -10,6 +10,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     ComplaintModel,
+    ContactPricingModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     OrderModel,
@@ -121,6 +122,20 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
     ]
 
 
+class ContactPricingAdmin(ModelView, model=ContactPricingModel):
+    """Admin view for contact pricing."""
+
+    column_list = [
+        ContactPricingModel.bloggers_count,
+        ContactPricingModel.price,
+        ContactPricingModel.updated_at,
+    ]
+    form_columns = [
+        ContactPricingModel.bloggers_count,
+        ContactPricingModel.price,
+    ]
+
+
 def create_admin_app() -> FastAPI:
     """Create a FastAPI app with SQLAdmin."""
 
@@ -146,6 +161,7 @@ def create_admin_app() -> FastAPI:
     admin.add_view(InteractionAdmin)
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)
+    admin.add_view(ContactPricingAdmin)
     return app
 
 
