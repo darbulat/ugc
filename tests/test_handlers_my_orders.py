@@ -5,16 +5,18 @@ from uuid import UUID
 
 import pytest
 
+from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.my_orders import paginate_orders, show_my_orders
-from ugc_bot.domain.entities import AdvertiserProfile, Order, User
+from ugc_bot.domain.entities import AdvertiserProfile, Order, OrderResponse, User
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryOrderRepository,
+    InMemoryOrderResponseRepository,
     InMemoryUserRepository,
 )
 
@@ -79,6 +81,10 @@ async def test_my_orders_no_advertiser_profile() -> None:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
     )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=InMemoryOrderResponseRepository(),
+    )
 
     user_service.set_user(
         external_id="1",
@@ -87,7 +93,9 @@ async def test_my_orders_no_advertiser_profile() -> None:
     )
 
     message = FakeMessage(text="Мои заказы")
-    await show_my_orders(message, user_service, profile_service, order_service)
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
 
     assert message.answers
     assert "Профиль рекламодателя не заполнен" in message.answers[0]
@@ -111,6 +119,10 @@ async def test_my_orders_empty() -> None:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
     )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=InMemoryOrderResponseRepository(),
+    )
 
     user = user_service.set_user(
         external_id="1",
@@ -120,7 +132,9 @@ async def test_my_orders_empty() -> None:
     advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
 
     message = FakeMessage(text="/my_orders")
-    await show_my_orders(message, user_service, profile_service, order_service)
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
 
     assert message.answers
     assert "пока нет заказов" in message.answers[0]
@@ -143,6 +157,10 @@ async def test_my_orders_list() -> None:
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=InMemoryOrderResponseRepository(),
     )
 
     user = User(
@@ -172,7 +190,9 @@ async def test_my_orders_list() -> None:
     order_repo.save(order)
 
     message = FakeMessage(text="Мои заказы")
-    await show_my_orders(message, user_service, profile_service, order_service)
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
 
     assert message.answers
     assert str(order.order_id) in message.answers[0]
@@ -195,6 +215,10 @@ async def test_my_orders_pagination() -> None:
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=InMemoryOrderResponseRepository(),
     )
 
     user = User(
@@ -227,7 +251,89 @@ async def test_my_orders_pagination() -> None:
 
     message = FakeMessage(text="Мои заказы")
     callback = FakeCallback(data="my_orders:2", message=message)
-    await paginate_orders(callback, user_service, profile_service, order_service)
+    await paginate_orders(
+        callback, user_service, profile_service, order_service, offer_response_service
+    )
 
     assert message.answers
     assert "страница 2/2" in message.answers[-1]
+
+
+@pytest.mark.asyncio
+async def test_my_orders_with_complaint_button() -> None:
+    """Show complaint button for closed orders with responses."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = ProfileService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        advertiser_repo=advertiser_repo,
+    )
+    order_service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=response_repo,
+    )
+
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000920"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000921"),
+        external_id="2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(user)
+    user_repo.save(blogger)
+    user_repo.save(user)
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000922"),
+        advertiser_id=user.user_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=datetime.now(timezone.utc),
+    )
+    order_repo.save(order)
+
+    response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000923"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    message = FakeMessage(text="Мои заказы")
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    assert str(order.order_id) in message.answers[0]

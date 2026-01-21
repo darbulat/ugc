@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    ComplaintRepository,
     ContactPricingRepository,
     InteractionRepository,
     InstagramVerificationRepository,
@@ -22,6 +23,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    Complaint,
     ContactPricing,
     Interaction,
     InstagramVerificationCode,
@@ -427,6 +429,49 @@ class InMemoryOutboxRepository(OutboxRepository):
         """Get event by ID."""
 
         return self.events.get(event_id)
+
+
+@dataclass
+class InMemoryComplaintRepository(ComplaintRepository):
+    """In-memory implementation of complaint repository."""
+
+    complaints: Dict[UUID, Complaint] = field(default_factory=dict)
+
+    def save(self, complaint: Complaint) -> None:
+        """Persist complaint."""
+
+        self.complaints[complaint.complaint_id] = complaint
+
+    def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
+        """Get complaint by ID."""
+
+        return self.complaints.get(complaint_id)
+
+    def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
+        """List complaints for a specific order."""
+
+        return [
+            complaint
+            for complaint in self.complaints.values()
+            if complaint.order_id == order_id
+        ]
+
+    def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
+        """List complaints filed by a specific user."""
+
+        return [
+            complaint
+            for complaint in self.complaints.values()
+            if complaint.reporter_id == reporter_id
+        ]
+
+    def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
+        """Check if reporter already filed a complaint for this order."""
+
+        return any(
+            complaint.order_id == order_id and complaint.reporter_id == reporter_id
+            for complaint in self.complaints.values()
+        )
 
 
 @dataclass

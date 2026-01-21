@@ -11,6 +11,7 @@ from aiogram.types import (
     Message,
 )
 
+from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -28,6 +29,7 @@ async def show_my_orders(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     order_service: OrderService,
+    offer_response_service: OfferResponseService,
 ) -> None:
     """Show orders for the current advertiser."""
 
@@ -58,7 +60,9 @@ async def show_my_orders(
         await message.answer("У вас пока нет заказов. Создать заказ: /create_order")
         return
 
-    text, keyboard = _render_page(orders, page=1)
+    text, keyboard = _render_page(
+        orders, page=1, offer_response_service=offer_response_service
+    )
     await message.answer(text, reply_markup=keyboard)
 
 
@@ -70,6 +74,7 @@ async def paginate_orders(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     order_service: OrderService,
+    offer_response_service: OfferResponseService,
 ) -> None:
     """Handle pagination for orders list."""
 
@@ -100,14 +105,18 @@ async def paginate_orders(
         key=lambda item: item.created_at,
         reverse=True,
     )
-    text, keyboard = _render_page(orders, page=page)
+    text, keyboard = _render_page(
+        orders, page=page, offer_response_service=offer_response_service
+    )
     message = callback.message
     if message and hasattr(message, "edit_text"):
         await message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
 
-def _render_page(orders, page: int) -> tuple[str, InlineKeyboardMarkup]:
+def _render_page(
+    orders, page: int, offer_response_service: OfferResponseService
+) -> tuple[str, InlineKeyboardMarkup]:
     """Render paginated orders list."""
 
     total_pages = max(1, ceil(len(orders) / _PAGE_SIZE))
@@ -117,6 +126,8 @@ def _render_page(orders, page: int) -> tuple[str, InlineKeyboardMarkup]:
     slice_orders = orders[start:end]
 
     lines = [f"Ваши заказы (страница {page}/{total_pages}):"]
+    buttons_rows: list[list[InlineKeyboardButton]] = []
+
     for order in slice_orders:
         lines.append(
             "\n".join(
@@ -129,15 +140,35 @@ def _render_page(orders, page: int) -> tuple[str, InlineKeyboardMarkup]:
                 ]
             )
         )
+        # Add complaint button for closed orders (when contacts are sent)
+        if order.status.value == "closed":
+            # Get bloggers who responded to this order
+            responses = offer_response_service.response_repo.list_by_order(
+                order.order_id
+            )
+            if responses:
+                # For advertiser: show button to select blogger to complain about
+                buttons_rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text="⚠️ Пожаловаться",
+                            callback_data=f"complaint_select:{order.order_id}",
+                        )
+                    ]
+                )
 
-    buttons: list[InlineKeyboardButton] = []
+    # Pagination buttons
+    nav_buttons: list[InlineKeyboardButton] = []
     if page > 1:
-        buttons.append(
+        nav_buttons.append(
             InlineKeyboardButton(text="⬅️ Назад", callback_data=f"my_orders:{page - 1}")
         )
     if page < total_pages:
-        buttons.append(
+        nav_buttons.append(
             InlineKeyboardButton(text="Вперед ➡️", callback_data=f"my_orders:{page + 1}")
         )
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons] if buttons else [])
+    if nav_buttons:
+        buttons_rows.append(nav_buttons)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons_rows)
     return "\n\n".join(lines), keyboard

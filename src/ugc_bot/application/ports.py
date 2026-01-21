@@ -238,3 +238,19 @@ class ComplaintRepository(ABC):
     @abstractmethod
     def save(self, complaint: Complaint) -> None:
         """Persist complaint."""
+
+    @abstractmethod
+    def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
+        """Get complaint by ID."""
+
+    @abstractmethod
+    def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
+        """List complaints for a specific order."""
+
+    @abstractmethod
+    def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
+        """List complaints filed by a specific user."""
+
+    @abstractmethod
+    def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
+        """Check if reporter already filed a complaint for this order."""

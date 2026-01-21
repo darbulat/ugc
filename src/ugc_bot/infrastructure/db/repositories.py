@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    ComplaintRepository,
     ContactPricingRepository,
     InstagramVerificationRepository,
     InteractionRepository,
@@ -25,6 +26,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    Complaint,
     ContactPricing,
     InstagramVerificationCode,
     Interaction,
@@ -43,6 +45,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    ComplaintModel,
     ContactPricingModel,
     InstagramVerificationCodeModel,
     InteractionModel,
@@ -802,4 +805,90 @@ def _to_outbox_event_model(event: OutboxEvent) -> OutboxEventModel:
         processed_at=event.processed_at,
         retry_count=event.retry_count,
         last_error=event.last_error,
+    )
+
+
+@dataclass(slots=True)
+class SqlAlchemyComplaintRepository(ComplaintRepository):
+    """SQLAlchemy-backed complaint repository."""
+
+    session_factory: sessionmaker[Session]
+
+    def save(self, complaint: Complaint) -> None:
+        """Persist complaint."""
+
+        with self.session_factory() as session:
+            model = _to_complaint_model(complaint)
+            session.add(model)
+            session.commit()
+
+    def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
+        """Get complaint by ID."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(ComplaintModel).where(
+                    ComplaintModel.complaint_id == complaint_id
+                )
+            ).scalar_one_or_none()
+            return _to_complaint_entity(result) if result else None
+
+    def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
+        """List complaints for a specific order."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(ComplaintModel).where(ComplaintModel.order_id == order_id)
+            ).scalars()
+            return [_to_complaint_entity(item) for item in results]
+
+    def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
+        """List complaints filed by a specific user."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(ComplaintModel).where(ComplaintModel.reporter_id == reporter_id)
+            ).scalars()
+            return [_to_complaint_entity(item) for item in results]
+
+    def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
+        """Check if reporter already filed a complaint for this order."""
+
+        with self.session_factory() as session:
+            count = session.execute(
+                select(func.count(ComplaintModel.complaint_id)).where(
+                    ComplaintModel.order_id == order_id,
+                    ComplaintModel.reporter_id == reporter_id,
+                )
+            ).scalar()
+            return (count or 0) > 0
+
+
+def _to_complaint_entity(model: ComplaintModel) -> Complaint:
+    """Map complaint ORM model to domain entity."""
+
+    return Complaint(
+        complaint_id=model.complaint_id,
+        reporter_id=model.reporter_id,
+        reported_id=model.reported_id,
+        order_id=model.order_id,
+        reason=model.reason,
+        status=model.status,
+        created_at=model.created_at,
+        reviewed_at=model.reviewed_at,
+    )
+
+
+def _to_complaint_model(complaint: Complaint) -> ComplaintModel:
+    """Map complaint domain entity to ORM model."""
+
+    return ComplaintModel(
+        complaint_id=complaint.complaint_id,
+        reporter_id=complaint.reporter_id,
+        reported_id=complaint.reported_id,
+        order_id=complaint.order_id,
+        reason=complaint.reason,
+        status=complaint.status,
+        created_at=complaint.created_at,
+        reviewed_at=complaint.reviewed_at,
     )

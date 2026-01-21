@@ -22,6 +22,7 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.cancel import router as cancel_router
@@ -39,12 +40,14 @@ from ugc_bot.bot.handlers.offer_responses import router as offer_response_router
 from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
 from ugc_bot.bot.handlers.feedback import router as feedback_router
+from ugc_bot.bot.handlers.complaints import router as complaints_router
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.infrastructure.db.repositories import (
     NoopOfferBroadcaster,
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
+    SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
@@ -85,6 +88,7 @@ def build_dispatcher(
     interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
     payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
     pricing_repo = SqlAlchemyContactPricingRepository(session_factory=session_factory)
+    complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
     dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
         user_repo=user_repo,
@@ -135,6 +139,7 @@ def build_dispatcher(
         blogger_repo=blogger_repo,
         advertiser_repo=advertiser_repo,
     )
+    dispatcher["complaint_service"] = ComplaintService(complaint_repo=complaint_repo)
     if include_routers:
         dispatcher.include_router(cancel_router)
         dispatcher.include_router(start_router)
@@ -147,6 +152,7 @@ def build_dispatcher(
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(order_router)
         dispatcher.include_router(payments_router)
+        dispatcher.include_router(complaints_router)
     return dispatcher
 
 

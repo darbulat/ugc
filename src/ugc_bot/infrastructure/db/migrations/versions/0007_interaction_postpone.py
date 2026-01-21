@@ -3,7 +3,7 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0007_add_interaction_postpone_fields"
+revision = "0007_interaction_postpone"
 down_revision = "7b07c4b86f09"
 branch_labels = None
 depends_on = None
