@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
@@ -31,6 +32,7 @@ class PaymentService:
     broadcaster: OfferBroadcaster
     outbox_publisher: OutboxPublisher
     provider: str = "yookassa_telegram"
+    metrics_collector: Optional[Any] = None
 
     def confirm_telegram_payment(
         self,

@@ -58,6 +58,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
+from ugc_bot.metrics.collector import MetricsCollector
 
 
 def build_dispatcher(
@@ -89,14 +90,21 @@ def build_dispatcher(
     payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
     pricing_repo = SqlAlchemyContactPricingRepository(session_factory=session_factory)
     complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
-    dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
+    metrics_collector = MetricsCollector()
+    dispatcher["metrics_collector"] = metrics_collector
+    dispatcher["user_role_service"] = UserRoleService(
+        user_repo=user_repo,
+        metrics_collector=metrics_collector,
+    )
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
+        metrics_collector=metrics_collector,
     )
     dispatcher["advertiser_registration_service"] = AdvertiserRegistrationService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
+        metrics_collector=metrics_collector,
     )
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
         user_repo=user_repo,
@@ -107,6 +115,7 @@ def build_dispatcher(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        metrics_collector=metrics_collector,
     )
     dispatcher["offer_dispatch_service"] = OfferDispatchService(
         user_repo=user_repo,
@@ -116,9 +125,11 @@ def build_dispatcher(
     dispatcher["offer_response_service"] = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
+        metrics_collector=metrics_collector,
     )
     dispatcher["interaction_service"] = InteractionService(
-        interaction_repo=interaction_repo
+        interaction_repo=interaction_repo,
+        metrics_collector=metrics_collector,
     )
     outbox_repo = SqlAlchemyOutboxRepository(session_factory=session_factory)
     outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
@@ -130,6 +141,7 @@ def build_dispatcher(
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
+        metrics_collector=metrics_collector,
     )
     dispatcher["contact_pricing_service"] = ContactPricingService(
         pricing_repo=pricing_repo
@@ -139,7 +151,10 @@ def build_dispatcher(
         blogger_repo=blogger_repo,
         advertiser_repo=advertiser_repo,
     )
-    dispatcher["complaint_service"] = ComplaintService(complaint_repo=complaint_repo)
+    dispatcher["complaint_service"] = ComplaintService(
+        complaint_repo=complaint_repo,
+        metrics_collector=metrics_collector,
+    )
     if include_routers:
         dispatcher.include_router(cancel_router)
         dispatcher.include_router(start_router)

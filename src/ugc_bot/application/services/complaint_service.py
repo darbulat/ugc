@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import ComplaintRepository
@@ -17,6 +18,7 @@ class ComplaintService:
     """Handle complaint creation and management."""
 
     complaint_repo: ComplaintRepository
+    metrics_collector: Optional[Any] = None
 
     def create_complaint(
         self,
@@ -54,6 +56,15 @@ class ComplaintService:
                 "event_type": "complaint.created",
             },
         )
+
+        if self.metrics_collector:
+            self.metrics_collector.record_complaint_created(
+                complaint_id=str(complaint.complaint_id),
+                reporter_id=str(reporter_id),
+                reported_id=str(reported_id),
+                order_id=str(order_id),
+                reason=reason,
+            )
 
         return complaint
 
@@ -107,6 +118,13 @@ class ComplaintService:
             },
         )
 
+        if self.metrics_collector:
+            self.metrics_collector.record_complaint_status_change(
+                complaint_id=str(complaint.complaint_id),
+                old_status=complaint.status.value,
+                new_status=ComplaintStatus.DISMISSED.value,
+            )
+
         return dismissed
 
     def resolve_complaint_with_action(self, complaint_id: UUID) -> Complaint:
@@ -139,5 +157,12 @@ class ComplaintService:
                 "event_type": "complaint.action_taken",
             },
         )
+
+        if self.metrics_collector:
+            self.metrics_collector.record_complaint_status_change(
+                complaint_id=str(complaint.complaint_id),
+                old_status=complaint.status.value,
+                new_status=ComplaintStatus.ACTION_TAKEN.value,
+            )
 
         return resolved

@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import UserRepository
@@ -17,6 +18,7 @@ class UserRoleService:
     """Manage user creation and lookup."""
 
     user_repo: UserRepository
+    metrics_collector: Optional[Any] = None
 
     def set_user(
         self,
@@ -101,6 +103,12 @@ class UserRoleService:
                     "event_type": "user.blocked",
                 },
             )
+
+            if self.metrics_collector:
+                self.metrics_collector.record_user_blocked(
+                    user_id=str(user.user_id),
+                    reason=f"Status changed from {user.status.value}",
+                )
 
         return updated
 

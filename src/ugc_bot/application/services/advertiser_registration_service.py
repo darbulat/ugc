@@ -1,7 +1,7 @@
 """Service for advertiser registration."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from ugc_bot.application.errors import (
@@ -18,6 +18,7 @@ class AdvertiserRegistrationService:
 
     user_repo: UserRepository
     advertiser_repo: AdvertiserProfileRepository
+    metrics_collector: Optional[Any] = None
 
     def register_advertiser(self, user_id: UUID, contact: str) -> AdvertiserProfile:
         """Create an advertiser profile after validating input."""
@@ -32,6 +33,10 @@ class AdvertiserRegistrationService:
 
         profile = AdvertiserProfile(user_id=user.user_id, contact=contact)
         self.advertiser_repo.save(profile)
+
+        if self.metrics_collector:
+            self.metrics_collector.record_advertiser_registration(str(user.user_id))
+
         return profile
 
     def get_profile(self, user_id: UUID) -> Optional[AdvertiserProfile]:

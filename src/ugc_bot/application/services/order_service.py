@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
@@ -28,6 +28,7 @@ class OrderService:
     user_repo: UserRepository
     advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
+    metrics_collector: Optional[Any] = None
 
     def is_new_advertiser(self, advertiser_id: UUID) -> bool:
         """Return True when advertiser has no previous orders."""
@@ -110,5 +111,13 @@ class OrderService:
                 "event_type": "order.created",
             },
         )
+
+        if self.metrics_collector:
+            self.metrics_collector.record_order_created(
+                order_id=str(order.order_id),
+                advertiser_id=str(order.advertiser_id),
+                price=float(order.price),
+                bloggers_needed=order.bloggers_needed,
+            )
 
         return order

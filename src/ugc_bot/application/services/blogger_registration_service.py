@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
@@ -17,6 +17,7 @@ class BloggerRegistrationService:
 
     user_repo: UserRepository
     blogger_repo: BloggerProfileRepository
+    metrics_collector: Optional[Any] = None
 
     def register_blogger(
         self,
@@ -64,4 +65,8 @@ class BloggerRegistrationService:
             updated_at=datetime.now(timezone.utc),
         )
         self.blogger_repo.save(profile)
+
+        if self.metrics_collector:
+            self.metrics_collector.record_blogger_registration(str(user.user_id))
+
         return profile

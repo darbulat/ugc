@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import InteractionRepository
@@ -19,6 +20,7 @@ class InteractionService:
     interaction_repo: InteractionRepository
     postpone_delay_hours: int = 72
     max_postpone_count: int = 3
+    metrics_collector: Optional[Any] = None
 
     def create_for_contacts_sent(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
@@ -88,12 +90,13 @@ class InteractionService:
         if interaction.postpone_count >= self.max_postpone_count:
             outcome = InteractionStatus.NO_DEAL
 
+        final_status = self._aggregate(feedback_text, interaction.from_blogger)
         updated = Interaction(
             interaction_id=interaction.interaction_id,
             order_id=interaction.order_id,
             blogger_id=interaction.blogger_id,
             advertiser_id=interaction.advertiser_id,
-            status=self._aggregate(feedback_text, interaction.from_blogger),
+            status=final_status,
             from_advertiser=feedback_text,
             from_blogger=interaction.from_blogger,
             postpone_count=interaction.postpone_count,
@@ -104,6 +107,16 @@ class InteractionService:
             updated_at=datetime.now(timezone.utc),
         )
         self.interaction_repo.save(updated)
+
+        # Record ISSUE metric
+        if final_status == InteractionStatus.ISSUE and self.metrics_collector:
+            self.metrics_collector.record_interaction_issue(
+                interaction_id=str(interaction.interaction_id),
+                order_id=str(interaction.order_id),
+                blogger_id=str(interaction.blogger_id),
+                advertiser_id=str(interaction.advertiser_id),
+            )
+
         return updated
 
     def record_blogger_feedback(
@@ -122,12 +135,13 @@ class InteractionService:
         if interaction.postpone_count >= self.max_postpone_count:
             outcome = InteractionStatus.NO_DEAL
 
+        final_status = self._aggregate(interaction.from_advertiser, feedback_text)
         updated = Interaction(
             interaction_id=interaction.interaction_id,
             order_id=interaction.order_id,
             blogger_id=interaction.blogger_id,
             advertiser_id=interaction.advertiser_id,
-            status=self._aggregate(interaction.from_advertiser, feedback_text),
+            status=final_status,
             from_advertiser=interaction.from_advertiser,
             from_blogger=feedback_text,
             postpone_count=interaction.postpone_count,
@@ -138,6 +152,16 @@ class InteractionService:
             updated_at=datetime.now(timezone.utc),
         )
         self.interaction_repo.save(updated)
+
+        # Record ISSUE metric
+        if final_status == InteractionStatus.ISSUE and self.metrics_collector:
+            self.metrics_collector.record_interaction_issue(
+                interaction_id=str(interaction.interaction_id),
+                order_id=str(interaction.order_id),
+                blogger_id=str(interaction.blogger_id),
+                advertiser_id=str(interaction.advertiser_id),
+            )
+
         return updated
 
     def _postpone_interaction(
@@ -155,6 +179,7 @@ class InteractionService:
             )
             new_status = InteractionStatus.PENDING
 
+        new_postpone_count = interaction.postpone_count + 1
         updated = Interaction(
             interaction_id=interaction.interaction_id,
             order_id=interaction.order_id,
@@ -167,12 +192,20 @@ class InteractionService:
             from_blogger=feedback_text
             if side == "blogger"
             else interaction.from_blogger,
-            postpone_count=interaction.postpone_count + 1,
+            postpone_count=new_postpone_count,
             next_check_at=next_check,
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
         self.interaction_repo.save(updated)
+
+        # Record postponement metric
+        if self.metrics_collector:
+            self.metrics_collector.record_feedback_postponement(
+                interaction_id=str(interaction.interaction_id),
+                postpone_count=new_postpone_count,
+            )
+
         return updated
 
     def _require(self, interaction_id: UUID) -> Interaction:

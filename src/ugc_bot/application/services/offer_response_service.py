@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError
@@ -16,6 +17,7 @@ class OfferResponseService:
 
     order_repo: OrderRepository
     response_repo: OrderResponseRepository
+    metrics_collector: Optional[Any] = None
 
     def respond(self, order_id: UUID, blogger_id: UUID) -> OrderResponse:
         """Create an order response if possible."""
@@ -39,4 +41,11 @@ class OfferResponseService:
             responded_at=datetime.now(timezone.utc),
         )
         self.response_repo.save(response)
+
+        if self.metrics_collector:
+            self.metrics_collector.record_blogger_response(
+                order_id=str(order_id),
+                blogger_id=str(blogger_id),
+            )
+
         return response

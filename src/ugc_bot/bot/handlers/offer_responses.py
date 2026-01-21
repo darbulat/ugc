@@ -127,6 +127,7 @@ async def _maybe_send_contacts_and_close(
     profile_service: ProfileService,
     interaction_service: InteractionService | None,
     bot,
+    metrics_collector=None,
 ) -> None:
     """Send contacts to advertiser and close order when limit reached."""
 

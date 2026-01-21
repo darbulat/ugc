@@ -194,6 +194,15 @@ async def successful_payment_handler(
             "Payment confirmation failed",
             extra={"user_id": user.user_id, "reason": str(exc)},
         )
+        # Record failed payment metric
+        metrics_collector = None
+        if hasattr(payment_service, "metrics_collector"):
+            metrics_collector = payment_service.metrics_collector
+        if metrics_collector:
+            metrics_collector.record_payment_failed(
+                order_id=str(order_id),
+                reason=str(exc),
+            )
         await message.answer(f"Ошибка подтверждения оплаты: {exc}")
         return
     except Exception:
