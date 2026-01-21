@@ -1,7 +1,7 @@
 """In-memory repository implementations."""
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
 from datetime import datetime, timezone
@@ -15,6 +15,7 @@ from ugc_bot.application.ports import (
     OfferBroadcaster,
     OrderRepository,
     OrderResponseRepository,
+    OutboxRepository,
     PaymentRepository,
     UserRepository,
 )
@@ -26,10 +27,11 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
     Order,
     OrderResponse,
+    OutboxEvent,
     Payment,
     User,
 )
-from ugc_bot.domain.enums import MessengerType, OrderStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, OutboxEventStatus
 
 
 @dataclass
@@ -306,6 +308,19 @@ class InMemoryContactPricingRepository(ContactPricingRepository):
 
     prices: Dict[int, ContactPricing] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Initialize with default prices."""
+
+        if not self.prices:
+            now = datetime.now(timezone.utc)
+            self.prices = {
+                3: ContactPricing(bloggers_count=3, price=0.0, updated_at=now),
+                10: ContactPricing(bloggers_count=10, price=0.0, updated_at=now),
+                20: ContactPricing(bloggers_count=20, price=0.0, updated_at=now),
+                30: ContactPricing(bloggers_count=30, price=0.0, updated_at=now),
+                50: ContactPricing(bloggers_count=50, price=0.0, updated_at=now),
+            }
+
     def get_by_bloggers_count(self, bloggers_count: int) -> Optional[ContactPricing]:
         """Fetch pricing by bloggers count."""
 
@@ -315,6 +330,87 @@ class InMemoryContactPricingRepository(ContactPricingRepository):
         """Persist pricing in memory."""
 
         self.prices[pricing.bloggers_count] = pricing
+
+
+@dataclass
+class InMemoryOutboxRepository(OutboxRepository):
+    """In-memory outbox repository."""
+
+    events: Dict[UUID, OutboxEvent] = field(default_factory=dict)
+
+    def save(self, event: OutboxEvent) -> None:
+        """Persist outbox event."""
+
+        self.events[event.event_id] = event
+
+    def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
+        """Get pending events for processing."""
+
+        pending_events = [
+            event
+            for event in self.events.values()
+            if event.status == OutboxEventStatus.PENDING
+        ]
+        return sorted(pending_events, key=lambda e: e.created_at)[:limit]
+
+    def mark_as_processing(self, event_id: UUID) -> None:
+        """Mark event as processing."""
+
+        if event_id in self.events:
+            event = self.events[event_id]
+            self.events[event_id] = OutboxEvent(
+                event_id=event.event_id,
+                event_type=event.event_type,
+                aggregate_id=event.aggregate_id,
+                aggregate_type=event.aggregate_type,
+                payload=event.payload,
+                status=OutboxEventStatus.PROCESSING,
+                created_at=event.created_at,
+                processed_at=event.processed_at,
+                retry_count=event.retry_count,
+                last_error=event.last_error,
+            )
+
+    def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
+        """Mark event as published."""
+
+        if event_id in self.events:
+            event = self.events[event_id]
+            self.events[event_id] = OutboxEvent(
+                event_id=event.event_id,
+                event_type=event.event_type,
+                aggregate_id=event.aggregate_id,
+                aggregate_type=event.aggregate_type,
+                payload=event.payload,
+                status=OutboxEventStatus.PUBLISHED,
+                created_at=event.created_at,
+                processed_at=processed_at,
+                retry_count=event.retry_count,
+                last_error=event.last_error,
+            )
+
+    def mark_as_failed(self, event_id: UUID, error: str, retry_count: int) -> None:
+        """Mark event as failed with retry."""
+
+        if event_id in self.events:
+            event = self.events[event_id]
+            self.events[event_id] = OutboxEvent(
+                event_id=event.event_id,
+                event_type=event.event_type,
+                aggregate_id=event.aggregate_id,
+                aggregate_type=event.aggregate_type,
+                payload=event.payload,
+                status=OutboxEventStatus.FAILED,
+                created_at=event.created_at,
+                processed_at=event.processed_at,
+                retry_count=retry_count,
+                last_error=error,
+            )
+
+    def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
+        """Get event by ID."""
+
+        return self.events.get(event_id)
 
 
 @dataclass

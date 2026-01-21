@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 from uuid import UUID
 
 from ugc_bot.domain.entities import (
@@ -14,6 +14,7 @@ from ugc_bot.domain.entities import (
     Interaction,
     Order,
     OrderResponse,
+    OutboxEvent,
     Payment,
     User,
 )
@@ -197,6 +198,34 @@ class OrderActivationPublisher(ABC):
     @abstractmethod
     def publish(self, order: Order) -> None:
         """Publish order activation message."""
+
+
+class OutboxRepository(ABC):
+    """Port for outbox event persistence."""
+
+    @abstractmethod
+    def save(self, event: OutboxEvent) -> None:
+        """Persist outbox event."""
+
+    @abstractmethod
+    def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
+        """Get pending events for processing."""
+
+    @abstractmethod
+    def mark_as_processing(self, event_id: UUID) -> None:
+        """Mark event as processing."""
+
+    @abstractmethod
+    def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
+        """Mark event as published."""
+
+    @abstractmethod
+    def mark_as_failed(self, event_id: UUID, error: str, retry_count: int) -> None:
+        """Mark event as failed with retry."""
+
+    @abstractmethod
+    def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
+        """Get event by ID."""
 
 
 class ComplaintRepository(ABC):

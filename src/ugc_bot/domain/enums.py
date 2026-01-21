@@ -59,3 +59,12 @@ class PaymentStatus(StrEnum):
     PENDING = "pending"
     PAID = "paid"
     FAILED = "failed"
+
+
+class OutboxEventStatus(StrEnum):
+    """Outbox event processing status."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    PUBLISHED = "published"
+    FAILED = "failed"

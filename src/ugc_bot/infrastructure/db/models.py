@@ -26,6 +26,7 @@ from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    OutboxEventStatus,
     PaymentStatus,
     UserStatus,
 )
@@ -39,6 +40,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     OrderStatus: "order_status",
     InteractionStatus: "interaction_status",
     ComplaintStatus: "complaint_status",
+    OutboxEventStatus: "outbox_event_status",
     PaymentStatus: "payment_status",
 }
 
@@ -317,3 +319,32 @@ class PaymentModel(Base):
     paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class OutboxEventModel(Base):
+    """Outbox event ORM model for reliable event publishing."""
+
+    __tablename__ = "outbox_events"
+
+    event_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    event_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    aggregate_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    aggregate_type: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[OutboxEventStatus] = mapped_column(
+        _enum_column(OutboxEventStatus),
+        nullable=False,
+        default=OutboxEventStatus.PENDING,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    processed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

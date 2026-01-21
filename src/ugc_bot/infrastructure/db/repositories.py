@@ -1,7 +1,7 @@
 """SQLAlchemy repository implementations."""
 
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Callable, Iterable, List, Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -18,6 +18,7 @@ from ugc_bot.application.ports import (
     OfferBroadcaster,
     OrderRepository,
     OrderResponseRepository,
+    OutboxRepository,
     PaymentRepository,
     UserRepository,
 )
@@ -29,11 +30,11 @@ from ugc_bot.domain.entities import (
     Interaction,
     Order,
     OrderResponse,
+    OutboxEvent,
     Payment,
     User,
 )
-from ugc_bot.domain.enums import OrderStatus
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.domain.enums import MessengerType, OrderStatus, OutboxEventStatus
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -42,6 +43,7 @@ from ugc_bot.infrastructure.db.models import (
     InteractionModel,
     OrderModel,
     OrderResponseModel,
+    OutboxEventModel,
     PaymentModel,
     UserModel,
 )
@@ -669,4 +671,112 @@ def _to_order_response_model(
         order_id=response.order_id,
         blogger_id=response.blogger_id,
         responded_at=response.responded_at,
+    )
+
+
+class SqlAlchemyOutboxRepository(OutboxRepository):
+    """SQLAlchemy implementation of outbox repository."""
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        self.session_factory = session_factory
+
+    def save(self, event: OutboxEvent) -> None:
+        """Persist outbox event."""
+
+        model = _to_outbox_event_model(event)
+        with self.session_factory() as session:
+            session.add(model)
+            session.commit()
+
+    def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
+        """Get pending events for processing."""
+
+        with self.session_factory() as session:
+            models = (
+                session.query(OutboxEventModel)
+                .filter(OutboxEventModel.status == OutboxEventStatus.PENDING)
+                .order_by(OutboxEventModel.created_at)
+                .limit(limit)
+                .all()
+            )
+            return [_to_outbox_event_entity(model) for model in models]
+
+    def mark_as_processing(self, event_id: UUID) -> None:
+        """Mark event as processing."""
+
+        with self.session_factory() as session:
+            session.query(OutboxEventModel).filter(
+                OutboxEventModel.event_id == event_id
+            ).update({"status": OutboxEventStatus.PROCESSING})
+            session.commit()
+
+    def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
+        """Mark event as published."""
+
+        with self.session_factory() as session:
+            session.query(OutboxEventModel).filter(
+                OutboxEventModel.event_id == event_id
+            ).update(
+                {"status": OutboxEventStatus.PUBLISHED, "processed_at": processed_at}
+            )
+            session.commit()
+
+    def mark_as_failed(self, event_id: UUID, error: str, retry_count: int) -> None:
+        """Mark event as failed with retry."""
+
+        with self.session_factory() as session:
+            session.query(OutboxEventModel).filter(
+                OutboxEventModel.event_id == event_id
+            ).update(
+                {
+                    "status": OutboxEventStatus.FAILED,
+                    "last_error": error,
+                    "retry_count": retry_count,
+                }
+            )
+            session.commit()
+
+    def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
+        """Get event by ID."""
+
+        with self.session_factory() as session:
+            model = (
+                session.query(OutboxEventModel)
+                .filter(OutboxEventModel.event_id == event_id)
+                .first()
+            )
+            return _to_outbox_event_entity(model) if model else None
+
+
+def _to_outbox_event_entity(model: OutboxEventModel) -> OutboxEvent:
+    """Map outbox event ORM model to entity."""
+
+    return OutboxEvent(
+        event_id=model.event_id,
+        event_type=model.event_type,
+        aggregate_id=model.aggregate_id,
+        aggregate_type=model.aggregate_type,
+        payload=model.payload,
+        status=model.status,
+        created_at=model.created_at,
+        processed_at=model.processed_at,
+        retry_count=model.retry_count,
+        last_error=model.last_error,
+    )
+
+
+def _to_outbox_event_model(event: OutboxEvent) -> OutboxEventModel:
+    """Map domain outbox event to ORM model."""
+
+    return OutboxEventModel(
+        event_id=event.event_id,
+        event_type=event.event_type,
+        aggregate_id=event.aggregate_id,
+        aggregate_type=event.aggregate_type,
+        payload=event.payload,
+        status=event.status,
+        created_at=event.created_at,
+        processed_at=event.processed_at,
+        retry_count=event.retry_count,
+        last_error=event.last_error,
     )

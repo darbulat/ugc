@@ -8,11 +8,11 @@ from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     OfferBroadcaster,
-    OrderActivationPublisher,
     OrderRepository,
     PaymentRepository,
     UserRepository,
 )
+from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.domain.entities import Order, Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 
@@ -26,7 +26,7 @@ class PaymentService:
     order_repo: OrderRepository
     payment_repo: PaymentRepository
     broadcaster: OfferBroadcaster
-    activation_publisher: OrderActivationPublisher
+    outbox_publisher: OutboxPublisher
     provider: str = "yookassa_telegram"
 
     def confirm_telegram_payment(
@@ -71,7 +71,8 @@ class PaymentService:
             paid_at=now,
         )
         self.payment_repo.save(payment)
-        self._activate_order(order)
+        # Create outbox event for order activation (don't activate immediately)
+        self.outbox_publisher.publish_order_activation(order)
         return payment
 
     def _activate_order(self, order: Order) -> None:
@@ -90,4 +91,4 @@ class PaymentService:
         )
         self.order_repo.save(activated)
         self.broadcaster.broadcast_order(activated)
-        self.activation_publisher.publish(activated)
+        self.outbox_publisher.publish_order_activation(activated)

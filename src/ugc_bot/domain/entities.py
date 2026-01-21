@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+from ugc_bot.domain.enums import OutboxEventStatus
+
 from ugc_bot.domain.enums import (
     AudienceGender,
     ComplaintStatus,
@@ -142,3 +144,19 @@ class ContactPricing:
     bloggers_count: int
     price: float
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class OutboxEvent:
+    """Outbox event entity for reliable event publishing."""
+
+    event_id: UUID
+    event_type: str
+    aggregate_id: str
+    aggregate_type: str
+    payload: dict
+    status: OutboxEventStatus
+    created_at: datetime
+    processed_at: Optional[datetime]
+    retry_count: int
+    last_error: Optional[str]

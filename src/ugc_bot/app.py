@@ -19,6 +19,7 @@ from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
@@ -49,14 +50,11 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyInteractionRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyOrderResponseRepository,
+    SqlAlchemyOutboxRepository,
     SqlAlchemyPaymentRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
-from ugc_bot.infrastructure.kafka.publisher import (
-    KafkaOrderActivationPublisher,
-    NoopOrderActivationPublisher,
-)
 
 
 def build_dispatcher(
@@ -118,20 +116,16 @@ def build_dispatcher(
     dispatcher["interaction_service"] = InteractionService(
         interaction_repo=interaction_repo
     )
+    outbox_repo = SqlAlchemyOutboxRepository(session_factory=session_factory)
+    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+
     dispatcher["payment_service"] = PaymentService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
-        activation_publisher=(
-            KafkaOrderActivationPublisher(
-                bootstrap_servers=config.kafka_bootstrap_servers,
-                topic=config.kafka_topic,
-            )
-            if config.kafka_enabled
-            else NoopOrderActivationPublisher()
-        ),
+        outbox_publisher=outbox_publisher,
     )
     dispatcher["contact_pricing_service"] = ContactPricingService(
         pricing_repo=pricing_repo

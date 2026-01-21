@@ -6,17 +6,18 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.domain.entities import AdvertiserProfile, Order, Payment, User
 from ugc_bot.domain.enums import MessengerType, OrderStatus, PaymentStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryOrderRepository,
+    InMemoryOutboxRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
     NoopOfferBroadcaster,
 )
-from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
 
 
 def _service(
@@ -27,13 +28,16 @@ def _service(
 ) -> PaymentService:
     """Build payment service."""
 
+    outbox_repo = InMemoryOutboxRepository()
+    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+
     return PaymentService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
-        activation_publisher=NoopOrderActivationPublisher(),
+        outbox_publisher=outbox_publisher,
     )
 
 
@@ -98,6 +102,17 @@ def test_confirm_payment_success() -> None:
 
     assert payment.status == PaymentStatus.PAID
     assert payment.amount == 1000.0
+
+    # Order should still be NEW until outbox is processed
+    assert order_repo.get_by_id(order_id).status == OrderStatus.NEW
+
+    # Process outbox events to activate order
+    from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
+
+    kafka_publisher = NoopOrderActivationPublisher()
+    service.outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+
+    # Now order should be activated
     assert order_repo.get_by_id(order_id).status == OrderStatus.ACTIVE
 
 

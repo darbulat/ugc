@@ -5,6 +5,8 @@ from uuid import UUID
 
 import pytest
 
+from ugc_bot.application.services.contact_pricing_service import ContactPricingService
+from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -14,17 +16,18 @@ from ugc_bot.bot.handlers.payments import (
     successful_payment_handler,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import AdvertiserProfile, Order, User
+from ugc_bot.domain.entities import AdvertiserProfile, ContactPricing, Order, User
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
+    InMemoryContactPricingRepository,
     InMemoryOrderRepository,
+    InMemoryOutboxRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
     NoopOfferBroadcaster,
 )
-from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
 
 
 class FakeUser:
@@ -118,6 +121,14 @@ def _profile_service(
     )
 
 
+def _contact_pricing_service() -> ContactPricingService:
+    """Create contact pricing service for handler tests."""
+
+    return ContactPricingService(
+        pricing_repo=InMemoryContactPricingRepository(),
+    )
+
+
 def _add_advertiser_profile(
     advertiser_repo: InMemoryAdvertiserProfileRepository, user_id: UUID
 ) -> None:
@@ -134,13 +145,16 @@ def _payment_service(
 ) -> PaymentService:
     """Create payment service for tests."""
 
+    outbox_repo = InMemoryOutboxRepository()
+    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+
     return PaymentService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
-        activation_publisher=NoopOrderActivationPublisher(),
+        outbox_publisher=outbox_publisher,
     )
 
 
@@ -157,6 +171,7 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000500"),
@@ -205,7 +220,14 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert bot.invoices
 
 
@@ -222,6 +244,14 @@ async def test_pay_order_missing_provider_token() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
+
+    # Override price for 3 bloggers to be positive so provider check is needed
+    contact_pricing_service.pricing_repo.save(
+        ContactPricing(
+            bloggers_count=3, price=100.0, updated_at=datetime.now(timezone.utc)
+        )
+    )
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000502"),
@@ -269,8 +299,15 @@ async def test_pay_order_missing_provider_token() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
-    assert "Платежный провайдер" in message.answers[0]
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
+    assert "Платежный провайдер не настроен." in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -286,6 +323,7 @@ async def test_pay_order_invalid_args() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000510"), "10")
     _add_advertiser_profile(advertiser_repo, user.user_id)
@@ -298,7 +336,14 @@ async def test_pay_order_invalid_args() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "Использование" in message.answers[0]
 
 
@@ -315,6 +360,7 @@ async def test_pay_order_invalid_uuid() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000511"), "11")
     _add_advertiser_profile(advertiser_repo, user.user_id)
@@ -329,7 +375,14 @@ async def test_pay_order_invalid_uuid() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "Неверный формат" in message.answers[0]
 
 
@@ -346,6 +399,7 @@ async def test_pay_order_order_not_found() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000512"), "12")
     _add_advertiser_profile(advertiser_repo, user.user_id)
@@ -362,7 +416,14 @@ async def test_pay_order_order_not_found() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "Заказ не найден" in message.answers[0]
 
 
@@ -379,6 +440,7 @@ async def test_pay_order_wrong_owner() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000513"), "13")
     other = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000514"), "14")
@@ -413,7 +475,14 @@ async def test_pay_order_wrong_owner() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "не принадлежит" in message.answers[0]
 
 
@@ -430,6 +499,7 @@ async def test_pay_order_not_new_status() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000516"), "15")
     _add_advertiser_profile(advertiser_repo, user.user_id)
@@ -461,7 +531,14 @@ async def test_pay_order_not_new_status() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "статусе NEW" in message.answers[0]
 
 
@@ -478,6 +555,7 @@ async def test_pay_order_blocked_user() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000518"),
@@ -502,7 +580,14 @@ async def test_pay_order_blocked_user() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "Заблокированные" in message.answers[0]
 
 
@@ -519,6 +604,7 @@ async def test_pay_order_paused_user() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000519"),
@@ -543,7 +629,14 @@ async def test_pay_order_paused_user() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "на паузе" in message.answers[0]
 
 
@@ -560,6 +653,7 @@ async def test_pay_order_missing_profile() -> None:
         user_repo, advertiser_repo, order_repo, payment_repo
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
+    contact_pricing_service = _contact_pricing_service()
 
     _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000521"), "21")
     message = FakeMessage(
@@ -575,7 +669,14 @@ async def test_pay_order_missing_profile() -> None:
         }
     )
 
-    await pay_order(message, user_service, profile_service, payment_service, config)
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
     assert "Профиль рекламодателя" in message.answers[0]
 
 
@@ -649,6 +750,19 @@ async def test_successful_payment_handler() -> None:
 
     await successful_payment_handler(message, user_service, payment_service)
     assert message.answers
+
+    # Order should still be NEW until outbox is processed
+    assert order_repo.get_by_id(order.order_id).status == OrderStatus.NEW
+
+    # Process outbox events to activate order
+    from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
+
+    kafka_publisher = NoopOrderActivationPublisher()
+    payment_service.outbox_publisher.process_pending_events(
+        kafka_publisher, max_retries=3
+    )
+
+    # Now order should be activated
     assert order_repo.get_by_id(order.order_id).status == OrderStatus.ACTIVE
 
 

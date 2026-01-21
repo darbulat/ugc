@@ -9,6 +9,7 @@ from aiogram.filters import Command
 from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -29,10 +30,6 @@ async def send_order_invoice(
 ) -> None:
     """Send Telegram invoice for order."""
 
-    if not config.telegram_provider_token:
-        await message.answer("Платежный провайдер не настроен.")
-        return
-
     if message.bot is None:
         return
 
@@ -45,9 +42,6 @@ async def send_order_invoice(
         return
 
     price = int(price_decimal * 100)
-    if price <= 0:
-        await message.answer("Некорректная сумма заказа.")
-        return
     if price > 100_000_000:
         await message.answer(
             "Сумма заказа слишком большая для выставления счета в Telegram."
@@ -78,6 +72,7 @@ async def pay_order(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     payment_service: PaymentService,
+    contact_pricing_service: ContactPricingService,
     config: AppConfig,
 ) -> None:
     """Send Telegram invoice for an order."""
@@ -128,11 +123,22 @@ async def pay_order(
         await message.answer("Заказ не в статусе NEW.")
         return
 
+    contact_price = contact_pricing_service.get_price(order.bloggers_needed)
+    if contact_price is None:
+        await message.answer(
+            "Стоимость доступа к контактам не настроена. Свяжитесь с поддержкой."
+        )
+        return
+
+    if not config.telegram_provider_token:
+        await message.answer("Платежный провайдер не настроен.")
+        return
+
     await send_order_invoice(
         message=message,
         order_id=order.order_id,
         offer_text=order.offer_text,
-        price_value=order.price,
+        price_value=contact_price,
         config=config,
     )
 
