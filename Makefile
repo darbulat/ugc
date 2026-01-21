@@ -4,19 +4,19 @@ install-dev:
 	python3 -m pip install -e ".[dev]"
 
 lint:
-	ruff check src tests
+	uv run ruff check src tests
 
 format:
-	ruff format src tests
+	uv run ruff format src tests
 
 typecheck:
-	mypy src
+	uv run mypy src
 
 test:
-	pytest
+	uv run pytest
 
 coverage:
-	pytest --cov=ugc_bot --cov-report=term-missing --cov-fail-under=90
+	uv run pytest --cov=ugc_bot --cov-report=term-missing --cov-fail-under=90
 
 migrate:
 	alembic upgrade head

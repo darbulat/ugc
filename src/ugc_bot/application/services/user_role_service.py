@@ -87,3 +87,27 @@ class UserRoleService:
         )
         self.user_repo.save(updated)
         return updated
+
+    def create_user(
+        self,
+        external_id: str,
+        messenger_type: MessengerType = MessengerType.TELEGRAM,
+        username: str | None = None,
+        status: UserStatus = UserStatus.ACTIVE,
+    ) -> User:
+        """Create a new user with specified parameters."""
+
+        if username is None:
+            username = f"user_{external_id}"
+
+        new_user = User(
+            user_id=uuid4(),
+            external_id=external_id,
+            messenger_type=messenger_type,
+            username=username,
+            status=status,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.user_repo.save(new_user)
+        return new_user
