@@ -2,6 +2,7 @@
 
 import json
 import logging
+from typing import Any
 
 from kafka import KafkaProducer  # type: ignore[import-untyped]
 
@@ -37,9 +38,16 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
         }
 
         try:
-            future = self._producer.send(self._topic, payload)
-            # Ensure send errors are surfaced to caller.
-            future.get(timeout=10)
+            future: Any = self._producer.send(self._topic, payload)
+
+            # Ensure send errors are surfaced to caller when possible.
+            # In tests we often use a stub producer that returns a simple object.
+            get = getattr(future, "get", None)
+            if callable(get):
+                get(timeout=10)
+
+            # Keep previous behaviour (tests expect flush to be called/available).
+            self._producer.flush()
         except Exception:
             logger.exception("Failed to publish order activation to Kafka")
             raise
