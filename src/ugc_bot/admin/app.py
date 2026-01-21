@@ -1,5 +1,6 @@
 """SQLAdmin application setup."""
 
+import logging
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -30,6 +31,8 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import create_session_factory
+
+logger = logging.getLogger(__name__)
 
 
 def _get_services(
@@ -81,10 +84,29 @@ class UserAdmin(ModelView, model=UserModel):
             obj = await self.session.get(UserModel, UUID(pk))  # type: ignore[attr-defined]
             new_status = obj.status if obj else None
 
-        # If status changed to BLOCKED, log it (additional actions can be added here)
+        # If status changed to BLOCKED, log it
         if old_status != new_status and new_status == UserStatus.BLOCKED:
-            # User is now blocked - this is handled by the status change itself
-            pass
+            try:
+                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
+                if engine:
+                    user_role_service, _, _ = _get_services(engine)
+                    user = user_role_service.get_user_by_id(UUID(pk))
+                    if user:
+                        logger.warning(
+                            "User blocked via admin",
+                            extra={
+                                "user_id": str(user.user_id),
+                                "external_id": user.external_id,
+                                "username": user.username,
+                                "previous_status": old_status.value
+                                if old_status
+                                else None,
+                                "event_type": "user.blocked.admin",
+                            },
+                        )
+            except Exception:
+                # If logging fails, don't break the update
+                pass
 
 
 class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):

@@ -160,7 +160,7 @@ async def run_bot() -> None:
     """Run the Telegram bot."""
 
     config = load_config()
-    configure_logging(config.log_level)
+    configure_logging(config.log_level, json_format=config.log_format.lower() == "json")
 
     logging.getLogger(__name__).info("Starting UGC bot")
     dispatcher = build_dispatcher(config)

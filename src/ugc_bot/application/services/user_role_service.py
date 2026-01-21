@@ -1,5 +1,6 @@
 """Service for user creation and lookup."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -7,6 +8,8 @@ from uuid import UUID, uuid4
 from ugc_bot.application.ports import UserRepository
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -86,6 +89,19 @@ class UserRoleService:
             created_at=user.created_at,
         )
         self.user_repo.save(updated)
+
+        if status == UserStatus.BLOCKED:
+            logger.warning(
+                "User blocked",
+                extra={
+                    "user_id": str(user.user_id),
+                    "external_id": user.external_id,
+                    "username": user.username,
+                    "previous_status": user.status.value,
+                    "event_type": "user.blocked",
+                },
+            )
+
         return updated
 
     def create_user(

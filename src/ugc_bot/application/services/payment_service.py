@@ -1,5 +1,6 @@
 """Service for Telegram payments and order activation."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -15,6 +16,8 @@ from ugc_bot.application.ports import (
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.domain.entities import Order, Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -73,6 +76,20 @@ class PaymentService:
         self.payment_repo.save(payment)
         # Create outbox event for order activation (don't activate immediately)
         self.outbox_publisher.publish_order_activation(order)
+
+        logger.info(
+            "Payment confirmed",
+            extra={
+                "payment_id": str(payment.payment_id),
+                "order_id": str(order_id),
+                "user_id": str(user_id),
+                "amount": float(payment.amount),
+                "currency": payment.currency,
+                "external_id": payment.external_id,
+                "event_type": "payment.confirmed",
+            },
+        )
+
         return payment
 
     def _activate_order(self, order: Order) -> None:

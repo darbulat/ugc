@@ -1,5 +1,6 @@
 """Service for order creation and validation."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
@@ -13,6 +14,8 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, UserStatus
+
+logger = logging.getLogger(__name__)
 
 
 _ALLOWED_BLOGGER_COUNTS = {3, 10, 20, 30, 50}
@@ -96,4 +99,16 @@ class OrderService:
             contacts_sent_at=None,
         )
         self.order_repo.save(order)
+
+        logger.info(
+            "Order created",
+            extra={
+                "order_id": str(order.order_id),
+                "advertiser_id": str(order.advertiser_id),
+                "price": float(order.price),
+                "bloggers_needed": order.bloggers_needed,
+                "event_type": "order.created",
+            },
+        )
+
         return order

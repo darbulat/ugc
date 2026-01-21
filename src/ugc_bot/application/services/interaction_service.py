@@ -1,5 +1,6 @@
 """Service for feedback interactions."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -7,6 +8,8 @@ from uuid import UUID, uuid4
 from ugc_bot.application.ports import InteractionRepository
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -273,4 +276,17 @@ class InteractionService:
             updated_at=datetime.now(timezone.utc),
         )
         self.interaction_repo.save(resolved)
+
+        logger.info(
+            "Interaction issue manually resolved",
+            extra={
+                "interaction_id": str(interaction.interaction_id),
+                "order_id": str(interaction.order_id),
+                "blogger_id": str(interaction.blogger_id),
+                "advertiser_id": str(interaction.advertiser_id),
+                "final_status": final_status.value,
+                "event_type": "interaction.issue_resolved",
+            },
+        )
+
         return resolved

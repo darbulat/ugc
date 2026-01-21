@@ -15,6 +15,7 @@ class AppConfig(BaseSettings):
 
     bot_token: str = Field(alias="BOT_TOKEN")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    log_format: str = Field(default="text", alias="LOG_FORMAT")
     database_url: str = Field(default="", alias="DATABASE_URL")
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")

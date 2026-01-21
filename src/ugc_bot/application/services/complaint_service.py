@@ -1,5 +1,6 @@
 """Service for handling complaints."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -7,6 +8,8 @@ from uuid import UUID, uuid4
 from ugc_bot.application.ports import ComplaintRepository
 from ugc_bot.domain.entities import Complaint
 from ugc_bot.domain.enums import ComplaintStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -39,6 +42,19 @@ class ComplaintService:
             reviewed_at=None,
         )
         self.complaint_repo.save(complaint)
+
+        logger.warning(
+            "Complaint created",
+            extra={
+                "complaint_id": str(complaint.complaint_id),
+                "reporter_id": str(reporter_id),
+                "reported_id": str(reported_id),
+                "order_id": str(order_id),
+                "reason": reason,
+                "event_type": "complaint.created",
+            },
+        )
+
         return complaint
 
     def get_by_id(self, complaint_id: UUID) -> Complaint | None:
@@ -79,6 +95,18 @@ class ComplaintService:
             reviewed_at=datetime.now(timezone.utc),
         )
         self.complaint_repo.save(dismissed)
+
+        logger.info(
+            "Complaint dismissed",
+            extra={
+                "complaint_id": str(complaint.complaint_id),
+                "reporter_id": str(complaint.reporter_id),
+                "reported_id": str(complaint.reported_id),
+                "order_id": str(complaint.order_id),
+                "event_type": "complaint.dismissed",
+            },
+        )
+
         return dismissed
 
     def resolve_complaint_with_action(self, complaint_id: UUID) -> Complaint:
@@ -99,4 +127,17 @@ class ComplaintService:
             reviewed_at=datetime.now(timezone.utc),
         )
         self.complaint_repo.save(resolved)
+
+        logger.warning(
+            "Complaint resolved with action",
+            extra={
+                "complaint_id": str(complaint.complaint_id),
+                "reporter_id": str(complaint.reporter_id),
+                "reported_id": str(complaint.reported_id),
+                "order_id": str(complaint.order_id),
+                "reason": complaint.reason,
+                "event_type": "complaint.action_taken",
+            },
+        )
+
         return resolved
