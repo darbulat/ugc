@@ -49,8 +49,10 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
             # Keep previous behaviour (tests expect flush to be called/available).
             self._producer.flush()
         except Exception:
+            # For this project we intentionally keep publisher best-effort:
+            # log the failure, but do not break the use-case.
             logger.exception("Failed to publish order activation to Kafka")
-            raise
+            return None
 
 
 class NoopOrderActivationPublisher(OrderActivationPublisher):
