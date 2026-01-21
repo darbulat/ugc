@@ -1,6 +1,7 @@
 """Order creation flow handlers."""
 
 import logging
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -240,8 +241,11 @@ async def handle_bloggers_needed(
         return
 
     try:
+        # Convert user_id from string (Redis) back to UUID if needed
+        user_id_raw = data["user_id"]
+        user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
         order = order_service.create_order(
-            advertiser_id=data["user_id"],
+            advertiser_id=user_id,
             product_link=data["product_link"],
             offer_text=data["offer_text"],
             ugc_requirements=data.get("ugc_requirements"),

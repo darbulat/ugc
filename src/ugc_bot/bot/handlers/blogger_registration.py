@@ -2,6 +2,7 @@
 
 import logging
 import re
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -238,13 +239,16 @@ async def handle_agreements(
 
     data = await state.get_data()
     try:
+        # Convert user_id from string (Redis) back to UUID if needed
+        user_id_raw = data["user_id"]
+        user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
         user_role_service.set_user(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
             username=data["nickname"],
         )
         profile = blogger_registration_service.register_blogger(
-            user_id=data["user_id"],
+            user_id=user_id,
             instagram_url=data["instagram_url"],
             topics=data["topics"],
             audience_gender=data["audience_gender"],

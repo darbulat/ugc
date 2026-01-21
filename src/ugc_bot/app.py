@@ -5,6 +5,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.redis import RedisStorage
 
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
@@ -61,16 +62,71 @@ from ugc_bot.infrastructure.db.session import create_session_factory
 from ugc_bot.metrics.collector import MetricsCollector
 
 
+def _json_dumps(obj: dict) -> str:
+    """Custom JSON dumps that handles UUID and other non-serializable types."""
+    import json
+    from datetime import datetime
+    from uuid import UUID
+
+    class UUIDEncoder(json.JSONEncoder):
+        """JSON encoder that handles UUID and datetime objects."""
+
+        def default(self, obj):  # type: ignore[no-untyped-def]
+            if isinstance(obj, UUID):
+                return str(obj)
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            return super().default(obj)
+
+    return json.dumps(obj, cls=UUIDEncoder)
+
+
+def _json_loads(data: str) -> dict:
+    """Custom JSON loads for FSM data."""
+    import json
+
+    return json.loads(data)
+
+
+async def create_storage(config: AppConfig):
+    """Create FSM storage based on configuration."""
+    if config.use_redis_storage:
+        try:
+            from redis.asyncio import Redis
+
+            redis = Redis.from_url(config.redis_url, decode_responses=True)
+            return RedisStorage(
+                redis=redis,
+                json_dumps=_json_dumps,
+                json_loads=_json_loads,
+            )
+        except ImportError:
+            logging.getLogger(__name__).warning(
+                "Redis not available, falling back to MemoryStorage"
+            )
+            return MemoryStorage()
+    return MemoryStorage()
+
+
 def build_dispatcher(
     config: AppConfig,
     include_routers: bool = True,
+    storage=None,
 ) -> Dispatcher:
-    """Build the aiogram dispatcher."""
+    """Build the aiogram dispatcher.
+
+    Args:
+        config: Application configuration
+        include_routers: Whether to include routers
+        storage: FSM storage instance. If None, MemoryStorage will be used.
+                 For production, use RedisStorage via create_storage().
+    """
 
     if not config.database_url:
         raise ValueError("DATABASE_URL is required for repository setup.")
 
-    storage = MemoryStorage()
+    if storage is None:
+        storage = MemoryStorage()
     dispatcher = Dispatcher(storage=storage)
     dispatcher["config"] = config
     session_factory = create_session_factory(config.database_url)
@@ -178,9 +234,14 @@ async def run_bot() -> None:
     configure_logging(config.log_level, json_format=config.log_format.lower() == "json")
 
     logging.getLogger(__name__).info("Starting UGC bot")
-    dispatcher = build_dispatcher(config)
+    storage = await create_storage(config)
+    dispatcher = build_dispatcher(config, storage=storage)
     bot = Bot(token=config.bot_token)
-    await dispatcher.start_polling(bot)
+    try:
+        await dispatcher.start_polling(bot)
+    finally:
+        if hasattr(storage, "close"):
+            await storage.close()
 
 
 def main() -> None:

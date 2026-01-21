@@ -81,7 +81,9 @@ async def handle_contact(
         return
 
     data = await state.get_data()
-    user_id: UUID = data["user_id"]
+    # Convert user_id from string (Redis) back to UUID if needed
+    user_id_raw = data["user_id"]
+    user_id: UUID = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
 
     try:
         profile = advertiser_registration_service.register_advertiser(

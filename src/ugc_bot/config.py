@@ -38,6 +38,8 @@ class AppConfig(BaseSettings):
     )
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
     telegram_provider_token: str = Field(default="", alias="TELEGRAM_PROVIDER_TOKEN")
+    redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    use_redis_storage: bool = Field(default=True, alias="USE_REDIS_STORAGE")
 
     @field_validator("bot_token")
     @classmethod

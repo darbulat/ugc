@@ -111,7 +111,11 @@ def dispatcher(session_factory, mock_bot: Bot):
         }
     )
 
-    dispatcher = build_dispatcher(config, include_routers=False)
+    # Use MemoryStorage for tests
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    storage = MemoryStorage()
+    dispatcher = build_dispatcher(config, include_routers=False, storage=storage)
     # Override the session factory in all repositories to use the test one
     from ugc_bot.infrastructure.db.repositories import (
         SqlAlchemyUserRepository,

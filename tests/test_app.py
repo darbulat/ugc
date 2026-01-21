@@ -14,6 +14,7 @@ def test_build_dispatcher_requires_database_url() -> None:
         build_dispatcher(
             AppConfig.model_validate({"BOT_TOKEN": "token", "DATABASE_URL": ""}),
             include_routers=False,
+            storage=None,
         )
 
 
@@ -29,6 +30,7 @@ def test_build_dispatcher_sets_services() -> None:
             }
         ),
         include_routers=False,
+        storage=None,
     )
 
     assert dispatcher["user_role_service"] is not None
@@ -61,6 +63,7 @@ def test_build_dispatcher_includes_routers(monkeypatch: pytest.MonkeyPatch) -> N
             }
         ),
         include_routers=True,
+        storage=None,
     )
 
     assert dispatcher is not None
@@ -83,10 +86,20 @@ async def test_run_bot_uses_dispatcher(monkeypatch: pytest.MonkeyPatch) -> None:
 
     fake_dispatcher = FakeDispatcher()
 
+    class FakeStorage:
+        async def close(self) -> None:
+            pass
+
+    fake_storage = FakeStorage()
+
+    async def fake_create_storage(config):
+        return fake_storage
+
     monkeypatch.setattr(
         "ugc_bot.app.build_dispatcher",
-        lambda *_: fake_dispatcher,
+        lambda *args, **kwargs: fake_dispatcher,
     )
+    monkeypatch.setattr("ugc_bot.app.create_storage", fake_create_storage)
     monkeypatch.setattr("ugc_bot.app.Bot", FakeBot)
     monkeypatch.setattr(
         "ugc_bot.app.load_config",

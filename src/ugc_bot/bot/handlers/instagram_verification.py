@@ -1,6 +1,7 @@
 """Instagram verification flow handlers."""
 
 import logging
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -117,7 +118,9 @@ async def verify_code(
         return
 
     data = await state.get_data()
-    user_id = data["user_id"]
+    # Convert user_id from string (Redis) back to UUID if needed
+    user_id_raw = data["user_id"]
+    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
     attempts = int(data.get("attempts", 0))
 
     try:
