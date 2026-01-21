@@ -1,11 +1,18 @@
 """SQLAdmin application setup."""
 
+from uuid import UUID
+
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 from sqladmin import Admin, ModelView
+from starlette.requests import Request
 
 from ugc_bot.admin.auth import AdminAuth
+from ugc_bot.application.services.complaint_service import ComplaintService
+from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import load_config
+from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -17,6 +24,30 @@ from ugc_bot.infrastructure.db.models import (
     OrderResponseModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.repositories import (
+    SqlAlchemyComplaintRepository,
+    SqlAlchemyInteractionRepository,
+    SqlAlchemyUserRepository,
+)
+from ugc_bot.infrastructure.db.session import create_session_factory
+
+
+def _get_services(
+    engine,
+) -> tuple[UserRoleService, ComplaintService, InteractionService]:
+    """Get services for admin actions."""
+
+    database_url = str(engine.url)
+    session_factory = create_session_factory(database_url)
+    user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
+    complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
+    interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    return user_role_service, complaint_service, interaction_service
 
 
 class UserAdmin(ModelView, model=UserModel):
@@ -31,6 +62,29 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.issue_count,
         UserModel.created_at,
     ]
+    form_columns = [
+        UserModel.status,
+    ]
+
+    async def update_model(self, request: Request, pk: str, data: dict) -> None:
+        """Update user model with status change handling."""
+
+        # Get current object before update using session
+        async with self.session.begin():  # type: ignore[attr-defined]
+            obj = await self.session.get(UserModel, UUID(pk))  # type: ignore[attr-defined]
+            old_status = obj.status if obj else None
+
+        await super().update_model(request, pk, data)
+
+        # Get updated object
+        async with self.session.begin():  # type: ignore[attr-defined]
+            obj = await self.session.get(UserModel, UUID(pk))  # type: ignore[attr-defined]
+            new_status = obj.status if obj else None
+
+        # If status changed to BLOCKED, log it (additional actions can be added here)
+        if old_status != new_status and new_status == UserStatus.BLOCKED:
+            # User is now blocked - this is handled by the status change itself
+            pass
 
 
 class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
@@ -93,8 +147,43 @@ class InteractionAdmin(ModelView, model=InteractionModel):
         InteractionModel.blogger_id,
         InteractionModel.advertiser_id,
         InteractionModel.status,
+        InteractionModel.from_advertiser,
+        InteractionModel.from_blogger,
         InteractionModel.created_at,
+        InteractionModel.updated_at,
     ]
+    form_columns = [
+        InteractionModel.status,
+    ]
+
+    async def update_model(self, request: Request, pk: str, data: dict) -> None:
+        """Update interaction model with manual issue resolution."""
+
+        # Get current object before update using session
+        async with self.session.begin():  # type: ignore[attr-defined]
+            obj = await self.session.get(InteractionModel, UUID(pk))  # type: ignore[attr-defined]
+            old_status = obj.status if obj else None
+
+        await super().update_model(request, pk, data)
+
+        # Get updated object
+        async with self.session.begin():  # type: ignore[attr-defined]
+            obj = await self.session.get(InteractionModel, UUID(pk))  # type: ignore[attr-defined]
+            new_status = obj.status if obj else None
+
+        # If manually resolving ISSUE to OK or NO_DEAL
+        if old_status == InteractionStatus.ISSUE and new_status in (
+            InteractionStatus.OK,
+            InteractionStatus.NO_DEAL,
+        ):
+            try:
+                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
+                if engine:
+                    _, _, interaction_service = _get_services(engine)
+                    interaction_service.manually_resolve_issue(UUID(pk), new_status)
+            except Exception:
+                # If service call fails, the status change is already saved
+                pass
 
 
 class InstagramVerificationAdmin(ModelView, model=InstagramVerificationCodeModel):
@@ -117,9 +206,58 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
         ComplaintModel.reporter_id,
         ComplaintModel.reported_id,
         ComplaintModel.order_id,
+        ComplaintModel.reason,
         ComplaintModel.status,
         ComplaintModel.created_at,
+        ComplaintModel.reviewed_at,
     ]
+    form_columns = [
+        ComplaintModel.status,
+    ]
+
+    async def update_model(self, request: Request, pk: str, data: dict) -> None:
+        """Update complaint model with automatic user blocking."""
+
+        # Get current object before update using session
+        async with self.session.begin():  # type: ignore[attr-defined]
+            obj = await self.session.get(ComplaintModel, UUID(pk))  # type: ignore[attr-defined]
+            old_status = obj.status if obj else None
+            reported_id = obj.reported_id if obj else None
+
+        await super().update_model(request, pk, data)
+
+        # Get updated object
+        async with self.session.begin():  # type: ignore[attr-defined]
+            obj = await self.session.get(ComplaintModel, UUID(pk))  # type: ignore[attr-defined]
+            new_status = obj.status if obj else None
+
+        # If status changed to ACTION_TAKEN, block the reported user
+        if (
+            old_status != new_status
+            and new_status == ComplaintStatus.ACTION_TAKEN
+            and reported_id
+        ):
+            try:
+                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
+                if engine:
+                    user_role_service, complaint_service, _ = _get_services(engine)
+                    # Update complaint status via service (sets reviewed_at)
+                    complaint_service.resolve_complaint_with_action(UUID(pk))
+                    # Block the reported user
+                    user_role_service.update_status(reported_id, UserStatus.BLOCKED)
+            except Exception:
+                # If service call fails, the status change is already saved
+                pass
+        elif old_status != new_status and new_status == ComplaintStatus.DISMISSED:
+            try:
+                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
+                if engine:
+                    _, complaint_service, _ = _get_services(engine)
+                    # Update complaint status via service (sets reviewed_at)
+                    complaint_service.dismiss_complaint(UUID(pk))
+            except Exception:
+                # If service call fails, the status change is already saved
+                pass
 
 
 class ContactPricingAdmin(ModelView, model=ContactPricingModel):
@@ -153,6 +291,12 @@ def create_admin_app() -> FastAPI:
         password=config.admin_password,
     )
     admin = Admin(app, engine, authentication_backend=auth, base_url="/admin")
+
+    # Store engine reference in admin views for service access
+    UserAdmin._engine = engine  # type: ignore[attr-defined]
+    InteractionAdmin._engine = engine  # type: ignore[attr-defined]
+    ComplaintAdmin._engine = engine  # type: ignore[attr-defined]
+
     admin.add_view(UserAdmin)
     admin.add_view(BloggerProfileAdmin)
     admin.add_view(AdvertiserProfileAdmin)

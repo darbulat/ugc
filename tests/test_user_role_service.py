@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+import pytest
+
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -65,3 +67,35 @@ def test_get_user_id() -> None:
 
     assert service.get_user_id("777", MessengerType.TELEGRAM) == created.user_id
     assert service.get_user_id("999", MessengerType.TELEGRAM) is None
+
+
+def test_update_status() -> None:
+    """Update user status."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+
+    user = service.set_user(
+        external_id="888",
+        messenger_type=MessengerType.TELEGRAM,
+        username="test_user",
+    )
+
+    updated = service.update_status(user.user_id, UserStatus.BLOCKED)
+
+    assert updated.status == UserStatus.BLOCKED
+    assert updated.user_id == user.user_id
+    assert updated.username == user.username
+    assert repo.get_by_id(user.user_id).status == UserStatus.BLOCKED
+
+
+def test_update_status_not_found() -> None:
+    """Raise error when updating status of non-existent user."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+
+    with pytest.raises(ValueError, match="not found"):
+        service.update_status(
+            UUID("00000000-0000-0000-0000-000000000999"), UserStatus.BLOCKED
+        )

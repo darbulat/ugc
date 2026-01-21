@@ -244,3 +244,33 @@ class InteractionService:
             return InteractionStatus.PENDING
 
         return InteractionStatus.NO_DEAL
+
+    def manually_resolve_issue(
+        self, interaction_id: UUID, final_status: InteractionStatus
+    ) -> Interaction:
+        """Manually resolve ISSUE interaction with final status."""
+
+        if final_status not in (InteractionStatus.OK, InteractionStatus.NO_DEAL):
+            raise ValueError(
+                "Final status must be OK or NO_DEAL for manual resolution."
+            )
+
+        interaction = self._require(interaction_id)
+        if interaction.status != InteractionStatus.ISSUE:
+            raise ValueError("Interaction is not in ISSUE status.")
+
+        resolved = Interaction(
+            interaction_id=interaction.interaction_id,
+            order_id=interaction.order_id,
+            blogger_id=interaction.blogger_id,
+            advertiser_id=interaction.advertiser_id,
+            status=final_status,
+            from_advertiser=interaction.from_advertiser,
+            from_blogger=interaction.from_blogger,
+            postpone_count=interaction.postpone_count,
+            next_check_at=None,
+            created_at=interaction.created_at,
+            updated_at=datetime.now(timezone.utc),
+        )
+        self.interaction_repo.save(resolved)
+        return resolved

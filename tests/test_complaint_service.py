@@ -126,3 +126,98 @@ def test_list_by_reporter() -> None:
 
     complaints = service.list_by_reporter(reporter_id)
     assert len(list(complaints)) == 2
+
+
+def test_list_by_status() -> None:
+    """List complaints by status."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo)
+
+    complaint1 = service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000951"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000952"),
+        order_id=UUID("00000000-0000-0000-0000-000000000953"),
+        reason="Мошенничество",
+    )
+    complaint2 = service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000954"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000955"),
+        order_id=UUID("00000000-0000-0000-0000-000000000956"),
+        reason="Другое",
+    )
+
+    # Dismiss one complaint
+    service.dismiss_complaint(complaint1.complaint_id)
+
+    pending = service.list_by_status(ComplaintStatus.PENDING)
+    dismissed = service.list_by_status(ComplaintStatus.DISMISSED)
+
+    assert len(list(pending)) == 1
+    assert len(list(dismissed)) == 1
+    assert list(pending)[0].complaint_id == complaint2.complaint_id
+    assert list(dismissed)[0].complaint_id == complaint1.complaint_id
+
+
+def test_dismiss_complaint() -> None:
+    """Dismiss a complaint without taking action."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo)
+
+    complaint = service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000961"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000962"),
+        order_id=UUID("00000000-0000-0000-0000-000000000963"),
+        reason="Мошенничество",
+    )
+
+    dismissed = service.dismiss_complaint(complaint.complaint_id)
+
+    assert dismissed.status == ComplaintStatus.DISMISSED
+    assert dismissed.reviewed_at is not None
+    assert dismissed.complaint_id == complaint.complaint_id
+    assert dismissed.reason == complaint.reason
+
+
+def test_dismiss_complaint_not_found() -> None:
+    """Raise error when dismissing non-existent complaint."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo)
+
+    with pytest.raises(ValueError, match="not found"):
+        service.dismiss_complaint(UUID("00000000-0000-0000-0000-000000000999"))
+
+
+def test_resolve_complaint_with_action() -> None:
+    """Resolve complaint by taking action."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo)
+
+    complaint = service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000971"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000972"),
+        order_id=UUID("00000000-0000-0000-0000-000000000973"),
+        reason="Мошенничество",
+    )
+
+    resolved = service.resolve_complaint_with_action(complaint.complaint_id)
+
+    assert resolved.status == ComplaintStatus.ACTION_TAKEN
+    assert resolved.reviewed_at is not None
+    assert resolved.complaint_id == complaint.complaint_id
+    assert resolved.reason == complaint.reason
+
+
+def test_resolve_complaint_with_action_not_found() -> None:
+    """Raise error when resolving non-existent complaint."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo)
+
+    with pytest.raises(ValueError, match="not found"):
+        service.resolve_complaint_with_action(
+            UUID("00000000-0000-0000-0000-000000000999")
+        )

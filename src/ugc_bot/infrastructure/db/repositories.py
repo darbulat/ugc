@@ -37,6 +37,7 @@ from ugc_bot.domain.entities import (
     User,
 )
 from ugc_bot.domain.enums import (
+    ComplaintStatus,
     InteractionStatus,
     MessengerType,
     OrderStatus,
@@ -423,6 +424,15 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
                     InteractionModel.next_check_at <= cutoff,
                     InteractionModel.status == InteractionStatus.PENDING,
                 )
+            ).scalars()
+            return [_to_interaction_entity(item) for item in results]
+
+    def list_by_status(self, status: InteractionStatus) -> Iterable[Interaction]:
+        """List interactions by status."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(InteractionModel).where(InteractionModel.status == status)
             ).scalars()
             return [_to_interaction_entity(item) for item in results]
 
@@ -862,6 +872,15 @@ class SqlAlchemyComplaintRepository(ComplaintRepository):
                 )
             ).scalar()
             return (count or 0) > 0
+
+    def list_by_status(self, status: ComplaintStatus) -> Iterable[Complaint]:
+        """List complaints by status."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(ComplaintModel).where(ComplaintModel.status == status)
+            ).scalars()
+            return [_to_complaint_entity(item) for item in results]
 
 
 def _to_complaint_entity(model: ComplaintModel) -> Complaint:

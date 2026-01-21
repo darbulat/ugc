@@ -34,6 +34,7 @@ from ugc_bot.domain.entities import (
     User,
 )
 from ugc_bot.domain.enums import (
+    ComplaintStatus,
     InteractionStatus,
     MessengerType,
     OrderStatus,
@@ -286,6 +287,11 @@ class InMemoryInteractionRepository(InteractionRepository):
             and item.status == InteractionStatus.PENDING
         ]
 
+    def list_by_status(self, status: InteractionStatus) -> Iterable[Interaction]:
+        """List interactions by status."""
+
+        return [item for item in self.interactions.values() if item.status == status]
+
     def save(self, interaction: Interaction) -> None:
         """Persist interaction in memory."""
 
@@ -472,6 +478,15 @@ class InMemoryComplaintRepository(ComplaintRepository):
             complaint.order_id == order_id and complaint.reporter_id == reporter_id
             for complaint in self.complaints.values()
         )
+
+    def list_by_status(self, status: ComplaintStatus) -> Iterable[Complaint]:
+        """List complaints by status."""
+
+        return [
+            complaint
+            for complaint in self.complaints.values()
+            if complaint.status == status
+        ]
 
 
 @dataclass

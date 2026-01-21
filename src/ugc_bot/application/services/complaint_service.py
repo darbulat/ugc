@@ -55,3 +55,48 @@ class ComplaintService:
         """List complaints filed by a specific user."""
 
         return list(self.complaint_repo.list_by_reporter(reporter_id))
+
+    def list_by_status(self, status: ComplaintStatus) -> list[Complaint]:
+        """List complaints by status."""
+
+        return list(self.complaint_repo.list_by_status(status))
+
+    def dismiss_complaint(self, complaint_id: UUID) -> Complaint:
+        """Dismiss a complaint without taking action."""
+
+        complaint = self.complaint_repo.get_by_id(complaint_id)
+        if complaint is None:
+            raise ValueError("Complaint not found.")
+
+        dismissed = Complaint(
+            complaint_id=complaint.complaint_id,
+            reporter_id=complaint.reporter_id,
+            reported_id=complaint.reported_id,
+            order_id=complaint.order_id,
+            reason=complaint.reason,
+            status=ComplaintStatus.DISMISSED,
+            created_at=complaint.created_at,
+            reviewed_at=datetime.now(timezone.utc),
+        )
+        self.complaint_repo.save(dismissed)
+        return dismissed
+
+    def resolve_complaint_with_action(self, complaint_id: UUID) -> Complaint:
+        """Resolve complaint by taking action (blocking user)."""
+
+        complaint = self.complaint_repo.get_by_id(complaint_id)
+        if complaint is None:
+            raise ValueError("Complaint not found.")
+
+        resolved = Complaint(
+            complaint_id=complaint.complaint_id,
+            reporter_id=complaint.reporter_id,
+            reported_id=complaint.reported_id,
+            order_id=complaint.order_id,
+            reason=complaint.reason,
+            status=ComplaintStatus.ACTION_TAKEN,
+            created_at=complaint.created_at,
+            reviewed_at=datetime.now(timezone.utc),
+        )
+        self.complaint_repo.save(resolved)
+        return resolved

@@ -68,3 +68,22 @@ class UserRoleService:
         """Fetch a user by internal id."""
 
         return self.user_repo.get_by_id(user_id)
+
+    def update_status(self, user_id: UUID, status: UserStatus) -> User:
+        """Update user status."""
+
+        user = self.user_repo.get_by_id(user_id)
+        if user is None:
+            raise ValueError("User not found.")
+
+        updated = User(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            status=status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+        )
+        self.user_repo.save(updated)
+        return updated

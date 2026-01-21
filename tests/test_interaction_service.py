@@ -313,3 +313,128 @@ def test_aggregate_fallback_no_deal() -> None:
         InteractionService._aggregate("unknown", "unknown")  # type: ignore[arg-type]
         == InteractionStatus.NO_DEAL
     )
+
+
+def test_manually_resolve_issue() -> None:
+    """Manually resolve ISSUE interaction with final status."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000001001"),
+        order_id=UUID("00000000-0000-0000-0000-000000001002"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001003"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001004"),
+        status=InteractionStatus.ISSUE,
+        from_advertiser="⚠️ Проблема",
+        from_blogger="⚠️ Проблема",
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo.save(interaction)
+
+    resolved = service.manually_resolve_issue(
+        interaction.interaction_id, InteractionStatus.OK
+    )
+
+    assert resolved.status == InteractionStatus.OK
+    assert resolved.next_check_at is None
+    assert resolved.interaction_id == interaction.interaction_id
+
+
+def test_manually_resolve_issue_no_deal() -> None:
+    """Manually resolve ISSUE interaction to NO_DEAL."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000001011"),
+        order_id=UUID("00000000-0000-0000-0000-000000001012"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001013"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001014"),
+        status=InteractionStatus.ISSUE,
+        from_advertiser="⚠️ Проблема",
+        from_blogger="⚠️ Проблема",
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo.save(interaction)
+
+    resolved = service.manually_resolve_issue(
+        interaction.interaction_id, InteractionStatus.NO_DEAL
+    )
+
+    assert resolved.status == InteractionStatus.NO_DEAL
+    assert resolved.next_check_at is None
+
+
+def test_manually_resolve_issue_not_issue_status() -> None:
+    """Raise error when resolving non-ISSUE interaction."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000001021"),
+        order_id=UUID("00000000-0000-0000-0000-000000001022"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001023"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001024"),
+        status=InteractionStatus.OK,
+        from_advertiser="✅ Сделка состоялась",
+        from_blogger="✅ Сделка состоялась",
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo.save(interaction)
+
+    with pytest.raises(ValueError, match="not in ISSUE status"):
+        service.manually_resolve_issue(
+            interaction.interaction_id, InteractionStatus.NO_DEAL
+        )
+
+
+def test_manually_resolve_issue_invalid_status() -> None:
+    """Raise error when resolving with invalid final status."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000001031"),
+        order_id=UUID("00000000-0000-0000-0000-000000001032"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001033"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001034"),
+        status=InteractionStatus.ISSUE,
+        from_advertiser="⚠️ Проблема",
+        from_blogger="⚠️ Проблема",
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo.save(interaction)
+
+    with pytest.raises(ValueError, match="must be OK or NO_DEAL"):
+        service.manually_resolve_issue(
+            interaction.interaction_id, InteractionStatus.PENDING
+        )
+
+
+def test_manually_resolve_issue_not_found() -> None:
+    """Raise error when resolving non-existent interaction."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+
+    with pytest.raises(ValueError, match="not found"):
+        service.manually_resolve_issue(
+            UUID("00000000-0000-0000-0000-000000000999"), InteractionStatus.OK
+        )

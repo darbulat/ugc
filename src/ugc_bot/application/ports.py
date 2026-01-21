@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional
 from uuid import UUID
 
 from ugc_bot.domain.entities import (
@@ -19,6 +19,9 @@ from ugc_bot.domain.entities import (
     User,
 )
 from ugc_bot.domain.enums import MessengerType
+
+if TYPE_CHECKING:
+    from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus
 
 
 class UserRepository(ABC):
@@ -142,6 +145,10 @@ class InteractionRepository(ABC):
         """List interactions due for feedback (next_check_at <= cutoff and status=PENDING)."""
 
     @abstractmethod
+    def list_by_status(self, status: "InteractionStatus") -> Iterable[Interaction]:
+        """List interactions by status."""
+
+    @abstractmethod
     def save(self, interaction: Interaction) -> None:
         """Persist interaction."""
 
@@ -254,3 +261,7 @@ class ComplaintRepository(ABC):
     @abstractmethod
     def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
         """Check if reporter already filed a complaint for this order."""
+
+    @abstractmethod
+    def list_by_status(self, status: "ComplaintStatus") -> Iterable[Complaint]:
+        """List complaints by status."""
