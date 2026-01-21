@@ -11,6 +11,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from kafka import KafkaConsumer, KafkaProducer  # type: ignore[import-untyped]
 
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.bot.handlers.security_warnings import BLOGGER_OFFER_WARNING
 from ugc_bot.config import load_config
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
@@ -69,6 +70,11 @@ async def _send_offers(
                             ]
                         ]
                     ),
+                )
+                # Send security warning
+                await bot.send_message(
+                    chat_id=int(blogger.external_id),
+                    text=BLOGGER_OFFER_WARNING,
                 )
                 break
             except Exception as exc:

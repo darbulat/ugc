@@ -44,7 +44,7 @@ class FakeMessage:
 
         self.answers.append(text)
 
-    async def send_message(self, chat_id: int, text: str) -> None:  # type: ignore[no-untyped-def]
+    async def send_message(self, chat_id: int, text: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
         """Capture advertiser messages."""
 
         self.answers.append(text)

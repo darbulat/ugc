@@ -62,7 +62,7 @@ class FakeMessage:
         self.bot = bot
         self.chat = type("Chat", (), {"id": user.id if user else 0})()
 
-    async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
+    async def answer(self, text: str, reply_markup=None, **kwargs) -> None:  # type: ignore[no-untyped-def]
         """Capture response text."""
 
         self.answers.append(text)

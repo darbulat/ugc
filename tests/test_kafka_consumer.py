@@ -158,7 +158,7 @@ async def test_send_offers_sends_messages() -> None:
             self.sent: list[tuple[int, str]] = []
 
         async def send_message(
-            self, chat_id: int, text: str, reply_markup=None
+            self, chat_id: int, text: str, reply_markup=None, **kwargs
         ) -> None:  # type: ignore[no-untyped-def]
             self.sent.append((chat_id, text))
 
@@ -341,7 +341,9 @@ async def test_send_offers_retries_then_succeeds() -> None:
         retries=2,
         retry_delay_seconds=0.0,
     )
-    assert bot.calls == 2
+    # Each offer sends 2 messages: offer + security warning
+    # First attempt fails (1 call), retry succeeds (1 call), warning (1 call) = 3 total
+    assert bot.calls == 3
 
 
 @pytest.mark.asyncio

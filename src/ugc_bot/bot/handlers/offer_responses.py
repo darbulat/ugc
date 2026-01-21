@@ -13,6 +13,10 @@ from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.security_warnings import (
+    ADVERTISER_CONTACTS_WARNING,
+    BLOGGER_RESPONSE_WARNING,
+)
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
@@ -103,6 +107,8 @@ async def handle_offer_response(
         await callback.message.answer(
             "Ваш отклик сохранен. Рекламодатель свяжется с вами."
         )
+        # Send security warning
+        await callback.message.answer(BLOGGER_RESPONSE_WARNING)
 
     await _maybe_send_contacts_and_close(
         order_id=order_id,
@@ -153,6 +159,12 @@ async def _maybe_send_contacts_and_close(
             await bot.send_message(
                 chat_id=int(advertiser.external_id),
                 text="Контакты блогеров:\n" + "\n".join(contacts),
+            )
+            # Send security warning
+            await bot.send_message(
+                chat_id=int(advertiser.external_id),
+                text=ADVERTISER_CONTACTS_WARNING,
+                parse_mode="Markdown",
             )
 
     # Create interactions for feedback tracking

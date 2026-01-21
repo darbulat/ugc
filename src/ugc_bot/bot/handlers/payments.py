@@ -13,6 +13,7 @@ from ugc_bot.application.services.contact_pricing_service import ContactPricingS
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.security_warnings import ADVERTISER_PAYMENT_WARNING
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
@@ -204,3 +205,5 @@ async def successful_payment_handler(
         return
 
     await message.answer("Оплата подтверждена. Заказ активирован и отправлен блогерам.")
+    # Send security warning
+    await message.answer(ADVERTISER_PAYMENT_WARNING)
