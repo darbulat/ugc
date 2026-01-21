@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery
 from ugc_bot.application.errors import OrderCreationError
 from datetime import datetime, timezone
 
+from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -28,6 +29,7 @@ async def handle_offer_response(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     offer_response_service: OfferResponseService,
+    interaction_service: InteractionService,
 ) -> None:
     """Handle blogger response to offer."""
 
@@ -107,6 +109,7 @@ async def handle_offer_response(
         offer_response_service=offer_response_service,
         user_role_service=user_role_service,
         profile_service=profile_service,
+        interaction_service=interaction_service,
         bot=callback.message.bot if callback.message else None,
     )
 
@@ -116,6 +119,7 @@ async def _maybe_send_contacts_and_close(
     offer_response_service: OfferResponseService,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
+    interaction_service: InteractionService | None,
     bot,
 ) -> None:
     """Send contacts to advertiser and close order when limit reached."""
@@ -149,6 +153,15 @@ async def _maybe_send_contacts_and_close(
             await bot.send_message(
                 chat_id=int(advertiser.external_id),
                 text="Контакты блогеров:\n" + "\n".join(contacts),
+            )
+
+    # Create interactions for feedback tracking
+    if interaction_service:
+        for response in responses:
+            interaction_service.create_for_contacts_sent(
+                order_id=order.order_id,
+                blogger_id=response.blogger_id,
+                advertiser_id=order.advertiser_id,
             )
 
     closed = Order(

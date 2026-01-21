@@ -7,15 +7,16 @@ from aiogram.types import CallbackQuery
 
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import InteractionStatus, MessengerType
+from ugc_bot.domain.enums import MessengerType
 
 
 router = Router()
 
-_STATUS_MAP = {
-    "ok": InteractionStatus.OK,
-    "no_deal": InteractionStatus.NO_DEAL,
-    "issue": InteractionStatus.ISSUE,
+_FEEDBACK_TEXT_MAP = {
+    "ok": "✅ Сделка состоялась",
+    "no_deal": "❌ Не договорились",
+    "postpone": "⏳ Еще не связался",
+    "issue": "⚠️ Проблема / подозрение на мошенничество",
 }
 
 
@@ -38,8 +39,8 @@ async def handle_feedback(
         return
 
     _, kind, interaction_id_raw, status_raw = parts
-    status = _STATUS_MAP.get(status_raw)
-    if status is None:
+    feedback_text = _FEEDBACK_TEXT_MAP.get(status_raw)
+    if feedback_text is None:
         await callback.answer("Неверный статус.")
         return
 
@@ -71,11 +72,30 @@ async def handle_feedback(
             return
 
         if kind == "adv":
-            interaction_service.record_advertiser_feedback(interaction_id, status)
+            updated_interaction = interaction_service.record_advertiser_feedback(
+                interaction_id, feedback_text
+            )
         else:
-            interaction_service.record_blogger_feedback(interaction_id, status)
+            updated_interaction = interaction_service.record_blogger_feedback(
+                interaction_id, feedback_text
+            )
+
+        # Provide feedback based on action
+        if status_raw == "postpone":
+            if (
+                updated_interaction.postpone_count
+                >= interaction_service.max_postpone_count
+            ):
+                await callback.answer(
+                    "Достигнут максимум переносов. Статус зафиксирован как 'Не договорились'."
+                )
+            else:
+                await callback.answer(
+                    f"Проверка перенесена на 72 часа. "
+                    f"Переносов использовано: {updated_interaction.postpone_count}/{interaction_service.max_postpone_count}"
+                )
+        else:
+            await callback.answer("Спасибо, ответ сохранен.")
     except Exception:
         await callback.answer("Произошла ошибка. Попробуйте позже.")
         return
-
-    await callback.answer("Спасибо, ответ сохранен.")

@@ -23,7 +23,7 @@ def test_get_or_create_interaction() -> None:
         advertiser_id=UUID("00000000-0000-0000-0000-000000000903"),
     )
 
-    assert interaction.status == InteractionStatus.NO_DEAL
+    assert interaction.status == InteractionStatus.PENDING
     assert repo.get_by_id(interaction.interaction_id) is not None
 
 
@@ -37,10 +37,13 @@ def test_get_or_create_returns_existing() -> None:
         order_id=UUID("00000000-0000-0000-0000-000000000902"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000903"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000904"),
-        status=InteractionStatus.NO_DEAL,
+        status=InteractionStatus.PENDING,
         from_advertiser=None,
         from_blogger=None,
+        postpone_count=0,
+        next_check_at=None,
         created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     repo.save(existing)
 
@@ -64,9 +67,9 @@ def test_record_advertiser_feedback() -> None:
     )
 
     updated = service.record_advertiser_feedback(
-        interaction.interaction_id, InteractionStatus.OK
+        interaction.interaction_id, "✅ Сделка состоялась"
     )
-    assert updated.from_advertiser == InteractionStatus.OK.value
+    assert updated.from_advertiser == "✅ Сделка состоялась"
     assert updated.status == InteractionStatus.OK
 
 
@@ -81,9 +84,9 @@ def test_record_blogger_feedback_issue() -> None:
         advertiser_id=UUID("00000000-0000-0000-0000-000000000923"),
     )
     updated = service.record_blogger_feedback(
-        interaction.interaction_id, InteractionStatus.ISSUE
+        interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
-    assert updated.from_blogger == InteractionStatus.ISSUE.value
+    assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
     assert updated.status == InteractionStatus.ISSUE
 
 
@@ -105,12 +108,15 @@ def test_record_advertiser_feedback_no_deal_aggregate() -> None:
             advertiser_id=interaction.advertiser_id,
             status=interaction.status,
             from_advertiser=None,
-            from_blogger=InteractionStatus.NO_DEAL.value,
+            from_blogger="❌ Не договорились",
+            postpone_count=interaction.postpone_count,
+            next_check_at=interaction.next_check_at,
             created_at=interaction.created_at,
+            updated_at=interaction.updated_at,
         )
     )
     updated = service.record_advertiser_feedback(
-        interaction.interaction_id, InteractionStatus.NO_DEAL
+        interaction.interaction_id, "❌ Не договорились"
     )
     assert updated.status == InteractionStatus.NO_DEAL
 
@@ -123,14 +129,187 @@ def test_record_feedback_missing_interaction() -> None:
     with pytest.raises(ValueError):
         service.record_advertiser_feedback(
             UUID("00000000-0000-0000-0000-000000000940"),
-            InteractionStatus.OK,
+            "✅ Сделка состоялась",
         )
 
 
-def test_aggregate_defaults_to_no_deal() -> None:
+def test_aggregate_defaults_to_pending() -> None:
     """Default aggregation when no input is provided."""
 
     assert (
         InteractionService._aggregate(None, None)  # type: ignore[arg-type]
+        == InteractionStatus.PENDING
+    )
+
+
+def test_record_advertiser_feedback_pending() -> None:
+    """Postpone interaction when advertiser chooses PENDING."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, max_postpone_count=3)
+    interaction = service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000000951"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000952"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000953"),
+    )
+
+    updated = service.record_advertiser_feedback(
+        interaction.interaction_id, "⏳ Еще не связался"
+    )
+    assert updated.from_advertiser == "⏳ Еще не связался"
+    assert updated.status == InteractionStatus.PENDING
+    assert updated.postpone_count == 1
+    assert updated.next_check_at is not None
+
+
+def test_record_advertiser_feedback_max_postpone() -> None:
+    """Auto-resolve to NO_DEAL when max postpone count reached."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, max_postpone_count=3)
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000961"),
+        order_id=UUID("00000000-0000-0000-0000-000000000962"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000963"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000964"),
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=3,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo.save(interaction)
+
+    updated = service.record_advertiser_feedback(
+        interaction.interaction_id, "⏳ Еще не связался"
+    )
+    assert updated.status == InteractionStatus.NO_DEAL
+
+
+def test_record_blogger_feedback_pending() -> None:
+    """Postpone interaction when blogger chooses PENDING."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, max_postpone_count=3)
+    interaction = service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000000971"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000972"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000973"),
+    )
+
+    updated = service.record_blogger_feedback(
+        interaction.interaction_id, "⏳ Еще не связался"
+    )
+    assert updated.from_blogger == "⏳ Еще не связался"
+    assert updated.status == InteractionStatus.PENDING
+    assert updated.postpone_count == 1
+    assert updated.next_check_at is not None
+
+
+def test_record_blogger_feedback_max_postpone() -> None:
+    """Auto-resolve to NO_DEAL when max postpone count reached."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, max_postpone_count=3)
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000981"),
+        order_id=UUID("00000000-0000-0000-0000-000000000982"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000983"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000984"),
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=3,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo.save(interaction)
+
+    updated = service.record_blogger_feedback(
+        interaction.interaction_id, "⏳ Еще не связался"
+    )
+    assert updated.status == InteractionStatus.NO_DEAL
+
+
+def test_postpone_interaction_max_reached() -> None:
+    """Auto-resolve to NO_DEAL when postponing after max count."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, max_postpone_count=3)
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000991"),
+        order_id=UUID("00000000-0000-0000-0000-000000000992"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000993"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000994"),
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=3,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo.save(interaction)
+
+    updated = service._postpone_interaction(
+        interaction, "advertiser", "⏳ Еще не связался"
+    )
+    assert updated.status == InteractionStatus.NO_DEAL
+    assert updated.next_check_at is None
+    assert updated.postpone_count == 4
+
+
+def test_parse_feedback_pending() -> None:
+    """Parse feedback text for PENDING status."""
+
+    assert (
+        InteractionService._parse_feedback("⏳ Еще не связался")  # type: ignore[arg-type]
+        == InteractionStatus.PENDING
+    )
+    assert (
+        InteractionService._parse_feedback("еще не связался")  # type: ignore[arg-type]
+        == InteractionStatus.PENDING
+    )
+
+
+def test_aggregate_pending_from_advertiser() -> None:
+    """Aggregate PENDING when advertiser chooses it."""
+
+    assert (
+        InteractionService._aggregate("⏳ Еще не связался", None)  # type: ignore[arg-type]
+        == InteractionStatus.PENDING
+    )
+
+
+def test_aggregate_pending_from_blogger() -> None:
+    """Aggregate PENDING when blogger chooses it."""
+
+    assert (
+        InteractionService._aggregate(None, "⏳ Еще не связался")  # type: ignore[arg-type]
+        == InteractionStatus.PENDING
+    )
+
+
+def test_aggregate_one_no_deal_waiting() -> None:
+    """Wait for other side when only one responds with NO_DEAL."""
+
+    assert (
+        InteractionService._aggregate("❌ Не договорились", None)  # type: ignore[arg-type]
+        == InteractionStatus.PENDING
+    )
+    assert (
+        InteractionService._aggregate(None, "❌ Не договорились")  # type: ignore[arg-type]
+        == InteractionStatus.PENDING
+    )
+
+
+def test_aggregate_fallback_no_deal() -> None:
+    """Fallback to NO_DEAL for unrecognized feedback."""
+
+    assert (
+        InteractionService._aggregate("unknown", "unknown")  # type: ignore[arg-type]
         == InteractionStatus.NO_DEAL
     )

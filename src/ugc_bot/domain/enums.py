@@ -41,6 +41,7 @@ class InteractionStatus(StrEnum):
 
     OK = "ok"
     NO_DEAL = "no_deal"
+    PENDING = "pending"
     ISSUE = "issue"
 
 

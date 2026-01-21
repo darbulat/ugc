@@ -123,92 +123,93 @@ async def test_run_once_sends_feedback_requests() -> None:
         )
     )
 
+    # Create interaction with next_check_at in the past
+    interaction = interaction_service.create_for_contacts_sent(
+        order_id=order.order_id,
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser.user_id,
+    )
+    # Manually set next_check_at to past
+    past_interaction = Interaction(
+        interaction_id=interaction.interaction_id,
+        order_id=interaction.order_id,
+        blogger_id=interaction.blogger_id,
+        advertiser_id=interaction.advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
+    )
+    interaction_repo.save(past_interaction)
+
     bot = FakeBot()
     await run_once(
         bot,
-        order_repo,
-        response_repo,
+        interaction_repo,
         interaction_service,
         user_service,
-        cutoff=datetime.now(timezone.utc) - timedelta(hours=72),
+        cutoff=datetime.now(timezone.utc),
     )
     assert len(bot.messages) == 2
 
 
 @pytest.mark.asyncio
 async def test_run_once_skips_active_orders() -> None:
-    """Skip orders without closed status."""
+    """Skip interactions that are not PENDING or have future next_check_at."""
 
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    order_repo.save(
-        Order(
-            order_id=UUID("00000000-0000-0000-0000-000000000970"),
-            advertiser_id=UUID("00000000-0000-0000-0000-000000000971"),
-            product_link="https://example.com",
-            offer_text="Offer",
-            ugc_requirements=None,
-            barter_description=None,
-            price=1000.0,
-            bloggers_needed=1,
-            status=OrderStatus.ACTIVE,
+    # Create interaction with future next_check_at (should be skipped)
+    interaction_repo.save(
+        Interaction(
+            interaction_id=UUID("00000000-0000-0000-0000-000000000970"),
+            order_id=UUID("00000000-0000-0000-0000-000000000971"),
+            blogger_id=UUID("00000000-0000-0000-0000-000000000972"),
+            advertiser_id=UUID("00000000-0000-0000-0000-000000000973"),
+            status=InteractionStatus.PENDING,
+            from_advertiser=None,
+            from_blogger=None,
+            postpone_count=0,
+            next_check_at=datetime.now(timezone.utc) + timedelta(hours=1),  # Future
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+            updated_at=datetime.now(timezone.utc),
         )
     )
 
     bot = FakeBot()
     await run_once(
         bot,
-        order_repo,
-        response_repo,
+        interaction_repo,
         interaction_service,
         user_service,
-        cutoff=datetime.now(timezone.utc) - timedelta(hours=72),
+        cutoff=datetime.now(timezone.utc),
     )
     assert not bot.messages
 
 
 @pytest.mark.asyncio
 async def test_run_once_skips_orders_without_responses() -> None:
-    """Skip closed orders when no responses exist."""
+    """Skip when no interactions are due for feedback."""
 
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    order_repo.save(
-        Order(
-            order_id=UUID("00000000-0000-0000-0000-000000000975"),
-            advertiser_id=UUID("00000000-0000-0000-0000-000000000976"),
-            product_link="https://example.com",
-            offer_text="Offer",
-            ugc_requirements=None,
-            barter_description=None,
-            price=1000.0,
-            bloggers_needed=1,
-            status=OrderStatus.CLOSED,
-            created_at=datetime.now(timezone.utc),
-            contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
-        )
-    )
-
+    # No interactions created, so nothing to process
     bot = FakeBot()
     await run_once(
         bot,
-        order_repo,
-        response_repo,
+        interaction_repo,
         interaction_service,
         user_service,
-        cutoff=datetime.now(timezone.utc) - timedelta(hours=72),
+        cutoff=datetime.now(timezone.utc),
     )
     assert not bot.messages
 
@@ -274,20 +275,22 @@ async def test_run_once_existing_feedback_no_messages() -> None:
             blogger_id=blogger.user_id,
             advertiser_id=advertiser.user_id,
             status=InteractionStatus.OK,
-            from_advertiser=InteractionStatus.OK.value,
-            from_blogger=InteractionStatus.OK.value,
+            from_advertiser="✅ Сделка состоялась",
+            from_blogger="✅ Всё прошло нормально",
+            postpone_count=0,
+            next_check_at=None,
             created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
     )
 
     bot = FakeBot()
     await run_once(
         bot,
-        order_repo,
-        response_repo,
+        interaction_repo,
         interaction_service,
         user_service,
-        cutoff=datetime.now(timezone.utc) - timedelta(hours=72),
+        cutoff=datetime.now(timezone.utc),
     )
     assert not bot.messages
 
@@ -297,8 +300,6 @@ async def test_run_loop_closes_session() -> None:
     """Ensure run_loop closes bot session."""
 
     bot = FakeBotWithSession()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=user_repo)
@@ -306,11 +307,9 @@ async def test_run_loop_closes_session() -> None:
 
     await run_loop(
         bot,
-        order_repo,
-        response_repo,
+        interaction_repo,
         interaction_service,
         user_service,
-        delay_hours=72,
         interval_seconds=0,
         max_iterations=1,
     )
@@ -329,8 +328,6 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ugc_bot.feedback_scheduler.asyncio.sleep", _fake_sleep)
 
     bot = FakeBotWithSession()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=user_repo)
@@ -338,11 +335,9 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
 
     await run_loop(
         bot,
-        order_repo,
-        response_repo,
+        interaction_repo,
         interaction_service,
         user_service,
-        delay_hours=72,
         interval_seconds=1,
         max_iterations=2,
     )

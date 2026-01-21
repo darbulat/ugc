@@ -93,7 +93,10 @@ class Interaction:
     status: InteractionStatus
     from_advertiser: Optional[str]
     from_blogger: Optional[str]
+    postpone_count: int
+    next_check_at: Optional[datetime]
     created_at: datetime
+    updated_at: datetime
 
 
 @dataclass(frozen=True)

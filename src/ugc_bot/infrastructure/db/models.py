@@ -221,8 +221,19 @@ class InteractionModel(Base):
     )
     from_advertiser: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     from_blogger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    postpone_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    next_check_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
     )
 
 

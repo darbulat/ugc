@@ -31,7 +31,12 @@ from ugc_bot.domain.entities import (
     Payment,
     User,
 )
-from ugc_bot.domain.enums import MessengerType, OrderStatus, OutboxEventStatus
+from ugc_bot.domain.enums import (
+    InteractionStatus,
+    MessengerType,
+    OrderStatus,
+    OutboxEventStatus,
+)
 
 
 @dataclass
@@ -266,6 +271,17 @@ class InMemoryInteractionRepository(InteractionRepository):
 
         return [
             item for item in self.interactions.values() if item.order_id == order_id
+        ]
+
+    def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
+        """List interactions due for feedback."""
+
+        return [
+            item
+            for item in self.interactions.values()
+            if item.next_check_at is not None
+            and item.next_check_at <= cutoff
+            and item.status == InteractionStatus.PENDING
         ]
 
     def save(self, interaction: Interaction) -> None:

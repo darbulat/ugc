@@ -34,7 +34,12 @@ from ugc_bot.domain.entities import (
     Payment,
     User,
 )
-from ugc_bot.domain.enums import MessengerType, OrderStatus, OutboxEventStatus
+from ugc_bot.domain.enums import (
+    InteractionStatus,
+    MessengerType,
+    OrderStatus,
+    OutboxEventStatus,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -406,6 +411,18 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
             ).scalars()
             return [_to_interaction_entity(item) for item in results]
 
+    def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
+        """List interactions due for feedback."""
+
+        with self.session_factory() as session:
+            results = session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.next_check_at <= cutoff,
+                    InteractionModel.status == InteractionStatus.PENDING,
+                )
+            ).scalars()
+            return [_to_interaction_entity(item) for item in results]
+
     def save(self, interaction: Interaction) -> None:
         """Persist interaction."""
 
@@ -502,7 +519,10 @@ def _to_interaction_entity(model: InteractionModel) -> Interaction:
         status=model.status,
         from_advertiser=model.from_advertiser,
         from_blogger=model.from_blogger,
+        postpone_count=model.postpone_count,
+        next_check_at=model.next_check_at,
         created_at=model.created_at,
+        updated_at=model.updated_at,
     )
 
 
@@ -517,7 +537,10 @@ def _to_interaction_model(interaction: Interaction) -> InteractionModel:
         status=interaction.status,
         from_advertiser=interaction.from_advertiser,
         from_blogger=interaction.from_blogger,
+        postpone_count=interaction.postpone_count,
+        next_check_at=interaction.next_check_at,
         created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
     )
 
 

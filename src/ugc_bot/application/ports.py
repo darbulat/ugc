@@ -138,6 +138,10 @@ class InteractionRepository(ABC):
         """List interactions for order."""
 
     @abstractmethod
+    def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
+        """List interactions due for feedback (next_check_at <= cutoff and status=PENDING)."""
+
+    @abstractmethod
     def save(self, interaction: Interaction) -> None:
         """Persist interaction."""
 
