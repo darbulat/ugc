@@ -135,7 +135,7 @@ async def handle_webhook(
     return {"status": "ok"}
 
 
-def _notify_user_verification_success(user_id: UUID, config: AppConfig) -> None:
+async def _notify_user_verification_success(user_id: UUID, config: AppConfig) -> None:
     """Send Telegram notification to user about successful verification."""
     try:
         from aiogram import Bot
@@ -165,31 +165,26 @@ def _notify_user_verification_success(user_id: UUID, config: AppConfig) -> None:
 
         # Send message
         bot = Bot(token=config.bot_token)
-        import asyncio
+        try:
+            from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
+            from ugc_bot.infrastructure.db.repositories import (
+                SqlAlchemyBloggerProfileRepository,
+            )
 
-        async def send_notification() -> None:
-            try:
-                from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
-                from ugc_bot.infrastructure.db.repositories import (
-                    SqlAlchemyBloggerProfileRepository,
-                )
+            # Get blogger profile to check confirmation status
+            blogger_repo = SqlAlchemyBloggerProfileRepository(
+                session_factory=session_factory
+            )
+            blogger_profile = blogger_repo.get_by_user_id(user_id)
+            confirmed = blogger_profile.confirmed if blogger_profile else False
 
-                # Get blogger profile to check confirmation status
-                blogger_repo = SqlAlchemyBloggerProfileRepository(
-                    session_factory=session_factory
-                )
-                blogger_profile = blogger_repo.get_by_user_id(user_id)
-                confirmed = blogger_profile.confirmed if blogger_profile else False
-
-                await bot.send_message(
-                    chat_id=int(telegram_user.external_id),
-                    text="✅ Instagram подтверждён. Теперь вы можете получать офферы.",
-                    reply_markup=blogger_menu_keyboard(confirmed=confirmed),
-                )
-            finally:
-                await bot.session.close()
-
-        asyncio.run(send_notification())
+            await bot.send_message(
+                chat_id=int(telegram_user.external_id),
+                text="✅ Instagram подтверждён. Теперь вы можете получать офферы.",
+                reply_markup=blogger_menu_keyboard(confirmed=confirmed),
+            )
+        finally:
+            await bot.session.close()
     except Exception as exc:
         logger.exception(
             "Error sending verification notification to user",
@@ -319,7 +314,7 @@ async def _process_webhook_events(
                         },
                     )
                     # Send notification to user in Telegram
-                    _notify_user_verification_success(user_id, config)
+                    await _notify_user_verification_success(user_id, config)
                 else:
                     logger.debug(
                         "Instagram verification failed - code not found or expired",
