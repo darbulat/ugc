@@ -305,7 +305,13 @@ def create_admin_app() -> FastAPI:
     if not config.admin_password:
         raise ValueError("ADMIN_PASSWORD is required for SQLAdmin.")
 
-    app = FastAPI(title=config.admin_site_name)
+    # Configure FastAPI for reverse proxy (Nginx)
+    # root_path allows FastAPI to generate correct URLs when behind a proxy
+    # FastAPI will automatically use X-Forwarded-Proto header to determine scheme (HTTPS)
+    app = FastAPI(
+        title=config.admin_site_name,
+        root_path="/admin",
+    )
     engine = create_engine(config.database_url, pool_pre_ping=True)
     auth = AdminAuth(
         secret_key=config.admin_secret,
