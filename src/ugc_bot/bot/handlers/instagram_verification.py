@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.message(Command("verify_instagram"))
+@router.message(lambda msg: (msg.text or "").strip() == "Пройти верификацию")
 async def start_verification(
     message: Message,
     state: FSMContext,

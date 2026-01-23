@@ -169,9 +169,22 @@ def _notify_user_verification_success(user_id: UUID, config: AppConfig) -> None:
 
         async def send_notification() -> None:
             try:
+                from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
+                from ugc_bot.infrastructure.db.repositories import (
+                    SqlAlchemyBloggerProfileRepository,
+                )
+
+                # Get blogger profile to check confirmation status
+                blogger_repo = SqlAlchemyBloggerProfileRepository(
+                    session_factory=session_factory
+                )
+                blogger_profile = blogger_repo.get_by_user_id(user_id)
+                confirmed = blogger_profile.confirmed if blogger_profile else False
+
                 await bot.send_message(
                     chat_id=int(telegram_user.external_id),
                     text="✅ Instagram подтверждён. Теперь вы можете получать офферы.",
+                    reply_markup=blogger_menu_keyboard(confirmed=confirmed),
                 )
             finally:
                 await bot.session.close()

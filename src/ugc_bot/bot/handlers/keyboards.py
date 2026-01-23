@@ -51,3 +51,27 @@ def advertiser_menu_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMar
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,
     )
+
+
+def blogger_menu_keyboard(
+    confirmed: bool, one_time_keyboard: bool = False
+) -> ReplyKeyboardMarkup:
+    """Build a reply keyboard for blogger actions.
+
+    Args:
+        confirmed: Whether Instagram account is verified
+        one_time_keyboard: Whether to hide keyboard after use
+    """
+    keyboard = []
+
+    # Show verification button if not confirmed
+    if not confirmed:
+        keyboard.append([KeyboardButton(text="Пройти верификацию")])
+
+    keyboard.append([KeyboardButton(text="Мой профиль")])
+
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=one_time_keyboard,
+    )

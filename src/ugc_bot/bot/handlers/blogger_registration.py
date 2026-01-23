@@ -16,8 +16,8 @@ from ugc_bot.application.services.blogger_registration_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
+    blogger_menu_keyboard,
     cancel_keyboard,
-    profile_keyboard,
     with_cancel_keyboard,
 )
 from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
@@ -276,7 +276,7 @@ async def handle_agreements(
     await message.answer(
         "Профиль создан. Статус подтверждения Instagram: НЕ ПОДТВЕРЖДЁН.\n"
         f"Ваш Instagram: {profile.instagram_url}",
-        reply_markup=profile_keyboard(),
+        reply_markup=blogger_menu_keyboard(confirmed=profile.confirmed),
     )
 
 

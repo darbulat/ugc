@@ -5,6 +5,10 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.bot.handlers.keyboards import (
+    advertiser_menu_keyboard,
+    blogger_menu_keyboard,
+)
 from ugc_bot.domain.enums import MessengerType
 
 
@@ -70,4 +74,11 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
             ]
         )
 
-    await message.answer("\n".join(parts))
+    # Show appropriate keyboard based on role
+    reply_markup = None
+    if blogger is not None:
+        reply_markup = blogger_menu_keyboard(confirmed=blogger.confirmed)
+    elif advertiser is not None:
+        reply_markup = advertiser_menu_keyboard()
+
+    await message.answer("\n".join(parts), reply_markup=reply_markup)

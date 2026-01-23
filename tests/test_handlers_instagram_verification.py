@@ -16,8 +16,8 @@ from ugc_bot.bot.handlers.instagram_verification import (
     start_verification,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserStatus
+from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
@@ -252,3 +252,58 @@ def test_verification_instruction_format() -> None:
     assert f"Admin Instagram: @{admin_username}" in instruction
     assert "Код действует 15 минут" in instruction
     assert "запросить новый код" in instruction
+
+
+@pytest.mark.asyncio
+async def test_start_verification_via_button() -> None:
+    """Handle verification request via button click."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000732"),
+        external_id="6",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(user)
+    blogger_profile = BloggerProfile(
+        user_id=user.user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=False,
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+    blogger_repo.save(blogger_profile)
+
+    user_service = UserRoleService(user_repo=user_repo)
+    verification_service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+    profile_service = _profile_service(user_repo, blogger_repo)
+    message = FakeMessage(
+        text="Пройти верификацию", user=FakeUser(6, "blogger", "Blogger")
+    )
+    state = FakeFSMContext()
+
+    await start_verification(
+        message,
+        state,
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
+    )
+
+    assert message.answers
+    assert "Ваш код:" in message.answers[0]
+    assert "Admin Instagram:" in message.answers[0]

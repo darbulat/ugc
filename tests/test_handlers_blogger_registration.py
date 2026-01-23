@@ -44,11 +44,14 @@ class FakeMessage:
         self.text = text
         self.from_user = user
         self.answers: list[str] = []
+        self.reply_markups: list = []
 
     async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
         """Capture response text."""
 
         self.answers.append(text)
+        if reply_markup is not None:
+            self.reply_markups.append(reply_markup)
 
 
 class FakeFSMContext:
@@ -357,3 +360,50 @@ async def test_handle_agreements_requires_consent() -> None:
 
     assert message.answers
     assert "Нужно согласие" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_agreements_shows_verification_button() -> None:
+    """Show verification button after registration for unconfirmed profile."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_role_service = UserRoleService(user_repo=user_repo)
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    user = user_role_service.set_user(
+        external_id="43",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+    )
+
+    message = FakeMessage(text="Согласен", user=FakeUser(43, "alice", "Alice"))
+    state = FakeFSMContext()
+    await state.update_data(
+        user_id=user.user_id,
+        external_id="43",
+        nickname="alice",
+        instagram_url="https://instagram.com/test_user",
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1500.0,
+    )
+
+    await handle_agreements(
+        message,
+        state,
+        registration_service,
+        user_role_service,
+    )
+
+    assert message.reply_markups
+    keyboard = message.reply_markups[0]
+    assert keyboard.keyboard is not None
+    # Profile is not confirmed after registration, so verification button should be shown
+    assert len(keyboard.keyboard) == 2
+    assert keyboard.keyboard[0][0].text == "Пройти верификацию"
+    assert keyboard.keyboard[1][0].text == "Мой профиль"

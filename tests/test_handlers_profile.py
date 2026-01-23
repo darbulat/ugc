@@ -23,20 +23,30 @@ class FakeMessage:
     def __init__(self) -> None:
         self.from_user = FakeUser(1)
         self.answers: list[str] = []
+        self.reply_markups: list = []
 
     async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
         """Capture response."""
 
         self.answers.append(text)
+        if reply_markup is not None:
+            self.reply_markups.append(reply_markup)
 
 
 class FakeProfileService:
     """Stub profile service."""
 
-    def __init__(self, user: User, has_blogger: bool, has_advertiser: bool) -> None:
+    def __init__(
+        self,
+        user: User,
+        has_blogger: bool,
+        has_advertiser: bool,
+        blogger_confirmed: bool = True,
+    ) -> None:
         self._user = user
         self._has_blogger = has_blogger
         self._has_advertiser = has_advertiser
+        self._blogger_confirmed = blogger_confirmed
 
     def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
         return self._user
@@ -47,7 +57,7 @@ class FakeProfileService:
         return BloggerProfile(
             user_id=user_id,
             instagram_url="https://instagram.com/test",
-            confirmed=True,
+            confirmed=self._blogger_confirmed,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -128,3 +138,79 @@ async def test_show_profile_missing_profiles() -> None:
     assert message.answers
     assert "Профиль блогера не заполнен" in message.answers[0]
     assert "Профиль рекламодателя не заполнен" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_show_profile_blogger_keyboard_not_confirmed() -> None:
+    """Show verification button for unconfirmed blogger."""
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000812"),
+        external_id="3",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    message = FakeMessage()
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False, blogger_confirmed=False
+    )
+
+    await show_profile(message, service)
+
+    assert message.reply_markups
+    keyboard = message.reply_markups[0]
+    assert keyboard.keyboard is not None
+    assert len(keyboard.keyboard) == 2
+    assert keyboard.keyboard[0][0].text == "Пройти верификацию"
+    assert keyboard.keyboard[1][0].text == "Мой профиль"
+
+
+@pytest.mark.asyncio
+async def test_show_profile_blogger_keyboard_confirmed() -> None:
+    """Hide verification button for confirmed blogger."""
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000813"),
+        external_id="4",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    message = FakeMessage()
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False, blogger_confirmed=True
+    )
+
+    await show_profile(message, service)
+
+    assert message.reply_markups
+    keyboard = message.reply_markups[0]
+    assert keyboard.keyboard is not None
+    assert len(keyboard.keyboard) == 1
+    assert keyboard.keyboard[0][0].text == "Мой профиль"
+
+
+@pytest.mark.asyncio
+async def test_show_profile_advertiser_keyboard() -> None:
+    """Show advertiser keyboard for advertiser."""
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000814"),
+        external_id="5",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    message = FakeMessage()
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+
+    await show_profile(message, service)
+
+    assert message.reply_markups
+    keyboard = message.reply_markups[0]
+    assert keyboard.keyboard is not None
+    assert any(btn.text == "Мой профиль" for row in keyboard.keyboard for btn in row)
