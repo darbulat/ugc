@@ -30,6 +30,12 @@ services:
     command: ["uvicorn", "ugc_bot.admin.app:app", "--host", "0.0.0.0", "--port", "8001"]
     ports:
       - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/admin/login', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
     networks:
       - default
@@ -43,6 +49,12 @@ services:
     command: ["uvicorn", "ugc_bot.instagram_webhook_app:app", "--host", "0.0.0.0", "--port", "8002"]
     expose:
       - "8002"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/webhook/instagram?hub.mode=subscribe&hub.challenge=test', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
     networks:
       - default
