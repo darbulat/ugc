@@ -1,6 +1,7 @@
 """Tests for Instagram verification handlers."""
 
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
@@ -11,8 +12,10 @@ from ugc_bot.application.services.instagram_verification_service import (
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.instagram_verification import (
+    _verification_instruction,
     start_verification,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
@@ -82,6 +85,13 @@ def _profile_service(
     )
 
 
+def _fake_config() -> AppConfig:
+    """Create a fake config for tests."""
+    config = MagicMock(spec=AppConfig)
+    config.admin_instagram_username = "admin_ugc_bot"
+    return config
+
+
 @pytest.mark.asyncio
 async def test_start_verification_requires_role() -> None:
     """Require blogger role before verification."""
@@ -99,7 +109,7 @@ async def test_start_verification_requires_role() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service
+        message, state, user_service, profile_service, verification_service, _fake_config()
     )
 
     assert message.answers
@@ -129,7 +139,7 @@ async def test_start_verification_user_not_found() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service
+        message, state, user_service, profile_service, verification_service, _fake_config()
     )
 
     assert message.answers
@@ -163,7 +173,7 @@ async def test_start_verification_blocked_user() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service
+        message, state, user_service, profile_service, verification_service, _fake_config()
     )
 
     assert message.answers
@@ -197,8 +207,25 @@ async def test_start_verification_paused_user() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service
+        message, state, user_service, profile_service, verification_service, _fake_config()
     )
 
     assert message.answers
     assert "паузе" in message.answers[0]
+
+
+def test_verification_instruction_format() -> None:
+    """Verify instruction text matches TZ requirements."""
+    code = "ABC123XY"
+    admin_username = "admin_ugc_bot"
+    
+    instruction = _verification_instruction(code, admin_username)
+    
+    assert "Чтобы подтвердить, что Instagram-аккаунт принадлежит вам" in instruction
+    assert "1️⃣ Скопируйте код ниже" in instruction
+    assert "2️⃣ Отправьте его в личные сообщения (Direct) Instagram-аккаунта администратора" in instruction
+    assert "3️⃣ Дождитесь автоматического подтверждения" in instruction
+    assert f"Ваш код: {code}" in instruction
+    assert f"Admin Instagram: @{admin_username}" in instruction
+    assert "Код действует 15 минут" in instruction
+    assert "запросить новый код" in instruction

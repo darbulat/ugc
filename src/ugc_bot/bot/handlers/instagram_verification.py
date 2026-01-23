@@ -13,6 +13,7 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
@@ -27,6 +28,7 @@ async def start_verification(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     instagram_verification_service: InstagramVerificationService,
+    config: AppConfig,
 ) -> None:
     """Start Instagram verification flow."""
 
@@ -71,19 +73,20 @@ async def start_verification(
         return
     await state.clear()
     await message.answer(
-        _verification_instruction(verification.code),
+        _verification_instruction(verification.code, config.admin_instagram_username),
     )
 
 
-def _verification_instruction(code: str) -> str:
+def _verification_instruction(code: str, admin_instagram_username: str) -> str:
     """Format instruction for Instagram verification."""
 
     return (
-        "Чтобы подтвердить, что Instagram-аккаунт принадлежит вам:\n"
+        "Чтобы подтвердить, что Instagram-аккаунт принадлежит вам:\n\n"
         "1️⃣ Скопируйте код ниже\n"
-        "2️⃣ Отправьте его в личные сообщения (Direct) вашего Instagram-аккаунта\n"
-        "3️⃣ Вернитесь в бот и нажмите «Я отправил код»\n\n"
-        f"Код: {code}\n\n"
-        "⚠️ Если у вас нет доступа к Direct указанного Instagram-аккаунта, "
-        "вы не сможете пройти подтверждение."
+        "2️⃣ Отправьте его в личные сообщения (Direct) Instagram-аккаунта администратора\n"
+        "3️⃣ Дождитесь автоматического подтверждения\n\n"
+        f"Ваш код: {code}\n\n"
+        f"Admin Instagram: @{admin_instagram_username}\n\n"
+        "⚠️ Код действует 15 минут. После истечения времени нужно будет "
+        "запросить новый код."
     )
