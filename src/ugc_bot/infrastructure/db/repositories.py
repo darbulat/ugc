@@ -206,6 +206,24 @@ class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository)
             model.used = True
             session.commit()
 
+    def get_valid_code_by_code(self, code: str) -> Optional[InstagramVerificationCode]:
+        """Fetch a valid, unexpired verification code by code string."""
+
+        now = datetime.now(timezone.utc)
+        with self.session_factory() as session:
+            result = session.execute(
+                select(InstagramVerificationCodeModel).where(
+                    InstagramVerificationCodeModel.code == code,
+                    InstagramVerificationCodeModel.used.is_(False),
+                    InstagramVerificationCodeModel.expires_at > now,
+                )
+            ).scalar_one_or_none()
+            if result is None:
+                return None
+            if result.used or result.expires_at <= now:
+                return None
+            return _to_verification_entity(result)
+
 
 @dataclass(slots=True)
 class SqlAlchemyOrderRepository(OrderRepository):

@@ -170,6 +170,25 @@ class InstagramVerificationRepository(ABC):
     def mark_used(self, code_id: UUID) -> None:
         """Mark verification code as used."""
 
+    @abstractmethod
+    def get_valid_code_by_code(self, code: str) -> Optional[InstagramVerificationCode]:
+        """Fetch a valid, unexpired verification code by code string (for webhook processing)."""
+
+
+class InstagramGraphApiClient(ABC):
+    """Port for Instagram Graph API client."""
+
+    @abstractmethod
+    async def get_username_by_id(self, instagram_user_id: str) -> str | None:
+        """Get Instagram username by user ID.
+
+        Args:
+            instagram_user_id: Instagram-scoped user ID (sender_id from webhook)
+
+        Returns:
+            Username if found, None otherwise
+        """
+
 
 class PaymentRepository(ABC):
     """Port for payment persistence."""

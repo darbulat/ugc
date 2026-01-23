@@ -40,6 +40,17 @@ class AppConfig(BaseSettings):
     telegram_provider_token: str = Field(default="", alias="TELEGRAM_PROVIDER_TOKEN")
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
     use_redis_storage: bool = Field(default=True, alias="USE_REDIS_STORAGE")
+    instagram_webhook_verify_token: str = Field(
+        default="", alias="INSTAGRAM_WEBHOOK_VERIFY_TOKEN"
+    )
+    instagram_app_secret: str = Field(default="", alias="INSTAGRAM_APP_SECRET")
+    admin_instagram_username: str = Field(
+        default="admin_ugc_bot", alias="ADMIN_INSTAGRAM_USERNAME"
+    )
+    instagram_access_token: str = Field(default="", alias="INSTAGRAM_ACCESS_TOKEN")
+    instagram_api_base_url: str = Field(
+        default="https://graph.instagram.com", alias="INSTAGRAM_API_BASE_URL"
+    )
 
     @field_validator("bot_token")
     @classmethod

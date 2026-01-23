@@ -12,6 +12,7 @@ from ugc_bot.application.ports import (
     ComplaintRepository,
     ContactPricingRepository,
     InteractionRepository,
+    InstagramGraphApiClient,
     InstagramVerificationRepository,
     OfferBroadcaster,
     OrderRepository,
@@ -143,6 +144,15 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
                 return item
         return None
 
+    def get_valid_code_by_code(self, code: str) -> Optional[InstagramVerificationCode]:
+        """Fetch a valid, unexpired verification code by code string (for webhook processing)."""
+
+        now = datetime.now(timezone.utc)
+        for item in self.codes.values():
+            if item.code == code and not item.used and item.expires_at > now:
+                return item
+        return None
+
     def mark_used(self, code_id: UUID) -> None:
         """Mark verification code as used."""
 
@@ -157,6 +167,17 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
             used=True,
             created_at=existing.created_at,
         )
+
+
+@dataclass
+class InMemoryInstagramGraphApiClient(InstagramGraphApiClient):
+    """In-memory implementation of Instagram Graph API client for testing."""
+
+    username_map: Dict[str, str] = field(default_factory=dict)
+
+    async def get_username_by_id(self, instagram_user_id: str) -> str | None:
+        """Get Instagram username by user ID from in-memory map."""
+        return self.username_map.get(instagram_user_id)
 
 
 @dataclass

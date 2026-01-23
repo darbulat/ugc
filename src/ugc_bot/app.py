@@ -162,10 +162,23 @@ def build_dispatcher(
         advertiser_repo=advertiser_repo,
         metrics_collector=metrics_collector,
     )
+    # Create Instagram Graph API client if access token is configured
+    instagram_api_client = None
+    if config.instagram_access_token:
+        from ugc_bot.infrastructure.instagram.graph_api_client import (
+            HttpInstagramGraphApiClient,
+        )
+
+        instagram_api_client = HttpInstagramGraphApiClient(
+            access_token=config.instagram_access_token,
+            base_url=config.instagram_api_base_url,
+        )
+
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         verification_repo=instagram_repo,
+        instagram_api_client=instagram_api_client,
     )
     dispatcher["order_service"] = OrderService(
         user_repo=user_repo,

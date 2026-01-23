@@ -351,6 +351,83 @@ def test_instagram_verification_repository_mark_used() -> None:
     assert model.used is True
 
 
+def test_instagram_verification_repository_get_valid_code_by_code() -> None:
+    """Test getting valid code by code string."""
+    user_id = UUID("00000000-0000-0000-0000-000000000144")
+    valid_model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000145"),
+        user_id=user_id,
+        code="TESTCODE",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        used=False,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(valid_model)
+    )
+
+    # Test getting valid code
+    fetched = repo.get_valid_code_by_code("TESTCODE")
+    assert fetched is not None
+    assert fetched.code == "TESTCODE"
+    assert fetched.user_id == user_id
+
+    # Test case insensitive
+    fetched_lower = repo.get_valid_code_by_code("testcode")
+    assert fetched_lower is not None
+    assert fetched_lower.code == "TESTCODE"
+
+
+def test_instagram_verification_repository_get_valid_code_by_code_not_found() -> None:
+    """Test getting non-existent code returns None."""
+    # Use None to simulate code not found
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(None)
+    )
+
+    invalid = repo.get_valid_code_by_code("INVALID")
+    assert invalid is None
+
+
+def test_instagram_verification_repository_get_valid_code_by_code_expired() -> None:
+    """Test getting expired code by code string returns None."""
+    expired_model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000146"),
+        user_id=UUID("00000000-0000-0000-0000-000000000147"),
+        code="EXPIRED",
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        used=False,
+        created_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(expired_model)
+    )
+
+    expired_fetched = repo.get_valid_code_by_code("EXPIRED")
+    assert expired_fetched is None
+
+
+def test_instagram_verification_repository_get_valid_code_by_code_used() -> None:
+    """Test getting used code by code string returns None."""
+    used_model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000148"),
+        user_id=UUID("00000000-0000-0000-0000-000000000149"),
+        code="USEDCODE",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        used=True,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(used_model)
+    )
+
+    used_fetched = repo.get_valid_code_by_code("USEDCODE")
+    assert used_fetched is None
+
+
 def test_order_repository_save_and_get() -> None:
     """Save and fetch order."""
 
