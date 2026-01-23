@@ -17,12 +17,15 @@ async def start_command(message: Message) -> None:
     """Handle the /start command."""
 
     response_text = (
+        "<b>Что может делать этот бот?</b>\n\n"
         "UMC — сервис по рекламе у блогеров.\n"
         "Если вы блогер — получите доступ к предложениям от рекламодателей.\n"
         "Если вы бизнес — подберём инфлюенсеров под ваш продукт.\n\n"
         "📌 Данные нужны один раз — чтобы мы предлагали только то, что подходит."
     )
-    await message.answer(response_text, reply_markup=_role_keyboard())
+    await message.answer(
+        response_text, reply_markup=_role_keyboard(), parse_mode="HTML"
+    )
 
 
 @router.message(Command("role"))
@@ -30,12 +33,15 @@ async def role_command(message: Message) -> None:
     """Handle the /role command for role switching."""
 
     response_text = (
+        "<b>Что может делать этот бот?</b>\n\n"
         "UMC — сервис по рекламе у блогеров.\n"
         "Если вы блогер — получите доступ к предложениям от рекламодателей.\n"
         "Если вы бизнес — подберём инфлюенсеров под ваш продукт.\n\n"
         "📌 Данные нужны один раз — чтобы мы предлагали только то, что подходит."
     )
-    await message.answer(response_text, reply_markup=_role_keyboard())
+    await message.answer(
+        response_text, reply_markup=_role_keyboard(), parse_mode="HTML"
+    )
 
 
 @router.message(lambda msg: msg.text in {"Я блогер", "Я рекламодатель"})

@@ -30,7 +30,9 @@ class FakeMessage:
         self.from_user = user
         self.answers: list[tuple[str, object | None]] = []
 
-    async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
+    async def answer(
+        self, text: str, reply_markup=None, parse_mode=None  # type: ignore[no-untyped-def]
+    ) -> None:
         """Capture response text and markup."""
 
         self.answers.append((text, reply_markup))
@@ -44,6 +46,7 @@ async def test_start_command_sends_role_keyboard() -> None:
     await start_command(message)
 
     assert message.answers
+    assert "Что может делать этот бот?" in message.answers[0][0]
     assert "UMC — сервис по рекламе у блогеров" in message.answers[0][0]
     assert "Если вы блогер" in message.answers[0][0]
     assert "Если вы бизнес" in message.answers[0][0]
