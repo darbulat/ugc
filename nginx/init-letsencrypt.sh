@@ -11,6 +11,33 @@ data_path="./certbot"
 email="YOUR_EMAIL" # Adding a valid address is strongly recommended
 staging=0 # Set to 1 if you're testing your setup to avoid hitting request limits
 
+# Check if domain is an IP address
+check_ip() {
+    local input=$1
+    if [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        return 0  # It's an IP
+    fi
+    return 1  # It's not an IP
+}
+
+# Validate domain
+for domain in "${domains[@]}"; do
+    if check_ip "$domain"; then
+        echo "❌ ERROR: $domain is an IP address." >&2
+        echo "Let's Encrypt does not issue certificates for IP addresses." >&2
+        echo "" >&2
+        echo "Solutions:" >&2
+        echo "1. Use a domain name (recommended):" >&2
+        echo "   - Point a domain (e.g., webhook.example.com) to this IP" >&2
+        echo "   - Update nginx/nginx.conf and nginx/init-letsencrypt.sh with the domain" >&2
+        echo "   - Run this script again" >&2
+        echo "" >&2
+        echo "2. Use self-signed certificate for testing:" >&2
+        echo "   ./nginx/generate-self-signed.sh $domain" >&2
+        exit 1
+    fi
+done
+
 if [ -d "$data_path" ]; then
   read -p "Existing data found for $domains. Continue and replace existing certificate? (y/N) " decision
   if [ "$decision" != "Y" ] && [ "$decision" != "y" ]; then
