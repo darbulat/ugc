@@ -36,6 +36,9 @@ class OfferDispatchService:
 
         users: list[User] = []
         for user_id in confirmed_ids:
+            # Exclude order author from receiving their own order
+            if user_id == order.advertiser_id:
+                continue
             user = self.user_repo.get_by_id(user_id)
             if user is None:
                 continue

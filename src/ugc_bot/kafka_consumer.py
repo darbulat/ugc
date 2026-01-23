@@ -55,6 +55,9 @@ async def _send_offers(
     for blogger in bloggers:
         if not blogger.external_id.isdigit():
             continue
+        # Skip sending order to its author
+        if blogger.user_id == order.advertiser_id:
+            continue
         for attempt in range(1, retries + 1):
             try:
                 await bot.send_message(

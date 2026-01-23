@@ -210,3 +210,91 @@ def test_dispatch_no_profiles_returns_empty() -> None:
     order_repo.save(order)
 
     assert service.dispatch(order.order_id) == []
+
+
+def test_dispatch_excludes_order_author() -> None:
+    """Do not send order to its author even if they are a confirmed blogger."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+    )
+
+    advertiser_id = UUID("00000000-0000-0000-0000-000000000650")
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000651"),
+        advertiser_id=advertiser_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    order_repo.save(order)
+
+    # Advertiser who is also a blogger
+    advertiser_blogger = User(
+        user_id=advertiser_id,
+        external_id="200",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser_blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(advertiser_blogger)
+    blogger_repo.save(
+        BloggerProfile(
+            user_id=advertiser_id,
+            instagram_url="https://instagram.com/advertiser",
+            confirmed=True,
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    # Another blogger
+    other_blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000652"),
+        external_id="201",
+        messenger_type=MessengerType.TELEGRAM,
+        username="other_blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(other_blogger)
+    blogger_repo.save(
+        BloggerProfile(
+            user_id=other_blogger.user_id,
+            instagram_url="https://instagram.com/other",
+            confirmed=True,
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    # Should only return other_blogger, not advertiser_blogger
+    result = service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == other_blogger.user_id
+    assert result[0].user_id != advertiser_id
