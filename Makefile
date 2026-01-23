@@ -31,18 +31,18 @@ admin:
 	uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001
 
 # Instagram Webhook commands
-# These commands run inside the Docker container where uv and dependencies are available
+# These commands run inside the Docker container where Python and dependencies are available
 subscribe-instagram-webhook:
-	docker compose run --rm instagram_webhook uv run python scripts/subscribe_instagram_webhook.py
+	docker compose run --rm instagram_webhook python scripts/subscribe_instagram_webhook.py
 
 subscribe-instagram-webhook-page:
 	@if [ -z "$(PAGE_ID)" ]; then \
 		echo "Error: PAGE_ID is required. Usage: make subscribe-instagram-webhook-page PAGE_ID=your_page_id"; \
 		exit 1; \
 	fi
-	docker compose run --rm instagram_webhook uv run python scripts/subscribe_instagram_webhook.py --page-id $(PAGE_ID)
+	docker compose run --rm instagram_webhook python scripts/subscribe_instagram_webhook.py --page-id $(PAGE_ID)
 
 list-instagram-subscriptions:
-	docker compose run --rm instagram_webhook uv run python scripts/subscribe_instagram_webhook.py --list
+	docker compose run --rm instagram_webhook python scripts/subscribe_instagram_webhook.py --list
 
 all: format lint typecheck coverage
