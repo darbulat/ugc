@@ -31,7 +31,10 @@ class FakeMessage:
         self.answers: list[tuple[str, object | None]] = []
 
     async def answer(
-        self, text: str, reply_markup=None, parse_mode=None  # type: ignore[no-untyped-def]
+        self,
+        text: str,
+        reply_markup=None,
+        parse_mode=None,  # type: ignore[no-untyped-def]
     ) -> None:
         """Capture response text and markup."""
 
@@ -47,7 +50,10 @@ async def test_start_command_sends_role_keyboard() -> None:
 
     assert message.answers
     assert "🎉 Добро пожаловать в UMC!" in message.answers[0][0]
-    assert "Мы помогаем рекламодателям быстро находить подходящих блогеров" in message.answers[0][0]
+    assert (
+        "Мы помогаем рекламодателям быстро находить подходящих блогеров"
+        in message.answers[0][0]
+    )
     assert "Выберите подходящий вариант ниже:" in message.answers[0][0]
     keyboard = message.answers[0][1]
     assert keyboard is not None
@@ -105,5 +111,3 @@ async def test_choose_role_advertiser_response() -> None:
     await choose_role(message, service)
     assert message.answers
     assert "register as an advertiser" in message.answers[-1][0]
-
-
