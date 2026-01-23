@@ -46,10 +46,9 @@ async def test_start_command_sends_role_keyboard() -> None:
     await start_command(message)
 
     assert message.answers
-    assert "Что может делать этот бот?" in message.answers[0][0]
-    assert "UMC — сервис по рекламе у блогеров" in message.answers[0][0]
-    assert "Если вы блогер" in message.answers[0][0]
-    assert "Если вы бизнес" in message.answers[0][0]
+    assert "🎉 Добро пожаловать в UMC!" in message.answers[0][0]
+    assert "Мы помогаем рекламодателям быстро находить подходящих блогеров" in message.answers[0][0]
+    assert "Выберите подходящий вариант ниже:" in message.answers[0][0]
     keyboard = message.answers[0][1]
     assert keyboard is not None
     assert keyboard.keyboard == _role_keyboard().keyboard
@@ -89,7 +88,7 @@ async def test_choose_role_without_user() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    message = FakeMessage(text="Я рекламодатель", user=None)
+    message = FakeMessage(text="Хочу заказать рекламу", user=None)
 
     await choose_role(message, service)
     assert service.get_user("0", MessengerType.TELEGRAM) is None
@@ -101,8 +100,10 @@ async def test_choose_role_advertiser_response() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    message = FakeMessage(text="Я рекламодатель", user=FakeUser(99, None, "Ann"))
+    message = FakeMessage(text="Хочу заказать рекламу", user=FakeUser(99, None, "Ann"))
 
     await choose_role(message, service)
     assert message.answers
     assert "register as an advertiser" in message.answers[-1][0]
+
+

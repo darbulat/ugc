@@ -17,15 +17,12 @@ async def start_command(message: Message) -> None:
     """Handle the /start command."""
 
     response_text = (
-        "<b>Что может делать этот бот?</b>\n\n"
-        "UMC — сервис по рекламе у блогеров.\n"
-        "Если вы блогер — получите доступ к предложениям от рекламодателей.\n"
-        "Если вы бизнес — подберём инфлюенсеров под ваш продукт.\n\n"
-        "📌 Данные нужны один раз — чтобы мы предлагали только то, что подходит."
+        "🎉 Добро пожаловать в UMC!\n\n"
+        "Мы помогаем рекламодателям быстро находить подходящих блогеров, "
+        "а блогерам — получать релевантные рекламные предложения.\n\n"
+        "Выберите подходящий вариант ниже:"
     )
-    await message.answer(
-        response_text, reply_markup=_role_keyboard(), parse_mode="HTML"
-    )
+    await message.answer(response_text, reply_markup=_role_keyboard())
 
 
 @router.message(Command("role"))
@@ -33,18 +30,15 @@ async def role_command(message: Message) -> None:
     """Handle the /role command for role switching."""
 
     response_text = (
-        "<b>Что может делать этот бот?</b>\n\n"
-        "UMC — сервис по рекламе у блогеров.\n"
-        "Если вы блогер — получите доступ к предложениям от рекламодателей.\n"
-        "Если вы бизнес — подберём инфлюенсеров под ваш продукт.\n\n"
-        "📌 Данные нужны один раз — чтобы мы предлагали только то, что подходит."
+        "🎉 Добро пожаловать в UMC!\n\n"
+        "Мы помогаем рекламодателям быстро находить подходящих блогеров, "
+        "а блогерам — получать релевантные рекламные предложения.\n\n"
+        "Выберите подходящий вариант ниже:"
     )
-    await message.answer(
-        response_text, reply_markup=_role_keyboard(), parse_mode="HTML"
-    )
+    await message.answer(response_text, reply_markup=_role_keyboard())
 
 
-@router.message(lambda msg: msg.text in {"Я блогер", "Я рекламодатель"})
+@router.message(lambda msg: msg.text in {"Я блогер", "Хочу заказать рекламу"})
 async def choose_role(message: Message, user_role_service: UserRoleService) -> None:
     """Persist selected role and guide the user."""
 
@@ -53,14 +47,15 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
 
     external_id = str(message.from_user.id)
     username = message.from_user.username or message.from_user.first_name or "user"
-    is_blogger = message.text == "Я блогер"
+    text = message.text or ""
+
     user_role_service.set_user(
         external_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
         username=username,
     )
 
-    if is_blogger:
+    if text == "Я блогер":
         await message.answer(
             "Role saved. To register as a blogger, send /register.",
             reply_markup=ReplyKeyboardMarkup(
@@ -73,10 +68,12 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
         )
         return
 
-    await message.answer(
-        "Role saved. To register as an advertiser, send /register_advertiser.",
-        reply_markup=advertiser_menu_keyboard(),
-    )
+    if text == "Хочу заказать рекламу":
+        await message.answer(
+            "Role saved. To register as an advertiser, send /register_advertiser.",
+            reply_markup=advertiser_menu_keyboard(),
+        )
+        return
 
 
 def _role_keyboard() -> ReplyKeyboardMarkup:
@@ -85,7 +82,7 @@ def _role_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Я блогер")],
-            [KeyboardButton(text="Я рекламодатель")],
+            [KeyboardButton(text="Хочу заказать рекламу")],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,
