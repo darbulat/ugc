@@ -249,7 +249,7 @@ def test_verification_instruction_format() -> None:
     )
     assert "3️⃣ Дождитесь автоматического подтверждения" in instruction
     assert f"Ваш код: {code}" in instruction
-    assert f"Admin Instagram: @{admin_username}" in instruction
+    assert f"Admin Instagram: {admin_username}" in instruction
     assert "Код действует 15 минут" in instruction
     assert "запросить новый код" in instruction
 

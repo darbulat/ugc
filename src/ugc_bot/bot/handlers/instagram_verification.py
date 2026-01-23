@@ -87,7 +87,7 @@ def _verification_instruction(code: str, admin_instagram_username: str) -> str:
         "2️⃣ Отправьте его в личные сообщения (Direct) Instagram-аккаунта администратора\n"
         "3️⃣ Дождитесь автоматического подтверждения\n\n"
         f"Ваш код: {code}\n\n"
-        f"Admin Instagram: @{admin_instagram_username}\n\n"
+        f"Admin Instagram: {admin_instagram_username}\n\n"
         "⚠️ Код действует 15 минут. После истечения времени нужно будет "
         "запросить новый код."
     )
