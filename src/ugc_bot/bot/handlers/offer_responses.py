@@ -110,8 +110,10 @@ async def handle_offer_response(
         # Send security warning
         await callback.message.answer(BLOGGER_RESPONSE_WARNING)
 
-    await _maybe_send_contacts_and_close(
+    # Send contact immediately after each response
+    await _send_contact_immediately(
         order_id=order_id,
+        blogger_id=user.user_id,
         offer_response_service=offer_response_service,
         user_role_service=user_role_service,
         profile_service=profile_service,
@@ -119,64 +121,109 @@ async def handle_offer_response(
         bot=callback.message.bot if callback.message else None,
     )
 
+    # Close order if limit reached
+    await _maybe_close_order(
+        order_id=order_id,
+        offer_response_service=offer_response_service,
+    )
 
-async def _maybe_send_contacts_and_close(
+
+async def _send_contact_immediately(
     order_id: UUID,
+    blogger_id: UUID,
     offer_response_service: OfferResponseService,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     interaction_service: InteractionService | None,
     bot,
-    metrics_collector=None,
 ) -> None:
-    """Send contacts to advertiser and close order when limit reached."""
+    """Send contact to advertiser immediately after each response."""
 
     order = offer_response_service.order_repo.get_by_id(order_id)
     if order is None:
         return
     if order.status != OrderStatus.ACTIVE:
         return
-    if (
-        offer_response_service.response_repo.count_by_order(order_id)
-        < order.bloggers_needed
-    ):
+
+    # Get blogger info
+    user = user_role_service.get_user_by_id(blogger_id)
+    profile = profile_service.get_blogger_profile(blogger_id)
+    if user is None or profile is None:
+        logger.warning(
+            "Cannot send contact: user or profile not found",
+            extra={"order_id": order_id, "blogger_id": blogger_id},
+        )
         return
 
-    responses = offer_response_service.response_repo.list_by_order(order_id)
-    contacts: list[str] = []
-    for response in responses:
-        user = user_role_service.get_user_by_id(response.blogger_id)
-        profile = profile_service.get_blogger_profile(response.blogger_id)
-        if user is None or profile is None:
-            continue
-        handle = f"@{user.username}" if user.username else user.external_id
-        contacts.append(
-            f"{handle} | Instagram: {profile.instagram_url} | Цена: {profile.price}"
-        )
+    # Format contact info
+    handle = f"@{user.username}" if user.username else user.external_id
+    contact_text = (
+        f"Новый отклик по заказу #{order_id}:\n"
+        f"Ник: {handle}\n"
+        f"Telegram: {user.external_id}\n"
+        f"Instagram: {profile.instagram_url}\n"
+        f"Цена: {profile.price}\n"
+        f"Статус: {'Подтверждён' if profile.confirmed else 'Не подтверждён'}"
+    )
 
-    if contacts:
-        advertiser = user_role_service.get_user_by_id(order.advertiser_id)
-        if advertiser and bot and advertiser.external_id.isdigit():
-            await bot.send_message(
-                chat_id=int(advertiser.external_id),
-                text="Контакты блогеров:\n" + "\n".join(contacts),
-            )
-            # Send security warning
+    # Send to advertiser
+    advertiser = user_role_service.get_user_by_id(order.advertiser_id)
+    if advertiser and bot and advertiser.external_id.isdigit():
+        await bot.send_message(
+            chat_id=int(advertiser.external_id),
+            text=contact_text,
+        )
+        # Send security warning only on first contact
+        response_count = offer_response_service.response_repo.count_by_order(order_id)
+        if response_count == 1:
             await bot.send_message(
                 chat_id=int(advertiser.external_id),
                 text=ADVERTISER_CONTACTS_WARNING,
                 parse_mode="Markdown",
             )
 
-    # Create interactions for feedback tracking
+    # Create interaction for feedback tracking (72 hour timer starts)
     if interaction_service:
-        for response in responses:
-            interaction_service.create_for_contacts_sent(
-                order_id=order.order_id,
-                blogger_id=response.blogger_id,
-                advertiser_id=order.advertiser_id,
-            )
+        interaction_service.create_for_contacts_sent(
+            order_id=order.order_id,
+            blogger_id=blogger_id,
+            advertiser_id=order.advertiser_id,
+        )
 
+    # Update contacts_sent_at timestamp
+    updated_order = Order(
+        order_id=order.order_id,
+        advertiser_id=order.advertiser_id,
+        product_link=order.product_link,
+        offer_text=order.offer_text,
+        ugc_requirements=order.ugc_requirements,
+        barter_description=order.barter_description,
+        price=order.price,
+        bloggers_needed=order.bloggers_needed,
+        status=order.status,
+        created_at=order.created_at,
+        contacts_sent_at=datetime.now(timezone.utc),
+    )
+    offer_response_service.order_repo.save(updated_order)
+
+
+async def _maybe_close_order(
+    order_id: UUID,
+    offer_response_service: OfferResponseService,
+) -> None:
+    """Close order when limit of responses is reached."""
+
+    order = offer_response_service.order_repo.get_by_id(order_id)
+    if order is None:
+        return
+    if order.status != OrderStatus.ACTIVE:
+        return
+
+    response_count = offer_response_service.response_repo.count_by_order(order_id)
+    if response_count < order.bloggers_needed:
+        return
+
+    # Close order when limit reached
     closed = Order(
         order_id=order.order_id,
         advertiser_id=order.advertiser_id,
@@ -188,6 +235,6 @@ async def _maybe_send_contacts_and_close(
         bloggers_needed=order.bloggers_needed,
         status=OrderStatus.CLOSED,
         created_at=order.created_at,
-        contacts_sent_at=datetime.now(timezone.utc),
+        contacts_sent_at=order.contacts_sent_at,  # Keep the last contacts_sent_at
     )
     offer_response_service.order_repo.save(closed)

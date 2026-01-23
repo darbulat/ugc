@@ -10,7 +10,8 @@ from ugc_bot.application.services.offer_response_service import OfferResponseSer
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
-    _maybe_send_contacts_and_close,
+    _maybe_close_order,
+    _send_contact_immediately,
     handle_offer_response,
 )
 from ugc_bot.domain.entities import BloggerProfile, Order, OrderResponse, User
@@ -102,8 +103,8 @@ def _add_blogger_profile(
 
 
 @pytest.mark.asyncio
-async def test_contacts_sent_and_order_closed() -> None:
-    """Send contacts and close order when limit reached."""
+async def test_contact_sent_immediately() -> None:
+    """Send contact immediately after each response."""
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
@@ -147,7 +148,7 @@ async def test_contacts_sent_and_order_closed() -> None:
         ugc_requirements=None,
         barter_description=None,
         price=1000.0,
-        bloggers_needed=1,
+        bloggers_needed=2,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
@@ -163,8 +164,9 @@ async def test_contacts_sent_and_order_closed() -> None:
     )
 
     bot = FakeMessage()
-    await _maybe_send_contacts_and_close(
+    await _send_contact_immediately(
         order_id=order.order_id,
+        blogger_id=blogger.user_id,
         offer_response_service=response_service,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -172,11 +174,81 @@ async def test_contacts_sent_and_order_closed() -> None:
         bot=bot,
     )
 
+    # Check contact was sent
+    assert any("Новый отклик по заказу" in answer for answer in bot.answers)
+    assert any("blogger" in answer for answer in bot.answers)
+    assert any("Instagram:" in answer for answer in bot.answers)
+
+    # Check order is still active (not closed yet)
+    updated = order_repo.get_by_id(order.order_id)
+    assert updated is not None
+    assert updated.status == OrderStatus.ACTIVE
+    assert updated.contacts_sent_at is not None
+
+    # Check interaction was created
+    interaction = interaction_repo.get_by_participants(
+        order_id=order.order_id,
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser.user_id,
+    )
+    assert interaction is not None
+    assert interaction.blogger_id == blogger.user_id
+    assert interaction.advertiser_id == advertiser.user_id
+
+
+@pytest.mark.asyncio
+async def test_order_closed_when_limit_reached() -> None:
+    """Close order when limit of responses is reached."""
+
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    response_service = OfferResponseService(
+        order_repo=order_repo, response_repo=response_repo
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000744"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000745"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=datetime.now(timezone.utc),
+    )
+    order_repo.save(order)
+
+    # Add responses up to limit
+    blogger1 = UUID("00000000-0000-0000-0000-000000000746")
+    blogger2 = UUID("00000000-0000-0000-0000-000000000747")
+    response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000748"),
+            order_id=order.order_id,
+            blogger_id=blogger1,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+    response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000749"),
+            order_id=order.order_id,
+            blogger_id=blogger2,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    await _maybe_close_order(
+        order_id=order.order_id,
+        offer_response_service=response_service,
+    )
+
     updated = order_repo.get_by_id(order.order_id)
     assert updated is not None
     assert updated.status == OrderStatus.CLOSED
-    assert updated.contacts_sent_at is not None
-    assert any("Контакты блогеров" in answer for answer in bot.answers)
 
 
 @pytest.mark.asyncio
@@ -790,7 +862,7 @@ async def test_offer_response_handler_exception() -> None:
 
 
 @pytest.mark.asyncio
-async def test_maybe_send_contacts_order_not_found() -> None:
+async def test_send_contact_order_not_found() -> None:
     """Handle missing order gracefully."""
 
     user_repo = InMemoryUserRepository()
@@ -806,8 +878,9 @@ async def test_maybe_send_contacts_order_not_found() -> None:
     profile_service = _profile_service(user_repo, blogger_repo)
 
     bot = FakeMessage()
-    await _maybe_send_contacts_and_close(
+    await _send_contact_immediately(
         order_id=UUID("00000000-0000-0000-0000-000000000999"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001000"),
         offer_response_service=response_service,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -819,7 +892,7 @@ async def test_maybe_send_contacts_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_maybe_send_contacts_order_not_active() -> None:
+async def test_send_contact_order_not_active() -> None:
     """Skip sending contacts for inactive orders."""
 
     user_repo = InMemoryUserRepository()
@@ -833,6 +906,18 @@ async def test_maybe_send_contacts_order_not_active() -> None:
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
+
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000802"),
+        external_id="30",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(blogger)
+    _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000800"),
@@ -850,8 +935,9 @@ async def test_maybe_send_contacts_order_not_active() -> None:
     order_repo.save(order)
 
     bot = FakeMessage()
-    await _maybe_send_contacts_and_close(
+    await _send_contact_immediately(
         order_id=order.order_id,
+        blogger_id=blogger.user_id,
         offer_response_service=response_service,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -915,8 +1001,9 @@ async def test_maybe_send_contacts_missing_user_or_profile() -> None:
     )
 
     bot = FakeMessage()
-    await _maybe_send_contacts_and_close(
+    await _send_contact_immediately(
         order_id=order.order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000999"),
         offer_response_service=response_service,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -924,7 +1011,5 @@ async def test_maybe_send_contacts_missing_user_or_profile() -> None:
         bot=bot,
     )
 
-    # Should still close order but skip missing blogger
-    updated = order_repo.get_by_id(order.order_id)
-    assert updated is not None
-    assert updated.status == OrderStatus.CLOSED
+    # Contact should not be sent when user/profile is missing
+    assert not bot.answers
