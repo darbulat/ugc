@@ -109,7 +109,12 @@ async def test_start_verification_requires_role() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service, _fake_config()
+        message,
+        state,
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
     )
 
     assert message.answers
@@ -139,7 +144,12 @@ async def test_start_verification_user_not_found() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service, _fake_config()
+        message,
+        state,
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
     )
 
     assert message.answers
@@ -173,7 +183,12 @@ async def test_start_verification_blocked_user() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service, _fake_config()
+        message,
+        state,
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
     )
 
     assert message.answers
@@ -207,7 +222,12 @@ async def test_start_verification_paused_user() -> None:
     state = FakeFSMContext()
 
     await start_verification(
-        message, state, user_service, profile_service, verification_service, _fake_config()
+        message,
+        state,
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
     )
 
     assert message.answers
@@ -218,12 +238,15 @@ def test_verification_instruction_format() -> None:
     """Verify instruction text matches TZ requirements."""
     code = "ABC123XY"
     admin_username = "admin_ugc_bot"
-    
+
     instruction = _verification_instruction(code, admin_username)
-    
+
     assert "Чтобы подтвердить, что Instagram-аккаунт принадлежит вам" in instruction
     assert "1️⃣ Скопируйте код ниже" in instruction
-    assert "2️⃣ Отправьте его в личные сообщения (Direct) Instagram-аккаунта администратора" in instruction
+    assert (
+        "2️⃣ Отправьте его в личные сообщения (Direct) Instagram-аккаунта администратора"
+        in instruction
+    )
     assert "3️⃣ Дождитесь автоматического подтверждения" in instruction
     assert f"Ваш код: {code}" in instruction
     assert f"Admin Instagram: @{admin_username}" in instruction

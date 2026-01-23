@@ -191,10 +191,10 @@ async def _process_webhook_events(
     config: AppConfig,
 ) -> None:
     """Process webhook events from Instagram.
-    
+
     According to Instagram Webhooks documentation:
     https://developers.facebook.com/docs/instagram-platform/webhooks
-    
+
     Payload structure for messages:
     {
       "object": "instagram",
@@ -220,7 +220,10 @@ async def _process_webhook_events(
     }
     """
     if payload.get("object") != "instagram":
-        logger.debug("Ignoring non-Instagram webhook event", extra={"object": payload.get("object")})
+        logger.debug(
+            "Ignoring non-Instagram webhook event",
+            extra={"object": payload.get("object")},
+        )
         return
 
     entries = payload.get("entry", [])
@@ -230,8 +233,7 @@ async def _process_webhook_events(
 
     for entry in entries:
         page_id = entry.get("id")
-        entry_time = entry.get("time")
-        
+
         # Process messaging events (messages field)
         messaging = entry.get("messaging", [])
         if not messaging:
@@ -242,7 +244,7 @@ async def _process_webhook_events(
             # Skip echo messages (messages sent via API)
             is_echo = event.get("is_echo", False)
             is_self = event.get("is_self", False)
-            
+
             if is_echo or is_self:
                 logger.debug(
                     "Skipping echo/self message",
@@ -258,10 +260,12 @@ async def _process_webhook_events(
 
             recipient = event.get("recipient", {})
             recipient_id = recipient.get("id")
-            
+
             message = event.get("message", {})
             if not message:
-                logger.debug("No message object in event", extra={"sender_id": sender_id})
+                logger.debug(
+                    "No message object in event", extra={"sender_id": sender_id}
+                )
                 continue
 
             # Extract message text
