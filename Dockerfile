@@ -9,6 +9,7 @@ COPY pyproject.toml /app/
 COPY alembic.ini /app/
 COPY src /app/src
 COPY config /app/config
+COPY scripts /app/scripts
 RUN pip install --upgrade pip && pip install -e .
 
 CMD ["python", "-m", "ugc_bot.app"]
