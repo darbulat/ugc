@@ -16,9 +16,11 @@ router = Router()
 async def start_command(message: Message) -> None:
     """Handle the /start command."""
 
-    user_name = message.from_user.first_name if message.from_user else "there"
     response_text = (
-        f"Hi {user_name}! Choose your role:\n" "• Я блогер\n" "• Я рекламодатель"
+        "UMC — сервис по рекламе у блогеров.\n"
+        "Если вы блогер — получите доступ к предложениям от рекламодателей.\n"
+        "Если вы бизнес — подберём инфлюенсеров под ваш продукт.\n\n"
+        "📌 Данные нужны один раз — чтобы мы предлагали только то, что подходит."
     )
     await message.answer(response_text, reply_markup=_role_keyboard())
 
@@ -27,7 +29,13 @@ async def start_command(message: Message) -> None:
 async def role_command(message: Message) -> None:
     """Handle the /role command for role switching."""
 
-    await message.answer("Choose your role:", reply_markup=_role_keyboard())
+    response_text = (
+        "UMC — сервис по рекламе у блогеров.\n"
+        "Если вы блогер — получите доступ к предложениям от рекламодателей.\n"
+        "Если вы бизнес — подберём инфлюенсеров под ваш продукт.\n\n"
+        "📌 Данные нужны один раз — чтобы мы предлагали только то, что подходит."
+    )
+    await message.answer(response_text, reply_markup=_role_keyboard())
 
 
 @router.message(lambda msg: msg.text in {"Я блогер", "Я рекламодатель"})

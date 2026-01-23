@@ -44,7 +44,9 @@ async def test_start_command_sends_role_keyboard() -> None:
     await start_command(message)
 
     assert message.answers
-    assert "Choose your role" in message.answers[0][0]
+    assert "UMC — сервис по рекламе у блогеров" in message.answers[0][0]
+    assert "Если вы блогер" in message.answers[0][0]
+    assert "Если вы бизнес" in message.answers[0][0]
     keyboard = message.answers[0][1]
     assert keyboard is not None
     assert keyboard.keyboard == _role_keyboard().keyboard
