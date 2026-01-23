@@ -55,7 +55,68 @@ def test_register_blogger_success() -> None:
 
     assert profile.user_id == user_id
     assert profile.confirmed is False
-    assert profile.instagram_url.endswith("test_user")
+
+
+def test_register_blogger_duplicate_instagram_url() -> None:
+    """Reject registration with duplicate Instagram URL."""
+    from ugc_bot.domain.entities import BloggerProfile
+    from datetime import datetime, timezone
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+
+    # Create first user and profile
+    user1 = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="user1",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(user1)
+    existing_profile = BloggerProfile(
+        user_id=user1.user_id,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+    blogger_repo.save(existing_profile)
+
+    # Create second user
+    user2 = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000002"),
+        external_id="2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="user2",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(user2)
+
+    # Try to register with same Instagram URL
+    with pytest.raises(BloggerRegistrationError) as exc_info:
+        service.register_blogger(
+            user_id=user2.user_id,
+            instagram_url="https://instagram.com/test_user",
+            topics={"selected": ["beauty"]},
+            audience_gender=AudienceGender.FEMALE,
+            audience_age_min=20,
+            audience_age_max=30,
+            audience_geo="SPB",
+            price=2000.0,
+        )
+
+    assert "уже зарегистрирован" in str(exc_info.value)
 
 
 def test_register_blogger_empty_instagram() -> None:

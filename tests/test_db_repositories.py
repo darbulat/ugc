@@ -212,6 +212,39 @@ def test_blogger_profile_repository_save() -> None:
     assert session.committed is True
 
 
+def test_blogger_profile_repository_get_by_instagram_url() -> None:
+    """Fetch blogger profile by Instagram URL."""
+
+    model = BloggerProfileModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000200"),
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))
+    profile = repo.get_by_instagram_url("https://instagram.com/test_user")
+
+    assert profile is not None
+    assert profile.instagram_url == "https://instagram.com/test_user"
+    assert profile.user_id == UUID("00000000-0000-0000-0000-000000000200")
+
+
+def test_blogger_profile_repository_get_by_instagram_url_not_found() -> None:
+    """Return None when Instagram URL not found."""
+
+    repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(None))
+    profile = repo.get_by_instagram_url("https://instagram.com/nonexistent")
+
+    assert profile is None
+
+
 def test_blogger_profile_repository_get() -> None:
     """Fetch blogger profile by user id."""
 

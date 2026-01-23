@@ -164,10 +164,16 @@ async def test_start_registration_paused_user() -> None:
 async def test_instagram_validation_in_handler() -> None:
     """Validate Instagram URL in handler."""
 
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
     message = FakeMessage(text="bad_url", user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await handle_instagram(message, state)
+    await handle_instagram(message, state, registration_service)
 
     assert message.answers
     assert "Неверный формат" in message.answers[0]
@@ -177,13 +183,19 @@ async def test_instagram_validation_in_handler() -> None:
 async def test_instagram_success_in_handler() -> None:
     """Accept valid Instagram URL."""
 
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
     message = FakeMessage(
         text="https://instagram.com/test_user",
         user=FakeUser(1, "user", "User"),
     )
     state = FakeFSMContext()
 
-    await handle_instagram(message, state)
+    await handle_instagram(message, state, registration_service)
 
     assert state._data["instagram_url"].endswith("test_user")
 
@@ -360,6 +372,54 @@ async def test_handle_agreements_requires_consent() -> None:
 
     assert message.answers
     assert "Нужно согласие" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_instagram_duplicate_url() -> None:
+    """Reject duplicate Instagram URL."""
+    from ugc_bot.domain.entities import BloggerProfile
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    # Create existing profile with Instagram URL
+    existing_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000100"),
+        external_id="100",
+        messenger_type=MessengerType.TELEGRAM,
+        username="existing",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(existing_user)
+    existing_profile = BloggerProfile(
+        user_id=existing_user.user_id,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+    blogger_repo.save(existing_profile)
+
+    # Try to register with same Instagram URL
+    message = FakeMessage(
+        text="https://instagram.com/test_user", user=FakeUser(101, "new", "New")
+    )
+    state = FakeFSMContext()
+
+    await handle_instagram(message, state, registration_service)
+
+    assert message.answers
+    assert "уже зарегистрирован" in message.answers[0]
 
 
 @pytest.mark.asyncio

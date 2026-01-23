@@ -40,6 +40,14 @@ class BloggerRegistrationService:
         if not instagram_url:
             raise BloggerRegistrationError("Instagram URL is required.")
 
+        # Check if Instagram URL is already taken
+        existing_profile = self.blogger_repo.get_by_instagram_url(instagram_url)
+        if existing_profile is not None:
+            raise BloggerRegistrationError(
+                "Этот Instagram аккаунт уже зарегистрирован. "
+                "Пожалуйста, используйте другой аккаунт."
+            )
+
         audience_geo = audience_geo.strip()
         if not audience_geo:
             raise BloggerRegistrationError("Audience geo is required.")

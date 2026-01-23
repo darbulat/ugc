@@ -98,7 +98,11 @@ async def handle_name(message: Message, state: FSMContext) -> None:
 
 
 @router.message(BloggerRegistrationStates.instagram)
-async def handle_instagram(message: Message, state: FSMContext) -> None:
+async def handle_instagram(
+    message: Message,
+    state: FSMContext,
+    blogger_registration_service: BloggerRegistrationService,
+) -> None:
     """Store Instagram URL."""
 
     instagram_url = (message.text or "").strip()
@@ -108,6 +112,17 @@ async def handle_instagram(message: Message, state: FSMContext) -> None:
     if not _INSTAGRAM_URL_REGEX.match(instagram_url):
         await message.answer(
             "Неверный формат ссылки Instagram. Пример: https://instagram.com/name"
+        )
+        return
+
+    # Check if Instagram URL is already taken
+    existing_profile = blogger_registration_service.blogger_repo.get_by_instagram_url(
+        instagram_url
+    )
+    if existing_profile is not None:
+        await message.answer(
+            "Этот Instagram аккаунт уже зарегистрирован. "
+            "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
         )
         return
 
@@ -264,7 +279,23 @@ async def handle_agreements(
         )
         await message.answer(f"Ошибка регистрации: {exc}")
         return
-    except Exception:
+    except Exception as exc:
+        # Check for unique constraint violation
+        error_str = str(exc)
+        if "UniqueViolation" in error_str and "instagram_url" in error_str:
+            logger.warning(
+                "Instagram URL already exists",
+                extra={
+                    "user_id": data.get("user_id"),
+                    "instagram_url": data.get("instagram_url"),
+                },
+            )
+            await message.answer(
+                "Этот Instagram аккаунт уже зарегистрирован. "
+                "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
+            )
+            return
+
         logger.exception(
             "Unexpected error during blogger registration",
             extra={"user_id": data.get("user_id")},

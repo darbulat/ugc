@@ -55,6 +55,10 @@ class BloggerProfileRepository(ABC):
         """Fetch blogger profile by user id."""
 
     @abstractmethod
+    def get_by_instagram_url(self, instagram_url: str) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by Instagram URL."""
+
+    @abstractmethod
     def save(self, profile: BloggerProfile) -> None:
         """Persist blogger profile."""
 

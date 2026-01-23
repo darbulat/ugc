@@ -87,6 +87,14 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
 
         return self.profiles.get(user_id)
 
+    def get_by_instagram_url(self, instagram_url: str) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by Instagram URL."""
+
+        for profile in self.profiles.values():
+            if profile.instagram_url == instagram_url:
+                return profile
+        return None
+
     def save(self, profile: BloggerProfile) -> None:
         """Persist blogger profile in memory."""
 

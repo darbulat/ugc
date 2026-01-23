@@ -113,6 +113,17 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
             ).scalar_one_or_none()
             return _to_blogger_profile_entity(result) if result else None
 
+    def get_by_instagram_url(self, instagram_url: str) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by Instagram URL."""
+
+        with self.session_factory() as session:
+            result = session.execute(
+                select(BloggerProfileModel).where(
+                    BloggerProfileModel.instagram_url == instagram_url
+                )
+            ).scalar_one_or_none()
+            return _to_blogger_profile_entity(result) if result else None
+
     def save(self, profile: BloggerProfile) -> None:
         """Persist blogger profile."""
 
