@@ -190,56 +190,98 @@ async def _process_webhook_events(
     verification_service: InstagramVerificationService,
     config: AppConfig,
 ) -> None:
-    """Process webhook events from Instagram."""
-    # Instagram webhook payload structure:
-    # {
-    #   "object": "instagram",
-    #   "entry": [
-    #     {
-    #       "id": "<PAGE_ID>",
-    #       "time": 1234567890,
-    #       "messaging": [
-    #         {
-    #           "sender": {"id": "<INSTAGRAM_USER_ID>"},
-    #           "recipient": {"id": "<PAGE_ID>"},
-    #           "timestamp": 1234567890,
-    #           "message": {
-    #             "mid": "<MESSAGE_ID>",
-    #             "text": "ABC123XY"
-    #           }
-    #         }
-    #       ]
-    #     }
-    #   ]
-    # }
-
+    """Process webhook events from Instagram.
+    
+    According to Instagram Webhooks documentation:
+    https://developers.facebook.com/docs/instagram-platform/webhooks
+    
+    Payload structure for messages:
+    {
+      "object": "instagram",
+      "entry": [
+        {
+          "id": "<PAGE_ID>",
+          "time": 1234567890,
+          "messaging": [
+            {
+              "sender": {"id": "<INSTAGRAM_USER_ID>"},
+              "recipient": {"id": "<PAGE_ID>"},
+              "timestamp": 1234567890,
+              "message": {
+                "mid": "<MESSAGE_ID>",
+                "text": "ABC123XY"
+              },
+              "is_echo": false,  # True if message sent via API
+              "is_self": false   # True if message from page to itself
+            }
+          ]
+        }
+      ]
+    }
+    """
     if payload.get("object") != "instagram":
-        logger.debug("Ignoring non-Instagram webhook event")
+        logger.debug("Ignoring non-Instagram webhook event", extra={"object": payload.get("object")})
         return
 
     entries = payload.get("entry", [])
-    for entry in entries:
-        messaging = entry.get("messaging", [])
-        for event in messaging:
-            message = event.get("message", {})
-            if not message:
-                continue
+    if not entries:
+        logger.debug("No entries in webhook payload")
+        return
 
-            text = message.get("text", "").strip()
-            if not text:
+    for entry in entries:
+        page_id = entry.get("id")
+        entry_time = entry.get("time")
+        
+        # Process messaging events (messages field)
+        messaging = entry.get("messaging", [])
+        if not messaging:
+            logger.debug("No messaging events in entry", extra={"page_id": page_id})
+            continue
+
+        for event in messaging:
+            # Skip echo messages (messages sent via API)
+            is_echo = event.get("is_echo", False)
+            is_self = event.get("is_self", False)
+            
+            if is_echo or is_self:
+                logger.debug(
+                    "Skipping echo/self message",
+                    extra={"is_echo": is_echo, "is_self": is_self},
+                )
                 continue
 
             sender = event.get("sender", {})
             sender_id = sender.get("id")
             if not sender_id:
+                logger.debug("No sender ID in messaging event")
                 continue
 
-            # Try to verify code by Instagram sender ID
-            # We need to find the user by Instagram URL that matches this sender ID
-            # For now, we'll try to match by code and verify the Instagram URL later
+            recipient = event.get("recipient", {})
+            recipient_id = recipient.get("id")
+            
+            message = event.get("message", {})
+            if not message:
+                logger.debug("No message object in event", extra={"sender_id": sender_id})
+                continue
+
+            # Extract message text
+            text = message.get("text", "").strip()
+            if not text:
+                logger.debug("Message has no text", extra={"sender_id": sender_id})
+                continue
+
+            message_id = message.get("mid")
+            timestamp = event.get("timestamp")
+
             logger.info(
                 "Processing Instagram message",
-                extra={"sender_id": sender_id, "text": text[:10]},
+                extra={
+                    "sender_id": sender_id,
+                    "recipient_id": recipient_id,
+                    "message_id": message_id,
+                    "timestamp": timestamp,
+                    "text_preview": text[:20],
+                },
             )
 
             # Verify code by Instagram sender ID
@@ -253,14 +295,18 @@ async def _process_webhook_events(
                 if user_id:
                     logger.info(
                         "Instagram verification successful via webhook",
-                        extra={"sender_id": sender_id, "user_id": str(user_id)},
+                        extra={
+                            "sender_id": sender_id,
+                            "user_id": str(user_id),
+                            "message_id": message_id,
+                        },
                     )
                     # Send notification to user in Telegram
                     _notify_user_verification_success(user_id, config)
                 else:
                     logger.debug(
                         "Instagram verification failed - code not found or expired",
-                        extra={"sender_id": sender_id},
+                        extra={"sender_id": sender_id, "text_preview": text[:10]},
                     )
             except Exception as exc:
                 logger.warning(
