@@ -90,7 +90,9 @@ async def run_processor() -> None:
     """Run the outbox processor."""
 
     config = load_config()
-    configure_logging(config.log.log_level)
+    configure_logging(
+        config.log.log_level, json_format=config.log.log_format.lower() == "json"
+    )
 
     logger.info("Starting outbox processor")
 

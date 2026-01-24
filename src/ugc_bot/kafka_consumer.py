@@ -130,7 +130,9 @@ async def run_consumer() -> None:
     """Run Kafka consumer in a single event loop, processing messages asynchronously."""
 
     config = load_config()
-    configure_logging(config.log.log_level)
+    configure_logging(
+        config.log.log_level, json_format=config.log.log_format.lower() == "json"
+    )
     if not config.kafka.kafka_enabled:
         logger.info("Kafka consumer disabled by config")
         return

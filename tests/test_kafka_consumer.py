@@ -140,7 +140,9 @@ def test_main_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
         {"BOT_TOKEN": "token", "DATABASE_URL": "db", "KAFKA_ENABLED": False}
     )
     monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
-    monkeypatch.setattr("ugc_bot.kafka_consumer.configure_logging", lambda *_: None)
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.configure_logging", lambda *_, **__: None
+    )
 
     main()
 
@@ -162,7 +164,9 @@ async def test_run_consumer_database_url_missing(
         }
     )
     monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
-    monkeypatch.setattr("ugc_bot.kafka_consumer.configure_logging", lambda *_: None)
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.configure_logging", lambda *_, **__: None
+    )
     mock_logger = Mock()
     monkeypatch.setattr("ugc_bot.kafka_consumer.logger", mock_logger)
 
@@ -192,7 +196,9 @@ async def test_run_consumer_processes_activation_message(
         }
     )
     monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
-    monkeypatch.setattr("ugc_bot.kafka_consumer.configure_logging", lambda *_: None)
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.configure_logging", lambda *_, **__: None
+    )
 
     mock_offer = type("Offer", (), {})()
     mock_container = type("Container", (), {})()

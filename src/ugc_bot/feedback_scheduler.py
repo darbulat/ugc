@@ -164,7 +164,9 @@ def main() -> None:
     """Start feedback scheduler loop."""
 
     config = load_config()
-    configure_logging(config.log.log_level)
+    configure_logging(
+        config.log.log_level, json_format=config.log.log_format.lower() == "json"
+    )
     if not config.feedback.feedback_enabled:
         logger.info("Feedback scheduler disabled by config")
         return
