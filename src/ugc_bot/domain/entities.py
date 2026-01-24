@@ -29,6 +29,8 @@ class User:
     status: UserStatus
     issue_count: int
     created_at: datetime
+    instagram_url: Optional[str] = None
+    confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -37,7 +39,6 @@ class BloggerProfile:
 
     user_id: UUID
     instagram_url: str
-    confirmed: bool
     topics: dict
     audience_gender: AudienceGender
     audience_age_min: int

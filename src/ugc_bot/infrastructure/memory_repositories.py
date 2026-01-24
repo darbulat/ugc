@@ -102,10 +102,10 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
 
     def list_confirmed_user_ids(self) -> list[UUID]:
         """List confirmed blogger user ids."""
-
-        return [
-            profile.user_id for profile in self.profiles.values() if profile.confirmed
-        ]
+        # Note: In-memory implementation returns all blogger profile user_ids
+        # The actual confirmation check should be done at the service level using User.confirmed
+        # This is a limitation of the in-memory implementation
+        return [profile.user_id for profile in self.profiles.values()]
 
 
 @dataclass

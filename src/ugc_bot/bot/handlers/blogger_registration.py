@@ -304,10 +304,13 @@ async def handle_agreements(
         return
 
     await state.clear()
+    # Get updated user to check confirmed status
+    updated_user = user_role_service.get_user_by_id(user_id)
+    confirmed_status = updated_user.confirmed if updated_user else False
     await message.answer(
         "Профиль создан. Статус подтверждения Instagram: НЕ ПОДТВЕРЖДЁН.\n"
         f"Ваш Instagram: {profile.instagram_url}",
-        reply_markup=blogger_menu_keyboard(confirmed=profile.confirmed),
+        reply_markup=blogger_menu_keyboard(confirmed=confirmed_status),
     )
 
 

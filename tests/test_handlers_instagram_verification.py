@@ -153,7 +153,52 @@ async def test_start_verification_user_not_found() -> None:
     )
 
     assert message.answers
-    assert "Профиль блогера не заполнен" in message.answers[0]
+    assert (
+        "Instagram URL" in message.answers[0] or "профиль" in message.answers[0].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_verification_already_confirmed() -> None:
+    """Skip verification if user already has confirmed Instagram."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000733"),
+        external_id="7",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/test",
+        confirmed=True,  # Already confirmed
+    )
+    user_repo.save(user)
+    user_service = UserRoleService(user_repo=user_repo)
+    verification_service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+    profile_service = _profile_service(user_repo, blogger_repo)
+    message = FakeMessage(
+        text="Пройти верификацию", user=FakeUser(7, "blogger", "Blogger")
+    )
+    state = FakeFSMContext()
+
+    await start_verification(
+        message,
+        state,
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
+    )
+
+    assert message.answers
+    assert "уже подтвержден" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -272,7 +317,6 @@ async def test_start_verification_via_button() -> None:
     blogger_profile = BloggerProfile(
         user_id=user.user_id,
         instagram_url="https://instagram.com/test",
-        confirmed=False,
         topics={"selected": ["tech"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -282,6 +326,19 @@ async def test_start_verification_via_button() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     blogger_repo.save(blogger_profile)
+    # Update user with instagram_url
+    updated_user = User(
+        user_id=user.user_id,
+        external_id=user.external_id,
+        messenger_type=user.messenger_type,
+        username=user.username,
+        status=user.status,
+        issue_count=user.issue_count,
+        created_at=user.created_at,
+        instagram_url="https://instagram.com/test",
+        confirmed=False,
+    )
+    user_repo.save(updated_user)
 
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(

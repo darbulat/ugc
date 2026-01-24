@@ -43,7 +43,19 @@ class FakeProfileService:
         has_advertiser: bool,
         blogger_confirmed: bool = True,
     ) -> None:
-        self._user = user
+        # Update user with confirmed status
+        self._user = User(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url=user.instagram_url
+            or ("https://instagram.com/test" if has_blogger else None),
+            confirmed=blogger_confirmed if has_blogger else user.confirmed,
+        )
         self._has_blogger = has_blogger
         self._has_advertiser = has_advertiser
         self._blogger_confirmed = blogger_confirmed
@@ -57,7 +69,6 @@ class FakeProfileService:
         return BloggerProfile(
             user_id=user_id,
             instagram_url="https://instagram.com/test",
-            confirmed=self._blogger_confirmed,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,

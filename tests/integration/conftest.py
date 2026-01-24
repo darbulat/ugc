@@ -269,12 +269,14 @@ def create_test_blogger_profile(session):
             "audience_age_min": 18,
             "audience_age_max": 35,
             "audience_geo": "Russia",
-            "confirmation_code": "ABC123",
-            "confirmed": True,
+            "topics": {"selected": ["tech"]},
             "price": 5000.0,
             "updated_at": datetime.now(timezone.utc),
         }
         defaults.update(kwargs)
+        # Remove confirmed if present (it's now in User, not BloggerProfile)
+        defaults.pop("confirmed", None)
+        defaults.pop("confirmation_code", None)
 
         profile = BloggerProfile(user_id=user_id, **defaults)
         return profile

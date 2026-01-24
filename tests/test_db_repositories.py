@@ -197,7 +197,6 @@ def test_blogger_profile_repository_save() -> None:
     profile = BloggerProfile(
         user_id=UUID("00000000-0000-0000-0000-000000000113"),
         instagram_url="https://instagram.com/test",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -218,7 +217,6 @@ def test_blogger_profile_repository_get_by_instagram_url() -> None:
     model = BloggerProfileModel(
         user_id=UUID("00000000-0000-0000-0000-000000000200"),
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -251,7 +249,6 @@ def test_blogger_profile_repository_get() -> None:
     model = BloggerProfileModel(
         user_id=UUID("00000000-0000-0000-0000-000000000114"),
         instagram_url="https://instagram.com/test",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,

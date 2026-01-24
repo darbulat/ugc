@@ -165,6 +165,19 @@ async def test_order_creation_flow_new_advertiser() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
+    # Update user with confirmed Instagram
+    confirmed_user = User(
+        user_id=user.user_id,
+        external_id=user.external_id,
+        messenger_type=user.messenger_type,
+        username=user.username,
+        status=user.status,
+        issue_count=user.issue_count,
+        created_at=user.created_at,
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=True,
+    )
+    repo.save(confirmed_user)
     _add_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = _profile_service(repo, advertiser_repo)
 
@@ -191,6 +204,7 @@ async def test_order_creation_flow_new_advertiser() -> None:
     await handle_bloggers_needed(
         FakeMessage(text="3", user=FakeUser(5, "adv", "Adv"), bot=bot),
         state,
+        user_service,
         order_service,
         config,
         pricing_service,
@@ -218,6 +232,19 @@ async def test_order_creation_flow_with_barter() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
+    # Update user with confirmed Instagram
+    confirmed_user = User(
+        user_id=user.user_id,
+        external_id=user.external_id,
+        messenger_type=user.messenger_type,
+        username=user.username,
+        status=user.status,
+        issue_count=user.issue_count,
+        created_at=user.created_at,
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=True,
+    )
+    repo.save(confirmed_user)
     _add_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = _profile_service(repo, advertiser_repo)
     order_repo.save(
@@ -260,6 +287,7 @@ async def test_order_creation_flow_with_barter() -> None:
     await handle_bloggers_needed(
         FakeMessage(text="20", user=FakeUser(6, "adv", "Adv"), bot=bot),
         state,
+        user_service,
         order_service,
         config,
         pricing_service,
@@ -289,6 +317,8 @@ async def test_start_order_creation_blocked_user() -> None:
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
     )
     repo.save(user)
     user_service = UserRoleService(user_repo=repo)
@@ -301,6 +331,95 @@ async def test_start_order_creation_blocked_user() -> None:
     )
 
     assert "Заблокированные" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_start_order_creation_requires_verification() -> None:
+    """Require Instagram verification before order creation."""
+
+    repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_service = OrderService(
+        user_repo=repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=InMemoryOrderRepository(),
+    )
+    profile_service = _profile_service(repo, advertiser_repo)
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000702"),
+        external_id="8",
+        messenger_type=MessengerType.TELEGRAM,
+        username="unverified",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/unverified",
+        confirmed=False,  # Not verified
+    )
+    repo.save(user)
+    _add_advertiser_profile(advertiser_repo, user.user_id)
+    user_service = UserRoleService(user_repo=repo)
+
+    message = FakeMessage(text=None, user=FakeUser(8, "unverified", "Unverified"))
+    state = FakeFSMContext()
+
+    await start_order_creation(
+        message, state, user_service, profile_service, order_service
+    )
+
+    assert "подтвердить Instagram" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_bloggers_needed_requires_verification() -> None:
+    """Require Instagram verification before finalizing order creation."""
+
+    repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_service = OrderService(
+        user_repo=repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=InMemoryOrderRepository(),
+    )
+    user_service = UserRoleService(user_repo=repo)
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000703"),
+        external_id="9",
+        messenger_type=MessengerType.TELEGRAM,
+        username="unverified",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/unverified",
+        confirmed=False,  # Not verified
+    )
+    repo.save(user)
+    _add_advertiser_profile(advertiser_repo, user.user_id)
+
+    state = FakeFSMContext()
+    await state.update_data(
+        user_id=user.user_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        price=1000.0,
+    )
+
+    message = FakeMessage(text="3", user=None)
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    pricing_service = _pricing_service({3: 1500.0})
+
+    await handle_bloggers_needed(
+        message, state, user_service, order_service, config, pricing_service
+    )
+
+    assert message.answers
+    assert "подтвердить Instagram" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -326,6 +445,9 @@ async def test_bloggers_needed_limit_for_new_advertiser() -> None:
         }
     )
     pricing_service = _pricing_service({20: 5000.0})
-    await handle_bloggers_needed(message, state, order_service, config, pricing_service)
+    user_service = UserRoleService(user_repo=repo)
+    await handle_bloggers_needed(
+        message, state, user_service, order_service, config, pricing_service
+    )
 
     assert "NEW рекламодатели" in message.answers[0]

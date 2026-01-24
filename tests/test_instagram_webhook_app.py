@@ -149,6 +149,8 @@ def test_webhook_event_processing_success(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=None,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
     )
     user_repo.save(user)
 
@@ -156,7 +158,6 @@ def test_webhook_event_processing_success(
         BloggerProfile(
             user_id=user.user_id,
             instagram_url="https://instagram.com/test_user",
-            confirmed=False,
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -211,10 +212,10 @@ def test_webhook_event_processing_success(
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
-    # Verify profile was confirmed
-    profile = blogger_repo.get_by_user_id(user.user_id)
-    assert profile is not None
-    assert profile.confirmed is True
+    # Verify user was confirmed
+    updated_user = user_repo.get_by_id(user.user_id)
+    assert updated_user is not None
+    assert updated_user.confirmed is True
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")

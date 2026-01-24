@@ -11,6 +11,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
     handle_contact,
+    handle_instagram_url,
     start_advertiser_registration,
 )
 from ugc_bot.domain.entities import User
@@ -192,3 +193,124 @@ async def test_handle_contact_success() -> None:
     assert message.answers
     assert "Профиль рекламодателя создан" in message.answers[0]
     assert advertiser_repo.get_by_user_id(user.user_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_start_advertiser_registration_with_instagram_url() -> None:
+    """Skip Instagram URL step if user already has Instagram URL."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000722"),
+        external_id="13",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=False,
+    )
+    repo.save(user)
+    message = FakeMessage(text=None, user=FakeUser(13, "adv", "Adv"))
+    state = FakeFSMContext()
+
+    await start_advertiser_registration(message, state, service)
+
+    assert state._data["user_id"] is not None
+    assert "контактные данные" in message.answers[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_start_advertiser_registration_with_confirmed() -> None:
+    """Skip Instagram URL step if user already has confirmed Instagram."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000723"),
+        external_id="14",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=True,
+    )
+    repo.save(user)
+    message = FakeMessage(text=None, user=FakeUser(14, "adv", "Adv"))
+    state = FakeFSMContext()
+
+    await start_advertiser_registration(message, state, service)
+
+    assert state._data["user_id"] is not None
+    assert "контактные данные" in message.answers[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_instagram_url_success() -> None:
+    """Store Instagram URL and proceed to contact."""
+
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = user_service.set_user(
+        external_id="15",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    message = FakeMessage(
+        text="https://instagram.com/test", user=FakeUser(15, "adv", "Adv")
+    )
+    state = FakeFSMContext()
+    await state.update_data(user_id=user.user_id)
+
+    await handle_instagram_url(message, state, user_service)
+
+    assert state._data["instagram_url"] == "https://instagram.com/test"
+    assert "контактные данные" in message.answers[0].lower()
+    # Check user was updated with Instagram URL
+    updated_user = user_repo.get_by_id(user.user_id)
+    assert updated_user is not None
+    assert updated_user.instagram_url == "https://instagram.com/test"
+
+
+@pytest.mark.asyncio
+async def test_handle_instagram_url_invalid() -> None:
+    """Reject invalid Instagram URL."""
+
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = user_service.set_user(
+        external_id="16",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    message = FakeMessage(text="invalid_url", user=FakeUser(16, "adv", "Adv"))
+    state = FakeFSMContext()
+    await state.update_data(user_id=user.user_id)
+
+    await handle_instagram_url(message, state, user_service)
+
+    assert "корректный Instagram URL" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_instagram_url_empty() -> None:
+    """Reject empty Instagram URL."""
+
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = user_service.set_user(
+        external_id="17",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    message = FakeMessage(text="   ", user=FakeUser(17, "adv", "Adv"))
+    state = FakeFSMContext()
+    await state.update_data(user_id=user.user_id)
+
+    await handle_instagram_url(message, state, user_service)
+
+    assert "не может быть пустым" in message.answers[0]

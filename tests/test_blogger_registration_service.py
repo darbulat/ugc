@@ -54,7 +54,11 @@ def test_register_blogger_success() -> None:
     )
 
     assert profile.user_id == user_id
-    assert profile.confirmed is False
+    # Check that user has instagram_url and confirmed=False
+    user = user_repo.get_by_id(user_id)
+    assert user is not None
+    assert user.instagram_url == "https://instagram.com/test_user"
+    assert user.confirmed is False
 
 
 def test_register_blogger_duplicate_instagram_url() -> None:
@@ -80,7 +84,6 @@ def test_register_blogger_duplicate_instagram_url() -> None:
     existing_profile = BloggerProfile(
         user_id=user1.user_id,
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -90,6 +93,19 @@ def test_register_blogger_duplicate_instagram_url() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     blogger_repo.save(existing_profile)
+    # Update user with instagram_url
+    updated_user1 = User(
+        user_id=user1.user_id,
+        external_id=user1.external_id,
+        messenger_type=user1.messenger_type,
+        username=user1.username,
+        status=user1.status,
+        issue_count=user1.issue_count,
+        created_at=user1.created_at,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+    )
+    user_repo.save(updated_user1)
 
     # Create second user
     user2 = User(

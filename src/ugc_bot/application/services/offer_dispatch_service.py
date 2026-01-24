@@ -42,6 +42,9 @@ class OfferDispatchService:
             user = self.user_repo.get_by_id(user_id)
             if user is None:
                 continue
+            # Check if user is confirmed (Instagram verification)
+            if not user.confirmed:
+                continue
             if user.status != UserStatus.ACTIVE:
                 continue
             users.append(user)

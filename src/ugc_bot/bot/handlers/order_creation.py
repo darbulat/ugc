@@ -71,6 +71,14 @@ async def start_order_creation(
         )
         return
 
+    # Check Instagram verification
+    if not user.confirmed:
+        await message.answer(
+            "Для создания заказа необходимо подтвердить Instagram аккаунт.\n"
+            "Используйте команду /verify_instagram или нажмите кнопку 'Пройти верификацию'."
+        )
+        return
+
     is_new = order_service.is_new_advertiser(user.user_id)
     await state.update_data(user_id=user.user_id, is_new=is_new)
     await message.answer("Введите ссылку на продукт:", reply_markup=cancel_keyboard())
@@ -220,6 +228,7 @@ async def handle_price(message: Message, state: FSMContext) -> None:
 async def handle_bloggers_needed(
     message: Message,
     state: FSMContext,
+    user_role_service: UserRoleService,
     order_service: OrderService,
     config: AppConfig,
     contact_pricing_service: ContactPricingService,
@@ -244,6 +253,19 @@ async def handle_bloggers_needed(
         # Convert user_id from string (Redis) back to UUID if needed
         user_id_raw = data["user_id"]
         user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+
+        # Verify advertiser is confirmed before creating order
+        user = user_role_service.get_user_by_id(user_id)
+        if user is None:
+            await message.answer("Пользователь не найден.")
+            return
+        if not user.confirmed:
+            await message.answer(
+                "Для создания заказа необходимо подтвердить Instagram аккаунт.\n"
+                "Используйте команду /verify_instagram или нажмите кнопку 'Пройти верификацию'."
+            )
+            return
+
         order = order_service.create_order(
             advertiser_id=user_id,
             product_link=data["product_link"],

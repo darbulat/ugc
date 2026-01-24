@@ -51,11 +51,14 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
         parts.append("Профиль блогера не заполнен. Команда: /register")
     else:
         topics = ", ".join(blogger.topics.get("selected", []))
-        confirmed = "Да" if blogger.confirmed else "Нет"
+        confirmed = "Да" if user.confirmed else "Нет"
+        instagram_info = (
+            user.instagram_url if user.instagram_url else blogger.instagram_url
+        )
         parts.extend(
             [
                 "Блогер:",
-                f"Instagram: {blogger.instagram_url}",
+                f"Instagram: {instagram_info}",
                 f"Подтвержден: {confirmed}",
                 f"Тематики: {topics or '—'}",
                 f"ЦА: {blogger.audience_gender.value} {blogger.audience_age_min}-{blogger.audience_age_max}",
@@ -77,7 +80,7 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
     # Show appropriate keyboard based on role
     reply_markup = None
     if blogger is not None:
-        reply_markup = blogger_menu_keyboard(confirmed=blogger.confirmed)
+        reply_markup = blogger_menu_keyboard(confirmed=user.confirmed)
     elif advertiser is not None:
         reply_markup = advertiser_menu_keyboard()
 

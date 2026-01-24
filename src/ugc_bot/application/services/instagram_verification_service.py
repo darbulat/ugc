@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     InstagramGraphApiClient,
@@ -48,11 +48,14 @@ class InstagramVerificationService:
         return verification
 
     def verify_code(self, user_id: UUID, code: str) -> bool:
-        """Validate code and confirm blogger profile."""
+        """Validate code and confirm user Instagram."""
 
-        profile = self.blogger_repo.get_by_user_id(user_id)
-        if profile is None:
-            raise BloggerRegistrationError("Blogger profile not found.")
+        user = self.user_repo.get_by_id(user_id)
+        if user is None:
+            raise UserNotFoundError("User not found.")
+
+        if user.instagram_url is None:
+            raise UserNotFoundError("User has no Instagram URL to verify.")
 
         valid_code = self.verification_repo.get_valid_code(
             user_id, code.strip().upper()
@@ -61,19 +64,18 @@ class InstagramVerificationService:
             return False
 
         self.verification_repo.mark_used(valid_code.code_id)
-        confirmed_profile = profile.__class__(
-            user_id=profile.user_id,
-            instagram_url=profile.instagram_url,
+        confirmed_user = user.__class__(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url=user.instagram_url,
             confirmed=True,
-            topics=profile.topics,
-            audience_gender=profile.audience_gender,
-            audience_age_min=profile.audience_age_min,
-            audience_age_max=profile.audience_age_max,
-            audience_geo=profile.audience_geo,
-            price=profile.price,
-            updated_at=datetime.now(timezone.utc),
         )
-        self.blogger_repo.save(confirmed_profile)
+        self.user_repo.save(confirmed_user)
         return True
 
     async def verify_code_by_instagram_sender(
@@ -87,8 +89,8 @@ class InstagramVerificationService:
         This method:
         1. Finds a valid code matching the provided code string
         2. Gets the user_id from the code
-        3. Checks if the blogger profile's instagram_url matches the sender
-        4. Confirms the profile if all checks pass
+        3. Checks if the user's instagram_url matches the sender
+        4. Confirms the user if all checks pass
 
         Args:
             instagram_sender_id: Instagram user ID from webhook sender
@@ -96,7 +98,7 @@ class InstagramVerificationService:
             admin_instagram_username: Admin Instagram username (for logging)
 
         Returns:
-            True if verification successful, False otherwise
+            user_id if verification successful, None otherwise
         """
         code_upper = code.strip().upper()
 
@@ -106,18 +108,25 @@ class InstagramVerificationService:
             logger.debug("No valid code found for webhook verification")
             return None
 
-        # Get blogger profile
-        profile = self.blogger_repo.get_by_user_id(valid_code.user_id)
-        if profile is None:
+        # Get user
+        user = self.user_repo.get_by_id(valid_code.user_id)
+        if user is None:
             logger.warning(
-                "Blogger profile not found for verification code",
+                "User not found for verification code",
+                extra={"user_id": valid_code.user_id},
+            )
+            return None
+
+        if user.instagram_url is None:
+            logger.warning(
+                "User has no Instagram URL for verification",
                 extra={"user_id": valid_code.user_id},
             )
             return None
 
         # Extract Instagram username from instagram_url
         # instagram_url format: https://instagram.com/username or instagram.com/username
-        instagram_url = profile.instagram_url.lower().strip()
+        instagram_url = user.instagram_url.lower().strip()
         if "instagram.com/" in instagram_url:
             # Extract username from URL
             parts = instagram_url.split("instagram.com/")
@@ -171,21 +180,20 @@ class InstagramVerificationService:
             },
         )
 
-        # Mark code as used and confirm profile
+        # Mark code as used and confirm user
         self.verification_repo.mark_used(valid_code.code_id)
-        confirmed_profile = profile.__class__(
-            user_id=profile.user_id,
-            instagram_url=profile.instagram_url,
+        confirmed_user = user.__class__(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url=user.instagram_url,
             confirmed=True,
-            topics=profile.topics,
-            audience_gender=profile.audience_gender,
-            audience_age_min=profile.audience_age_min,
-            audience_age_max=profile.audience_age_max,
-            audience_geo=profile.audience_geo,
-            price=profile.price,
-            updated_at=datetime.now(timezone.utc),
         )
-        self.blogger_repo.save(confirmed_profile)
+        self.user_repo.save(confirmed_user)
         logger.info(
             "Instagram profile confirmed via webhook",
             extra={"user_id": str(valid_code.user_id)},

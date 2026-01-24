@@ -142,6 +142,10 @@ async def _notify_user_verification_success(user_id: UUID, config: AppConfig) ->
 
         # Get user's Telegram external_id
         session_factory = create_session_factory(config.database_url)
+        from ugc_bot.infrastructure.db.repositories import (
+            SqlAlchemyUserRepository,
+        )
+
         user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
         user = user_repo.get_by_id(user_id)
         if user is None:
@@ -168,15 +172,13 @@ async def _notify_user_verification_success(user_id: UUID, config: AppConfig) ->
         try:
             from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
             from ugc_bot.infrastructure.db.repositories import (
-                SqlAlchemyBloggerProfileRepository,
+                SqlAlchemyUserRepository,
             )
 
-            # Get blogger profile to check confirmation status
-            blogger_repo = SqlAlchemyBloggerProfileRepository(
-                session_factory=session_factory
-            )
-            blogger_profile = blogger_repo.get_by_user_id(user_id)
-            confirmed = blogger_profile.confirmed if blogger_profile else False
+            # Get user to check confirmation status
+            user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
+            user = user_repo.get_by_id(user_id)
+            confirmed = user.confirmed if user else False
 
             await bot.send_message(
                 chat_id=int(telegram_user.external_id),

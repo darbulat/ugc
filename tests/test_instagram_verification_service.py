@@ -5,7 +5,7 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -35,14 +35,17 @@ def _seed_user(user_repo: InMemoryUserRepository) -> UUID:
     return user.user_id
 
 
-def _seed_profile(repo: InMemoryBloggerProfileRepository, user_id: UUID) -> None:
-    """Seed a blogger profile in memory."""
+def _seed_profile(
+    repo: InMemoryBloggerProfileRepository,
+    user_id: UUID,
+    user_repo: InMemoryUserRepository | None = None,
+) -> None:
+    """Seed a blogger profile in memory and update user with instagram_url."""
 
     repo.save(
         BloggerProfile(
             user_id=user_id,
             instagram_url="https://instagram.com/test_user",
-            confirmed=False,
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -52,6 +55,23 @@ def _seed_profile(repo: InMemoryBloggerProfileRepository, user_id: UUID) -> None
             updated_at=datetime.now(timezone.utc),
         )
     )
+
+    # Update user with instagram_url if user_repo is provided
+    if user_repo:
+        user = user_repo.get_by_id(user_id)
+        if user:
+            updated_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=user.username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                instagram_url="https://instagram.com/test_user",
+                confirmed=False,
+            )
+            user_repo.save(updated_user)
 
 
 def test_generate_code_requires_user() -> None:
@@ -67,18 +87,19 @@ def test_generate_code_requires_user() -> None:
         service.generate_code(UUID("00000000-0000-0000-0000-000000000131"))
 
 
-def test_verify_code_requires_profile() -> None:
-    """Fail when blogger profile is missing."""
+def test_verify_code_requires_instagram_url() -> None:
+    """Fail when user has no Instagram URL."""
 
     user_repo = InMemoryUserRepository()
     user_id = _seed_user(user_repo)
+    # User has no instagram_url
     service = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
 
-    with pytest.raises(BloggerRegistrationError):
+    with pytest.raises(UserNotFoundError):
         service.verify_code(user_id, "ABC123")
 
 
@@ -89,7 +110,7 @@ def test_verify_code_success() -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    _seed_profile(profile_repo, user_id)
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     code = InstagramVerificationCode(
         code_id=UUID("00000000-0000-0000-0000-000000000132"),
@@ -108,9 +129,10 @@ def test_verify_code_success() -> None:
     )
 
     assert service.verify_code(user_id, "ABC123") is True
-    updated = profile_repo.get_by_user_id(user_id)
-    assert updated is not None
-    assert updated.confirmed is True
+    # Check user confirmed status
+    updated_user = user_repo.get_by_id(user_id)
+    assert updated_user is not None
+    assert updated_user.confirmed is True
 
 
 def test_verify_code_invalid() -> None:
@@ -120,7 +142,7 @@ def test_verify_code_invalid() -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    _seed_profile(profile_repo, user_id)
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
@@ -138,7 +160,7 @@ async def test_verify_code_by_instagram_sender_success() -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    _seed_profile(profile_repo, user_id)
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
@@ -157,9 +179,10 @@ async def test_verify_code_by_instagram_sender_success() -> None:
     )
 
     assert result == user_id
-    updated = profile_repo.get_by_user_id(user_id)
-    assert updated is not None
-    assert updated.confirmed is True
+    # Check user confirmed status
+    updated_user = user_repo.get_by_id(user_id)
+    assert updated_user is not None
+    assert updated_user.confirmed is True
 
 
 @pytest.mark.asyncio
@@ -169,7 +192,7 @@ async def test_verify_code_by_instagram_sender_invalid_code() -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    _seed_profile(profile_repo, user_id)
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
@@ -184,9 +207,10 @@ async def test_verify_code_by_instagram_sender_invalid_code() -> None:
     )
 
     assert result is None
-    updated = profile_repo.get_by_user_id(user_id)
-    assert updated is not None
-    assert updated.confirmed is False
+    # Check user confirmed status (should remain False)
+    updated_user = user_repo.get_by_id(user_id)
+    assert updated_user is not None
+    assert updated_user.confirmed is False
 
 
 @pytest.mark.asyncio
@@ -196,7 +220,7 @@ async def test_verify_code_by_instagram_sender_expired_code() -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    _seed_profile(profile_repo, user_id)
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     # Create expired code
     expired_code = InstagramVerificationCode(
@@ -258,7 +282,7 @@ async def test_verify_code_by_instagram_sender_used_code() -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    _seed_profile(profile_repo, user_id)
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     # Create used code
     used_code = InstagramVerificationCode(
@@ -298,7 +322,6 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> N
     profile = BloggerProfile(
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -308,6 +331,8 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> N
         updated_at=datetime.now(timezone.utc),
     )
     profile_repo.save(profile)
+    # Update user with instagram_url
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     # Create API client that returns matching username
     api_client = InMemoryInstagramGraphApiClient(
@@ -330,7 +355,7 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> N
     )
 
     assert result == user_id
-    assert profile_repo.get_by_user_id(user_id).confirmed is True
+    assert user_repo.get_by_id(user_id).confirmed is True
 
 
 @pytest.mark.asyncio
@@ -354,7 +379,6 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
         profile = BloggerProfile(
             user_id=user_id,
             instagram_url=url_format,
-            confirmed=False,
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -364,6 +388,21 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
             updated_at=datetime.now(timezone.utc),
         )
         profile_repo.save(profile)
+        # Update user with instagram_url
+        user = user_repo.get_by_id(user_id)
+        if user:
+            updated_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=user.username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                instagram_url=url_format,
+                confirmed=False,
+            )
+            user_repo.save(updated_user)
 
         # Create API client that returns matching username
         api_client = InMemoryInstagramGraphApiClient(
@@ -394,14 +433,13 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
         )
 
         assert result == user_id
-        assert profile_repo.get_by_user_id(user_id).confirmed is True
+        assert user_repo.get_by_id(user_id).confirmed is True
 
         # Reset for next iteration
         profile_repo.save(
             BloggerProfile(
                 user_id=user_id,
                 instagram_url=url_format,
-                confirmed=False,
                 topics={"selected": ["fitness"]},
                 audience_gender=AudienceGender.ALL,
                 audience_age_min=18,
@@ -411,6 +449,21 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
                 updated_at=datetime.now(timezone.utc),
             )
         )
+        # Reset user confirmed status
+        user = user_repo.get_by_id(user_id)
+        if user:
+            reset_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=user.username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                instagram_url=url_format,
+                confirmed=False,
+            )
+            user_repo.save(reset_user)
 
 
 @pytest.mark.asyncio
@@ -425,7 +478,6 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
     profile = BloggerProfile(
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -435,6 +487,8 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     profile_repo.save(profile)
+    # Update user with instagram_url
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     # Create API client that returns different username
     api_client = InMemoryInstagramGraphApiClient(
@@ -457,7 +511,7 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
     )
 
     assert result is None
-    assert profile_repo.get_by_user_id(user_id).confirmed is False
+    assert user_repo.get_by_id(user_id).confirmed is False
 
 
 @pytest.mark.asyncio
@@ -472,7 +526,6 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
     profile = BloggerProfile(
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -482,6 +535,8 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     profile_repo.save(profile)
+    # Update user with instagram_url
+    _seed_profile(profile_repo, user_id, user_repo=user_repo)
 
     # Create API client that raises an exception
     class FailingInstagramGraphApiClient(InMemoryInstagramGraphApiClient):
@@ -507,7 +562,7 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
     )
 
     assert result == user_id
-    assert profile_repo.get_by_user_id(user_id).confirmed is True
+    assert user_repo.get_by_id(user_id).confirmed is True
 
 
 @pytest.mark.asyncio
@@ -522,7 +577,6 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
     profile = BloggerProfile(
         user_id=user_id,
         instagram_url="https://instagram.com",  # No username in URL
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -532,6 +586,21 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     profile_repo.save(profile)
+    # Update user with instagram_url
+    user = user_repo.get_by_id(user_id)
+    if user:
+        updated_user = User(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url="https://instagram.com",
+            confirmed=False,
+        )
+        user_repo.save(updated_user)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
@@ -549,4 +618,4 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
     )
 
     assert result == user_id
-    assert profile_repo.get_by_user_id(user_id).confirmed is True
+    assert user_repo.get_by_id(user_id).confirmed is True

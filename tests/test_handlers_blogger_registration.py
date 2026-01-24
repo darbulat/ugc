@@ -399,7 +399,6 @@ async def test_handle_instagram_duplicate_url() -> None:
     existing_profile = BloggerProfile(
         user_id=existing_user.user_id,
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
