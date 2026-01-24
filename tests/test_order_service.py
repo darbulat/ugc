@@ -33,7 +33,11 @@ def _seed_advertiser(
         created_at=datetime.now(timezone.utc),
     )
     repo.save(user)
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=user.user_id, contact="contact", instagram_url=None, confirmed=False
+        )
+    )
     return user.user_id
 
 
@@ -195,6 +199,58 @@ def test_create_order_requires_advertiser_profile() -> None:
         order_repo=order_repo,
     )
     with pytest.raises(OrderCreationError):
+        service.create_order(
+            advertiser_id=user_id,
+            product_link="https://example.com",
+            offer_text="Offer",
+            ugc_requirements=None,
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=3,
+        )
+
+
+def test_create_order_blocked_user() -> None:
+    """Reject order creation for blocked users."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.BLOCKED)
+
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
+
+    with pytest.raises(OrderCreationError, match="Blocked users"):
+        service.create_order(
+            advertiser_id=user_id,
+            product_link="https://example.com",
+            offer_text="Offer",
+            ugc_requirements=None,
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=3,
+        )
+
+
+def test_create_order_paused_user() -> None:
+    """Reject order creation for paused users."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.PAUSE)
+
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+    )
+
+    with pytest.raises(OrderCreationError, match="Paused users"):
         service.create_order(
             advertiser_id=user_id,
             product_link="https://example.com",

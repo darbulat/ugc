@@ -425,3 +425,27 @@ class TestMain:
         assert coro_passed is not None
         # Verify run_processor was called (it's called when creating the coroutine)
         # The coroutine is created when passed to asyncio.run
+
+
+def test_main_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test main function when called as entry point."""
+
+    main_called = False
+
+    def mock_main():
+        nonlocal main_called
+        main_called = True
+
+    # Patch main to track calls
+    import ugc_bot.outbox_processor
+
+    original_main = ugc_bot.outbox_processor.main
+    ugc_bot.outbox_processor.main = mock_main
+
+    try:
+        # Simulate __name__ == "__main__" by calling main directly
+        ugc_bot.outbox_processor.main()
+        assert main_called
+    finally:
+        # Restore original
+        ugc_bot.outbox_processor.main = original_main

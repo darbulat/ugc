@@ -80,12 +80,6 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    instagram_url: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True, unique=True
-    )
-    confirmed: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
 
 
 class BloggerProfileModel(Base):
@@ -99,6 +93,9 @@ class BloggerProfileModel(Base):
         primary_key=True,
     )
     instagram_url: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     topics: Mapped[dict] = mapped_column(JSONB, nullable=False)
     audience_gender: Mapped[AudienceGender] = mapped_column(
         _enum_column(AudienceGender), nullable=False
@@ -121,6 +118,12 @@ class AdvertiserProfileModel(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
         primary_key=True,
+    )
+    instagram_url: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, unique=True
+    )
+    confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )
     contact: Mapped[str] = mapped_column(String, nullable=False)
 

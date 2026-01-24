@@ -98,7 +98,11 @@ async def test_run_once_sends_feedback_requests() -> None:
     )
     user_repo.save(advertiser)
     user_repo.save(blogger)
-    advertiser_repo.save(AdvertiserProfile(user_id=advertiser.user_id, contact="c"))
+    advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=advertiser.user_id, contact="c", instagram_url=None, confirmed=False
+        )
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000962"),

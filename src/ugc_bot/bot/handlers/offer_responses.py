@@ -57,7 +57,7 @@ async def handle_offer_response(
     if blogger_profile is None:
         await callback.answer("Профиль блогера не заполнен. Команда: /register")
         return
-    if not user.confirmed:
+    if not blogger_profile.confirmed:
         await callback.answer("Подтвердите Instagram перед откликом.")
         return
 
@@ -112,10 +112,11 @@ async def handle_offer_response(
 
         # Send advertiser Instagram URL to blogger
         advertiser = user_role_service.get_user_by_id(order.advertiser_id)
-        if advertiser and advertiser.instagram_url:
+        advertiser_profile = profile_service.get_advertiser_profile(order.advertiser_id)
+        if advertiser and advertiser_profile and advertiser_profile.instagram_url:
             instagram_message = (
                 f"Рекламодатель свяжется с вами в Instagram:\n"
-                f"{advertiser.instagram_url}"
+                f"{advertiser_profile.instagram_url}"
             )
             await callback.message.answer(instagram_message)
         elif advertiser:
@@ -176,7 +177,7 @@ async def _send_contact_immediately(
         f"Telegram: {user.external_id}\n"
         f"Instagram: {profile.instagram_url}\n"
         f"Цена: {profile.price}\n"
-        f"Статус: {'Подтверждён' if user.confirmed else 'Не подтверждён'}"
+        f"Статус: {'Подтверждён' if profile.confirmed else 'Не подтверждён'}"
     )
 
     # Send to advertiser

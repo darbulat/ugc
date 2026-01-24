@@ -134,7 +134,11 @@ def _add_advertiser_profile(
 ) -> None:
     """Seed advertiser profile."""
 
-    advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
+    advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=user_id, contact="contact", instagram_url=None, confirmed=False
+        )
+    )
 
 
 def _payment_service(
