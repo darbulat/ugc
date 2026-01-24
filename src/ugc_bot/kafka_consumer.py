@@ -147,7 +147,7 @@ def main() -> None:
     """Run Kafka consumer loop."""
 
     config = load_config()
-    configure_logging(config.log_level)
+    configure_logging(config.log_level, json_format=config.log_format.lower() == "json")
     if not config.kafka_enabled:
         logger.info("Kafka consumer disabled by config")
         return

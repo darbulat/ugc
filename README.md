@@ -29,6 +29,18 @@ Set `DATABASE_URL` in `.env`, then run:
 - `src/ugc_bot/storage/` - storage layer (stubs)
 - `src/ugc_bot/scheduler/` - scheduler (stub)
 
+## Logging and Monitoring
+
+The project includes ELK stack (Elasticsearch, Logstash, Kibana) for centralized log viewing and analysis.
+
+### ELK Stack
+
+- **Elasticsearch**: http://localhost:9200 - Log storage and search
+- **Kibana**: http://localhost:5601 - Web interface for log visualization
+- **Filebeat**: Automatically collects logs from Docker containers
+
+See [docs/LOGGING.md](docs/LOGGING.md) for detailed logging configuration and ELK setup instructions.
+
 ## Notes
 
 This is the first milestone: initialization, config templates, logging, and a
