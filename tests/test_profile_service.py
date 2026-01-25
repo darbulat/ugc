@@ -4,33 +4,36 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from ugc_bot.application.services.profile_service import ProfileService
-from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
-from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
-    InMemoryBloggerProfileRepository,
-    InMemoryUserRepository,
-)
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
 
 
 def test_get_user_by_external() -> None:
     """Get user by external id and messenger type."""
 
     user_repo = InMemoryUserRepository()
-    service = ProfileService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-    )
+    service = ProfileService(user_repo=user_repo)
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000200"),
         external_id="100",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     user_repo.save(user)
 
@@ -47,27 +50,30 @@ def test_get_blogger_profile() -> None:
     """Get blogger profile by user id."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
-    service = ProfileService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-    )
+    service = ProfileService(user_repo=user_repo)
 
     user_id = UUID("00000000-0000-0000-0000-000000000201")
-    profile = BloggerProfile(
+    profile = User(
         user_id=user_id,
+        external_id="200",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        role=UserRole.BLOGGER,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
         instagram_url="https://instagram.com/test",
         confirmed=False,
         topics={"selected": ["tech"]},
-        audience_gender=AudienceGender.ALL,
+        audience_gender=None,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
-        updated_at=datetime.now(timezone.utc),
+        contact=None,
+        profile_updated_at=datetime.now(timezone.utc),
     )
-    blogger_repo.save(profile)
+    user_repo.save(profile)
 
     found_profile = service.get_blogger_profile(user_id)
     assert found_profile is not None
@@ -84,21 +90,30 @@ def test_get_advertiser_profile() -> None:
     """Get advertiser profile by user id."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    service = ProfileService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        advertiser_repo=advertiser_repo,
-    )
+    service = ProfileService(user_repo=user_repo)
 
     user_id = UUID("00000000-0000-0000-0000-000000000202")
-    profile = AdvertiserProfile(
+    profile = User(
         user_id=user_id,
+        external_id="300",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        role=UserRole.ADVERTISER,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
         contact="contact@example.com",
         instagram_url="https://instagram.com/advertiser",
         confirmed=True,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        profile_updated_at=datetime.now(timezone.utc),
     )
-    advertiser_repo.save(profile)
+    user_repo.save(profile)
 
     found_profile = service.get_advertiser_profile(user_id)
     assert found_profile is not None

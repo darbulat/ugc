@@ -9,18 +9,15 @@ import pytest
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.instagram_verification import (
     _verification_instruction,
     start_verification,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
-    InMemoryBloggerProfileRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
 )
@@ -72,16 +69,38 @@ class FakeFSMContext:
         self.cleared = True
 
 
-def _profile_service(
+def _add_blogger_profile(
     user_repo: InMemoryUserRepository,
-    blogger_repo: InMemoryBloggerProfileRepository,
-) -> ProfileService:
-    """Build profile service for tests."""
+    user_id: UUID,
+    instagram_url: str | None = "https://instagram.com/test",
+    confirmed: bool = False,
+) -> None:
+    """Seed blogger profile fields on user."""
 
-    return ProfileService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+    user = user_repo.get_by_id(user_id)
+    if user is None:
+        return
+    user_repo.save(
+        User(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            role=UserRole.BLOGGER,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url=instagram_url,
+            confirmed=confirmed,
+            topics={"selected": ["tech"]} if instagram_url else None,
+            audience_gender=None,
+            audience_age_min=18 if instagram_url else None,
+            audience_age_max=35 if instagram_url else None,
+            audience_geo="Moscow" if instagram_url else None,
+            price=1000.0 if instagram_url else None,
+            contact=user.contact,
+            profile_updated_at=datetime.now(timezone.utc),
+        )
     )
 
 
@@ -97,15 +116,11 @@ async def test_start_verification_requires_role() -> None:
     """Require blogger role before verification."""
 
     repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     user_service = UserRoleService(user_repo=repo)
     verification_service = InstagramVerificationService(
         user_repo=repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
-    profile_service = _profile_service(repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
@@ -113,7 +128,6 @@ async def test_start_verification_requires_role() -> None:
         message,
         state,
         user_service,
-        profile_service,
         verification_service,
         _fake_config(),
     )
@@ -127,8 +141,6 @@ async def test_start_verification_user_not_found() -> None:
     """Show business error when user is missing."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     user_service = UserRoleService(user_repo=user_repo)
     user_service.set_user(
         external_id="3",
@@ -137,11 +149,8 @@ async def test_start_verification_user_not_found() -> None:
     )
     verification_service = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
-    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(3, "user", "User"))
     state = FakeFSMContext()
 
@@ -149,7 +158,6 @@ async def test_start_verification_user_not_found() -> None:
         message,
         state,
         user_service,
-        profile_service,
         verification_service,
         _fake_config(),
     )
@@ -165,40 +173,34 @@ async def test_start_verification_already_confirmed() -> None:
     """Skip verification if user already has confirmed Instagram."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000733"),
         external_id="7",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     user_repo.save(user)
     # Create confirmed blogger profile
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=user.user_id,
-            instagram_url="https://instagram.com/test",
-            confirmed=True,  # Already confirmed
-            topics={"selected": ["fitness"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=datetime.now(timezone.utc),
-        )
-    )
+    _add_blogger_profile(user_repo, user.user_id, confirmed=True)
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
-    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(
         text="Пройти верификацию", user=FakeUser(7, "blogger", "Blogger")
     )
@@ -208,7 +210,6 @@ async def test_start_verification_already_confirmed() -> None:
         message,
         state,
         user_service,
-        profile_service,
         verification_service,
         _fake_config(),
     )
@@ -222,25 +223,32 @@ async def test_start_verification_blocked_user() -> None:
     """Reject verification for blocked user."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     blocked_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000730"),
         external_id="4",
         messenger_type=MessengerType.TELEGRAM,
         username="blocked",
+        role=UserRole.BLOGGER,
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     user_repo.save(blocked_user)
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
-    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(4, "blocked", "Blocked"))
     state = FakeFSMContext()
 
@@ -248,7 +256,6 @@ async def test_start_verification_blocked_user() -> None:
         message,
         state,
         user_service,
-        profile_service,
         verification_service,
         _fake_config(),
     )
@@ -262,25 +269,32 @@ async def test_start_verification_paused_user() -> None:
     """Reject verification for paused user."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     paused_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000731"),
         external_id="5",
         messenger_type=MessengerType.TELEGRAM,
         username="paused",
+        role=UserRole.BLOGGER,
         status=UserStatus.PAUSE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     user_repo.save(paused_user)
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
-    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(text=None, user=FakeUser(5, "paused", "Paused"))
     state = FakeFSMContext()
 
@@ -288,7 +302,6 @@ async def test_start_verification_paused_user() -> None:
         message,
         state,
         user_service,
-        profile_service,
         verification_service,
         _fake_config(),
     )
@@ -321,39 +334,34 @@ def test_verification_instruction_format() -> None:
 async def test_start_verification_via_button() -> None:
     """Handle verification request via button click."""
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000732"),
         external_id="6",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     user_repo.save(user)
-    blogger_profile = BloggerProfile(
-        user_id=user.user_id,
-        instagram_url="https://instagram.com/test",
-        confirmed=False,
-        topics={"selected": ["tech"]},
-        audience_gender=AudienceGender.ALL,
-        audience_age_min=18,
-        audience_age_max=35,
-        audience_geo="Moscow",
-        price=1000.0,
-        updated_at=datetime.now(timezone.utc),
-    )
-    blogger_repo.save(blogger_profile)
+    _add_blogger_profile(user_repo, user.user_id, confirmed=False)
 
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
-    profile_service = _profile_service(user_repo, blogger_repo)
     message = FakeMessage(
         text="Пройти верификацию", user=FakeUser(6, "blogger", "Blogger")
     )
@@ -363,7 +371,6 @@ async def test_start_verification_via_button() -> None:
         message,
         state,
         user_service,
-        profile_service,
         verification_service,
         _fake_config(),
     )

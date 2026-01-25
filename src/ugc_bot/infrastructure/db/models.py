@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -28,6 +29,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     OutboxEventStatus,
     PaymentStatus,
+    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.base import Base
@@ -36,6 +38,7 @@ from ugc_bot.infrastructure.db.base import Base
 _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     MessengerType: "messenger_type",
     UserStatus: "user_status",
+    UserRole: "user_role",
     AudienceGender: "audience_gender",
     OrderStatus: "order_status",
     InteractionStatus: "interaction_status",
@@ -73,6 +76,7 @@ class UserModel(Base):
         nullable=False,
     )
     username: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[UserRole] = mapped_column(_enum_column(UserRole), nullable=False)
     status: Mapped[UserStatus] = mapped_column(_enum_column(UserStatus), nullable=False)
     issue_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
@@ -80,52 +84,26 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-
-
-class BloggerProfileModel(Base):
-    """Blogger profile ORM model."""
-
-    __tablename__ = "blogger_profiles"
-
-    user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("users.user_id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    instagram_url: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    confirmed: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
-    topics: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    audience_gender: Mapped[AudienceGender] = mapped_column(
-        _enum_column(AudienceGender), nullable=False
-    )
-    audience_age_min: Mapped[int] = mapped_column(Integer, nullable=False)
-    audience_age_max: Mapped[int] = mapped_column(Integer, nullable=False)
-    audience_geo: Mapped[str] = mapped_column(String, nullable=False)
-    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-
-
-class AdvertiserProfileModel(Base):
-    """Advertiser profile ORM model."""
-
-    __tablename__ = "advertiser_profiles"
-
-    user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("users.user_id", ondelete="CASCADE"),
-        primary_key=True,
-    )
     instagram_url: Mapped[Optional[str]] = mapped_column(
         String, nullable=True, unique=True
     )
     confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
-    contact: Mapped[str] = mapped_column(String, nullable=False)
+    topics: Mapped[Optional[dict]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    audience_gender: Mapped[Optional[AudienceGender]] = mapped_column(
+        _enum_column(AudienceGender), nullable=True
+    )
+    audience_age_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    audience_age_max: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    audience_geo: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    contact: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    profile_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class OrderModel(Base):

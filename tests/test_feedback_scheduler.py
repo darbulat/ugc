@@ -7,22 +7,16 @@ import pytest
 
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.entities import (
-    AdvertiserProfile,
-    Interaction,
-    Order,
-    OrderResponse,
-    User,
-)
+from ugc_bot.domain.entities import Interaction, Order, OrderResponse, User
 from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    UserRole,
     UserStatus,
 )
 from ugc_bot.feedback_scheduler import _feedback_keyboard, main, run_loop, run_once
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
     InMemoryInteractionRepository,
     InMemoryOrderRepository,
     InMemoryOrderResponseRepository,
@@ -71,7 +65,6 @@ async def test_run_once_sends_feedback_requests() -> None:
     """Send feedback to advertiser and blogger."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
     interaction_repo = InMemoryInteractionRepository()
@@ -83,26 +76,43 @@ async def test_run_once_sends_feedback_requests() -> None:
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="c",
+        profile_updated_at=None,
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000961"),
         external_id="11",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     user_repo.save(advertiser)
     user_repo.save(blogger)
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=advertiser.user_id, contact="c", instagram_url=None, confirmed=False
-        )
-    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000962"),

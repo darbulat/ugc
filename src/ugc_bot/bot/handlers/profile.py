@@ -9,7 +9,7 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_menu_keyboard,
     blogger_menu_keyboard,
 )
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.domain.enums import MessengerType, UserRole
 
 
 router = Router()
@@ -34,11 +34,13 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
     blogger = profile_service.get_blogger_profile(user.user_id)
     advertiser = profile_service.get_advertiser_profile(user.user_id)
     roles: list[str] = []
-    if blogger is not None:
+    if user.role == UserRole.BOTH:
+        roles.extend(["blogger", "advertiser"])
+    elif user.role == UserRole.BLOGGER:
         roles.append("blogger")
-    if advertiser is not None:
+    elif user.role == UserRole.ADVERTISER:
         roles.append("advertiser")
-    if not roles:
+    else:
         roles.append("—")
     parts = [
         "Ваш профиль:",
@@ -47,26 +49,39 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
         f"Status: {user.status.value}",
     ]
 
-    if blogger is None:
+    if blogger is None and user.role in {UserRole.BLOGGER, UserRole.BOTH}:
         parts.append("Профиль блогера не заполнен. Команда: /register")
-    else:
-        topics = ", ".join(blogger.topics.get("selected", []))
+    elif blogger is not None:
+        topics = ", ".join((blogger.topics or {}).get("selected", []))
         confirmed = "Да" if blogger.confirmed else "Нет"
+        audience_gender = (
+            blogger.audience_gender.value if blogger.audience_gender else "—"
+        )
+        audience_age_min = (
+            str(blogger.audience_age_min)
+            if blogger.audience_age_min is not None
+            else "—"
+        )
+        audience_age_max = (
+            str(blogger.audience_age_max)
+            if blogger.audience_age_max is not None
+            else "—"
+        )
         parts.extend(
             [
                 "Блогер:",
                 f"Instagram: {blogger.instagram_url}",
                 f"Подтвержден: {confirmed}",
                 f"Тематики: {topics or '—'}",
-                f"ЦА: {blogger.audience_gender.value} {blogger.audience_age_min}-{blogger.audience_age_max}",
+                f"ЦА: {audience_gender} {audience_age_min}-{audience_age_max}",
                 f"Гео: {blogger.audience_geo}",
                 f"Цена: {blogger.price}",
             ]
         )
 
-    if advertiser is None:
+    if advertiser is None and user.role in {UserRole.ADVERTISER, UserRole.BOTH}:
         parts.append("Профиль рекламодателя не заполнен. Команда: /register_advertiser")
-    else:
+    elif advertiser is not None:
         advertiser_instagram = (
             advertiser.instagram_url if advertiser.instagram_url else "—"
         )

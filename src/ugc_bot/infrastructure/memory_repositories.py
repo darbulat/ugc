@@ -7,8 +7,6 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from ugc_bot.application.ports import (
-    AdvertiserProfileRepository,
-    BloggerProfileRepository,
     ComplaintRepository,
     ContactPricingRepository,
     InteractionRepository,
@@ -22,8 +20,6 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.domain.entities import (
-    AdvertiserProfile,
-    BloggerProfile,
     Complaint,
     ContactPricing,
     Interaction,
@@ -40,6 +36,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OutboxEventStatus,
+    UserRole,
 )
 
 
@@ -75,54 +72,23 @@ class InMemoryUserRepository(UserRepository):
 
         return list(self.users.values())
 
+    def get_by_instagram_url(self, instagram_url: str) -> Optional[User]:
+        """Fetch a user by Instagram URL."""
 
-@dataclass
-class InMemoryBloggerProfileRepository(BloggerProfileRepository):
-    """In-memory implementation of blogger profile repository."""
-
-    profiles: Dict[UUID, BloggerProfile] = field(default_factory=dict)
-
-    def get_by_user_id(self, user_id: UUID) -> Optional[BloggerProfile]:
-        """Fetch blogger profile by user id."""
-
-        return self.profiles.get(user_id)
-
-    def get_by_instagram_url(self, instagram_url: str) -> Optional[BloggerProfile]:
-        """Fetch blogger profile by Instagram URL."""
-
-        for profile in self.profiles.values():
-            if profile.instagram_url == instagram_url:
-                return profile
+        for user in self.users.values():
+            if user.instagram_url == instagram_url:
+                return user
         return None
 
-    def save(self, profile: BloggerProfile) -> None:
-        """Persist blogger profile in memory."""
+    def list_confirmed_by_role(self, role: UserRole) -> Iterable[User]:
+        """List users with confirmed Instagram and matching role."""
 
-        self.profiles[profile.user_id] = profile
-
-    def list_confirmed_user_ids(self) -> list[UUID]:
-        """List confirmed blogger user ids."""
-        # Note: In-memory implementation returns all blogger profile user_ids
-        # The actual confirmation check should be done at the service level using User.confirmed
-        # This is a limitation of the in-memory implementation
-        return [profile.user_id for profile in self.profiles.values()]
-
-
-@dataclass
-class InMemoryAdvertiserProfileRepository(AdvertiserProfileRepository):
-    """In-memory implementation of advertiser profile repository."""
-
-    profiles: Dict[UUID, AdvertiserProfile] = field(default_factory=dict)
-
-    def get_by_user_id(self, user_id: UUID) -> Optional[AdvertiserProfile]:
-        """Fetch advertiser profile by user id."""
-
-        return self.profiles.get(user_id)
-
-    def save(self, profile: AdvertiserProfile) -> None:
-        """Persist advertiser profile in memory."""
-
-        self.profiles[profile.user_id] = profile
+        roles = {role, UserRole.BOTH} if role != UserRole.BOTH else {UserRole.BOTH}
+        return [
+            user
+            for user in self.users.values()
+            if user.confirmed and user.role in roles
+        ]
 
 
 @dataclass

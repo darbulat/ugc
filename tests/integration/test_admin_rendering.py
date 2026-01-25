@@ -75,8 +75,6 @@ def test_sqladmin_models_initialization(admin_config):
         UserAdmin,
         InteractionAdmin,
         ComplaintAdmin,
-        BloggerProfileAdmin,
-        AdvertiserProfileAdmin,
         OrderAdmin,
     )
 
@@ -86,8 +84,6 @@ def test_sqladmin_models_initialization(admin_config):
         UserAdmin()
         InteractionAdmin()
         ComplaintAdmin()
-        BloggerProfileAdmin()
-        AdvertiserProfileAdmin()
         OrderAdmin()
     except Exception as e:
         pytest.fail(f"Failed to create admin classes: {e}")

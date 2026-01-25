@@ -16,11 +16,9 @@ from ugc_bot.bot.handlers.payments import (
     successful_payment_handler,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import AdvertiserProfile, ContactPricing, Order, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.domain.entities import ContactPricing, Order, User
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
-    InMemoryBloggerProfileRepository,
     InMemoryContactPricingRepository,
     InMemoryOrderRepository,
     InMemoryOutboxRepository,
@@ -96,9 +94,20 @@ def _seed_user(
         external_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(user)
     return user
@@ -108,17 +117,10 @@ class FakeConfig(AppConfig):
     """Config stub with provider token."""
 
 
-def _profile_service(
-    user_repo: InMemoryUserRepository,
-    advertiser_repo: InMemoryAdvertiserProfileRepository,
-) -> ProfileService:
+def _profile_service(user_repo: InMemoryUserRepository) -> ProfileService:
     """Create profile service for handler tests."""
 
-    return ProfileService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        advertiser_repo=advertiser_repo,
-    )
+    return ProfileService(user_repo=user_repo)
 
 
 def _contact_pricing_service() -> ContactPricingService:
@@ -130,20 +132,43 @@ def _contact_pricing_service() -> ContactPricingService:
 
 
 def _add_advertiser_profile(
-    advertiser_repo: InMemoryAdvertiserProfileRepository, user_id: UUID
+    user_repo: InMemoryUserRepository,
+    user_id: UUID,
+    instagram_url: str | None = None,
+    confirmed: bool = False,
+    contact: str = "contact",
 ) -> None:
-    """Seed advertiser profile."""
+    """Seed advertiser profile fields on user."""
 
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=user_id, contact="contact", instagram_url=None, confirmed=False
+    user = user_repo.get_by_id(user_id)
+    if user is None:
+        return
+    user_repo.save(
+        User(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            role=UserRole.ADVERTISER,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url=instagram_url,
+            confirmed=confirmed,
+            topics=user.topics,
+            audience_gender=user.audience_gender,
+            audience_age_min=user.audience_age_min,
+            audience_age_max=user.audience_age_max,
+            audience_geo=user.audience_geo,
+            price=user.price,
+            contact=contact,
+            profile_updated_at=user.profile_updated_at,
         )
     )
 
 
 def _payment_service(
     user_repo: InMemoryUserRepository,
-    advertiser_repo: InMemoryAdvertiserProfileRepository,
     order_repo: InMemoryOrderRepository,
     payment_repo: InMemoryPaymentRepository,
 ) -> PaymentService:
@@ -154,7 +179,6 @@ def _payment_service(
 
     return PaymentService(
         user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
@@ -167,14 +191,11 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Invoice is sent when order is valid."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = User(
@@ -182,16 +203,28 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
     user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
     )
 
     order = Order(
@@ -240,14 +273,11 @@ async def test_pay_order_missing_provider_token() -> None:
     """Reject when provider token missing."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     # Override price for 3 bloggers to be positive so provider check is needed
@@ -262,16 +292,28 @@ async def test_pay_order_missing_provider_token() -> None:
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
     user_service.set_user(
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
     )
 
     order_repo.save(
@@ -319,18 +361,15 @@ async def test_pay_order_invalid_args() -> None:
     """Reject missing order id argument."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000510"), "10")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
     message = FakeMessage(text="/pay_order", user=FakeUser(10, "adv", "Adv"), bot=None)
     config = FakeConfig.model_validate(
         {
@@ -356,18 +395,15 @@ async def test_pay_order_invalid_uuid() -> None:
     """Reject invalid order id format."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000511"), "11")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
     message = FakeMessage(
         text="/pay_order not-a-uuid", user=FakeUser(11, "adv", "Adv"), bot=None
     )
@@ -395,18 +431,15 @@ async def test_pay_order_order_not_found() -> None:
     """Reject missing order."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000512"), "12")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000599",
         user=FakeUser(12, "adv", "Adv"),
@@ -436,19 +469,16 @@ async def test_pay_order_wrong_owner() -> None:
     """Reject payments for чужие заказы."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000513"), "13")
     other = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000514"), "14")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
 
     order_repo.save(
         Order(
@@ -495,18 +525,15 @@ async def test_pay_order_not_new_status() -> None:
     """Reject payments for non-NEW orders."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000516"), "15")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
     order_repo.save(
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000517"),
@@ -551,14 +578,11 @@ async def test_pay_order_blocked_user() -> None:
     """Reject blocked users."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = User(
@@ -566,9 +590,20 @@ async def test_pay_order_blocked_user() -> None:
         external_id="16",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(user)
     message = FakeMessage(
@@ -600,14 +635,11 @@ async def test_pay_order_paused_user() -> None:
     """Reject paused users."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
     user = User(
@@ -615,9 +647,20 @@ async def test_pay_order_paused_user() -> None:
         external_id="17",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.PAUSE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(user)
     message = FakeMessage(
@@ -649,17 +692,35 @@ async def test_pay_order_missing_profile() -> None:
     """Reject missing advertiser profile."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
+    profile_service = _profile_service(user_repo)
     contact_pricing_service = _contact_pricing_service()
 
-    _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000521"), "21")
+    user_repo.save(
+        User(
+            user_id=UUID("00000000-0000-0000-0000-000000000521"),
+            external_id="21",
+            messenger_type=MessengerType.TELEGRAM,
+            username="adv",
+            role=UserRole.BLOGGER,
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+            instagram_url=None,
+            confirmed=False,
+            topics=None,
+            audience_gender=None,
+            audience_age_min=None,
+            audience_age_max=None,
+            audience_geo=None,
+            price=None,
+            contact=None,
+            profile_updated_at=None,
+        )
+    )
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
         user=FakeUser(21, "adv", "Adv"),
@@ -707,25 +768,33 @@ async def test_successful_payment_handler() -> None:
     """Confirm payment on successful payment message."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000504"),
         external_id="3",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000505"),
@@ -775,15 +844,12 @@ async def test_successful_payment_invalid_payload() -> None:
     """Reject invalid payload."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     payment_repo = InMemoryPaymentRepository()
     order_repo = InMemoryOrderRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
     user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000520"), "20")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(user_repo, user.user_id)
 
     message = FakeMessage(text=None, user=FakeUser(20, "adv", "Adv"), bot=FakeBot())
     message.successful_payment = FakeSuccessfulPayment(payload="bad", charge_id="c")
@@ -796,13 +862,10 @@ async def test_successful_payment_user_not_found() -> None:
     """Reject when user is not found."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     payment_repo = InMemoryPaymentRepository()
     order_repo = InMemoryOrderRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
-    )
+    payment_service = _payment_service(user_repo, order_repo, payment_repo)
 
     message = FakeMessage(text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot())
     message.successful_payment = FakeSuccessfulPayment(

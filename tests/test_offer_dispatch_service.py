@@ -7,15 +7,14 @@ import pytest
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
-from ugc_bot.domain.entities import BloggerProfile, Order, User
+from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
-    AudienceGender,
     MessengerType,
     OrderStatus,
+    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryBloggerProfileRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
@@ -25,12 +24,10 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
     """Dispatch returns only confirmed active bloggers."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
 
     service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
 
@@ -54,26 +51,22 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
         external_id="100",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/blogger",
+        confirmed=True,
+        topics={"selected": ["tech"]},
+        audience_gender=None,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        contact=None,
+        profile_updated_at=datetime.now(timezone.utc),
     )
     user_repo.save(blogger)
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=blogger.user_id,
-            instagram_url="https://instagram.com/blogger",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=datetime.now(timezone.utc),
-        )
-    )
-    # Note: instagram_url and confirmed are now in profiles, not User
 
     assert service.dispatch(order.order_id) == [blogger]
 
@@ -82,12 +75,10 @@ def test_dispatch_requires_active_order() -> None:
     """Dispatch fails for inactive orders."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
 
     service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
 
@@ -114,12 +105,10 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
     """Skip bloggers with missing user or invalid status."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
 
     service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
 
@@ -138,44 +127,26 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
     )
     order_repo.save(order)
 
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=UUID("00000000-0000-0000-0000-000000000622"),
-            instagram_url="https://instagram.com/ghost",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=datetime.now(timezone.utc),
-        )
-    )
-
     user_repo.save(
         User(
             user_id=UUID("00000000-0000-0000-0000-000000000623"),
             external_id="101",
             messenger_type=MessengerType.TELEGRAM,
             username="advertiser",
+            role=UserRole.ADVERTISER,
             status=UserStatus.BLOCKED,
             issue_count=0,
             created_at=datetime.now(timezone.utc),
-        )
-    )
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=UUID("00000000-0000-0000-0000-000000000623"),
             instagram_url="https://instagram.com/advertiser",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=datetime.now(timezone.utc),
+            confirmed=True,
+            topics=None,
+            audience_gender=None,
+            audience_age_min=None,
+            audience_age_max=None,
+            audience_geo=None,
+            price=None,
+            contact="contact",
+            profile_updated_at=datetime.now(timezone.utc),
         )
     )
 
@@ -186,12 +157,10 @@ def test_dispatch_no_profiles_returns_empty() -> None:
     """Return empty list when no confirmed profiles."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
 
     service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
 
@@ -217,12 +186,10 @@ def test_dispatch_excludes_order_author() -> None:
     """Do not send order to its author even if they are a confirmed blogger."""
 
     user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
 
     service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
 
@@ -248,26 +215,22 @@ def test_dispatch_excludes_order_author() -> None:
         external_id="200",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser_blogger",
+        role=UserRole.BOTH,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=True,
+        topics={"selected": ["tech"]},
+        audience_gender=None,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        contact="contact",
+        profile_updated_at=datetime.now(timezone.utc),
     )
     user_repo.save(advertiser_blogger)
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=advertiser_id,
-            instagram_url="https://instagram.com/advertiser",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=datetime.now(timezone.utc),
-        )
-    )
-    # Note: instagram_url and confirmed are now in profiles, not User
 
     # Another blogger
     other_blogger = User(
@@ -275,26 +238,22 @@ def test_dispatch_excludes_order_author() -> None:
         external_id="201",
         messenger_type=MessengerType.TELEGRAM,
         username="other_blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/other",
+        confirmed=True,
+        topics={"selected": ["tech"]},
+        audience_gender=None,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        contact=None,
+        profile_updated_at=datetime.now(timezone.utc),
     )
     user_repo.save(other_blogger)
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=other_blogger.user_id,
-            instagram_url="https://instagram.com/other",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=datetime.now(timezone.utc),
-        )
-    )
-    # Note: instagram_url and confirmed are now in profiles, not User
 
     # Should only return other_blogger, not advertiser_blogger
     result = service.dispatch(order.order_id)

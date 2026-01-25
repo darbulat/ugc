@@ -15,13 +15,9 @@ from ugc_bot.bot.handlers.advertiser_registration import (
     handle_instagram_url,
     start_advertiser_registration,
 )
-from ugc_bot.domain.entities import AdvertiserProfile, User
-from ugc_bot.domain.enums import MessengerType, UserStatus
-from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
-    InMemoryBloggerProfileRepository,
-    InMemoryUserRepository,
-)
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
 
 
 class FakeUser:
@@ -68,16 +64,45 @@ class FakeFSMContext:
         self.state = None
 
 
-def _profile_service(
-    user_repo: InMemoryUserRepository,
-    advertiser_repo: InMemoryAdvertiserProfileRepository,
-) -> ProfileService:
+def _profile_service(user_repo: InMemoryUserRepository) -> ProfileService:
     """Create profile service for handler tests."""
 
-    return ProfileService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        advertiser_repo=advertiser_repo,
+    return ProfileService(user_repo=user_repo)
+
+
+def _add_advertiser_profile(
+    user_repo: InMemoryUserRepository,
+    user_id: UUID,
+    instagram_url: str | None = None,
+    confirmed: bool = False,
+    contact: str = "contact",
+) -> None:
+    """Seed advertiser profile fields on user."""
+
+    user = user_repo.get_by_id(user_id)
+    if user is None:
+        return
+    user_repo.save(
+        User(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            role=UserRole.ADVERTISER,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url=instagram_url,
+            confirmed=confirmed,
+            topics=user.topics,
+            audience_gender=user.audience_gender,
+            audience_age_min=user.audience_age_min,
+            audience_age_max=user.audience_age_max,
+            audience_geo=user.audience_geo,
+            price=user.price,
+            contact=contact,
+            profile_updated_at=user.profile_updated_at,
+        )
     )
 
 
@@ -87,7 +112,7 @@ async def test_start_advertiser_registration_requires_user() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
+    profile_service = _profile_service(repo)
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
@@ -103,7 +128,7 @@ async def test_start_advertiser_registration_sets_state() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
+    profile_service = _profile_service(repo)
     service.set_user(
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
@@ -128,13 +153,24 @@ async def test_start_advertiser_registration_blocked_user() -> None:
         external_id="11",
         messenger_type=MessengerType.TELEGRAM,
         username="blocked",
+        role=UserRole.ADVERTISER,
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     repo.save(blocked_user)
     service = UserRoleService(user_repo=repo)
-    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
+    profile_service = _profile_service(repo)
     message = FakeMessage(text=None, user=FakeUser(11, "blocked", "Blocked"))
     state = FakeFSMContext()
 
@@ -154,13 +190,24 @@ async def test_start_advertiser_registration_paused_user() -> None:
         external_id="12",
         messenger_type=MessengerType.TELEGRAM,
         username="paused",
+        role=UserRole.ADVERTISER,
         status=UserStatus.PAUSE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     repo.save(paused_user)
     service = UserRoleService(user_repo=repo)
-    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
+    profile_service = _profile_service(repo)
     message = FakeMessage(text=None, user=FakeUser(12, "paused", "Paused"))
     state = FakeFSMContext()
 
@@ -178,7 +225,6 @@ async def test_handle_contact_requires_value() -> None:
     state = FakeFSMContext()
     advertiser_service = AdvertiserRegistrationService(
         user_repo=InMemoryUserRepository(),
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
     )
 
     await handle_contact(message, state, advertiser_service)
@@ -191,16 +237,13 @@ async def test_handle_contact_success() -> None:
     """Store contact and create profile."""
 
     user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    advertiser_service = AdvertiserRegistrationService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-    )
+    advertiser_service = AdvertiserRegistrationService(user_repo=user_repo)
     user = user_service.set_user(
         external_id="20",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
     )
 
     message = FakeMessage(text="@contact", user=FakeUser(20, "adv", "Adv"))
@@ -211,7 +254,9 @@ async def test_handle_contact_success() -> None:
 
     assert message.answers
     assert "Профиль рекламодателя создан" in message.answers[0]
-    assert advertiser_repo.get_by_user_id(user.user_id) is not None
+    saved_user = user_repo.get_by_id(user.user_id)
+    assert saved_user is not None
+    assert saved_user.contact is not None
 
 
 @pytest.mark.asyncio
@@ -219,26 +264,35 @@ async def test_start_advertiser_registration_with_instagram_url() -> None:
     """Skip Instagram URL step if user already has Instagram URL."""
 
     repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     service = UserRoleService(user_repo=repo)
-    profile_service = _profile_service(repo, advertiser_repo)
+    profile_service = _profile_service(repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000722"),
         external_id="13",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     repo.save(user)
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=user.user_id,
-            instagram_url="https://instagram.com/advertiser",
-            confirmed=False,
-            contact="test@example.com",
-        )
+    _add_advertiser_profile(
+        repo,
+        user.user_id,
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=False,
+        contact="test@example.com",
     )
     message = FakeMessage(text=None, user=FakeUser(13, "adv", "Adv"))
     state = FakeFSMContext()
@@ -254,26 +308,35 @@ async def test_start_advertiser_registration_with_confirmed() -> None:
     """Skip Instagram URL step if user already has confirmed Instagram."""
 
     repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
     service = UserRoleService(user_repo=repo)
-    profile_service = _profile_service(repo, advertiser_repo)
+    profile_service = _profile_service(repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000723"),
         external_id="14",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     repo.save(user)
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=user.user_id,
-            instagram_url="https://instagram.com/advertiser",
-            confirmed=True,
-            contact="test@example.com",
-        )
+    _add_advertiser_profile(
+        repo,
+        user.user_id,
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=True,
+        contact="test@example.com",
     )
     message = FakeMessage(text=None, user=FakeUser(14, "adv", "Adv"))
     state = FakeFSMContext()

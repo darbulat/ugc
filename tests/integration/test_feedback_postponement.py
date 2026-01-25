@@ -3,8 +3,8 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 
-from ugc_bot.domain.enums import InteractionStatus, OrderStatus
-from ugc_bot.domain.entities import AdvertiserProfile
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import InteractionStatus, OrderStatus, UserRole
 
 
 @pytest.mark.asyncio
@@ -23,15 +23,30 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "blogger_postpone", username="blogger_postpone"
     )
 
-    # Создаем advertiser profile
-    advertiser_repo = dispatcher["advertiser_repo"]
-    advertiser_profile = AdvertiserProfile(
-        user_id=advertiser_user.user_id,
-        contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
+    # Создаем advertiser profile fields on user
+    user_repo = dispatcher["user_repo"]
+    user_repo.save(
+        User(
+            user_id=advertiser_user.user_id,
+            external_id=advertiser_user.external_id,
+            messenger_type=advertiser_user.messenger_type,
+            username=advertiser_user.username,
+            role=UserRole.ADVERTISER,
+            status=advertiser_user.status,
+            issue_count=advertiser_user.issue_count,
+            created_at=advertiser_user.created_at,
+            instagram_url=None,
+            confirmed=False,
+            topics=advertiser_user.topics,
+            audience_gender=advertiser_user.audience_gender,
+            audience_age_min=advertiser_user.audience_age_min,
+            audience_age_max=advertiser_user.audience_age_max,
+            audience_geo=advertiser_user.audience_geo,
+            price=advertiser_user.price,
+            contact="test@example.com",
+            profile_updated_at=advertiser_user.profile_updated_at,
+        )
     )
-    advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ
     order_service = dispatcher["order_service"]
@@ -150,15 +165,30 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         "blogger_postpone2", username="blogger_postpone2"
     )
 
-    # Создаем advertiser profile
-    advertiser_repo = dispatcher["advertiser_repo"]
-    advertiser_profile = AdvertiserProfile(
-        user_id=advertiser_user.user_id,
-        contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
+    # Создаем advertiser profile fields on user
+    user_repo = dispatcher["user_repo"]
+    user_repo.save(
+        User(
+            user_id=advertiser_user.user_id,
+            external_id=advertiser_user.external_id,
+            messenger_type=advertiser_user.messenger_type,
+            username=advertiser_user.username,
+            role=UserRole.ADVERTISER,
+            status=advertiser_user.status,
+            issue_count=advertiser_user.issue_count,
+            created_at=advertiser_user.created_at,
+            instagram_url=None,
+            confirmed=False,
+            topics=advertiser_user.topics,
+            audience_gender=advertiser_user.audience_gender,
+            audience_age_min=advertiser_user.audience_age_min,
+            audience_age_max=advertiser_user.audience_age_max,
+            audience_geo=advertiser_user.audience_geo,
+            price=advertiser_user.price,
+            contact="test@example.com",
+            profile_updated_at=advertiser_user.profile_updated_at,
+        )
     )
-    advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ и взаимодействие
     order_service = dispatcher["order_service"]
@@ -239,15 +269,30 @@ async def test_feedback_mixed_responses_aggregation(
         "blogger_mixed2", username="blogger_mixed2"
     )
 
-    # Создаем advertiser profile
-    advertiser_repo = dispatcher["advertiser_repo"]
-    advertiser_profile = AdvertiserProfile(
-        user_id=advertiser_user.user_id,
-        contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
+    # Создаем advertiser profile fields on user
+    user_repo = dispatcher["user_repo"]
+    user_repo.save(
+        User(
+            user_id=advertiser_user.user_id,
+            external_id=advertiser_user.external_id,
+            messenger_type=advertiser_user.messenger_type,
+            username=advertiser_user.username,
+            role=UserRole.ADVERTISER,
+            status=advertiser_user.status,
+            issue_count=advertiser_user.issue_count,
+            created_at=advertiser_user.created_at,
+            instagram_url=None,
+            confirmed=False,
+            topics=advertiser_user.topics,
+            audience_gender=advertiser_user.audience_gender,
+            audience_age_min=advertiser_user.audience_age_min,
+            audience_age_max=advertiser_user.audience_age_max,
+            audience_geo=advertiser_user.audience_geo,
+            price=advertiser_user.price,
+            contact="test@example.com",
+            profile_updated_at=advertiser_user.profile_updated_at,
+        )
     )
-    advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ
     order_service = dispatcher["order_service"]
@@ -329,15 +374,30 @@ async def test_feedback_issue_status_blocks_user(
         "blogger_issue", username="blogger_issue"
     )
 
-    # Создаем advertiser profile
-    advertiser_repo = dispatcher["advertiser_repo"]
-    advertiser_profile = AdvertiserProfile(
-        user_id=advertiser_user.user_id,
-        contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
+    # Создаем advertiser profile fields on user
+    user_repo = dispatcher["user_repo"]
+    user_repo.save(
+        User(
+            user_id=advertiser_user.user_id,
+            external_id=advertiser_user.external_id,
+            messenger_type=advertiser_user.messenger_type,
+            username=advertiser_user.username,
+            role=UserRole.ADVERTISER,
+            status=advertiser_user.status,
+            issue_count=advertiser_user.issue_count,
+            created_at=advertiser_user.created_at,
+            instagram_url=None,
+            confirmed=False,
+            topics=advertiser_user.topics,
+            audience_gender=advertiser_user.audience_gender,
+            audience_age_min=advertiser_user.audience_age_min,
+            audience_age_max=advertiser_user.audience_age_max,
+            audience_geo=advertiser_user.audience_geo,
+            price=advertiser_user.price,
+            contact="test@example.com",
+            profile_updated_at=advertiser_user.profile_updated_at,
+        )
     )
-    advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ и взаимодействие
     order_service = dispatcher["order_service"]

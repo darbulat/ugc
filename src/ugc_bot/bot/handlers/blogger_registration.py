@@ -21,7 +21,7 @@ from ugc_bot.bot.handlers.keyboards import (
     cancel_keyboard,
     with_cancel_keyboard,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
 
 
 router = Router()
@@ -116,11 +116,13 @@ async def handle_instagram(
         )
         return
 
-    # Check if Instagram URL is already taken
-    existing_profile = blogger_registration_service.blogger_repo.get_by_instagram_url(
+    data = await state.get_data()
+    user_id_raw = data.get("user_id")
+    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+    existing_user = blogger_registration_service.user_repo.get_by_instagram_url(
         instagram_url
     )
-    if existing_profile is not None:
+    if existing_user is not None and existing_user.user_id != user_id:
         await message.answer(
             "Этот Instagram аккаунт уже зарегистрирован. "
             "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
@@ -263,6 +265,7 @@ async def handle_agreements(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
             username=data["nickname"],
+            role=UserRole.BLOGGER,
         )
         profile = blogger_registration_service.register_blogger(
             user_id=user_id,

@@ -11,7 +11,6 @@ from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -27,7 +26,6 @@ async def start_verification(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
-    profile_service: ProfileService,
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
 ) -> None:
@@ -52,22 +50,13 @@ async def start_verification(
         await message.answer("Пользователи на паузе не могут подтверждать аккаунт.")
         return
 
-    # Check profiles for Instagram URL and confirmation status
-    blogger_profile = profile_service.get_blogger_profile(user.user_id)
-    advertiser_profile = profile_service.get_advertiser_profile(user.user_id)
-
-    # Check if user already has Instagram verification in any profile
-    if (blogger_profile and blogger_profile.confirmed) or (
-        advertiser_profile and advertiser_profile.confirmed
-    ):
+    # Check if user already has Instagram verification
+    if user.confirmed:
         await message.answer("Ваш Instagram уже подтвержден.")
         return
 
-    # Check if user has Instagram URL in any profile
-    has_instagram = (blogger_profile and blogger_profile.instagram_url) or (
-        advertiser_profile and advertiser_profile.instagram_url
-    )
-    if not has_instagram:
+    # Check if user has Instagram URL
+    if not user.instagram_url:
         await message.answer(
             "У вас нет Instagram URL. "
             "Для блогеров: заполните профиль через /register. "

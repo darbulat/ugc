@@ -14,7 +14,6 @@ from ugc_bot.application.services.offer_dispatch_service import OfferDispatchSer
 from ugc_bot.bot.handlers.security_warnings import BLOGGER_OFFER_WARNING
 from ugc_bot.config import load_config
 from ugc_bot.infrastructure.db.repositories import (
-    SqlAlchemyBloggerProfileRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyUserRepository,
 )
@@ -153,11 +152,9 @@ def main() -> None:
         return
     session_factory = create_session_factory(config.database_url)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
     order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
 

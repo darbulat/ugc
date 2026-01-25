@@ -9,15 +9,14 @@ import pytest
 
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import BloggerProfile, Order, User
+from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
-    AudienceGender,
     MessengerType,
     OrderStatus,
+    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryBloggerProfileRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
@@ -95,10 +94,8 @@ async def test_send_offers_sends_messages() -> None:
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
 
@@ -108,9 +105,20 @@ async def test_send_offers_sends_messages() -> None:
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=now,
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(advertiser)
     order = Order(
@@ -133,26 +141,22 @@ async def test_send_offers_sends_messages() -> None:
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=now,
+        instagram_url="https://instagram.com/blogger",
+        confirmed=True,
+        topics={"selected": ["tech"]},
+        audience_gender=None,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        contact=None,
+        profile_updated_at=now,
     )
     user_repo.save(blogger)
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=blogger.user_id,
-            instagram_url="https://instagram.com/blogger",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=now,
-        )
-    )
-    # Note: instagram_url and confirmed are now in profiles, not User
 
     class FakeBot:
         def __init__(self) -> None:
@@ -267,10 +271,8 @@ async def test_send_offers_retries_then_succeeds() -> None:
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
     now = datetime.now(timezone.utc)
@@ -279,9 +281,20 @@ async def test_send_offers_retries_then_succeeds() -> None:
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=now,
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(advertiser)
     order = Order(
@@ -303,26 +316,22 @@ async def test_send_offers_retries_then_succeeds() -> None:
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=now,
+        instagram_url="https://instagram.com/blogger",
+        confirmed=True,
+        topics={"selected": ["tech"]},
+        audience_gender=None,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        contact=None,
+        profile_updated_at=now,
     )
     user_repo.save(blogger)
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=blogger.user_id,
-            instagram_url="https://instagram.com/blogger",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=now,
-        )
-    )
-    # Note: instagram_url and confirmed are now in profiles, not User
 
     class FlakyBot:
         def __init__(self) -> None:
@@ -354,10 +363,8 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
-        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
     now = datetime.now(timezone.utc)
@@ -366,9 +373,20 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
+        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=now,
+        instagram_url=None,
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact="contact",
+        profile_updated_at=None,
     )
     user_repo.save(advertiser)
     order = Order(
@@ -390,26 +408,22 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
+        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=now,
+        instagram_url="https://instagram.com/blogger",
+        confirmed=True,
+        topics={"selected": ["tech"]},
+        audience_gender=None,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        contact=None,
+        profile_updated_at=now,
     )
     user_repo.save(blogger)
-    blogger_repo.save(
-        BloggerProfile(
-            user_id=blogger.user_id,
-            instagram_url="https://instagram.com/blogger",
-            confirmed=False,
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            updated_at=now,
-        )
-    )
-    # Note: instagram_url and confirmed are now in profiles, not User
 
     class AlwaysFailBot:
         async def send_message(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]

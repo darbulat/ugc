@@ -9,17 +9,11 @@ from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.ports import (
-    AdvertiserProfileRepository,
-    BloggerProfileRepository,
     InstagramGraphApiClient,
     InstagramVerificationRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import (
-    AdvertiserProfile,
-    BloggerProfile,
-    InstagramVerificationCode,
-)
+from ugc_bot.domain.entities import InstagramVerificationCode, User
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +23,6 @@ class InstagramVerificationService:
     """Generate and verify Instagram confirmation codes."""
 
     user_repo: UserRepository
-    blogger_repo: BloggerProfileRepository
-    advertiser_repo: AdvertiserProfileRepository
     verification_repo: InstagramVerificationRepository
     instagram_api_client: InstagramGraphApiClient | None = None
 
@@ -41,18 +33,7 @@ class InstagramVerificationService:
         if user is None:
             raise UserNotFoundError("User not found for Instagram verification.")
 
-        # Check if user has a profile with Instagram URL
-        blogger_profile = self.blogger_repo.get_by_user_id(user_id)
-        advertiser_profile = self.advertiser_repo.get_by_user_id(user_id)
-
-        if blogger_profile is None and advertiser_profile is None:
-            raise UserNotFoundError("User has no profile for Instagram verification.")
-
-        # Check if at least one profile has Instagram URL
-        has_instagram = (
-            blogger_profile is not None and blogger_profile.instagram_url
-        ) or (advertiser_profile is not None and advertiser_profile.instagram_url)
-        if not has_instagram:
+        if not user.instagram_url:
             raise UserNotFoundError("User has no Instagram URL to verify.")
 
         code = _generate_code()
@@ -75,18 +56,7 @@ class InstagramVerificationService:
         if user is None:
             raise UserNotFoundError("User not found.")
 
-        # Check profiles
-        blogger_profile = self.blogger_repo.get_by_user_id(user_id)
-        advertiser_profile = self.advertiser_repo.get_by_user_id(user_id)
-
-        if blogger_profile is None and advertiser_profile is None:
-            raise UserNotFoundError("User has no profile for Instagram verification.")
-
-        # Check if at least one profile has Instagram URL
-        has_instagram = (
-            blogger_profile is not None and blogger_profile.instagram_url
-        ) or (advertiser_profile is not None and advertiser_profile.instagram_url)
-        if not has_instagram:
+        if not user.instagram_url:
             raise UserNotFoundError("User has no Instagram URL to verify.")
 
         valid_code = self.verification_repo.get_valid_code(
@@ -97,30 +67,8 @@ class InstagramVerificationService:
 
         self.verification_repo.mark_used(valid_code.code_id)
 
-        # Update confirmed status in profiles that have Instagram URL
-        if blogger_profile is not None and blogger_profile.instagram_url:
-            confirmed_blogger = blogger_profile.__class__(
-                user_id=blogger_profile.user_id,
-                instagram_url=blogger_profile.instagram_url,
-                confirmed=True,
-                topics=blogger_profile.topics,
-                audience_gender=blogger_profile.audience_gender,
-                audience_age_min=blogger_profile.audience_age_min,
-                audience_age_max=blogger_profile.audience_age_max,
-                audience_geo=blogger_profile.audience_geo,
-                price=blogger_profile.price,
-                updated_at=blogger_profile.updated_at,
-            )
-            self.blogger_repo.save(confirmed_blogger)
-
-        if advertiser_profile is not None and advertiser_profile.instagram_url:
-            confirmed_advertiser = advertiser_profile.__class__(
-                user_id=advertiser_profile.user_id,
-                instagram_url=advertiser_profile.instagram_url,
-                confirmed=True,
-                contact=advertiser_profile.contact,
-            )
-            self.advertiser_repo.save(confirmed_advertiser)
+        confirmed_user = _with_confirmed_instagram(user)
+        self.user_repo.save(confirmed_user)
 
         return True
 
@@ -154,7 +102,7 @@ class InstagramVerificationService:
             logger.debug("No valid code found for webhook verification")
             return None
 
-        # Get user and profiles
+        # Get user
         user = self.user_repo.get_by_id(valid_code.user_id)
         if user is None:
             logger.warning(
@@ -163,49 +111,10 @@ class InstagramVerificationService:
             )
             return None
 
-        blogger_profile = self.blogger_repo.get_by_user_id(valid_code.user_id)
-        advertiser_profile = self.advertiser_repo.get_by_user_id(valid_code.user_id)
-
-        # Find profile with matching Instagram URL
-        matching_profile_type: str | None = None
-        matching_profile: BloggerProfile | AdvertiserProfile | None = None
-        profile_username: str | None = None
-
-        if blogger_profile and blogger_profile.instagram_url:
-            instagram_url = blogger_profile.instagram_url.lower().strip()
-            if "instagram.com/" in instagram_url:
-                parts = instagram_url.split("instagram.com/")
-                if len(parts) > 1:
-                    profile_username = parts[-1].split("/")[0].split("?")[0].strip()
-            else:
-                profile_username = instagram_url.replace("@", "").strip()
-            matching_profile_type = "blogger"
-            matching_profile = blogger_profile
-
-        if advertiser_profile and advertiser_profile.instagram_url:
-            instagram_url = advertiser_profile.instagram_url.lower().strip()
-            if "instagram.com/" in instagram_url:
-                parts = instagram_url.split("instagram.com/")
-                if len(parts) > 1:
-                    adv_username = parts[-1].split("/")[0].split("?")[0].strip()
-                else:
-                    adv_username = None
-            else:
-                adv_username = instagram_url.replace("@", "").strip()
-
-            # Use advertiser profile if it matches, or if no blogger profile matched
-            if matching_profile_type is None or adv_username == profile_username:
-                profile_username = adv_username
-                matching_profile_type = "advertiser"
-                matching_profile = advertiser_profile
-
-        if (
-            matching_profile_type is None
-            or matching_profile is None
-            or not profile_username
-        ):
+        profile_username = _extract_instagram_username(user.instagram_url)
+        if not profile_username:
             logger.warning(
-                "User has no Instagram URL in profiles for verification",
+                "User has no Instagram URL for verification",
                 extra={"user_id": valid_code.user_id},
             )
             return None
@@ -255,38 +164,14 @@ class InstagramVerificationService:
         # Mark code as used and confirm profile
         self.verification_repo.mark_used(valid_code.code_id)
 
-        if matching_profile_type == "blogger" and isinstance(
-            matching_profile, BloggerProfile
-        ):
-            confirmed_blogger = BloggerProfile(
-                user_id=matching_profile.user_id,
-                instagram_url=matching_profile.instagram_url,
-                confirmed=True,
-                topics=matching_profile.topics,
-                audience_gender=matching_profile.audience_gender,
-                audience_age_min=matching_profile.audience_age_min,
-                audience_age_max=matching_profile.audience_age_max,
-                audience_geo=matching_profile.audience_geo,
-                price=matching_profile.price,
-                updated_at=matching_profile.updated_at,
-            )
-            self.blogger_repo.save(confirmed_blogger)
-        elif matching_profile_type == "advertiser" and isinstance(
-            matching_profile, AdvertiserProfile
-        ):
-            confirmed_advertiser = AdvertiserProfile(
-                user_id=matching_profile.user_id,
-                instagram_url=matching_profile.instagram_url,
-                confirmed=True,
-                contact=matching_profile.contact,
-            )
-            self.advertiser_repo.save(confirmed_advertiser)
+        confirmed_user = _with_confirmed_instagram(user)
+        self.user_repo.save(confirmed_user)
 
         logger.info(
             "Instagram profile confirmed via webhook",
             extra={
                 "user_id": str(valid_code.user_id),
-                "profile_type": matching_profile_type,
+                "profile_type": "user",
             },
         )
         return valid_code.user_id
@@ -297,3 +182,42 @@ def _generate_code(length: int = 8) -> str:
 
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _extract_instagram_username(instagram_url: str | None) -> str | None:
+    """Extract username from an Instagram URL or handle."""
+
+    if not instagram_url:
+        return None
+    instagram_url = instagram_url.lower().strip()
+    if "instagram.com/" in instagram_url:
+        parts = instagram_url.split("instagram.com/")
+        if len(parts) > 1:
+            return parts[-1].split("/")[0].split("?")[0].strip() or None
+        return None
+    return instagram_url.replace("@", "").strip() or None
+
+
+def _with_confirmed_instagram(user: User) -> User:
+    """Return a user with Instagram confirmed."""
+
+    return User(
+        user_id=user.user_id,
+        external_id=user.external_id,
+        messenger_type=user.messenger_type,
+        username=user.username,
+        role=user.role,
+        status=user.status,
+        issue_count=user.issue_count,
+        created_at=user.created_at,
+        instagram_url=user.instagram_url,
+        confirmed=True,
+        topics=user.topics,
+        audience_gender=user.audience_gender,
+        audience_age_min=user.audience_age_min,
+        audience_age_max=user.audience_age_max,
+        audience_geo=user.audience_geo,
+        price=user.price,
+        contact=user.contact,
+        profile_updated_at=user.profile_updated_at,
+    )

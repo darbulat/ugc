@@ -15,8 +15,6 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import load_config
 from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
 from ugc_bot.infrastructure.db.models import (
-    AdvertiserProfileModel,
-    BloggerProfileModel,
     ComplaintModel,
     ContactPricingModel,
     InstagramVerificationCodeModel,
@@ -61,6 +59,7 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.external_id,
         UserModel.messenger_type,
         UserModel.username,
+        UserModel.role,
         UserModel.status,
         UserModel.issue_count,
         UserModel.created_at,
@@ -107,33 +106,6 @@ class UserAdmin(ModelView, model=UserModel):
             except Exception:
                 # If logging fails, don't break the update
                 pass
-
-
-class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
-    """Admin view for blogger profiles."""
-
-    column_list = [
-        BloggerProfileModel.user_id,
-        BloggerProfileModel.instagram_url,
-        BloggerProfileModel.confirmed,
-        BloggerProfileModel.audience_gender,
-        BloggerProfileModel.audience_age_min,
-        BloggerProfileModel.audience_age_max,
-        BloggerProfileModel.audience_geo,
-        BloggerProfileModel.price,
-        BloggerProfileModel.updated_at,
-    ]
-
-
-class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
-    """Admin view for advertiser profiles."""
-
-    column_list = [
-        AdvertiserProfileModel.user_id,
-        AdvertiserProfileModel.instagram_url,
-        AdvertiserProfileModel.confirmed,
-        AdvertiserProfileModel.contact,
-    ]
 
 
 class OrderAdmin(ModelView, model=OrderModel):
@@ -322,8 +294,6 @@ def create_admin_app() -> FastAPI:
     ComplaintAdmin._engine = engine  # type: ignore[attr-defined]
 
     admin.add_view(UserAdmin)
-    admin.add_view(BloggerProfileAdmin)
-    admin.add_view(AdvertiserProfileAdmin)
     admin.add_view(OrderAdmin)
     admin.add_view(OrderResponseAdmin)
     admin.add_view(InteractionAdmin)

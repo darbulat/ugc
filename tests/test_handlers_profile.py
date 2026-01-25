@@ -6,8 +6,8 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.bot.handlers.profile import show_profile
-from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
 
 
 class FakeUser:
@@ -43,7 +43,6 @@ class FakeProfileService:
         has_advertiser: bool,
         blogger_confirmed: bool = True,
     ) -> None:
-        # Note: instagram_url and confirmed are now in profiles, not User
         self._user = user
         self._has_blogger = has_blogger
         self._has_advertiser = has_advertiser
@@ -55,24 +54,49 @@ class FakeProfileService:
     def get_blogger_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_blogger:
             return None
-        return BloggerProfile(
+        return User(
             user_id=user_id,
+            external_id=self._user.external_id,
+            messenger_type=self._user.messenger_type,
+            username=self._user.username,
+            role=UserRole.BLOGGER,
+            status=self._user.status,
+            issue_count=self._user.issue_count,
+            created_at=self._user.created_at,
             instagram_url="https://instagram.com/test",
             confirmed=self._blogger_confirmed,
             topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
+            audience_gender=None,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
-            updated_at=datetime.now(timezone.utc),
+            contact=None,
+            profile_updated_at=datetime.now(timezone.utc),
         )
 
     def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_advertiser:
             return None
-        return AdvertiserProfile(
-            user_id=user_id, contact="contact", instagram_url=None, confirmed=False
+        return User(
+            user_id=user_id,
+            external_id=self._user.external_id,
+            messenger_type=self._user.messenger_type,
+            username=self._user.username,
+            role=UserRole.ADVERTISER,
+            status=self._user.status,
+            issue_count=self._user.issue_count,
+            created_at=self._user.created_at,
+            instagram_url=None,
+            confirmed=False,
+            topics=None,
+            audience_gender=None,
+            audience_age_min=None,
+            audience_age_max=None,
+            audience_geo=None,
+            price=None,
+            contact="contact",
+            profile_updated_at=datetime.now(timezone.utc),
         )
 
 
@@ -85,9 +109,20 @@ async def test_show_profile_both_roles() -> None:
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
+        role=UserRole.BOTH,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/test",
+        confirmed=False,
+        topics=None,
+        audience_gender=None,
+        audience_age_min=None,
+        audience_age_max=None,
+        audience_geo=None,
+        price=None,
+        contact=None,
+        profile_updated_at=None,
     )
     message = FakeMessage()
     service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
@@ -154,6 +189,7 @@ async def test_show_profile_missing_profiles() -> None:
                 external_id="2",
                 messenger_type=MessengerType.TELEGRAM,
                 username="user",
+                role=UserRole.BOTH,
                 status=UserStatus.ACTIVE,
                 issue_count=0,
                 created_at=datetime.now(timezone.utc),

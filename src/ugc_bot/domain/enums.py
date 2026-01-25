@@ -20,6 +20,14 @@ class UserStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class UserRole(StrEnum):
+    """User role for access scenarios."""
+
+    BLOGGER = "blogger"
+    ADVERTISER = "advertiser"
+    BOTH = "both"
+
+
 class AudienceGender(StrEnum):
     """Audience gender filter."""
 
