@@ -14,6 +14,6 @@ def test_load_config_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     config = load_config()
 
-    assert config.bot_token == "token"
-    assert config.log_level == "DEBUG"
-    assert config.database_url == "postgresql://test"
+    assert config.bot.bot_token == "token"
+    assert config.log.log_level == "DEBUG"
+    assert config.db.database_url == "postgresql://test"

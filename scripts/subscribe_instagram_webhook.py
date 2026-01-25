@@ -16,7 +16,7 @@ def subscribe_to_messages(page_id: str | None = None) -> None:
     """Subscribe to Instagram messages webhook field."""
     config = load_config()
 
-    if not config.instagram_access_token:
+    if not config.instagram.instagram_access_token:
         print("❌ Error: INSTAGRAM_ACCESS_TOKEN is not configured")
         print("   Set it in your .env file")
         sys.exit(1)
@@ -34,7 +34,7 @@ def subscribe_to_messages(page_id: str | None = None) -> None:
             url,
             params={
                 "subscribed_fields": "messages",
-                "access_token": config.instagram_access_token,
+                "access_token": config.instagram.instagram_access_token,
             },
             timeout=30.0,
         )
@@ -67,7 +67,7 @@ def list_subscriptions(page_id: str | None = None) -> None:
     """List current webhook subscriptions."""
     config = load_config()
 
-    if not config.instagram_access_token:
+    if not config.instagram.instagram_access_token:
         print("❌ Error: INSTAGRAM_ACCESS_TOKEN is not configured")
         sys.exit(1)
 
@@ -81,7 +81,7 @@ def list_subscriptions(page_id: str | None = None) -> None:
         response = httpx.get(
             url,
             params={
-                "access_token": config.instagram_access_token,
+                "access_token": config.instagram.instagram_access_token,
             },
             timeout=30.0,
         )

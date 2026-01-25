@@ -164,26 +164,26 @@ def main() -> None:
     """Start feedback scheduler loop."""
 
     config = load_config()
-    configure_logging(config.log_level)
-    if not config.feedback_enabled:
+    configure_logging(config.log.log_level)
+    if not config.feedback.feedback_enabled:
         logger.info("Feedback scheduler disabled by config")
         return
 
-    session_factory = create_session_factory(config.database_url)
+    session_factory = create_session_factory(config.db.database_url)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
     interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
 
     user_role_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    bot = Bot(token=config.bot_token)
+    bot = Bot(token=config.bot.bot_token)
     asyncio.run(
         run_loop(
             bot,
             interaction_repo,
             interaction_service,
             user_role_service,
-            interval_seconds=config.feedback_poll_interval_seconds,
+            interval_seconds=config.feedback.feedback_poll_interval_seconds,
         )
     )
 

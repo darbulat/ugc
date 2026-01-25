@@ -283,18 +283,18 @@ def create_admin_app() -> FastAPI:
     """Create a FastAPI app with SQLAdmin."""
 
     config = load_config()
-    if not config.admin_secret:
+    if not config.admin.admin_secret:
         raise ValueError("ADMIN_SECRET is required for SQLAdmin.")
-    if not config.admin_password:
+    if not config.admin.admin_password:
         raise ValueError("ADMIN_PASSWORD is required for SQLAdmin.")
 
     container = Container(config)
     engine = container.get_admin_engine()
-    app = FastAPI(title=config.admin_site_name)
+    app = FastAPI(title=config.admin.admin_site_name)
     auth = AdminAuth(
-        secret_key=config.admin_secret,
-        username=config.admin_username,
-        password=config.admin_password,
+        secret_key=config.admin.admin_secret,
+        username=config.admin.admin_username,
+        password=config.admin.admin_password,
     )
     admin = Admin(app, engine, authentication_backend=auth, base_url="/admin")
 

@@ -200,7 +200,9 @@ def test_webhook_event_processing_success(
     }
 
     payload_bytes = json.dumps(payload).encode("utf-8")
-    signature = _create_signature(payload_bytes, test_config.instagram_app_secret)
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
 
     response = client.post(
         "/webhook/instagram",
@@ -249,7 +251,9 @@ def test_webhook_event_non_instagram_object(
 
     payload = {"object": "facebook", "entry": []}
     payload_bytes = json.dumps(payload).encode("utf-8")
-    signature = _create_signature(payload_bytes, test_config.instagram_app_secret)
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
 
     response = client.post(
         "/webhook/instagram",
@@ -271,7 +275,9 @@ def test_webhook_event_invalid_json(
     mock_load_config.return_value = test_config
 
     payload_bytes = b"invalid json"
-    signature = _create_signature(payload_bytes, test_config.instagram_app_secret)
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
 
     response = client.post(
         "/webhook/instagram",
@@ -360,7 +366,9 @@ def test_webhook_event_processing_exception(
     }
 
     payload_bytes = json.dumps(payload).encode("utf-8")
-    signature = _create_signature(payload_bytes, test_config.instagram_app_secret)
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
 
     response = client.post(
         "/webhook/instagram",

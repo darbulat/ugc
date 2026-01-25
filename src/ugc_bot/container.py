@@ -38,7 +38,9 @@ class Container:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
         self._session_factory = (
-            create_session_factory(config.database_url) if config.database_url else None
+            create_session_factory(config.db.database_url)
+            if config.db.database_url
+            else None
         )
         self._transaction_manager = (
             SessionTransactionManager(self._session_factory)
@@ -56,9 +58,9 @@ class Container:
 
     def get_admin_engine(self) -> Engine:
         """Engine for SQLAdmin (pool_pre_ping)."""
-        if not self._config.database_url:
+        if not self._config.db.database_url:
             raise ValueError("DATABASE_URL is required for admin.")
-        return create_engine(self._config.database_url, pool_pre_ping=True)
+        return create_engine(self._config.db.database_url, pool_pre_ping=True)
 
     def build_repos(self) -> dict:
         """All repos for the main bot dispatcher."""
@@ -143,10 +145,10 @@ class Container:
             outbox_repo=outbox_repo, order_repo=order_repo
         )
         kafka_publisher: KafkaOrderActivationPublisher | None = None
-        if self._config.kafka_enabled:
+        if self._config.kafka.kafka_enabled:
             kafka_publisher = KafkaOrderActivationPublisher(
-                bootstrap_servers=self._config.kafka_bootstrap_servers,
-                topic=self._config.kafka_topic,
+                bootstrap_servers=self._config.kafka.kafka_bootstrap_servers,
+                topic=self._config.kafka.kafka_topic,
             )
         return (outbox_publisher, kafka_publisher)
 
@@ -162,14 +164,14 @@ class Container:
             session_factory=self._session_factory
         )
         instagram_api_client = None
-        if self._config.instagram_access_token:
+        if self._config.instagram.instagram_access_token:
             from ugc_bot.infrastructure.instagram.graph_api_client import (
                 HttpInstagramGraphApiClient,
             )
 
             instagram_api_client = HttpInstagramGraphApiClient(
-                access_token=self._config.instagram_access_token,
-                base_url=self._config.instagram_api_base_url,
+                access_token=self._config.instagram.instagram_access_token,
+                base_url=self._config.instagram.instagram_api_base_url,
             )
         return InstagramVerificationService(
             user_repo=user_repo,

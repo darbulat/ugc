@@ -46,7 +46,7 @@ async def verify_webhook(request: Request) -> Response:
         logger.warning("Invalid hub.mode in verification request")
         raise HTTPException(status_code=400, detail="Invalid mode")
 
-    if hub_verify_token != config.instagram_webhook_verify_token:
+    if hub_verify_token != config.instagram.instagram_webhook_verify_token:
         logger.warning("Invalid verify token in verification request")
         raise HTTPException(status_code=403, detail="Invalid verify token")
 
@@ -70,13 +70,13 @@ async def handle_webhook(
     payload_bytes = await request.body()
 
     # Verify signature if app secret is configured
-    if config.instagram_app_secret:
+    if config.instagram.instagram_app_secret:
         if not x_hub_signature_256:
             logger.warning("Missing X-Hub-Signature-256 header")
             raise HTTPException(status_code=400, detail="Missing signature header")
 
         if not _verify_signature(
-            payload_bytes, x_hub_signature_256, config.instagram_app_secret
+            payload_bytes, x_hub_signature_256, config.instagram.instagram_app_secret
         ):
             logger.warning("Invalid webhook signature")
             raise HTTPException(status_code=403, detail="Invalid signature")
@@ -136,7 +136,7 @@ async def _notify_user_verification_success(
         blogger_profile = verification_service.blogger_repo.get_by_user_id(user_id)
         confirmed = blogger_profile.confirmed if blogger_profile else False
 
-        bot = Bot(token=config.bot_token)
+        bot = Bot(token=config.bot.bot_token)
         try:
             await bot.send_message(
                 chat_id=int(telegram_user.external_id),
@@ -262,7 +262,7 @@ async def _process_webhook_events(
                 user_id = await verification_service.verify_code_by_instagram_sender(
                     instagram_sender_id=sender_id,
                     code=text,
-                    admin_instagram_username=config.admin_instagram_username,
+                    admin_instagram_username=config.instagram.admin_instagram_username,
                 )
                 if user_id:
                     logger.info(
@@ -293,7 +293,10 @@ async def _process_webhook_events(
 def main() -> None:
     """Run the webhook server."""
     config = load_config()
-    configure_logging(config.log_level, json_format=config.log_format.lower() == "json")
+    configure_logging(
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
+    )
 
     import uvicorn
 

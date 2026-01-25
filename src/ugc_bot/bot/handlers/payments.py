@@ -55,7 +55,7 @@ async def send_order_invoice(
             title=f"Оплата заказа {order_id}",
             description=offer_text[:255],
             payload=str(order_id),
-            provider_token=config.telegram_provider_token,
+            provider_token=config.bot.telegram_provider_token,
             currency="RUB",
             prices=[LabeledPrice(label="Заказ UGC", amount=price)],
         )
@@ -131,7 +131,7 @@ async def pay_order(
         )
         return
 
-    if not config.telegram_provider_token:
+    if not config.bot.telegram_provider_token:
         await message.answer("Платежный провайдер не настроен.")
         return
 

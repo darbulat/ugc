@@ -90,12 +90,11 @@ async def run_processor() -> None:
     """Run the outbox processor."""
 
     config = load_config()
-    configure_logging(config.log_level)
+    configure_logging(config.log.log_level)
 
-    logger = logging.getLogger(__name__)
     logger.info("Starting outbox processor")
 
-    if not config.database_url:
+    if not config.db.database_url:
         logger.error("DATABASE_URL is required for outbox processor")
         return
 

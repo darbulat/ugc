@@ -74,7 +74,9 @@ async def start_verification(
         return
     await state.clear()
     await message.answer(
-        _verification_instruction(verification.code, config.admin_instagram_username),
+        _verification_instruction(
+            verification.code, config.instagram.admin_instagram_username
+        ),
     )
 
 

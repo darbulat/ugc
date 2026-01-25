@@ -249,30 +249,27 @@ class TestRunProcessor:
     ) -> None:
         """run_processor exits early when Kafka is disabled."""
 
-        # Mock config with Kafka disabled
         mock_config = Mock()
-        mock_config.log_level = "INFO"
-        mock_config.kafka_enabled = False
-        mock_config.database_url = "sqlite://"
+        mock_config.log = Mock()
+        mock_config.log.log_level = "INFO"
+        mock_config.db = Mock()
+        mock_config.db.database_url = "sqlite://"
 
-        # Mock logger
         mock_logger = Mock()
 
-        # Container returns (outbox, None) when Kafka is disabled
         fake_container = Mock()
         fake_container.build_outbox_deps.return_value = (Mock(), None)
 
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
-        )
-        monkeypatch.setattr(
             "ugc_bot.outbox_processor.Container",
             lambda _: fake_container,
         )
 
         from ugc_bot.outbox_processor import run_processor
+
+        monkeypatch.setattr("ugc_bot.outbox_processor.logger", mock_logger)
 
         await run_processor()
 
@@ -287,19 +284,19 @@ class TestRunProcessor:
         """run_processor exits early when database URL is missing."""
 
         mock_config = Mock()
-        mock_config.log_level = "INFO"
-        mock_config.kafka_enabled = True
-        mock_config.database_url = ""
+        mock_config.log = Mock()
+        mock_config.log.log_level = "INFO"
+        mock_config.db = Mock()
+        mock_config.db.database_url = ""
 
         mock_logger = Mock()
 
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
-        )
 
         from ugc_bot.outbox_processor import run_processor
+
+        monkeypatch.setattr("ugc_bot.outbox_processor.logger", mock_logger)
 
         await run_processor()
 
@@ -314,11 +311,10 @@ class TestRunProcessor:
         """run_processor handles KeyboardInterrupt gracefully."""
 
         mock_config = Mock()
-        mock_config.log_level = "INFO"
-        mock_config.kafka_enabled = True
-        mock_config.kafka_bootstrap_servers = "localhost:9092"
-        mock_config.kafka_topic = "test-topic"
-        mock_config.database_url = "sqlite://"
+        mock_config.log = Mock()
+        mock_config.log.log_level = "INFO"
+        mock_config.db = Mock()
+        mock_config.db.database_url = "sqlite://"
 
         mock_outbox_publisher = Mock()
         mock_kafka_publisher = Mock()
@@ -346,9 +342,6 @@ class TestRunProcessor:
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
-        )
-        monkeypatch.setattr(
             "ugc_bot.outbox_processor.Container",
             lambda _: fake_container,
         )
@@ -371,11 +364,13 @@ class TestRunProcessor:
 
         from ugc_bot.outbox_processor import run_processor
 
+        monkeypatch.setattr("ugc_bot.outbox_processor.logger", mock_logger)
+
         await run_processor()
 
         mock_logger.info.assert_called()
         info_calls = [str(call) for call in mock_logger.info.call_args_list]
-        assert any("Shutting down" in call for call in info_calls)
+        assert any("Shutting down" in str(call) for call in info_calls)
 
         mock_processor.start.assert_called_once()
         mock_processor.stop.assert_called_once()

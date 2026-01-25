@@ -88,7 +88,8 @@ def _profile_service(
 def _fake_config() -> AppConfig:
     """Create a fake config for tests."""
     config = MagicMock(spec=AppConfig)
-    config.admin_instagram_username = "admin_ugc_bot"
+    config.instagram = MagicMock()
+    config.instagram.admin_instagram_username = "admin_ugc_bot"
     return config
 
 

@@ -77,11 +77,11 @@ def _json_loads(data: str) -> dict:
 
 async def create_storage(config: AppConfig):
     """Create FSM storage based on configuration."""
-    if config.use_redis_storage:
+    if config.redis.use_redis_storage:
         try:
             from redis.asyncio import Redis
 
-            redis = Redis.from_url(config.redis_url, decode_responses=True)
+            redis = Redis.from_url(config.redis.redis_url, decode_responses=True)
             return RedisStorage(
                 redis=redis,
                 json_dumps=_json_dumps,
@@ -109,7 +109,7 @@ def build_dispatcher(
                  For production, use RedisStorage via create_storage().
     """
 
-    if not config.database_url:
+    if not config.db.database_url:
         raise ValueError("DATABASE_URL is required for repository setup.")
 
     if storage is None:
@@ -137,14 +137,14 @@ def build_dispatcher(
     )
     # Create Instagram Graph API client if access token is configured
     instagram_api_client = None
-    if config.instagram_access_token:
+    if config.instagram.instagram_access_token:
         from ugc_bot.infrastructure.instagram.graph_api_client import (
             HttpInstagramGraphApiClient,
         )
 
         instagram_api_client = HttpInstagramGraphApiClient(
-            access_token=config.instagram_access_token,
-            base_url=config.instagram_api_base_url,
+            access_token=config.instagram.instagram_access_token,
+            base_url=config.instagram.instagram_api_base_url,
         )
 
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
@@ -219,12 +219,15 @@ async def run_bot() -> None:
     """Run the Telegram bot."""
 
     config = load_config()
-    configure_logging(config.log_level, json_format=config.log_format.lower() == "json")
+    configure_logging(
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
+    )
 
     logging.getLogger(__name__).info("Starting UGC bot")
     storage = await create_storage(config)
     dispatcher = build_dispatcher(config, storage=storage)
-    bot = Bot(token=config.bot_token)
+    bot = Bot(token=config.bot.bot_token)
     try:
         await dispatcher.start_polling(bot)
     finally:

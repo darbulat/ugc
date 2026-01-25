@@ -1,26 +1,112 @@
-"""Application configuration loading."""
+"""Application configuration loading.
 
-from pydantic import Field, field_validator
+Config is split into domain sections (bot, db, kafka, etc.) to simplify
+maintenance and testing. AppConfig composes them.
+"""
+
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_ENV = SettingsConfigDict(
+    env_file=".env",
+    env_file_encoding="utf-8",
+    extra="ignore",
+)
 
-class AppConfig(BaseSettings):
-    """Application configuration container."""
+_FLAT_KEYS = {
+    "bot": ["BOT_TOKEN", "TELEGRAM_PROVIDER_TOKEN"],
+    "log": ["LOG_LEVEL", "LOG_FORMAT"],
+    "db": ["DATABASE_URL"],
+    "admin": ["ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_SECRET", "ADMIN_SITE_NAME"],
+    "kafka": [
+        "KAFKA_ENABLED",
+        "KAFKA_BOOTSTRAP_SERVERS",
+        "KAFKA_TOPIC",
+        "KAFKA_GROUP_ID",
+        "KAFKA_DLQ_TOPIC",
+        "KAFKA_SEND_RETRIES",
+        "KAFKA_SEND_RETRY_DELAY_SECONDS",
+    ],
+    "feedback": [
+        "FEEDBACK_DELAY_HOURS",
+        "FEEDBACK_POLL_INTERVAL_SECONDS",
+        "FEEDBACK_ENABLED",
+    ],
+    "redis": ["REDIS_URL", "USE_REDIS_STORAGE"],
+    "instagram": [
+        "INSTAGRAM_WEBHOOK_VERIFY_TOKEN",
+        "INSTAGRAM_APP_SECRET",
+        "ADMIN_INSTAGRAM_USERNAME",
+        "INSTAGRAM_ACCESS_TOKEN",
+        "INSTAGRAM_API_BASE_URL",
+    ],
+}
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+
+def _is_flat_dict(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    # Flat: has env-style keys and no nested section
+    flat_markers = {"BOT_TOKEN", "DATABASE_URL", "KAFKA_ENABLED", "LOG_LEVEL"}
+    return bool(flat_markers & set(obj.keys())) or obj == {}
+
+
+def _flat_to_nested(flat: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        section: {k: flat[k] for k in keys if k in flat}
+        for section, keys in _FLAT_KEYS.items()
+    }
+
+
+# --- Section configs (each reads from env via BaseSettings) ---
+
+
+class BotConfig(BaseSettings):
+    model_config = _ENV
 
     bot_token: str = Field(alias="BOT_TOKEN")
+    telegram_provider_token: str = Field(default="", alias="TELEGRAM_PROVIDER_TOKEN")
+
+    @field_validator("bot_token")
+    @classmethod
+    def validate_bot_token(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("BOT_TOKEN is required to start the bot.")
+        return v.strip()
+
+
+class LogConfig(BaseSettings):
+    model_config = _ENV
+
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_format: str = Field(default="text", alias="LOG_FORMAT")
+
+    @field_validator("log_level")
+    @classmethod
+    def normalize_log_level(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class DbConfig(BaseSettings):
+    model_config = _ENV
+
     database_url: str = Field(default="", alias="DATABASE_URL")
+
+
+class AdminConfig(BaseSettings):
+    model_config = _ENV
+
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     admin_secret: str = Field(default="", alias="ADMIN_SECRET")
     admin_site_name: str = Field(default="UGC Admin", alias="ADMIN_SITE_NAME")
+
+
+class KafkaConfig(BaseSettings):
+    model_config = _ENV
+
     kafka_enabled: bool = Field(default=True, alias="KAFKA_ENABLED")
     kafka_bootstrap_servers: str = Field(
         default="kafka:9092", alias="KAFKA_BOOTSTRAP_SERVERS"
@@ -32,14 +118,28 @@ class AppConfig(BaseSettings):
     kafka_send_retry_delay_seconds: float = Field(
         default=1.0, alias="KAFKA_SEND_RETRY_DELAY_SECONDS"
     )
+
+
+class FeedbackConfig(BaseSettings):
+    model_config = _ENV
+
     feedback_delay_hours: int = Field(default=72, alias="FEEDBACK_DELAY_HOURS")
     feedback_poll_interval_seconds: int = Field(
         default=300, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
     )
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
-    telegram_provider_token: str = Field(default="", alias="TELEGRAM_PROVIDER_TOKEN")
+
+
+class RedisConfig(BaseSettings):
+    model_config = _ENV
+
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
     use_redis_storage: bool = Field(default=True, alias="USE_REDIS_STORAGE")
+
+
+class InstagramConfig(BaseSettings):
+    model_config = _ENV
+
     instagram_webhook_verify_token: str = Field(
         default="", alias="INSTAGRAM_WEBHOOK_VERIFY_TOKEN"
     )
@@ -52,24 +152,42 @@ class AppConfig(BaseSettings):
         default="https://graph.instagram.com", alias="INSTAGRAM_API_BASE_URL"
     )
 
-    @field_validator("bot_token")
+
+# --- Composite ---
+
+
+class AppConfig(BaseModel):
+    """Application configuration. Composes Bot, Log, Db, Admin, Kafka, Feedback, Redis, Instagram."""
+
+    model_config = {"extra": "forbid"}
+
+    bot: BotConfig
+    log: LogConfig
+    db: DbConfig
+    admin: AdminConfig
+    kafka: KafkaConfig
+    feedback: FeedbackConfig
+    redis: RedisConfig
+    instagram: InstagramConfig
+
+    @model_validator(mode="before")
     @classmethod
-    def validate_bot_token(cls, value: str) -> str:
-        """Ensure bot token is provided."""
-
-        if not value.strip():
-            raise ValueError("BOT_TOKEN is required to start the bot.")
-        return value.strip()
-
-    @field_validator("log_level")
-    @classmethod
-    def normalize_log_level(cls, value: str) -> str:
-        """Normalize log level to uppercase."""
-
-        return value.strip().upper()
+    def _handle_flat_dict(cls, data: Any) -> Any:
+        if not _is_flat_dict(data):
+            return data
+        nested = _flat_to_nested(data if isinstance(data, dict) else {})
+        return {
+            "bot": BotConfig.model_validate(nested["bot"]),
+            "log": LogConfig.model_validate(nested["log"]),
+            "db": DbConfig.model_validate(nested["db"]),
+            "admin": AdminConfig.model_validate(nested["admin"]),
+            "kafka": KafkaConfig.model_validate(nested["kafka"]),
+            "feedback": FeedbackConfig.model_validate(nested["feedback"]),
+            "redis": RedisConfig.model_validate(nested["redis"]),
+            "instagram": InstagramConfig.model_validate(nested["instagram"]),
+        }
 
 
 def load_config() -> AppConfig:
-    """Load configuration from environment variables."""
-
+    """Load configuration from environment (and .env). Use empty dict so each section reads from env."""
     return AppConfig.model_validate({})

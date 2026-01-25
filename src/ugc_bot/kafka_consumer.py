@@ -130,11 +130,11 @@ async def run_consumer() -> None:
     """Run Kafka consumer in a single event loop, processing messages asynchronously."""
 
     config = load_config()
-    configure_logging(config.log_level)
-    if not config.kafka_enabled:
+    configure_logging(config.log.log_level)
+    if not config.kafka.kafka_enabled:
         logger.info("Kafka consumer disabled by config")
         return
-    if not config.database_url:
+    if not config.db.database_url:
         logger.error("DATABASE_URL is required for Kafka consumer")
         return
 
@@ -142,20 +142,20 @@ async def run_consumer() -> None:
     offer_dispatch_service = container.build_offer_dispatch_service()
 
     dlq_producer: KafkaProducer | None = KafkaProducer(
-        bootstrap_servers=config.kafka_bootstrap_servers,
+        bootstrap_servers=config.kafka.kafka_bootstrap_servers,
         value_serializer=lambda value: json.dumps(value).encode("utf-8"),
     )
     consumer = KafkaConsumer(
-        config.kafka_topic,
-        bootstrap_servers=config.kafka_bootstrap_servers,
-        group_id=config.kafka_group_id,
+        config.kafka.kafka_topic,
+        bootstrap_servers=config.kafka.kafka_bootstrap_servers,
+        group_id=config.kafka.kafka_group_id,
         value_deserializer=lambda value: json.loads(value.decode("utf-8")),
         auto_offset_reset="earliest",
         enable_auto_commit=True,
     )
-    logger.info("Kafka consumer started", extra={"topic": config.kafka_topic})
+    logger.info("Kafka consumer started", extra={"topic": config.kafka.kafka_topic})
 
-    bot = Bot(token=config.bot_token)
+    bot = Bot(token=config.bot.bot_token)
     try:
         while True:
             # Poll in thread so the event loop is not blocked
@@ -174,9 +174,9 @@ async def run_consumer() -> None:
                             bot,
                             offer_dispatch_service,
                             dlq_producer,
-                            config.kafka_dlq_topic,
-                            config.kafka_send_retries,
-                            config.kafka_send_retry_delay_seconds,
+                            config.kafka.kafka_dlq_topic,
+                            config.kafka.kafka_send_retries,
+                            config.kafka.kafka_send_retry_delay_seconds,
                         )
     finally:
         consumer.close()
