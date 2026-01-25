@@ -5,7 +5,6 @@ from uuid import UUID
 
 from fastapi import FastAPI
 import pytest
-from sqlalchemy import create_engine
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ugc_bot.admin.app import (
@@ -15,6 +14,9 @@ from ugc_bot.admin.app import (
     _get_services,
     create_admin_app,
 )
+from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.config import AppConfig
+from ugc_bot.container import Container
 from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
 from ugc_bot.infrastructure.db.models import (
     ComplaintModel,
@@ -50,12 +52,26 @@ def test_create_admin_app(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_services() -> None:
     """Test _get_services function creates services correctly."""
 
-    engine = create_engine("sqlite:///:memory:")
-    user_service, complaint_service, interaction_service = _get_services(engine)
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "x", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+    container = Container(config)
+    user_service, complaint_service, interaction_service = _get_services(container)
 
     assert user_service is not None
     assert complaint_service is not None
     assert interaction_service is not None
+
+
+def test_container_build_offer_dispatch_service() -> None:
+    """Container.build_offer_dispatch_service returns OfferDispatchService."""
+
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "x", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+    container = Container(config)
+    svc = container.build_offer_dispatch_service()
+    assert isinstance(svc, OfferDispatchService)
 
 
 @pytest.mark.asyncio

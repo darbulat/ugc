@@ -13,15 +13,23 @@ from kafka import KafkaConsumer, KafkaProducer  # type: ignore[import-untyped]
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.bot.handlers.security_warnings import BLOGGER_OFFER_WARNING
 from ugc_bot.config import load_config
-from ugc_bot.infrastructure.db.repositories import (
-    SqlAlchemyBloggerProfileRepository,
-    SqlAlchemyOrderRepository,
-    SqlAlchemyUserRepository,
-)
-from ugc_bot.infrastructure.db.session import create_session_factory
+from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_order_id(data: dict[str, Any]) -> UUID | None:
+    """Extract order_id from order_activation payload or None."""
+    if data.get("event") != "order_activated":
+        return None
+    raw = data.get("order_id")
+    if not raw:
+        return None
+    try:
+        return UUID(raw)
+    except ValueError:
+        return None
 
 
 async def _send_offers(
@@ -106,60 +114,32 @@ async def _send_offers(
                     await asyncio.sleep(retry_delay_seconds)
 
 
-def _handle_message(
-    data: dict[str, Any],
-    bot_token: str,
-    offer_dispatch_service: OfferDispatchService,
-    dlq_producer: KafkaProducer | None,
-    dlq_topic: str,
-    retries: int,
-    retry_delay_seconds: float,
+def _publish_dlq(
+    producer: KafkaProducer | None, topic: str, payload: dict[str, Any]
 ) -> None:
-    if data.get("event") != "order_activated":
-        return
-    order_id_raw = data.get("order_id")
-    if not order_id_raw:
+    if producer is None:
         return
     try:
-        order_id = UUID(order_id_raw)
-    except ValueError:
-        return
-
-    async def _run() -> None:
-        bot = Bot(token=bot_token)
-        try:
-            await _send_offers(
-                order_id,
-                bot,
-                offer_dispatch_service,
-                dlq_producer,
-                dlq_topic,
-                retries,
-                retry_delay_seconds,
-            )
-        finally:
-            await bot.session.close()
-
-    asyncio.run(_run())
+        producer.send(topic, payload)
+        producer.flush()
+    except Exception:
+        logger.exception("Failed to publish DLQ message")
 
 
-def main() -> None:
-    """Run Kafka consumer loop."""
+async def run_consumer() -> None:
+    """Run Kafka consumer in a single event loop, processing messages asynchronously."""
 
     config = load_config()
     configure_logging(config.log_level)
     if not config.kafka_enabled:
         logger.info("Kafka consumer disabled by config")
         return
-    session_factory = create_session_factory(config.database_url)
-    user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
-    order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        order_repo=order_repo,
-    )
+    if not config.database_url:
+        logger.error("DATABASE_URL is required for Kafka consumer")
+        return
+
+    container = Container(config)
+    offer_dispatch_service = container.build_offer_dispatch_service()
 
     dlq_producer: KafkaProducer | None = KafkaProducer(
         bootstrap_servers=config.kafka_bootstrap_servers,
@@ -174,28 +154,40 @@ def main() -> None:
         enable_auto_commit=True,
     )
     logger.info("Kafka consumer started", extra={"topic": config.kafka_topic})
-    for message in consumer:
-        _handle_message(
-            message.value,
-            config.bot_token,
-            offer_dispatch_service,
-            dlq_producer,
-            config.kafka_dlq_topic,
-            config.kafka_send_retries,
-            config.kafka_send_retry_delay_seconds,
-        )
 
-
-def _publish_dlq(
-    producer: KafkaProducer | None, topic: str, payload: dict[str, Any]
-) -> None:
-    if producer is None:
-        return
+    bot = Bot(token=config.bot_token)
     try:
-        producer.send(topic, payload)
-        producer.flush()
-    except Exception:
-        logger.exception("Failed to publish DLQ message")
+        while True:
+            # Poll in thread so the event loop is not blocked
+            batch = await asyncio.to_thread(consumer.poll, timeout_ms=1000)
+            if not batch:
+                continue
+            for _tp, records in batch.items():
+                for rec in records:
+                    val = getattr(rec, "value", None)
+                    if not isinstance(val, dict):
+                        continue
+                    order_id = _parse_order_id(val)
+                    if order_id is not None:
+                        await _send_offers(
+                            order_id,
+                            bot,
+                            offer_dispatch_service,
+                            dlq_producer,
+                            config.kafka_dlq_topic,
+                            config.kafka_send_retries,
+                            config.kafka_send_retry_delay_seconds,
+                        )
+    finally:
+        consumer.close()
+        await bot.session.close()
+        if dlq_producer is not None:
+            dlq_producer.close()
+
+
+def main() -> None:
+    """Entry point."""
+    asyncio.run(run_consumer())
 
 
 if __name__ == "__main__":  # pragma: no cover

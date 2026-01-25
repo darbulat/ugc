@@ -206,25 +206,14 @@ class TestRunProcessor:
         # Patch all dependencies
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.create_session_factory",
-            lambda *args, **kwargs: Mock(),
+        fake_container = Mock()
+        fake_container.build_outbox_deps.return_value = (
+            mock_outbox_publisher,
+            mock_kafka_publisher,
         )
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.SqlAlchemyOrderRepository",
-            lambda *args, **kwargs: Mock(),
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.SqlAlchemyOutboxRepository",
-            lambda *args, **kwargs: Mock(),
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.OutboxPublisher",
-            lambda *args, **kwargs: mock_outbox_publisher,
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.KafkaOrderActivationPublisher",
-            lambda *args, **kwargs: mock_kafka_publisher,
+            "ugc_bot.outbox_processor.Container",
+            lambda _: fake_container,
         )
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.OutboxProcessor", mock_processor_init
@@ -266,41 +255,27 @@ class TestRunProcessor:
         mock_config.kafka_enabled = False
         mock_config.database_url = "sqlite://"
 
-        # Mock outbox publisher
-        mock_outbox_publisher = Mock()
-
         # Mock logger
         mock_logger = Mock()
 
-        # Patch dependencies
+        # Container returns (outbox, None) when Kafka is disabled
+        fake_container = Mock()
+        fake_container.build_outbox_deps.return_value = (Mock(), None)
+
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
         )
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.create_session_factory",
-            lambda *args, **kwargs: Mock(),
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.SqlAlchemyOrderRepository",
-            lambda *args, **kwargs: Mock(),
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.SqlAlchemyOutboxRepository",
-            lambda *args, **kwargs: Mock(),
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.OutboxPublisher",
-            lambda *args, **kwargs: mock_outbox_publisher,
+            "ugc_bot.outbox_processor.Container",
+            lambda _: fake_container,
         )
 
-        # Import and run
         from ugc_bot.outbox_processor import run_processor
 
         await run_processor()
 
-        # Verify error was logged
         mock_logger.error.assert_called_once()
         error_call = mock_logger.error.call_args[0][0]
         assert "Kafka is disabled" in error_call
@@ -338,7 +313,6 @@ class TestRunProcessor:
     ) -> None:
         """run_processor handles KeyboardInterrupt gracefully."""
 
-        # Mock config
         mock_config = Mock()
         mock_config.log_level = "INFO"
         mock_config.kafka_enabled = True
@@ -346,16 +320,10 @@ class TestRunProcessor:
         mock_config.kafka_topic = "test-topic"
         mock_config.database_url = "sqlite://"
 
-        # Mock outbox publisher
         mock_outbox_publisher = Mock()
-
-        # Mock Kafka publisher
         mock_kafka_publisher = Mock()
-
-        # Mock logger
         mock_logger = Mock()
 
-        # Mock processor with async methods
         mock_processor = Mock(spec=OutboxProcessor)
         mock_processor._running = False
         mock_processor._task = None
@@ -369,64 +337,46 @@ class TestRunProcessor:
         mock_processor.start = Mock(side_effect=mock_start)
         mock_processor.stop = Mock(side_effect=mock_stop)
 
-        def mock_processor_init(*args, **kwargs):
-            return mock_processor
+        fake_container = Mock()
+        fake_container.build_outbox_deps.return_value = (
+            mock_outbox_publisher,
+            mock_kafka_publisher,
+        )
 
-        # Patch all dependencies
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
         )
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.create_session_factory",
-            lambda *args, **kwargs: Mock(),
+            "ugc_bot.outbox_processor.Container",
+            lambda _: fake_container,
         )
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.SqlAlchemyOrderRepository",
-            lambda *args, **kwargs: Mock(),
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.SqlAlchemyOutboxRepository",
-            lambda *args, **kwargs: Mock(),
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.OutboxPublisher",
-            lambda *args, **kwargs: mock_outbox_publisher,
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.KafkaOrderActivationPublisher",
-            lambda *args, **kwargs: mock_kafka_publisher,
-        )
-        monkeypatch.setattr(
-            "ugc_bot.outbox_processor.OutboxProcessor", mock_processor_init
+            "ugc_bot.outbox_processor.OutboxProcessor",
+            lambda *args, **kwargs: mock_processor,
         )
 
-        # Mock asyncio.sleep to raise KeyboardInterrupt
         sleep_count = 0
         original_sleep = asyncio.sleep
 
         async def mock_sleep(delay):
             nonlocal sleep_count
             sleep_count += 1
-            if sleep_count == 1:  # Raise on first sleep
+            if sleep_count == 1:
                 raise KeyboardInterrupt()
             await original_sleep(0.001)
 
         monkeypatch.setattr("asyncio.sleep", mock_sleep)
 
-        # Import and run
         from ugc_bot.outbox_processor import run_processor
 
-        # Should not raise exception
         await run_processor()
 
-        # Verify shutdown was logged
         mock_logger.info.assert_called()
         info_calls = [str(call) for call in mock_logger.info.call_args_list]
         assert any("Shutting down" in call for call in info_calls)
 
-        # Verify processor was stopped
         mock_processor.start.assert_called_once()
         mock_processor.stop.assert_called_once()
 

@@ -43,25 +43,9 @@ from ugc_bot.bot.handlers.payments import router as payments_router
 from ugc_bot.bot.handlers.feedback import router as feedback_router
 from ugc_bot.bot.handlers.complaints import router as complaints_router
 from ugc_bot.config import AppConfig, load_config
+from ugc_bot.container import Container
+from ugc_bot.infrastructure.db.repositories import NoopOfferBroadcaster
 from ugc_bot.logging_setup import configure_logging
-from ugc_bot.infrastructure.db.repositories import (
-    NoopOfferBroadcaster,
-    SqlAlchemyAdvertiserProfileRepository,
-    SqlAlchemyBloggerProfileRepository,
-    SqlAlchemyComplaintRepository,
-    SqlAlchemyContactPricingRepository,
-    SqlAlchemyInstagramVerificationRepository,
-    SqlAlchemyInteractionRepository,
-    SqlAlchemyOrderRepository,
-    SqlAlchemyOrderResponseRepository,
-    SqlAlchemyOutboxRepository,
-    SqlAlchemyPaymentRepository,
-    SqlAlchemyUserRepository,
-)
-from ugc_bot.infrastructure.db.session import (
-    SessionTransactionManager,
-    create_session_factory,
-)
 from ugc_bot.metrics.collector import MetricsCollector
 
 
@@ -132,38 +116,23 @@ def build_dispatcher(
         storage = MemoryStorage()
     dispatcher = Dispatcher(storage=storage)
     dispatcher["config"] = config
-    session_factory = create_session_factory(config.database_url)
-    transaction_manager = SessionTransactionManager(session_factory)
-    user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
-    advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
-        session_factory=session_factory
-    )
-    instagram_repo = SqlAlchemyInstagramVerificationRepository(
-        session_factory=session_factory
-    )
-    order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
-    order_response_repo = SqlAlchemyOrderResponseRepository(
-        session_factory=session_factory
-    )
-    interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
-    payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
-    pricing_repo = SqlAlchemyContactPricingRepository(session_factory=session_factory)
-    complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
+
+    c = Container(config)
+    repos = c.build_repos()
     metrics_collector = MetricsCollector()
     dispatcher["metrics_collector"] = metrics_collector
     dispatcher["user_role_service"] = UserRoleService(
-        user_repo=user_repo,
+        user_repo=repos["user_repo"],
         metrics_collector=metrics_collector,
     )
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
+        user_repo=repos["user_repo"],
+        blogger_repo=repos["blogger_repo"],
         metrics_collector=metrics_collector,
     )
     dispatcher["advertiser_registration_service"] = AdvertiserRegistrationService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
+        user_repo=repos["user_repo"],
+        advertiser_repo=repos["advertiser_repo"],
         metrics_collector=metrics_collector,
     )
     # Create Instagram Graph API client if access token is configured
@@ -179,54 +148,55 @@ def build_dispatcher(
         )
 
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        verification_repo=instagram_repo,
+        user_repo=repos["user_repo"],
+        blogger_repo=repos["blogger_repo"],
+        verification_repo=repos["instagram_repo"],
         instagram_api_client=instagram_api_client,
     )
     dispatcher["order_service"] = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
+        user_repo=repos["user_repo"],
+        advertiser_repo=repos["advertiser_repo"],
+        order_repo=repos["order_repo"],
         metrics_collector=metrics_collector,
     )
     dispatcher["offer_dispatch_service"] = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        order_repo=order_repo,
+        user_repo=repos["user_repo"],
+        blogger_repo=repos["blogger_repo"],
+        order_repo=repos["order_repo"],
     )
     dispatcher["offer_response_service"] = OfferResponseService(
-        order_repo=order_repo,
-        response_repo=order_response_repo,
+        order_repo=repos["order_repo"],
+        response_repo=repos["order_response_repo"],
         metrics_collector=metrics_collector,
     )
     dispatcher["interaction_service"] = InteractionService(
-        interaction_repo=interaction_repo,
+        interaction_repo=repos["interaction_repo"],
         metrics_collector=metrics_collector,
     )
-    outbox_repo = SqlAlchemyOutboxRepository(session_factory=session_factory)
-    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+    outbox_publisher = OutboxPublisher(
+        outbox_repo=repos["outbox_repo"], order_repo=repos["order_repo"]
+    )
 
     dispatcher["payment_service"] = PaymentService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
-        payment_repo=payment_repo,
+        user_repo=repos["user_repo"],
+        advertiser_repo=repos["advertiser_repo"],
+        order_repo=repos["order_repo"],
+        payment_repo=repos["payment_repo"],
         broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
         metrics_collector=metrics_collector,
-        transaction_manager=transaction_manager,
+        transaction_manager=c.transaction_manager,
     )
     dispatcher["contact_pricing_service"] = ContactPricingService(
-        pricing_repo=pricing_repo
+        pricing_repo=repos["pricing_repo"]
     )
     dispatcher["profile_service"] = ProfileService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=advertiser_repo,
+        user_repo=repos["user_repo"],
+        blogger_repo=repos["blogger_repo"],
+        advertiser_repo=repos["advertiser_repo"],
     )
     dispatcher["complaint_service"] = ComplaintService(
-        complaint_repo=complaint_repo,
+        complaint_repo=repos["complaint_repo"],
         metrics_collector=metrics_collector,
     )
     if include_routers:

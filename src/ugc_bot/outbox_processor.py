@@ -5,15 +5,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.ports import OrderActivationPublisher
+from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.config import load_config
-from ugc_bot.infrastructure.db.repositories import (
-    SqlAlchemyOrderRepository,
-    SqlAlchemyOutboxRepository,
-)
-from ugc_bot.infrastructure.db.session import create_session_factory
-from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
+from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -104,21 +99,8 @@ async def run_processor() -> None:
         logger.error("DATABASE_URL is required for outbox processor")
         return
 
-    # Build dependencies
-    session_factory = create_session_factory(config.database_url)
-    order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
-    outbox_repo = SqlAlchemyOutboxRepository(session_factory=session_factory)
-    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
-
-    # Create Kafka publisher
-    kafka_publisher = (
-        KafkaOrderActivationPublisher(
-            bootstrap_servers=config.kafka_bootstrap_servers,
-            topic=config.kafka_topic,
-        )
-        if config.kafka_enabled
-        else None
-    )
+    container = Container(config)
+    outbox_publisher, kafka_publisher = container.build_outbox_deps()
 
     if not kafka_publisher:
         logger.error("Kafka is disabled, cannot run outbox processor")

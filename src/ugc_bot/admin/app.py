@@ -4,7 +4,6 @@ import logging
 from uuid import UUID
 
 from fastapi import FastAPI
-from sqlalchemy import create_engine
 from sqladmin import Admin, ModelView
 from starlette.requests import Request
 
@@ -13,6 +12,7 @@ from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import load_config
+from ugc_bot.container import Container
 from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -25,32 +25,15 @@ from ugc_bot.infrastructure.db.models import (
     OrderResponseModel,
     UserModel,
 )
-from ugc_bot.infrastructure.db.repositories import (
-    SqlAlchemyComplaintRepository,
-    SqlAlchemyInteractionRepository,
-    SqlAlchemyUserRepository,
-)
-from ugc_bot.infrastructure.db.session import create_session_factory
 
 logger = logging.getLogger(__name__)
 
 
 def _get_services(
-    engine,
+    container: Container,
 ) -> tuple[UserRoleService, ComplaintService, InteractionService]:
     """Get services for admin actions."""
-
-    database_url = str(engine.url)
-    session_factory = create_session_factory(database_url)
-    user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
-    interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
-
-    user_role_service = UserRoleService(user_repo=user_repo)
-    complaint_service = ComplaintService(complaint_repo=complaint_repo)
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
-
-    return user_role_service, complaint_service, interaction_service
+    return container.build_admin_services()
 
 
 class UserAdmin(ModelView, model=UserModel):
@@ -87,9 +70,9 @@ class UserAdmin(ModelView, model=UserModel):
         # If status changed to BLOCKED, log it
         if old_status != new_status and new_status == UserStatus.BLOCKED:
             try:
-                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
-                if engine:
-                    user_role_service, _, _ = _get_services(engine)
+                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                if container:
+                    user_role_service, _, _ = _get_services(container)
                     user = user_role_service.get_user_by_id(UUID(pk))
                     if user:
                         logger.warning(
@@ -199,9 +182,9 @@ class InteractionAdmin(ModelView, model=InteractionModel):
             InteractionStatus.NO_DEAL,
         ):
             try:
-                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
-                if engine:
-                    _, _, interaction_service = _get_services(engine)
+                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                if container:
+                    _, _, interaction_service = _get_services(container)
                     interaction_service.manually_resolve_issue(UUID(pk), new_status)
             except Exception:
                 # If service call fails, the status change is already saved
@@ -260,9 +243,9 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
             and reported_id
         ):
             try:
-                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
-                if engine:
-                    user_role_service, complaint_service, _ = _get_services(engine)
+                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                if container:
+                    user_role_service, complaint_service, _ = _get_services(container)
                     # Update complaint status via service (sets reviewed_at)
                     complaint_service.resolve_complaint_with_action(UUID(pk))
                     # Block the reported user
@@ -272,9 +255,9 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
                 pass
         elif old_status != new_status and new_status == ComplaintStatus.DISMISSED:
             try:
-                engine = getattr(self, "_engine", None)  # type: ignore[attr-defined]
-                if engine:
-                    _, complaint_service, _ = _get_services(engine)
+                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                if container:
+                    _, complaint_service, _ = _get_services(container)
                     # Update complaint status via service (sets reviewed_at)
                     complaint_service.dismiss_complaint(UUID(pk))
             except Exception:
@@ -305,8 +288,9 @@ def create_admin_app() -> FastAPI:
     if not config.admin_password:
         raise ValueError("ADMIN_PASSWORD is required for SQLAdmin.")
 
+    container = Container(config)
+    engine = container.get_admin_engine()
     app = FastAPI(title=config.admin_site_name)
-    engine = create_engine(config.database_url, pool_pre_ping=True)
     auth = AdminAuth(
         secret_key=config.admin_secret,
         username=config.admin_username,
@@ -314,10 +298,10 @@ def create_admin_app() -> FastAPI:
     )
     admin = Admin(app, engine, authentication_backend=auth, base_url="/admin")
 
-    # Store engine reference in admin views for service access
-    UserAdmin._engine = engine  # type: ignore[attr-defined]
-    InteractionAdmin._engine = engine  # type: ignore[attr-defined]
-    ComplaintAdmin._engine = engine  # type: ignore[attr-defined]
+    # Store container in admin views for service access
+    UserAdmin._container = container  # type: ignore[attr-defined]
+    InteractionAdmin._container = container  # type: ignore[attr-defined]
+    ComplaintAdmin._container = container  # type: ignore[attr-defined]
 
     admin.add_view(UserAdmin)
     admin.add_view(BloggerProfileAdmin)

@@ -14,46 +14,13 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.config import AppConfig, load_config
+from ugc_bot.container import Container
 from ugc_bot.domain.enums import MessengerType
-from ugc_bot.infrastructure.db.repositories import (
-    SqlAlchemyBloggerProfileRepository,
-    SqlAlchemyInstagramVerificationRepository,
-    SqlAlchemyUserRepository,
-)
-from ugc_bot.infrastructure.db.session import create_session_factory
-from ugc_bot.infrastructure.instagram.graph_api_client import (
-    HttpInstagramGraphApiClient,
-)
 from ugc_bot.logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Instagram Webhook")
-
-
-def _get_services(config: AppConfig) -> InstagramVerificationService:
-    """Create service instances for webhook processing."""
-    session_factory = create_session_factory(config.database_url)
-    user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
-    verification_repo = SqlAlchemyInstagramVerificationRepository(
-        session_factory=session_factory
-    )
-
-    # Create Instagram Graph API client if access token is configured
-    instagram_api_client = None
-    if config.instagram_access_token:
-        instagram_api_client = HttpInstagramGraphApiClient(
-            access_token=config.instagram_access_token,
-            base_url=config.instagram_api_base_url,
-        )
-
-    return InstagramVerificationService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        verification_repo=verification_repo,
-        instagram_api_client=instagram_api_client,
-    )
 
 
 def _verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:
@@ -125,7 +92,8 @@ async def handle_webhook(
 
     # Process webhook events
     try:
-        verification_service = _get_services(config)
+        container = Container(config)
+        verification_service = container.build_instagram_verification_service()
         await _process_webhook_events(payload, verification_service, config)
     except Exception as exc:
         logger.exception("Error processing webhook events", exc_info=exc)
@@ -135,15 +103,18 @@ async def handle_webhook(
     return {"status": "ok"}
 
 
-async def _notify_user_verification_success(user_id: UUID, config: AppConfig) -> None:
+async def _notify_user_verification_success(
+    user_id: UUID,
+    verification_service: InstagramVerificationService,
+    config: AppConfig,
+) -> None:
     """Send Telegram notification to user about successful verification."""
     try:
         from aiogram import Bot
 
-        # Get user's Telegram external_id
-        session_factory = create_session_factory(config.database_url)
-        user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-        user = user_repo.get_by_id(user_id)
+        from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
+
+        user = verification_service.user_repo.get_by_id(user_id)
         if user is None:
             logger.warning(
                 "User not found for verification notification",
@@ -151,8 +122,7 @@ async def _notify_user_verification_success(user_id: UUID, config: AppConfig) ->
             )
             return
 
-        # Find Telegram user
-        telegram_user = user_repo.get_by_external(
+        telegram_user = verification_service.user_repo.get_by_external(
             external_id=user.external_id,
             messenger_type=MessengerType.TELEGRAM,
         )
@@ -163,21 +133,11 @@ async def _notify_user_verification_success(user_id: UUID, config: AppConfig) ->
             )
             return
 
-        # Send message
+        blogger_profile = verification_service.blogger_repo.get_by_user_id(user_id)
+        confirmed = blogger_profile.confirmed if blogger_profile else False
+
         bot = Bot(token=config.bot_token)
         try:
-            from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
-            from ugc_bot.infrastructure.db.repositories import (
-                SqlAlchemyBloggerProfileRepository,
-            )
-
-            # Get blogger profile to check confirmation status
-            blogger_repo = SqlAlchemyBloggerProfileRepository(
-                session_factory=session_factory
-            )
-            blogger_profile = blogger_repo.get_by_user_id(user_id)
-            confirmed = blogger_profile.confirmed if blogger_profile else False
-
             await bot.send_message(
                 chat_id=int(telegram_user.external_id),
                 text="✅ Instagram подтверждён. Теперь вы можете получать офферы.",
@@ -314,7 +274,9 @@ async def _process_webhook_events(
                         },
                     )
                     # Send notification to user in Telegram
-                    await _notify_user_verification_success(user_id, config)
+                    await _notify_user_verification_success(
+                        user_id, verification_service, config
+                    )
                 else:
                     logger.debug(
                         "Instagram verification failed - code not found or expired",

@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
@@ -21,72 +22,29 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
-from ugc_bot.kafka_consumer import _handle_message, _publish_dlq, _send_offers, main
+from ugc_bot.kafka_consumer import (
+    _parse_order_id,
+    _publish_dlq,
+    _send_offers,
+    main,
+    run_consumer,
+)
 
 
-def test_handle_message_skips_unknown_event(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_parse_order_id_returns_none_for_unknown_event() -> None:
     """Ignore unrelated events."""
+    assert _parse_order_id({"event": "other"}) is None
+    assert _parse_order_id({"event": "order_activated"}) is None
+    assert _parse_order_id({"event": "order_activated", "order_id": ""}) is None
+    assert _parse_order_id({"event": "order_activated", "order_id": "bad"}) is None
 
-    called = {"value": False}
 
-    async def fake_send(*_args, **_kwargs):  # type: ignore[no-untyped-def]
-        called["value"] = True
-
-    monkeypatch.setattr("ugc_bot.kafka_consumer._send_offers", fake_send)
-
-    _handle_message(
-        {"event": "other"},
-        bot_token="token",
-        offer_dispatch_service=None,  # type: ignore[arg-type]
-        dlq_producer=None,
-        dlq_topic="dlq",
-        retries=1,
-        retry_delay_seconds=0.0,
+def test_parse_order_id_returns_uuid_for_activation() -> None:
+    """Extract order_id from order_activation payload."""
+    got = _parse_order_id(
+        {"event": "order_activated", "order_id": "00000000-0000-0000-0000-000000000999"}
     )
-    assert called["value"] is False
-
-
-def test_handle_message_invokes_send(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Process activation event."""
-
-    called = {"value": False}
-
-    async def fake_send(*_args, **_kwargs):  # type: ignore[no-untyped-def]
-        called["value"] = True
-
-    class FakeBot:
-        def __init__(self, token: str) -> None:
-            self.token = token
-            self.session = self
-
-        async def close(self) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-    def fake_run(coro):  # type: ignore[no-untyped-def]
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-    monkeypatch.setattr("ugc_bot.kafka_consumer.Bot", FakeBot)
-    monkeypatch.setattr("ugc_bot.kafka_consumer._send_offers", fake_send)
-    monkeypatch.setattr("ugc_bot.kafka_consumer.asyncio.run", fake_run)
-
-    _handle_message(
-        {
-            "event": "order_activated",
-            "order_id": "00000000-0000-0000-0000-000000000999",
-        },
-        bot_token="token",
-        offer_dispatch_service=None,  # type: ignore[arg-type]
-        dlq_producer=None,
-        dlq_topic="dlq",
-        retries=1,
-        retry_delay_seconds=0.0,
-    )
-
-    assert called["value"] is True
+    assert got == UUID("00000000-0000-0000-0000-000000000999")
 
 
 @pytest.mark.asyncio
@@ -182,25 +140,48 @@ def test_main_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
         {"BOT_TOKEN": "token", "DATABASE_URL": "db", "KAFKA_ENABLED": False}
     )
     monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
-    called = {"value": False}
-
-    def fake_factory(*_args, **_kwargs):  # type: ignore[no-untyped-def]
-        called["value"] = True
-        return None
-
-    monkeypatch.setattr("ugc_bot.kafka_consumer.create_session_factory", fake_factory)
+    monkeypatch.setattr("ugc_bot.kafka_consumer.configure_logging", lambda *_: None)
 
     main()
-    assert called["value"] is False
 
 
-def test_main_consumes_messages(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Consume events when Kafka enabled."""
+@pytest.mark.asyncio
+async def test_run_consumer_database_url_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """run_consumer exits early when DATABASE_URL is empty."""
 
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "token",
-            "DATABASE_URL": "db",
+            "DATABASE_URL": "",
+            "KAFKA_ENABLED": True,
+            "KAFKA_BOOTSTRAP_SERVERS": "kafka:9092",
+            "KAFKA_TOPIC": "t",
+            "KAFKA_GROUP_ID": "g",
+        }
+    )
+    monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
+    monkeypatch.setattr("ugc_bot.kafka_consumer.configure_logging", lambda *_: None)
+    mock_logger = Mock()
+    monkeypatch.setattr("ugc_bot.kafka_consumer.logger", mock_logger)
+
+    await run_consumer()
+
+    mock_logger.error.assert_called_once()
+    assert "DATABASE_URL" in mock_logger.error.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_run_consumer_processes_activation_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """run_consumer processes order_activation from poll batch and invokes _send_offers."""
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "sqlite:///",
             "KAFKA_ENABLED": True,
             "KAFKA_BOOTSTRAP_SERVERS": "kafka:9092",
             "KAFKA_TOPIC": "order_activated",
@@ -211,18 +192,24 @@ def test_main_consumes_messages(monkeypatch: pytest.MonkeyPatch) -> None:
         }
     )
     monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
+    monkeypatch.setattr("ugc_bot.kafka_consumer.configure_logging", lambda *_: None)
+
+    mock_offer = type("Offer", (), {})()
+    mock_container = type("Container", (), {})()
+    mock_container.build_offer_dispatch_service = lambda: mock_offer  # type: ignore[attr-defined]
     monkeypatch.setattr(
-        "ugc_bot.kafka_consumer.create_session_factory", lambda *_: None
-    )
-    monkeypatch.setattr(
-        "ugc_bot.kafka_consumer.KafkaProducer",
-        lambda *_args, **_kwargs: object(),
+        "ugc_bot.kafka_consumer.Container",
+        lambda _: mock_container,
     )
 
-    class FakeConsumer:
-        def __iter__(self):  # type: ignore[no-untyped-def]
-            return iter(
-                [
+    poll_calls = 0
+
+    def fake_poll(_timeout_ms: int = 1000) -> dict:
+        nonlocal poll_calls
+        poll_calls += 1
+        if poll_calls == 1:
+            return {
+                0: [
                     SimpleNamespace(
                         value={
                             "event": "order_activated",
@@ -230,21 +217,49 @@ def test_main_consumes_messages(monkeypatch: pytest.MonkeyPatch) -> None:
                         }
                     )
                 ]
-            )
+            }
+        raise asyncio.CancelledError
+
+    class FakeConsumer:
+        def poll(self, timeout_ms: int = 1000) -> dict:
+            return fake_poll(timeout_ms)
+
+        def close(self) -> None:
+            pass
+
+    class FakeProducer:
+        def close(self) -> None:
+            pass
+
+    class FakeSession:
+        async def close(self) -> None:
+            pass
+
+    class FakeBot:
+        def __init__(self, token: str) -> None:
+            self.session = FakeSession()
 
     monkeypatch.setattr(
-        "ugc_bot.kafka_consumer.KafkaConsumer", lambda *_args, **_kwargs: FakeConsumer()
+        "ugc_bot.kafka_consumer.KafkaConsumer",
+        lambda *args, **kwargs: FakeConsumer(),
     )
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.KafkaProducer",
+        lambda *args, **kwargs: FakeProducer(),
+    )
+    monkeypatch.setattr("ugc_bot.kafka_consumer.Bot", FakeBot)
 
-    called = {"value": False}
+    send_called = {"value": False}
 
-    def fake_handle(_data, _token, _service, *_args, **_kwargs):  # type: ignore[no-untyped-def]
-        called["value"] = True
+    async def fake_send(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        send_called["value"] = True
 
-    monkeypatch.setattr("ugc_bot.kafka_consumer._handle_message", fake_handle)
+    monkeypatch.setattr("ugc_bot.kafka_consumer._send_offers", fake_send)
 
-    main()
-    assert called["value"] is True
+    with pytest.raises(asyncio.CancelledError):
+        await run_consumer()
+
+    assert send_called["value"] is True
 
 
 def test_publish_dlq_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,6 +273,25 @@ def test_publish_dlq_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
     _publish_dlq(FakeProducer(), "dlq", {"event": "offer_send_failed"})
+
+
+def test_publish_dlq_none_producer() -> None:
+    """_publish_dlq returns without calling send when producer is None."""
+
+    _publish_dlq(None, "dlq_topic", {"event": "x"})  # no-op, no raise
+
+
+def test_publish_dlq_success() -> None:
+    """_publish_dlq calls send and flush when producer is not None."""
+
+    producer = Mock()
+    producer.send = Mock()
+    producer.flush = Mock()
+
+    _publish_dlq(producer, "dlq_topic", {"event": "offer_send_failed"})
+
+    producer.send.assert_called_once_with("dlq_topic", {"event": "offer_send_failed"})
+    producer.flush.assert_called_once()
 
 
 @pytest.mark.asyncio

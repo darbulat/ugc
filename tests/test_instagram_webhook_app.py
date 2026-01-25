@@ -126,9 +126,9 @@ def test_webhook_verification_missing_challenge(
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
-@patch("ugc_bot.instagram_webhook_app._get_services")
+@patch("ugc_bot.instagram_webhook_app.Container")
 def test_webhook_event_processing_success(
-    mock_get_services: MagicMock,
+    mock_container_cls: MagicMock,
     mock_load_config: MagicMock,
     client: TestClient,
     test_config: AppConfig,
@@ -175,7 +175,7 @@ def test_webhook_event_processing_success(
     )
     verification = verification_service.generate_code(user.user_id)
 
-    mock_get_services.return_value = verification_service
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = verification_service
 
     # Create webhook payload
     payload = {
@@ -283,9 +283,9 @@ def test_webhook_event_invalid_json(
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
-@patch("ugc_bot.instagram_webhook_app._get_services")
+@patch("ugc_bot.instagram_webhook_app.Container")
 def test_webhook_event_no_app_secret(
-    mock_get_services: MagicMock,
+    mock_container_cls: MagicMock,
     mock_load_config: MagicMock,
     client: TestClient,
 ) -> None:
@@ -308,7 +308,7 @@ def test_webhook_event_no_app_secret(
         verification_repo=InMemoryInstagramVerificationRepository(),
         instagram_api_client=None,
     )
-    mock_get_services.return_value = verification_service
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = verification_service
 
     payload = {"object": "instagram", "entry": []}
     payload_bytes = json.dumps(payload).encode("utf-8")
