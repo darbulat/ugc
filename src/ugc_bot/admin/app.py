@@ -129,8 +129,6 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
 
     column_list = [
         AdvertiserProfileModel.user_id,
-        AdvertiserProfileModel.instagram_url,
-        AdvertiserProfileModel.confirmed,
         AdvertiserProfileModel.contact,
     ]
 
