@@ -61,11 +61,12 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.username,
         UserModel.role,
         UserModel.status,
+        UserModel.instagram_url,
+        UserModel.confirmed,
+        UserModel.price,
+        UserModel.contact,
         UserModel.issue_count,
         UserModel.created_at,
-    ]
-    form_columns = [
-        UserModel.status,
     ]
 
     async def update_model(self, request: Request, pk: str, data: dict) -> None:
