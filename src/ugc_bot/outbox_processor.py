@@ -5,10 +5,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from ugc_bot.app import build_dispatcher
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.ports import OrderActivationPublisher
 from ugc_bot.config import load_config
+from ugc_bot.infrastructure.db.repositories import (
+    SqlAlchemyOrderRepository,
+    SqlAlchemyOutboxRepository,
+)
+from ugc_bot.infrastructure.db.session import create_session_factory
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
 from ugc_bot.logging_setup import configure_logging
 
@@ -96,11 +100,15 @@ async def run_processor() -> None:
     logger = logging.getLogger(__name__)
     logger.info("Starting outbox processor")
 
-    # Build dependencies
-    dispatcher = build_dispatcher(config, include_routers=False)
+    if not config.database_url:
+        logger.error("DATABASE_URL is required for outbox processor")
+        return
 
-    # Get outbox publisher from dispatcher
-    outbox_publisher = dispatcher["payment_service"].outbox_publisher
+    # Build dependencies
+    session_factory = create_session_factory(config.database_url)
+    order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
+    outbox_repo = SqlAlchemyOutboxRepository(session_factory=session_factory)
+    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
 
     # Create Kafka publisher
     kafka_publisher = (

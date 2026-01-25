@@ -20,7 +20,9 @@ class OutboxPublisher:
     outbox_repo: OutboxRepository
     order_repo: OrderRepository
 
-    def publish_order_activation(self, order: Order) -> None:
+    def publish_order_activation(
+        self, order: Order, session: object | None = None
+    ) -> None:
         """Publish order activation event to outbox."""
 
         event = OutboxEvent(
@@ -42,7 +44,7 @@ class OutboxPublisher:
             retry_count=0,
             last_error=None,
         )
-        self.outbox_repo.save(event)
+        self.outbox_repo.save(event, session=session)
 
     def _create_event_from_order(self, order: Order) -> OutboxEvent:
         """Create outbox event from order (for testing)."""

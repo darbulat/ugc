@@ -173,17 +173,10 @@ class TestRunProcessor:
         mock_config.kafka_enabled = True
         mock_config.kafka_bootstrap_servers = "localhost:9092"
         mock_config.kafka_topic = "test-topic"
+        mock_config.database_url = "sqlite://"
 
         # Mock outbox publisher
         mock_outbox_publisher = Mock()
-
-        # Mock payment service
-        mock_payment_service = Mock()
-        mock_payment_service.outbox_publisher = mock_outbox_publisher
-
-        # Mock dispatcher
-        mock_dispatcher = {}
-        mock_dispatcher["payment_service"] = mock_payment_service
 
         # Mock Kafka publisher
         mock_kafka_publisher = Mock()
@@ -214,8 +207,20 @@ class TestRunProcessor:
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.build_dispatcher",
-            lambda *args, **kwargs: mock_dispatcher,
+            "ugc_bot.outbox_processor.create_session_factory",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.SqlAlchemyOrderRepository",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.SqlAlchemyOutboxRepository",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.OutboxPublisher",
+            lambda *args, **kwargs: mock_outbox_publisher,
         )
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.KafkaOrderActivationPublisher",
@@ -259,17 +264,10 @@ class TestRunProcessor:
         mock_config = Mock()
         mock_config.log_level = "INFO"
         mock_config.kafka_enabled = False
+        mock_config.database_url = "sqlite://"
 
         # Mock outbox publisher
         mock_outbox_publisher = Mock()
-
-        # Mock payment service
-        mock_payment_service = Mock()
-        mock_payment_service.outbox_publisher = mock_outbox_publisher
-
-        # Mock dispatcher
-        mock_dispatcher = {}
-        mock_dispatcher["payment_service"] = mock_payment_service
 
         # Mock logger
         mock_logger = Mock()
@@ -281,8 +279,20 @@ class TestRunProcessor:
             "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
         )
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.build_dispatcher",
-            lambda *args, **kwargs: mock_dispatcher,
+            "ugc_bot.outbox_processor.create_session_factory",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.SqlAlchemyOrderRepository",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.SqlAlchemyOutboxRepository",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.OutboxPublisher",
+            lambda *args, **kwargs: mock_outbox_publisher,
         )
 
         # Import and run
@@ -296,6 +306,33 @@ class TestRunProcessor:
         assert "Kafka is disabled" in error_call
 
     @pytest.mark.asyncio
+    async def test_run_processor_missing_database_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """run_processor exits early when database URL is missing."""
+
+        mock_config = Mock()
+        mock_config.log_level = "INFO"
+        mock_config.kafka_enabled = True
+        mock_config.database_url = ""
+
+        mock_logger = Mock()
+
+        monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
+        monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
+        )
+
+        from ugc_bot.outbox_processor import run_processor
+
+        await run_processor()
+
+        mock_logger.error.assert_called_once()
+        error_call = mock_logger.error.call_args[0][0]
+        assert "DATABASE_URL is required" in error_call
+
+    @pytest.mark.asyncio
     async def test_run_processor_handles_keyboard_interrupt(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -307,17 +344,10 @@ class TestRunProcessor:
         mock_config.kafka_enabled = True
         mock_config.kafka_bootstrap_servers = "localhost:9092"
         mock_config.kafka_topic = "test-topic"
+        mock_config.database_url = "sqlite://"
 
         # Mock outbox publisher
         mock_outbox_publisher = Mock()
-
-        # Mock payment service
-        mock_payment_service = Mock()
-        mock_payment_service.outbox_publisher = mock_outbox_publisher
-
-        # Mock dispatcher
-        mock_dispatcher = {}
-        mock_dispatcher["payment_service"] = mock_payment_service
 
         # Mock Kafka publisher
         mock_kafka_publisher = Mock()
@@ -349,8 +379,20 @@ class TestRunProcessor:
             "ugc_bot.outbox_processor.logging.getLogger", lambda *args: mock_logger
         )
         monkeypatch.setattr(
-            "ugc_bot.outbox_processor.build_dispatcher",
-            lambda *args, **kwargs: mock_dispatcher,
+            "ugc_bot.outbox_processor.create_session_factory",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.SqlAlchemyOrderRepository",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.SqlAlchemyOutboxRepository",
+            lambda *args, **kwargs: Mock(),
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.OutboxPublisher",
+            lambda *args, **kwargs: mock_outbox_publisher,
         )
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.KafkaOrderActivationPublisher",
@@ -407,7 +449,12 @@ class TestMain:
             nonlocal asyncio_run_called, coro_passed
             asyncio_run_called = True
             coro_passed = coro
-            # Don't actually run to avoid recursion - just verify it's the right coroutine
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(coro)
+            finally:
+                loop.close()
 
         # Patch run_processor and asyncio.run
         monkeypatch.setattr(

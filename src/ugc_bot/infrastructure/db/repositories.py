@@ -325,13 +325,18 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
             ).scalar_one_or_none()
             return _to_payment_entity(result) if result else None
 
-    def save(self, payment: Payment) -> None:
+    def save(self, payment: Payment, session: object | None = None) -> None:
         """Persist payment."""
 
-        with self.session_factory() as session:
-            model = _to_payment_model(payment)
+        model = _to_payment_model(payment)
+        if session is not None:
+            if not isinstance(session, Session):
+                raise TypeError("Expected SQLAlchemy Session for payment save.")
             session.merge(model)
-            session.commit()
+            return
+        with self.session_factory() as owned_session:
+            owned_session.merge(model)
+            owned_session.commit()
 
 
 @dataclass(slots=True)
@@ -745,13 +750,18 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self.session_factory = session_factory
 
-    def save(self, event: OutboxEvent) -> None:
+    def save(self, event: OutboxEvent, session: object | None = None) -> None:
         """Persist outbox event."""
 
         model = _to_outbox_event_model(event)
-        with self.session_factory() as session:
+        if session is not None:
+            if not isinstance(session, Session):
+                raise TypeError("Expected SQLAlchemy Session for outbox save.")
             session.add(model)
-            session.commit()
+            return
+        with self.session_factory() as owned_session:
+            owned_session.add(model)
+            owned_session.commit()
 
     def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
         """Get pending events for processing."""

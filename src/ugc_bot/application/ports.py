@@ -206,7 +206,7 @@ class PaymentRepository(ABC):
         """Fetch payment by provider external id."""
 
     @abstractmethod
-    def save(self, payment: Payment) -> None:
+    def save(self, payment: Payment, session: object | None = None) -> None:
         """Persist payment."""
 
 
@@ -238,7 +238,7 @@ class OutboxRepository(ABC):
     """Port for outbox event persistence."""
 
     @abstractmethod
-    def save(self, event: OutboxEvent) -> None:
+    def save(self, event: OutboxEvent, session: object | None = None) -> None:
         """Persist outbox event."""
 
     @abstractmethod

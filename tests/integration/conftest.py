@@ -1,6 +1,5 @@
 """Integration test fixtures for full user flows."""
 
-import asyncio
 from typing import Generator
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,14 +12,6 @@ from ugc_bot.app import build_dispatcher
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.session import create_session_factory
-
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture(scope="session")

@@ -1,9 +1,11 @@
 """Tests for Telegram payment service."""
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
+from unittest.mock import Mock
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
@@ -196,6 +198,81 @@ def test_confirm_payment_missing_profile() -> None:
             1000,
             "RUB",
         )
+
+
+def test_confirm_payment_uses_transaction_manager() -> None:
+    """Confirm payment uses transaction manager session."""
+
+    user_id = UUID("00000000-0000-0000-0000-000000000501")
+    order_id = UUID("00000000-0000-0000-0000-000000000502")
+    user = User(
+        user_id=user_id,
+        external_id="123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=user_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    payment_repo = Mock()
+    payment_repo.get_by_order.return_value = None
+    user_repo = Mock()
+    user_repo.get_by_id.return_value = user
+    advertiser_repo = Mock()
+    advertiser_repo.get_by_user_id.return_value = AdvertiserProfile(
+        user_id=user_id, contact="contact"
+    )
+    order_repo = Mock()
+    order_repo.get_by_id.return_value = order
+    outbox_publisher = Mock()
+
+    session_marker = object()
+
+    @contextmanager
+    def fake_transaction():
+        yield session_marker
+
+    transaction_manager = Mock()
+    transaction_manager.transaction = fake_transaction
+
+    service = PaymentService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+        payment_repo=payment_repo,
+        broadcaster=NoopOfferBroadcaster(),
+        outbox_publisher=outbox_publisher,
+        transaction_manager=transaction_manager,
+    )
+
+    service.confirm_telegram_payment(
+        user_id=user_id,
+        order_id=order_id,
+        provider_payment_charge_id="charge_1",
+        total_amount=100000,
+        currency="RUB",
+    )
+
+    payment_repo.save.assert_called_once()
+    assert payment_repo.save.call_args.kwargs["session"] is session_marker
+    outbox_publisher.publish_order_activation.assert_called_once()
+    assert (
+        outbox_publisher.publish_order_activation.call_args.kwargs["session"]
+        is session_marker
+    )
 
 
 def test_confirm_payment_order_not_found() -> None:

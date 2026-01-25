@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+import pytest
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
@@ -570,6 +571,25 @@ def test_payment_repository_save_and_get() -> None:
     assert fetched_external is not None
 
 
+def test_payment_repository_rejects_invalid_session() -> None:
+    """Payment repository rejects invalid session type."""
+
+    repo = SqlAlchemyPaymentRepository(session_factory=lambda: FakeSession(None))
+    payment = Payment(
+        payment_id=UUID("00000000-0000-0000-0000-000000000182"),
+        order_id=UUID("00000000-0000-0000-0000-000000000183"),
+        provider="mock",
+        status=PaymentStatus.PAID,
+        amount=1000.0,
+        currency="RUB",
+        external_id="mock:2",
+        created_at=datetime.now(timezone.utc),
+        paid_at=datetime.now(timezone.utc),
+    )
+    with pytest.raises(TypeError):
+        repo.save(payment, session=object())
+
+
 def test_contact_pricing_repository_get() -> None:
     """Fetch contact pricing by bloggers count."""
 
@@ -673,6 +693,26 @@ def test_outbox_repository_save_and_get() -> None:
     # repo_get = SqlAlchemyOutboxRepository(session_factory=_session_factory(model))
     # retrieved = repo_get.get_by_id(event.event_id)
     # assert retrieved is not None
+
+
+def test_outbox_repository_rejects_invalid_session() -> None:
+    """Outbox repository rejects invalid session type."""
+
+    event = OutboxEvent(
+        event_id=UUID("00000000-0000-0000-0000-000000000010"),
+        event_type="order.activated",
+        aggregate_id="order-999",
+        aggregate_type="order",
+        payload={"key": "value"},
+        status=OutboxEventStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+        processed_at=None,
+        retry_count=0,
+        last_error=None,
+    )
+    repo = SqlAlchemyOutboxRepository(session_factory=lambda: FakeSession(None))
+    with pytest.raises(TypeError):
+        repo.save(event, session=object())
 
 
 def test_outbox_repository_get_pending_events() -> None:

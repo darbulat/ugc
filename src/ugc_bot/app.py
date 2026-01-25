@@ -58,7 +58,10 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyPaymentRepository,
     SqlAlchemyUserRepository,
 )
-from ugc_bot.infrastructure.db.session import create_session_factory
+from ugc_bot.infrastructure.db.session import (
+    SessionTransactionManager,
+    create_session_factory,
+)
 from ugc_bot.metrics.collector import MetricsCollector
 
 
@@ -130,6 +133,7 @@ def build_dispatcher(
     dispatcher = Dispatcher(storage=storage)
     dispatcher["config"] = config
     session_factory = create_session_factory(config.database_url)
+    transaction_manager = SessionTransactionManager(session_factory)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
     blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
     advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
@@ -211,6 +215,7 @@ def build_dispatcher(
         broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
         metrics_collector=metrics_collector,
+        transaction_manager=transaction_manager,
     )
     dispatcher["contact_pricing_service"] = ContactPricingService(
         pricing_repo=pricing_repo

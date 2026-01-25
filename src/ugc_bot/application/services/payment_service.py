@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, ContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
@@ -21,6 +21,13 @@ from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 logger = logging.getLogger(__name__)
 
 
+class TransactionManager(Protocol):
+    """Protocol for database transaction handling."""
+
+    def transaction(self) -> ContextManager[Any]:
+        """Return a context manager for a transaction."""
+
+
 @dataclass(slots=True)
 class PaymentService:
     """Telegram payment service for activating orders."""
@@ -33,6 +40,7 @@ class PaymentService:
     outbox_publisher: OutboxPublisher
     provider: str = "yookassa_telegram"
     metrics_collector: Optional[Any] = None
+    transaction_manager: TransactionManager | None = None
 
     def confirm_telegram_payment(
         self,
@@ -75,9 +83,15 @@ class PaymentService:
             created_at=now,
             paid_at=now,
         )
-        self.payment_repo.save(payment)
-        # Create outbox event for order activation (don't activate immediately)
-        self.outbox_publisher.publish_order_activation(order)
+        if self.transaction_manager is None:
+            self.payment_repo.save(payment)
+            # Create outbox event for order activation (don't activate immediately)
+            self.outbox_publisher.publish_order_activation(order)
+        else:
+            with self.transaction_manager.transaction() as session:
+                self.payment_repo.save(payment, session=session)
+                # Create outbox event for order activation (don't activate immediately)
+                self.outbox_publisher.publish_order_activation(order, session=session)
 
         logger.info(
             "Payment confirmed",

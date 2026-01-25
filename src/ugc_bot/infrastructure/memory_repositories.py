@@ -349,7 +349,7 @@ class InMemoryPaymentRepository(PaymentRepository):
                 return payment
         return None
 
-    def save(self, payment: Payment) -> None:
+    def save(self, payment: Payment, session: object | None = None) -> None:
         """Persist payment in memory."""
 
         self.payments[payment.payment_id] = payment
@@ -391,7 +391,7 @@ class InMemoryOutboxRepository(OutboxRepository):
 
     events: Dict[UUID, OutboxEvent] = field(default_factory=dict)
 
-    def save(self, event: OutboxEvent) -> None:
+    def save(self, event: OutboxEvent, session: object | None = None) -> None:
         """Persist outbox event."""
 
         self.events[event.event_id] = event
