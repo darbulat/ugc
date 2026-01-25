@@ -13,10 +13,11 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.instagram_webhook_app import app
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryBloggerProfileRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
 )
@@ -137,6 +138,7 @@ def test_webhook_event_processing_success(
 
     # Setup repositories
     user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
 
     user = User(
@@ -144,25 +146,30 @@ def test_webhook_event_processing_success(
         external_id="123456",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=None,
-        instagram_url="https://instagram.com/test_user",
-        confirmed=False,
-        topics={"selected": ["fitness"]},
-        audience_gender=None,
-        audience_age_min=18,
-        audience_age_max=35,
-        audience_geo="Moscow",
-        price=1000.0,
-        contact=None,
-        profile_updated_at=None,
     )
     user_repo.save(user)
 
+    blogger_repo.save(
+        BloggerProfile(
+            user_id=user.user_id,
+            instagram_url="https://instagram.com/test_user",
+            confirmed=False,
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            updated_at=None,
+        )
+    )
+
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=blogger_repo,
         verification_repo=verification_repo,
         instagram_api_client=None,
     )
@@ -205,9 +212,9 @@ def test_webhook_event_processing_success(
     assert response.json() == {"status": "ok"}
 
     # Verify profile was confirmed
-    updated_user = user_repo.get_by_id(user.user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is True
+    profile = blogger_repo.get_by_user_id(user.user_id)
+    assert profile is not None
+    assert profile.confirmed is True
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
@@ -297,6 +304,7 @@ def test_webhook_event_no_app_secret(
 
     verification_service = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
         instagram_api_client=None,
     )

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
+    AdvertiserProfileRepository,
     OrderRepository,
     UserRepository,
 )
@@ -25,6 +26,7 @@ class OrderService:
     """Create advertiser orders with validation."""
 
     user_repo: UserRepository
+    advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
     metrics_collector: Optional[Any] = None
 
@@ -53,6 +55,10 @@ class OrderService:
         user = self.user_repo.get_by_id(advertiser_id)
         if user is None:
             raise UserNotFoundError("Advertiser not found.")
+
+        advertiser_profile = self.advertiser_repo.get_by_user_id(advertiser_id)
+        if advertiser_profile is None:
+            raise OrderCreationError("Advertiser profile is not set.")
 
         if user.status == UserStatus.BLOCKED:
             raise OrderCreationError("Blocked users cannot create orders.")

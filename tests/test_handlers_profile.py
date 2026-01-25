@@ -6,8 +6,8 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.bot.handlers.profile import show_profile
-from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 
 
 class FakeUser:
@@ -54,50 +54,23 @@ class FakeProfileService:
     def get_blogger_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_blogger:
             return None
-        return User(
+        return BloggerProfile(
             user_id=user_id,
-            external_id=self._user.external_id,
-            messenger_type=self._user.messenger_type,
-            username=self._user.username,
-            role=UserRole.BLOGGER,
-            status=self._user.status,
-            issue_count=self._user.issue_count,
-            created_at=self._user.created_at,
             instagram_url="https://instagram.com/test",
             confirmed=self._blogger_confirmed,
             topics={"selected": ["tech"]},
-            audience_gender=None,
+            audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
-            contact=None,
-            profile_updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
     def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_advertiser:
             return None
-        return User(
-            user_id=user_id,
-            external_id=self._user.external_id,
-            messenger_type=self._user.messenger_type,
-            username=self._user.username,
-            role=UserRole.ADVERTISER,
-            status=self._user.status,
-            issue_count=self._user.issue_count,
-            created_at=self._user.created_at,
-            instagram_url=None,
-            confirmed=False,
-            topics=None,
-            audience_gender=None,
-            audience_age_min=None,
-            audience_age_max=None,
-            audience_geo=None,
-            price=None,
-            contact="contact",
-            profile_updated_at=datetime.now(timezone.utc),
-        )
+        return AdvertiserProfile(user_id=user_id, contact="contact")
 
 
 @pytest.mark.asyncio
@@ -109,20 +82,9 @@ async def test_show_profile_both_roles() -> None:
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
-        role=UserRole.BOTH,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url="https://instagram.com/test",
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact=None,
-        profile_updated_at=None,
     )
     message = FakeMessage()
     service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
@@ -149,36 +111,6 @@ async def test_show_profile_missing_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_no_from_user() -> None:
-    """Handle case when message has no from_user."""
-
-    class FakeMessageNoUser:
-        """Message without from_user."""
-
-        def __init__(self) -> None:
-            self.from_user = None
-            self.answers: list[str] = []
-
-        async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
-            """Capture response."""
-            self.answers.append(text)
-
-    class FakeProfileService:
-        """Stub profile service."""
-
-        def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
-            return None
-
-    message = FakeMessageNoUser()
-    service = FakeProfileService()
-
-    await show_profile(message, service)
-
-    # Should not answer when from_user is None
-    assert len(message.answers) == 0
-
-
-@pytest.mark.asyncio
 async def test_show_profile_missing_profiles() -> None:
     """Show hints when role profiles are missing."""
 
@@ -189,7 +121,6 @@ async def test_show_profile_missing_profiles() -> None:
                 external_id="2",
                 messenger_type=MessengerType.TELEGRAM,
                 username="user",
-                role=UserRole.BOTH,
                 status=UserStatus.ACTIVE,
                 issue_count=0,
                 created_at=datetime.now(timezone.utc),

@@ -5,11 +5,12 @@ from uuid import UUID
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.ports import (
+    BloggerProfileRepository,
     OrderRepository,
     UserRepository,
 )
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import OrderStatus, UserRole, UserStatus
+from ugc_bot.domain.enums import OrderStatus, UserStatus
 
 
 @dataclass(slots=True)
@@ -17,6 +18,7 @@ class OfferDispatchService:
     """Select eligible bloggers for offers."""
 
     user_repo: UserRepository
+    blogger_repo: BloggerProfileRepository
     order_repo: OrderRepository
 
     def dispatch(self, order_id: UUID) -> list[User]:
@@ -28,10 +30,17 @@ class OfferDispatchService:
         if order.status != OrderStatus.ACTIVE:
             raise OrderCreationError("Order is not active.")
 
+        confirmed_ids = self.blogger_repo.list_confirmed_user_ids()
+        if not confirmed_ids:
+            return []
+
         users: list[User] = []
-        for user in self.user_repo.list_confirmed_by_role(UserRole.BLOGGER):
+        for user_id in confirmed_ids:
             # Exclude order author from receiving their own order
-            if user.user_id == order.advertiser_id:
+            if user_id == order.advertiser_id:
+                continue
+            user = self.user_repo.get_by_id(user_id)
+            if user is None:
                 continue
             if user.status != UserStatus.ACTIVE:
                 continue

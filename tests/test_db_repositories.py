@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from ugc_bot.domain.entities import (
+    AdvertiserProfile,
+    BloggerProfile,
     InstagramVerificationCode,
     Order,
     OrderResponse,
@@ -12,14 +14,16 @@ from ugc_bot.domain.entities import (
     User,
 )
 from ugc_bot.domain.enums import (
+    AudienceGender,
     MessengerType,
     OrderStatus,
     OutboxEventStatus,
     PaymentStatus,
-    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.repositories import (
+    SqlAlchemyAdvertiserProfileRepository,
+    SqlAlchemyBloggerProfileRepository,
     SqlAlchemyContactPricingRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyOrderRepository,
@@ -29,6 +33,8 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.models import (
+    AdvertiserProfileModel,
+    BloggerProfileModel,
     ContactPricingModel,
     InstagramVerificationCodeModel,
     OrderModel,
@@ -125,20 +131,9 @@ def test_user_repository_get_by_external() -> None:
         external_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact=None,
-        profile_updated_at=None,
     )
     repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
 
@@ -155,20 +150,9 @@ def test_user_repository_get_by_id() -> None:
         external_id="321",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact=None,
-        profile_updated_at=None,
     )
     repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
 
@@ -191,25 +175,126 @@ def test_user_repository_save() -> None:
         external_id="555",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact=None,
-        profile_updated_at=None,
     )
 
     repo.save(user)
     assert session.merged is not None
     assert session.committed is True
+
+
+def test_blogger_profile_repository_save() -> None:
+    """Save blogger profile via repository."""
+
+    session = FakeSession(None)
+
+    def factory():  # type: ignore[no-untyped-def]
+        return session
+
+    repo = SqlAlchemyBloggerProfileRepository(session_factory=factory)
+    profile = BloggerProfile(
+        user_id=UUID("00000000-0000-0000-0000-000000000113"),
+        instagram_url="https://instagram.com/test",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    repo.save(profile)
+    assert session.merged is not None
+    assert session.committed is True
+
+
+def test_blogger_profile_repository_get_by_instagram_url() -> None:
+    """Fetch blogger profile by Instagram URL."""
+
+    model = BloggerProfileModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000200"),
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))
+    profile = repo.get_by_instagram_url("https://instagram.com/test_user")
+
+    assert profile is not None
+    assert profile.instagram_url == "https://instagram.com/test_user"
+    assert profile.user_id == UUID("00000000-0000-0000-0000-000000000200")
+
+
+def test_blogger_profile_repository_get_by_instagram_url_not_found() -> None:
+    """Return None when Instagram URL not found."""
+
+    repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(None))
+    profile = repo.get_by_instagram_url("https://instagram.com/nonexistent")
+
+    assert profile is None
+
+
+def test_blogger_profile_repository_get() -> None:
+    """Fetch blogger profile by user id."""
+
+    model = BloggerProfileModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000114"),
+        instagram_url="https://instagram.com/test",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))
+
+    profile = repo.get_by_user_id(model.user_id)
+    assert profile is not None
+    assert profile.instagram_url.endswith("test")
+
+
+def test_advertiser_profile_repository_save_and_get() -> None:
+    """Save and fetch advertiser profile."""
+
+    session = FakeSession(None)
+
+    def factory():  # type: ignore[no-untyped-def]
+        return session
+
+    repo = SqlAlchemyAdvertiserProfileRepository(session_factory=factory)
+    profile = AdvertiserProfile(
+        user_id=UUID("00000000-0000-0000-0000-000000000116"),
+        contact="@contact",
+    )
+    repo.save(profile)
+    assert session.merged is not None
+    assert session.committed is True
+
+    repo_get = SqlAlchemyAdvertiserProfileRepository(
+        session_factory=_session_factory(
+            AdvertiserProfileModel(
+                user_id=profile.user_id,
+                contact=profile.contact,
+            )
+        )
+    )
+    fetched = repo_get.get_by_user_id(profile.user_id)
+    assert fetched is not None
+    assert fetched.contact == "@contact"
 
 
 def test_instagram_verification_repository_save_and_get() -> None:

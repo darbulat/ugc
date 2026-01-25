@@ -14,7 +14,6 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     PaymentStatus,
-    UserRole,
     UserStatus,
 )
 
@@ -30,17 +29,30 @@ class User:
     status: UserStatus
     issue_count: int
     created_at: datetime
-    role: UserRole = UserRole.BLOGGER
-    instagram_url: Optional[str] = None
-    confirmed: bool = False
-    topics: Optional[dict] = None
-    audience_gender: Optional[AudienceGender] = None
-    audience_age_min: Optional[int] = None
-    audience_age_max: Optional[int] = None
-    audience_geo: Optional[str] = None
-    price: Optional[float] = None
-    contact: Optional[str] = None
-    profile_updated_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class BloggerProfile:
+    """Blogger profile entity."""
+
+    user_id: UUID
+    instagram_url: str
+    confirmed: bool
+    topics: dict
+    audience_gender: AudienceGender
+    audience_age_min: int
+    audience_age_max: int
+    audience_geo: str
+    price: float
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class AdvertiserProfile:
+    """Advertiser profile entity."""
+
+    user_id: UUID
+    contact: str
 
 
 @dataclass(frozen=True)

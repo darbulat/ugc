@@ -5,13 +5,14 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.errors import UserNotFoundError
+from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
-from ugc_bot.domain.entities import InstagramVerificationCode, User
-from ugc_bot.domain.enums import MessengerType, UserRole, UserStatus
+from ugc_bot.domain.entities import BloggerProfile, InstagramVerificationCode, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryBloggerProfileRepository,
     InMemoryInstagramGraphApiClient,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
@@ -26,23 +27,31 @@ def _seed_user(user_repo: InMemoryUserRepository) -> UUID:
         external_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url="https://instagram.com/test_user",
-        confirmed=False,
-        topics={"selected": ["fitness"]},
-        audience_gender=None,
-        audience_age_min=18,
-        audience_age_max=35,
-        audience_geo="Moscow",
-        price=1500.0,
-        contact=None,
-        profile_updated_at=datetime.now(timezone.utc),
     )
     user_repo.save(user)
     return user.user_id
+
+
+def _seed_profile(repo: InMemoryBloggerProfileRepository, user_id: UUID) -> None:
+    """Seed a blogger profile in memory."""
+
+    repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/test_user",
+            confirmed=False,
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1500.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
 
 
 def test_generate_code_requires_user() -> None:
@@ -50,6 +59,7 @@ def test_generate_code_requires_user() -> None:
 
     service = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
 
@@ -57,40 +67,18 @@ def test_generate_code_requires_user() -> None:
         service.generate_code(UUID("00000000-0000-0000-0000-000000000131"))
 
 
-def test_verify_code_requires_instagram_url() -> None:
-    """Fail when user has no Instagram URL."""
+def test_verify_code_requires_profile() -> None:
+    """Fail when blogger profile is missing."""
 
     user_repo = InMemoryUserRepository()
     user_id = _seed_user(user_repo)
-    # User has no instagram_url
-    user_repo.save(
-        User(
-            user_id=user_id,
-            external_id="999",
-            messenger_type=MessengerType.TELEGRAM,
-            username="blogger",
-            role=UserRole.BLOGGER,
-            status=UserStatus.ACTIVE,
-            issue_count=0,
-            created_at=datetime.now(timezone.utc),
-            instagram_url=None,
-            confirmed=False,
-            topics=None,
-            audience_gender=None,
-            audience_age_min=None,
-            audience_age_max=None,
-            audience_geo=None,
-            price=None,
-            contact=None,
-            profile_updated_at=None,
-        )
-    )
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
 
-    with pytest.raises(UserNotFoundError):
+    with pytest.raises(BloggerRegistrationError):
         service.verify_code(user_id, "ABC123")
 
 
@@ -98,8 +86,10 @@ def test_verify_code_success() -> None:
     """Verify code and confirm profile."""
 
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
+    _seed_profile(profile_repo, user_id)
 
     code = InstagramVerificationCode(
         code_id=UUID("00000000-0000-0000-0000-000000000132"),
@@ -113,25 +103,28 @@ def test_verify_code_success() -> None:
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
     assert service.verify_code(user_id, "ABC123") is True
-    # Check profile confirmed status
-    updated_user = user_repo.get_by_id(user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is True
+    updated = profile_repo.get_by_user_id(user_id)
+    assert updated is not None
+    assert updated.confirmed is True
 
 
 def test_verify_code_invalid() -> None:
     """Return false for invalid code."""
 
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
+    _seed_profile(profile_repo, user_id)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
@@ -142,11 +135,14 @@ def test_verify_code_invalid() -> None:
 async def test_verify_code_by_instagram_sender_success() -> None:
     """Test successful verification via Instagram webhook."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
+    _seed_profile(profile_repo, user_id)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
@@ -161,21 +157,23 @@ async def test_verify_code_by_instagram_sender_success() -> None:
     )
 
     assert result == user_id
-    # Check profile confirmed status
-    updated_user = user_repo.get_by_id(user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is True
+    updated = profile_repo.get_by_user_id(user_id)
+    assert updated is not None
+    assert updated.confirmed is True
 
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_invalid_code() -> None:
     """Test verification with invalid code."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
+    _seed_profile(profile_repo, user_id)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
@@ -186,18 +184,19 @@ async def test_verify_code_by_instagram_sender_invalid_code() -> None:
     )
 
     assert result is None
-    # Check profile confirmed status (should remain False)
-    updated_user = user_repo.get_by_id(user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is False
+    updated = profile_repo.get_by_user_id(user_id)
+    assert updated is not None
+    assert updated.confirmed is False
 
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_expired_code() -> None:
     """Test verification with expired code."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
+    _seed_profile(profile_repo, user_id)
 
     # Create expired code
     expired_code = InstagramVerificationCode(
@@ -212,6 +211,7 @@ async def test_verify_code_by_instagram_sender_expired_code() -> None:
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
@@ -226,49 +226,39 @@ async def test_verify_code_by_instagram_sender_expired_code() -> None:
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_no_profile() -> None:
-    """Test verification when Instagram URL is missing."""
+    """Test verification when profile doesn't exist."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    user_repo.save(
-        User(
-            user_id=user_id,
-            external_id="999",
-            messenger_type=MessengerType.TELEGRAM,
-            username="blogger",
-            role=UserRole.BLOGGER,
-            status=UserStatus.ACTIVE,
-            issue_count=0,
-            created_at=datetime.now(timezone.utc),
-            instagram_url=None,
-            confirmed=False,
-            topics=None,
-            audience_gender=None,
-            audience_age_min=None,
-            audience_age_max=None,
-            audience_geo=None,
-            price=None,
-            contact=None,
-            profile_updated_at=None,
-        )
-    )
+    # Don't create profile
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
-    # Generate code should fail when no Instagram URL exists
-    with pytest.raises(UserNotFoundError, match="no Instagram URL"):
-        service.generate_code(user_id)
+    # Generate code
+    verification = service.generate_code(user_id)
+
+    result = await service.verify_code_by_instagram_sender(
+        instagram_sender_id="instagram_user_123",
+        code=verification.code,
+        admin_instagram_username="admin_test",
+    )
+
+    assert result is None
 
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_used_code() -> None:
     """Test verification with already used code."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
+    _seed_profile(profile_repo, user_id)
 
     # Create used code
     used_code = InstagramVerificationCode(
@@ -283,6 +273,7 @@ async def test_verify_code_by_instagram_sender_used_code() -> None:
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
@@ -299,30 +290,24 @@ async def test_verify_code_by_instagram_sender_used_code() -> None:
 async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> None:
     """Test that username is correctly extracted from Instagram URL."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    user_repo.save(
-        User(
-            user_id=user_id,
-            external_id="999",
-            messenger_type=MessengerType.TELEGRAM,
-            username="blogger",
-            role=UserRole.BLOGGER,
-            status=UserStatus.ACTIVE,
-            issue_count=0,
-            created_at=datetime.now(timezone.utc),
-            instagram_url="https://instagram.com/test_user",
-            confirmed=False,
-            topics={"selected": ["fitness"]},
-            audience_gender=None,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            contact=None,
-            profile_updated_at=datetime.now(timezone.utc),
-        )
+
+    # Create profile with different URL formats
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
     )
+    profile_repo.save(profile)
 
     # Create API client that returns matching username
     api_client = InMemoryInstagramGraphApiClient(
@@ -331,6 +316,7 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> N
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
         instagram_api_client=api_client,
     )
@@ -344,15 +330,14 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> N
     )
 
     assert result == user_id
-    updated_user = user_repo.get_by_id(user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is True
+    assert profile_repo.get_by_user_id(user_id).confirmed is True
 
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_username_extraction_variants() -> None:
     """Test username extraction from different Instagram URL formats."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
 
@@ -366,28 +351,19 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
     ]
 
     for url_format in url_formats:
-        user_repo.save(
-            User(
-                user_id=user_id,
-                external_id="999",
-                messenger_type=MessengerType.TELEGRAM,
-                username="blogger",
-                role=UserRole.BLOGGER,
-                status=UserStatus.ACTIVE,
-                issue_count=0,
-                created_at=datetime.now(timezone.utc),
-                instagram_url=url_format,
-                confirmed=False,
-                topics={"selected": ["fitness"]},
-                audience_gender=None,
-                audience_age_min=18,
-                audience_age_max=35,
-                audience_geo="Moscow",
-                price=1000.0,
-                contact=None,
-                profile_updated_at=datetime.now(timezone.utc),
-            )
+        profile = BloggerProfile(
+            user_id=user_id,
+            instagram_url=url_format,
+            confirmed=False,
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            updated_at=datetime.now(timezone.utc),
         )
+        profile_repo.save(profile)
 
         # Create API client that returns matching username
         api_client = InMemoryInstagramGraphApiClient(
@@ -404,6 +380,7 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
 
         service = InstagramVerificationService(
             user_repo=user_repo,
+            blogger_repo=profile_repo,
             verification_repo=verification_repo,
             instagram_api_client=api_client,
         )
@@ -417,31 +394,21 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
         )
 
         assert result == user_id
-        updated_user = user_repo.get_by_id(user_id)
-        assert updated_user is not None
-        assert updated_user.confirmed is True
+        assert profile_repo.get_by_user_id(user_id).confirmed is True
 
         # Reset for next iteration
-        user_repo.save(
-            User(
+        profile_repo.save(
+            BloggerProfile(
                 user_id=user_id,
-                external_id="999",
-                messenger_type=MessengerType.TELEGRAM,
-                username="blogger",
-                role=UserRole.BLOGGER,
-                status=UserStatus.ACTIVE,
-                issue_count=0,
-                created_at=datetime.now(timezone.utc),
                 instagram_url=url_format,
                 confirmed=False,
                 topics={"selected": ["fitness"]},
-                audience_gender=None,
+                audience_gender=AudienceGender.ALL,
                 audience_age_min=18,
                 audience_age_max=35,
                 audience_geo="Moscow",
                 price=1000.0,
-                contact=None,
-                profile_updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
         )
 
@@ -450,30 +417,24 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
 async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
     """Test verification fails when username from API doesn't match profile."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    user_repo.save(
-        User(
-            user_id=user_id,
-            external_id="999",
-            messenger_type=MessengerType.TELEGRAM,
-            username="blogger",
-            role=UserRole.BLOGGER,
-            status=UserStatus.ACTIVE,
-            issue_count=0,
-            created_at=datetime.now(timezone.utc),
-            instagram_url="https://instagram.com/test_user",
-            confirmed=False,
-            topics={"selected": ["fitness"]},
-            audience_gender=None,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            contact=None,
-            profile_updated_at=datetime.now(timezone.utc),
-        )
+
+    # Create profile with specific username
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
     )
+    profile_repo.save(profile)
 
     # Create API client that returns different username
     api_client = InMemoryInstagramGraphApiClient(
@@ -482,6 +443,7 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
         instagram_api_client=api_client,
     )
@@ -495,39 +457,31 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
     )
 
     assert result is None
-    updated_user = user_repo.get_by_id(user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is False
+    assert profile_repo.get_by_user_id(user_id).confirmed is False
 
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_api_exception() -> None:
     """Test verification handles API exceptions gracefully."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    user_repo.save(
-        User(
-            user_id=user_id,
-            external_id="999",
-            messenger_type=MessengerType.TELEGRAM,
-            username="blogger",
-            role=UserRole.BLOGGER,
-            status=UserStatus.ACTIVE,
-            issue_count=0,
-            created_at=datetime.now(timezone.utc),
-            instagram_url="https://instagram.com/test_user",
-            confirmed=False,
-            topics={"selected": ["fitness"]},
-            audience_gender=None,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            contact=None,
-            profile_updated_at=datetime.now(timezone.utc),
-        )
+
+    # Create profile
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
     )
+    profile_repo.save(profile)
 
     # Create API client that raises an exception
     class FailingInstagramGraphApiClient(InMemoryInstagramGraphApiClient):
@@ -538,6 +492,7 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
         instagram_api_client=api_client,
     )
@@ -552,42 +507,35 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
     )
 
     assert result == user_id
-    updated_user = user_repo.get_by_id(user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is True
+    assert profile_repo.get_by_user_id(user_id).confirmed is True
 
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
     """Test username extraction handles edge case where URL doesn't contain username."""
     user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = _seed_user(user_repo)
-    user_repo.save(
-        User(
-            user_id=user_id,
-            external_id="999",
-            messenger_type=MessengerType.TELEGRAM,
-            username="blogger",
-            role=UserRole.BLOGGER,
-            status=UserStatus.ACTIVE,
-            issue_count=0,
-            created_at=datetime.now(timezone.utc),
-            instagram_url="https://instagram.com",
-            confirmed=False,
-            topics={"selected": ["fitness"]},
-            audience_gender=None,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Moscow",
-            price=1000.0,
-            contact=None,
-            profile_updated_at=datetime.now(timezone.utc),
-        )
+
+    # Create profile with URL that doesn't match expected pattern
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com",  # No username in URL
+        confirmed=False,
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        updated_at=datetime.now(timezone.utc),
     )
+    profile_repo.save(profile)
 
     service = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=profile_repo,
         verification_repo=verification_repo,
     )
 
@@ -601,6 +549,4 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
     )
 
     assert result == user_id
-    updated_user = user_repo.get_by_id(user_id)
-    assert updated_user is not None
-    assert updated_user.confirmed is True
+    assert profile_repo.get_by_user_id(user_id).confirmed is True

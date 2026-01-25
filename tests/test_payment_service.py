@@ -8,15 +8,10 @@ import pytest
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
-from ugc_bot.domain.entities import Order, Payment, User
-from ugc_bot.domain.enums import (
-    MessengerType,
-    OrderStatus,
-    PaymentStatus,
-    UserRole,
-    UserStatus,
-)
+from ugc_bot.domain.entities import AdvertiserProfile, Order, Payment, User
+from ugc_bot.domain.enums import MessengerType, OrderStatus, PaymentStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
     InMemoryOrderRepository,
     InMemoryOutboxRepository,
     InMemoryPaymentRepository,
@@ -27,6 +22,7 @@ from ugc_bot.infrastructure.memory_repositories import (
 
 def _service(
     user_repo: InMemoryUserRepository,
+    advertiser_repo: InMemoryAdvertiserProfileRepository,
     order_repo: InMemoryOrderRepository,
     payment_repo: InMemoryPaymentRepository,
 ) -> PaymentService:
@@ -37,6 +33,7 @@ def _service(
 
     return PaymentService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
@@ -46,6 +43,7 @@ def _service(
 
 def _seed_user(
     repo: InMemoryUserRepository,
+    advertiser_repo: InMemoryAdvertiserProfileRepository,
 ) -> UUID:
     """Seed advertiser user."""
 
@@ -54,22 +52,12 @@ def _seed_user(
         external_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact="contact",
-        profile_updated_at=None,
     )
     repo.save(user)
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
     return user.user_id
 
 
@@ -97,12 +85,13 @@ def test_confirm_payment_success() -> None:
     """Confirm payment activates order and stores payment."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo)
+    user_id = _seed_user(user_repo, advertiser_repo)
     order_id = _seed_order(order_repo, user_id)
 
-    service = _service(user_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     payment = service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
@@ -131,9 +120,10 @@ def test_confirm_payment_idempotent() -> None:
     """Return existing payment if already paid."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo)
+    user_id = _seed_user(user_repo, advertiser_repo)
     order_id = _seed_order(order_repo, user_id)
     payment_repo.save(
         Payment(
@@ -149,7 +139,7 @@ def test_confirm_payment_idempotent() -> None:
         )
     )
 
-    service = _service(user_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     payment = service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
@@ -165,6 +155,7 @@ def test_confirm_payment_invalid_user() -> None:
 
     service = _service(
         InMemoryUserRepository(),
+        InMemoryAdvertiserProfileRepository(),
         InMemoryOrderRepository(),
         InMemoryPaymentRepository(),
     )
@@ -179,14 +170,43 @@ def test_confirm_payment_invalid_user() -> None:
         )
 
 
+def test_confirm_payment_missing_profile() -> None:
+    """Fail when advertiser profile missing."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    payment_repo = InMemoryPaymentRepository()
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000490"),
+        external_id="888",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(user)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
+    with pytest.raises(OrderCreationError):
+        service.confirm_telegram_payment(
+            user.user_id,
+            UUID(int=0),
+            "charge",
+            1000,
+            "RUB",
+        )
+
+
 def test_confirm_payment_order_not_found() -> None:
     """Fail when order does not exist."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo)
-    service = _service(user_repo, order_repo, payment_repo)
+    user_id = _seed_user(user_repo, advertiser_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     with pytest.raises(OrderCreationError):
         service.confirm_telegram_payment(
             user_id,
@@ -201,28 +221,18 @@ def test_confirm_payment_wrong_owner() -> None:
     """Fail when order belongs to another advertiser."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo)
+    user_id = _seed_user(user_repo, advertiser_repo)
     other_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000491"),
         external_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="other",
-        role=UserRole.ADVERTISER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact="contact",
-        profile_updated_at=None,
     )
     user_repo.save(other_user)
     order_repo.save(
@@ -240,7 +250,7 @@ def test_confirm_payment_wrong_owner() -> None:
             contacts_sent_at=None,
         )
     )
-    service = _service(user_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     with pytest.raises(OrderCreationError):
         service.confirm_telegram_payment(
             user_id,
@@ -255,9 +265,10 @@ def test_confirm_payment_order_not_new() -> None:
     """Fail when order is not NEW."""
 
     user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo)
+    user_id = _seed_user(user_repo, advertiser_repo)
     order_id = _seed_order(order_repo, user_id)
     order = order_repo.get_by_id(order_id)
     order_repo.save(
@@ -275,7 +286,7 @@ def test_confirm_payment_order_not_new() -> None:
             contacts_sent_at=order.contacts_sent_at,
         )
     )
-    service = _service(user_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     with pytest.raises(OrderCreationError):
         service.confirm_telegram_payment(
             user_id,

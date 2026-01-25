@@ -46,6 +46,8 @@ from ugc_bot.config import AppConfig, load_config
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.infrastructure.db.repositories import (
     NoopOfferBroadcaster,
+    SqlAlchemyAdvertiserProfileRepository,
+    SqlAlchemyBloggerProfileRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
     SqlAlchemyInstagramVerificationRepository,
@@ -129,6 +131,10 @@ def build_dispatcher(
     dispatcher["config"] = config
     session_factory = create_session_factory(config.database_url)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
+    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
+    advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
+        session_factory=session_factory
+    )
     instagram_repo = SqlAlchemyInstagramVerificationRepository(
         session_factory=session_factory
     )
@@ -148,10 +154,12 @@ def build_dispatcher(
     )
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
         user_repo=user_repo,
+        blogger_repo=blogger_repo,
         metrics_collector=metrics_collector,
     )
     dispatcher["advertiser_registration_service"] = AdvertiserRegistrationService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         metrics_collector=metrics_collector,
     )
     # Create Instagram Graph API client if access token is configured
@@ -168,16 +176,19 @@ def build_dispatcher(
 
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=blogger_repo,
         verification_repo=instagram_repo,
         instagram_api_client=instagram_api_client,
     )
     dispatcher["order_service"] = OrderService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         metrics_collector=metrics_collector,
     )
     dispatcher["offer_dispatch_service"] = OfferDispatchService(
         user_repo=user_repo,
+        blogger_repo=blogger_repo,
         order_repo=order_repo,
     )
     dispatcher["offer_response_service"] = OfferResponseService(
@@ -194,6 +205,7 @@ def build_dispatcher(
 
     dispatcher["payment_service"] = PaymentService(
         user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
@@ -205,6 +217,8 @@ def build_dispatcher(
     )
     dispatcher["profile_service"] = ProfileService(
         user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        advertiser_repo=advertiser_repo,
     )
     dispatcher["complaint_service"] = ComplaintService(
         complaint_repo=complaint_repo,

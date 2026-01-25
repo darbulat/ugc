@@ -14,14 +14,13 @@ from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundErr
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     blogger_menu_keyboard,
     cancel_keyboard,
     with_cancel_keyboard,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 
 
 router = Router()
@@ -116,13 +115,11 @@ async def handle_instagram(
         )
         return
 
-    data = await state.get_data()
-    user_id_raw = data.get("user_id")
-    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-    existing_user = blogger_registration_service.user_repo.get_by_instagram_url(
+    # Check if Instagram URL is already taken
+    existing_profile = blogger_registration_service.blogger_repo.get_by_instagram_url(
         instagram_url
     )
-    if existing_user is not None and existing_user.user_id != user_id:
+    if existing_profile is not None:
         await message.answer(
             "Этот Instagram аккаунт уже зарегистрирован. "
             "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
@@ -247,7 +244,6 @@ async def handle_agreements(
     state: FSMContext,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
-    profile_service: ProfileService,
 ) -> None:
     """Finalize registration after agreements."""
 
@@ -265,7 +261,6 @@ async def handle_agreements(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
             username=data["nickname"],
-            role=UserRole.BLOGGER,
         )
         profile = blogger_registration_service.register_blogger(
             user_id=user_id,
@@ -309,13 +304,10 @@ async def handle_agreements(
         return
 
     await state.clear()
-    # Get confirmed status from profile
-    blogger_profile = profile_service.get_blogger_profile(user_id)
-    confirmed_status = blogger_profile.confirmed if blogger_profile else False
     await message.answer(
         "Профиль создан. Статус подтверждения Instagram: НЕ ПОДТВЕРЖДЁН.\n"
         f"Ваш Instagram: {profile.instagram_url}",
-        reply_markup=blogger_menu_keyboard(confirmed=confirmed_status),
+        reply_markup=blogger_menu_keyboard(confirmed=profile.confirmed),
     )
 
 

@@ -8,7 +8,6 @@ import pytest
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.blogger_registration import (
     handle_agreements,
@@ -22,8 +21,11 @@ from ugc_bot.bot.handlers.blogger_registration import (
     start_registration,
 )
 from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserRole, UserStatus
-from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryBloggerProfileRepository,
+    InMemoryUserRepository,
+)
 
 
 class FakeUser:
@@ -73,12 +75,6 @@ class FakeFSMContext:
         self.state = None
 
 
-def _profile_service(user_repo: InMemoryUserRepository) -> ProfileService:
-    """Create profile service for handler tests."""
-
-    return ProfileService(user_repo=user_repo)
-
-
 @pytest.mark.asyncio
 async def test_start_registration_requires_user() -> None:
     """Require existing user before registration."""
@@ -124,20 +120,9 @@ async def test_start_registration_blocked_user() -> None:
         external_id="8",
         messenger_type=MessengerType.TELEGRAM,
         username="blocked",
-        role=UserRole.BLOGGER,
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact=None,
-        profile_updated_at=None,
     )
     repo.save(blocked_user)
     service = UserRoleService(user_repo=repo)
@@ -160,20 +145,9 @@ async def test_start_registration_paused_user() -> None:
         external_id="9",
         messenger_type=MessengerType.TELEGRAM,
         username="paused",
-        role=UserRole.BLOGGER,
         status=UserStatus.PAUSE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
-        topics=None,
-        audience_gender=None,
-        audience_age_min=None,
-        audience_age_max=None,
-        audience_geo=None,
-        price=None,
-        contact=None,
-        profile_updated_at=None,
     )
     repo.save(paused_user)
     service = UserRoleService(user_repo=repo)
@@ -191,7 +165,10 @@ async def test_instagram_validation_in_handler() -> None:
     """Validate Instagram URL in handler."""
 
     user_repo = InMemoryUserRepository()
-    registration_service = BloggerRegistrationService(user_repo=user_repo)
+    blogger_repo = InMemoryBloggerProfileRepository()
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     message = FakeMessage(text="bad_url", user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
@@ -207,7 +184,10 @@ async def test_instagram_success_in_handler() -> None:
     """Accept valid Instagram URL."""
 
     user_repo = InMemoryUserRepository()
-    registration_service = BloggerRegistrationService(user_repo=user_repo)
+    blogger_repo = InMemoryBloggerProfileRepository()
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     message = FakeMessage(
         text="https://instagram.com/test_user",
@@ -330,8 +310,11 @@ async def test_handle_agreements_creates_profile() -> None:
     """Agreement step persists blogger profile."""
 
     user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     user_role_service = UserRoleService(user_repo=user_repo)
-    registration_service = BloggerRegistrationService(user_repo=user_repo)
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     user = user_role_service.set_user(
         external_id="42",
@@ -354,20 +337,16 @@ async def test_handle_agreements_creates_profile() -> None:
         price=1500.0,
     )
 
-    profile_service = _profile_service(user_repo)
     await handle_agreements(
         message,
         state,
         registration_service,
         user_role_service,
-        profile_service,
     )
 
     assert message.answers
     assert "Профиль создан" in message.answers[0]
-    saved_user = user_repo.get_by_id(user.user_id)
-    assert saved_user is not None
-    assert saved_user.instagram_url is not None
+    assert blogger_repo.get_by_user_id(user.user_id) is not None
 
 
 @pytest.mark.asyncio
@@ -375,19 +354,20 @@ async def test_handle_agreements_requires_consent() -> None:
     """Require explicit consent."""
 
     user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     user_role_service = UserRoleService(user_repo=user_repo)
-    registration_service = BloggerRegistrationService(user_repo=user_repo)
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     message = FakeMessage(text="нет", user=FakeUser(1, "bob", "Bob"))
     state = FakeFSMContext()
 
-    profile_service = _profile_service(user_repo)
     await handle_agreements(
         message,
         state,
         registration_service,
         user_role_service,
-        profile_service,
     )
 
     assert message.answers
@@ -397,8 +377,13 @@ async def test_handle_agreements_requires_consent() -> None:
 @pytest.mark.asyncio
 async def test_handle_instagram_duplicate_url() -> None:
     """Reject duplicate Instagram URL."""
+    from ugc_bot.domain.entities import BloggerProfile
+
     user_repo = InMemoryUserRepository()
-    registration_service = BloggerRegistrationService(user_repo=user_repo)
+    blogger_repo = InMemoryBloggerProfileRepository()
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     # Create existing profile with Instagram URL
     existing_user = User(
@@ -406,10 +391,13 @@ async def test_handle_instagram_duplicate_url() -> None:
         external_id="100",
         messenger_type=MessengerType.TELEGRAM,
         username="existing",
-        role=UserRole.BLOGGER,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+    )
+    user_repo.save(existing_user)
+    existing_profile = BloggerProfile(
+        user_id=existing_user.user_id,
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
         topics={"selected": ["fitness"]},
@@ -418,10 +406,9 @@ async def test_handle_instagram_duplicate_url() -> None:
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
-        contact=None,
-        profile_updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
-    user_repo.save(existing_user)
+    blogger_repo.save(existing_profile)
 
     # Try to register with same Instagram URL
     message = FakeMessage(
@@ -439,8 +426,11 @@ async def test_handle_instagram_duplicate_url() -> None:
 async def test_handle_agreements_shows_verification_button() -> None:
     """Show verification button after registration for unconfirmed profile."""
     user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
     user_role_service = UserRoleService(user_repo=user_repo)
-    registration_service = BloggerRegistrationService(user_repo=user_repo)
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     user = user_role_service.set_user(
         external_id="43",
@@ -463,13 +453,11 @@ async def test_handle_agreements_shows_verification_button() -> None:
         price=1500.0,
     )
 
-    profile_service = _profile_service(user_repo)
     await handle_agreements(
         message,
         state,
         registration_service,
         user_role_service,
-        profile_service,
     )
 
     assert message.reply_markups

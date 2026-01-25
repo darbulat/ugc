@@ -110,20 +110,6 @@ async def handle_offer_response(
         # Send security warning
         await callback.message.answer(BLOGGER_RESPONSE_WARNING)
 
-        # Send advertiser Instagram URL to blogger
-        advertiser = user_role_service.get_user_by_id(order.advertiser_id)
-        advertiser_profile = profile_service.get_advertiser_profile(order.advertiser_id)
-        if advertiser and advertiser_profile and advertiser_profile.instagram_url:
-            instagram_message = (
-                f"Рекламодатель свяжется с вами в Instagram:\n"
-                f"{advertiser_profile.instagram_url}"
-            )
-            await callback.message.answer(instagram_message)
-        elif advertiser:
-            await callback.message.answer(
-                "Рекламодатель не указал Instagram. Свяжитесь через Telegram."
-            )
-
     # Send contact immediately after each response
     await _send_contact_immediately(
         order_id=order_id,

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Iterable, List, Optional
 from uuid import UUID
 
 from ugc_bot.domain.entities import (
+    AdvertiserProfile,
+    BloggerProfile,
     Complaint,
     ContactPricing,
     InstagramVerificationCode,
@@ -16,7 +18,7 @@ from ugc_bot.domain.entities import (
     Payment,
     User,
 )
-from ugc_bot.domain.enums import MessengerType, UserRole
+from ugc_bot.domain.enums import MessengerType
 
 if TYPE_CHECKING:
     from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus
@@ -44,13 +46,37 @@ class UserRepository(ABC):
 
         raise NotImplementedError
 
-    @abstractmethod
-    def get_by_instagram_url(self, instagram_url: str) -> Optional[User]:
-        """Fetch a user by Instagram URL."""
+
+class BloggerProfileRepository(ABC):
+    """Port for blogger profile persistence."""
 
     @abstractmethod
-    def list_confirmed_by_role(self, role: UserRole) -> Iterable[User]:
-        """List users with confirmed Instagram and matching role."""
+    def get_by_user_id(self, user_id: UUID) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by user id."""
+
+    @abstractmethod
+    def get_by_instagram_url(self, instagram_url: str) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by Instagram URL."""
+
+    @abstractmethod
+    def save(self, profile: BloggerProfile) -> None:
+        """Persist blogger profile."""
+
+    @abstractmethod
+    def list_confirmed_user_ids(self) -> list[UUID]:
+        """List user ids with confirmed blogger profiles."""
+
+
+class AdvertiserProfileRepository(ABC):
+    """Port for advertiser profile persistence."""
+
+    @abstractmethod
+    def get_by_user_id(self, user_id: UUID) -> Optional[AdvertiserProfile]:
+        """Fetch advertiser profile by user id."""
+
+    @abstractmethod
+    def save(self, profile: AdvertiserProfile) -> None:
+        """Persist advertiser profile."""
 
 
 class OrderRepository(ABC):

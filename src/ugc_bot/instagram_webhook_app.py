@@ -16,6 +16,7 @@ from ugc_bot.application.services.instagram_verification_service import (
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.repositories import (
+    SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyUserRepository,
 )
@@ -34,6 +35,7 @@ def _get_services(config: AppConfig) -> InstagramVerificationService:
     """Create service instances for webhook processing."""
     session_factory = create_session_factory(config.database_url)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
+    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
     verification_repo = SqlAlchemyInstagramVerificationRepository(
         session_factory=session_factory
     )
@@ -48,6 +50,7 @@ def _get_services(config: AppConfig) -> InstagramVerificationService:
 
     return InstagramVerificationService(
         user_repo=user_repo,
+        blogger_repo=blogger_repo,
         verification_repo=verification_repo,
         instagram_api_client=instagram_api_client,
     )
@@ -139,10 +142,6 @@ async def _notify_user_verification_success(user_id: UUID, config: AppConfig) ->
 
         # Get user's Telegram external_id
         session_factory = create_session_factory(config.database_url)
-        from ugc_bot.infrastructure.db.repositories import (
-            SqlAlchemyUserRepository,
-        )
-
         user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
         user = user_repo.get_by_id(user_id)
         if user is None:
@@ -168,11 +167,21 @@ async def _notify_user_verification_success(user_id: UUID, config: AppConfig) ->
         bot = Bot(token=config.bot_token)
         try:
             from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
+            from ugc_bot.infrastructure.db.repositories import (
+                SqlAlchemyBloggerProfileRepository,
+            )
+
+            # Get blogger profile to check confirmation status
+            blogger_repo = SqlAlchemyBloggerProfileRepository(
+                session_factory=session_factory
+            )
+            blogger_profile = blogger_repo.get_by_user_id(user_id)
+            confirmed = blogger_profile.confirmed if blogger_profile else False
 
             await bot.send_message(
                 chat_id=int(telegram_user.external_id),
                 text="✅ Instagram подтверждён. Теперь вы можете получать офферы.",
-                reply_markup=blogger_menu_keyboard(confirmed=user.confirmed),
+                reply_markup=blogger_menu_keyboard(confirmed=confirmed),
             )
         finally:
             await bot.session.close()

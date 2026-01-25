@@ -7,9 +7,7 @@ import pytest
 
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
-from ugc_bot.application.services.order_service import (
-    OrderService as DomainOrderService,
-)
+from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.complaints import (
     handle_complaint_reason,
@@ -17,9 +15,10 @@ from ugc_bot.bot.handlers.complaints import (
     select_complaint_target,
     start_complaint,
 )
-from ugc_bot.domain.entities import Order, OrderResponse, User as DomainUser
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserRole, UserStatus
+from ugc_bot.domain.entities import Order, OrderResponse, User
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
     InMemoryComplaintRepository,
     InMemoryOrderRepository,
     InMemoryOrderResponseRepository,
@@ -62,42 +61,6 @@ class FakeCallback:
 
         if text:
             self.answers.append(text)
-
-
-class InMemoryAdvertiserProfileRepository:
-    """Stub advertiser profile repository for tests."""
-
-    def save(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
-        return None
-
-
-def User(**kwargs) -> DomainUser:  # type: ignore[no-untyped-def]
-    """Build a user with defaults for new fields."""
-
-    defaults = {
-        "role": UserRole.BOTH,
-        "status": UserStatus.ACTIVE,
-        "issue_count": 0,
-        "created_at": datetime.now(timezone.utc),
-        "instagram_url": None,
-        "confirmed": False,
-        "topics": None,
-        "audience_gender": None,
-        "audience_age_min": None,
-        "audience_age_max": None,
-        "audience_geo": None,
-        "price": None,
-        "contact": None,
-        "profile_updated_at": None,
-    }
-    defaults.update(kwargs)
-    return DomainUser(**defaults)
-
-
-def OrderService(*, user_repo, order_repo, advertiser_repo=None) -> DomainOrderService:  # type: ignore[no-untyped-def]
-    """Build order service with new signature."""
-
-    return DomainOrderService(user_repo=user_repo, order_repo=order_repo)
 
 
 @pytest.mark.asyncio

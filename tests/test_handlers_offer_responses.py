@@ -14,49 +14,16 @@ from ugc_bot.bot.handlers.offer_responses import (
     _send_contact_immediately,
     handle_offer_response,
 )
-from ugc_bot.domain.entities import Order, OrderResponse, User as DomainUser
-from ugc_bot.domain.enums import (
-    MessengerType,
-    OrderStatus,
-    UserRole,
-    UserStatus,
-)
+from ugc_bot.domain.entities import BloggerProfile, Order, OrderResponse, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
+    InMemoryBloggerProfileRepository,
     InMemoryInteractionRepository,
     InMemoryOrderRepository,
     InMemoryOrderResponseRepository,
     InMemoryUserRepository,
 )
-
-
-class InMemoryBloggerProfileRepository:
-    """Stub blogger profile repository for tests."""
-
-    def save(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
-        return None
-
-
-def User(**kwargs) -> DomainUser:  # type: ignore[no-untyped-def]
-    """Build a user with defaults for new fields."""
-
-    defaults = {
-        "role": UserRole.BLOGGER,
-        "status": UserStatus.ACTIVE,
-        "issue_count": 0,
-        "created_at": datetime.now(timezone.utc),
-        "instagram_url": None,
-        "confirmed": False,
-        "topics": None,
-        "audience_gender": None,
-        "audience_age_min": None,
-        "audience_age_max": None,
-        "audience_geo": None,
-        "price": None,
-        "contact": None,
-        "profile_updated_at": None,
-    }
-    defaults.update(kwargs)
-    return DomainUser(**defaults)
 
 
 class FakeUser:
@@ -100,86 +67,37 @@ class FakeCallback:
 
 
 def _profile_service(
-    user_repo: InMemoryUserRepository, *_args, **_kwargs
+    user_repo: InMemoryUserRepository,
+    blogger_repo: InMemoryBloggerProfileRepository,
 ) -> ProfileService:
     """Build profile service for tests."""
 
-    return ProfileService(user_repo=user_repo)
+    return ProfileService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+    )
 
 
 def _add_blogger_profile(
-    _blogger_repo: InMemoryBloggerProfileRepository,
+    blogger_repo: InMemoryBloggerProfileRepository,
     user_id: UUID,
-    user_repo: InMemoryUserRepository | None = None,
     confirmed: bool = True,
 ) -> None:
-    """Seed blogger profile fields on user."""
+    """Seed blogger profile."""
 
-    if user_repo is None:
-        return
-    user = user_repo.get_by_id(user_id)
-    if user is None:
-        return
-    user_repo.save(
-        User(
-            user_id=user.user_id,
-            external_id=user.external_id,
-            messenger_type=user.messenger_type,
-            username=user.username,
-            role=UserRole.BLOGGER
-            if user.role != UserRole.ADVERTISER
-            else UserRole.BOTH,
-            status=user.status,
-            issue_count=user.issue_count,
-            created_at=user.created_at,
+    blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
             instagram_url="https://instagram.com/test",
             confirmed=confirmed,
             topics={"selected": ["tech"]},
-            audience_gender=None,
+            audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
-            contact=user.contact,
-            profile_updated_at=datetime.now(timezone.utc),
-        )
-    )
-
-
-def _add_advertiser_profile(
-    user_repo: InMemoryUserRepository,
-    user_id: UUID,
-    instagram_url: str | None = None,
-    confirmed: bool = True,
-    contact: str = "contact",
-) -> None:
-    """Seed advertiser profile fields on user."""
-
-    user = user_repo.get_by_id(user_id)
-    if user is None:
-        return
-    user_repo.save(
-        User(
-            user_id=user.user_id,
-            external_id=user.external_id,
-            messenger_type=user.messenger_type,
-            username=user.username,
-            role=UserRole.ADVERTISER
-            if user.role != UserRole.BLOGGER
-            else UserRole.BOTH,
-            status=user.status,
-            issue_count=user.issue_count,
-            created_at=user.created_at,
-            instagram_url=instagram_url,
-            confirmed=confirmed,
-            topics=user.topics,
-            audience_gender=user.audience_gender,
-            audience_age_min=user.audience_age_min,
-            audience_age_max=user.audience_age_max,
-            audience_geo=user.audience_geo,
-            price=user.price,
-            contact=contact,
-            profile_updated_at=user.profile_updated_at,
+            updated_at=datetime.now(timezone.utc),
         )
     )
 
@@ -220,9 +138,7 @@ async def test_contact_sent_immediately() -> None:
         created_at=datetime.now(timezone.utc),
     )
     user_repo.save(blogger)
-    _add_blogger_profile(
-        blogger_repo, blogger.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000742"),
@@ -366,24 +282,11 @@ async def test_offer_response_handler_success() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=True
-    )
-
-    advertiser = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000702"),
-        external_id="20",
-        messenger_type=MessengerType.TELEGRAM,
-        username="advertiser",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    user_repo.save(advertiser)
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000701"),
-        advertiser_id=advertiser.user_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000702"),
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -477,9 +380,7 @@ async def test_offer_response_handler_order_not_active() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000712"),
@@ -533,9 +434,7 @@ async def test_offer_response_handler_order_not_found() -> None:
     )
     user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     message = FakeMessage()
     callback = FakeCallback(
@@ -584,9 +483,7 @@ async def test_offer_response_handler_already_responded() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000716"),
@@ -656,9 +553,7 @@ async def test_offer_response_handler_limit_reached() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000720"),
@@ -844,9 +739,7 @@ async def test_offer_response_handler_unconfirmed_profile() -> None:
     )
     user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=False
-    )
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=False)
 
     message = FakeMessage()
     callback = FakeCallback(data="offer:123", user=FakeUser(18), message=message)
@@ -883,9 +776,7 @@ async def test_offer_response_handler_invalid_uuid() -> None:
     )
     user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     message = FakeMessage()
     callback = FakeCallback(data="offer:not-a-uuid", user=FakeUser(19), message=message)
@@ -929,9 +820,7 @@ async def test_offer_response_handler_exception() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(
-        blogger_repo, user.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000735"),
@@ -1028,9 +917,7 @@ async def test_send_contact_order_not_active() -> None:
         created_at=datetime.now(timezone.utc),
     )
     user_repo.save(blogger)
-    _add_blogger_profile(
-        blogger_repo, blogger.user_id, user_repo=user_repo, confirmed=True
-    )
+    _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000800"),
@@ -1126,152 +1013,3 @@ async def test_maybe_send_contacts_missing_user_or_profile() -> None:
 
     # Contact should not be sent when user/profile is missing
     assert not bot.answers
-
-
-@pytest.mark.asyncio
-async def test_offer_response_sends_advertiser_instagram_url() -> None:
-    """Send advertiser Instagram URL to blogger after response."""
-
-    user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-    interaction_repo = InMemoryInteractionRepository()
-    user_service = UserRoleService(user_repo=user_repo)
-    response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
-    )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
-    profile_service = _profile_service(user_repo, blogger_repo)
-
-    advertiser = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000750"),
-        external_id="30",
-        messenger_type=MessengerType.TELEGRAM,
-        username="advertiser",
-    )
-    user_repo.save(advertiser)
-    _add_advertiser_profile(
-        user_repo,
-        advertiser.user_id,
-        instagram_url="https://instagram.com/advertiser",
-        confirmed=True,
-        contact="contact@example.com",
-    )
-    profile_service = _profile_service(user_repo, blogger_repo)
-
-    blogger = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000751"),
-        external_id="31",
-        messenger_type=MessengerType.TELEGRAM,
-        username="blogger",
-    )
-    user_repo.save(blogger)
-    _add_blogger_profile(
-        blogger_repo, blogger.user_id, user_repo=user_repo, confirmed=True
-    )
-
-    order = Order(
-        order_id=UUID("00000000-0000-0000-0000-000000000752"),
-        advertiser_id=advertiser.user_id,
-        product_link="https://example.com",
-        offer_text="Offer",
-        ugc_requirements=None,
-        barter_description=None,
-        price=1000.0,
-        bloggers_needed=1,
-        status=OrderStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
-    )
-    order_repo.save(order)
-
-    message = FakeMessage()
-    callback = FakeCallback(
-        data=f"offer:{order.order_id}", user=FakeUser(31), message=message
-    )
-
-    await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
-    )
-
-    assert callback.answers
-    assert any("Отклик принят" in ans for ans in callback.answers)
-    # Check that Instagram URL was sent to blogger
-    assert any("instagram.com/advertiser" in ans for ans in message.answers)
-    assert any(
-        "Рекламодатель свяжется с вами в Instagram" in ans for ans in message.answers
-    )
-
-
-@pytest.mark.asyncio
-async def test_offer_response_no_advertiser_instagram_url() -> None:
-    """Handle case when advertiser has no Instagram URL."""
-
-    user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-    interaction_repo = InMemoryInteractionRepository()
-    user_service = UserRoleService(user_repo=user_repo)
-    response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
-    )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
-    profile_service = _profile_service(user_repo, blogger_repo)
-
-    advertiser = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000753"),
-        external_id="32",
-        messenger_type=MessengerType.TELEGRAM,
-        username="advertiser",
-    )
-    user_repo.save(advertiser)
-    _add_advertiser_profile(
-        user_repo,
-        advertiser.user_id,
-        instagram_url=None,
-        confirmed=False,
-        contact="contact@example.com",
-    )
-    profile_service = _profile_service(user_repo, blogger_repo)
-
-    blogger = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000754"),
-        external_id="33",
-        messenger_type=MessengerType.TELEGRAM,
-        username="blogger",
-    )
-    user_repo.save(blogger)
-    _add_blogger_profile(
-        blogger_repo, blogger.user_id, user_repo=user_repo, confirmed=True
-    )
-
-    order = Order(
-        order_id=UUID("00000000-0000-0000-0000-000000000755"),
-        advertiser_id=advertiser.user_id,
-        product_link="https://example.com",
-        offer_text="Offer",
-        ugc_requirements=None,
-        barter_description=None,
-        price=1000.0,
-        bloggers_needed=1,
-        status=OrderStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
-    )
-    order_repo.save(order)
-
-    message = FakeMessage()
-    callback = FakeCallback(
-        data=f"offer:{order.order_id}", user=FakeUser(33), message=message
-    )
-
-    await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
-    )
-
-    assert callback.answers
-    assert any("Отклик принят" in ans for ans in callback.answers)
-    # Check that message about no Instagram URL was sent
-    assert any("не указал Instagram" in ans for ans in message.answers)

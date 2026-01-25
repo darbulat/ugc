@@ -16,7 +16,6 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard, cancel_keyboard
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -29,7 +28,6 @@ logger = logging.getLogger(__name__)
 class AdvertiserRegistrationStates(StatesGroup):
     """States for advertiser registration."""
 
-    instagram_url = State()
     contact = State()
 
 
@@ -38,7 +36,6 @@ async def start_advertiser_registration(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
-    profile_service: ProfileService,
 ) -> None:
     """Start advertiser registration flow."""
 
@@ -59,60 +56,7 @@ async def start_advertiser_registration(
         await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
-    # Check advertiser profile if exists
-    existing_profile = profile_service.get_advertiser_profile(user.user_id)
-
-    if existing_profile and existing_profile.confirmed:
-        await state.update_data(user_id=user.user_id)
-        await message.answer(
-            "У вас уже есть подтвержденный Instagram. Введите контактные данные для связи:",
-            reply_markup=cancel_keyboard(),
-        )
-        await state.set_state(AdvertiserRegistrationStates.contact)
-        return
-
-    if existing_profile and existing_profile.instagram_url:
-        await state.update_data(user_id=user.user_id)
-        await message.answer(
-            "У вас уже указан Instagram. Введите контактные данные для связи:",
-            reply_markup=cancel_keyboard(),
-        )
-        await state.set_state(AdvertiserRegistrationStates.contact)
-        return
-
     await state.update_data(user_id=user.user_id)
-    await message.answer(
-        "Введите Instagram URL (например: https://instagram.com/username):",
-        reply_markup=cancel_keyboard(),
-    )
-    await state.set_state(AdvertiserRegistrationStates.instagram_url)
-
-
-@router.message(AdvertiserRegistrationStates.instagram_url)
-async def handle_instagram_url(
-    message: Message,
-    state: FSMContext,
-    user_role_service: UserRoleService,
-) -> None:
-    """Store Instagram URL and proceed to contact."""
-
-    instagram_url = (message.text or "").strip()
-    if not instagram_url:
-        await message.answer(
-            "Instagram URL не может быть пустым. Введите снова:",
-            reply_markup=cancel_keyboard(),
-        )
-        return
-
-    # Basic validation
-    if "instagram.com" not in instagram_url.lower():
-        await message.answer(
-            "Пожалуйста, введите корректный Instagram URL (например: https://instagram.com/username):",
-            reply_markup=cancel_keyboard(),
-        )
-        return
-
-    await state.update_data(instagram_url=instagram_url)
     await message.answer(
         "Введите контактные данные для связи:",
         reply_markup=cancel_keyboard(),
@@ -140,13 +84,11 @@ async def handle_contact(
     # Convert user_id from string (Redis) back to UUID if needed
     user_id_raw = data["user_id"]
     user_id: UUID = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-    instagram_url = data.get("instagram_url")
 
     try:
         profile = advertiser_registration_service.register_advertiser(
             user_id=user_id,
             contact=contact,
-            instagram_url=instagram_url,
         )
     except (AdvertiserRegistrationError, UserNotFoundError) as exc:
         logger.warning(

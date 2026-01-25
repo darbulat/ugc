@@ -5,15 +5,15 @@ from uuid import UUID
 
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
-from ugc_bot.domain.entities import Order, OutboxEvent, User
+from ugc_bot.domain.entities import AdvertiserProfile, Order, OutboxEvent, User
 from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OutboxEventStatus,
-    UserRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
     InMemoryOrderRepository,
     InMemoryOutboxRepository,
     InMemoryPaymentRepository,
@@ -45,6 +45,7 @@ class TestOutboxIntegration:
 
         # Setup repositories
         user_repo = InMemoryUserRepository()
+        advertiser_repo = InMemoryAdvertiserProfileRepository()
         order_repo = InMemoryOrderRepository()
         payment_repo = InMemoryPaymentRepository()
         outbox_repo = InMemoryOutboxRepository()
@@ -55,22 +56,17 @@ class TestOutboxIntegration:
             external_id="123",
             messenger_type=MessengerType.TELEGRAM,
             username="testuser",
-            role=UserRole.ADVERTISER,
             status=UserStatus.ACTIVE,
             issue_count=0,
             created_at=datetime.now(timezone.utc),
-            instagram_url=None,
-            confirmed=False,
-            topics=None,
-            audience_gender=None,
-            audience_age_min=None,
-            audience_age_max=None,
-            audience_geo=None,
-            price=None,
-            contact="test@example.com",
-            profile_updated_at=None,
         )
         user_repo.save(user)
+
+        profile = AdvertiserProfile(
+            user_id=user.user_id,
+            contact="test@example.com",
+        )
+        advertiser_repo.save(profile)
 
         # Setup order
         order = Order(
@@ -97,6 +93,7 @@ class TestOutboxIntegration:
         )
         payment_service = PaymentService(
             user_repo=user_repo,
+            advertiser_repo=advertiser_repo,
             order_repo=order_repo,
             payment_repo=payment_repo,
             broadcaster=NoopOfferBroadcaster(),
@@ -319,6 +316,7 @@ class TestOutboxIntegration:
 
         # Setup all repositories
         user_repo = InMemoryUserRepository()
+        advertiser_repo = InMemoryAdvertiserProfileRepository()
         order_repo = InMemoryOrderRepository()
         payment_repo = InMemoryPaymentRepository()
         outbox_repo = InMemoryOutboxRepository()
@@ -329,22 +327,17 @@ class TestOutboxIntegration:
             external_id="123",
             messenger_type=MessengerType.TELEGRAM,
             username="testuser",
-            role=UserRole.ADVERTISER,
             status=UserStatus.ACTIVE,
             issue_count=0,
             created_at=datetime.now(timezone.utc),
-            instagram_url=None,
-            confirmed=False,
-            topics=None,
-            audience_gender=None,
-            audience_age_min=None,
-            audience_age_max=None,
-            audience_geo=None,
-            price=None,
-            contact="test@example.com",
-            profile_updated_at=None,
         )
         user_repo.save(user)
+
+        profile = AdvertiserProfile(
+            user_id=user.user_id,
+            contact="test@example.com",
+        )
+        advertiser_repo.save(profile)
 
         # Setup order
         order = Order(
@@ -370,6 +363,7 @@ class TestOutboxIntegration:
         )
         payment_service = PaymentService(
             user_repo=user_repo,
+            advertiser_repo=advertiser_repo,
             order_repo=order_repo,
             payment_repo=payment_repo,
             broadcaster=NoopOfferBroadcaster(),
