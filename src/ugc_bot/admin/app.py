@@ -115,7 +115,6 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
     column_list = [
         BloggerProfileModel.user_id,
         BloggerProfileModel.instagram_url,
-        BloggerProfileModel.confirmed,
         BloggerProfileModel.audience_gender,
         BloggerProfileModel.audience_age_min,
         BloggerProfileModel.audience_age_max,
