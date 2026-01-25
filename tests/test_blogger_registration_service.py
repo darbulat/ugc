@@ -54,11 +54,9 @@ def test_register_blogger_success() -> None:
     )
 
     assert profile.user_id == user_id
-    # Check that user has instagram_url and confirmed=False
-    user = user_repo.get_by_id(user_id)
-    assert user is not None
-    assert user.instagram_url == "https://instagram.com/test_user"
-    assert user.confirmed is False
+    # Check that profile has instagram_url and confirmed=False
+    assert profile.instagram_url == "https://instagram.com/test_user"
+    assert profile.confirmed is False
 
 
 def test_register_blogger_duplicate_instagram_url() -> None:
@@ -84,6 +82,7 @@ def test_register_blogger_duplicate_instagram_url() -> None:
     existing_profile = BloggerProfile(
         user_id=user1.user_id,
         instagram_url="https://instagram.com/test_user",
+        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -93,19 +92,7 @@ def test_register_blogger_duplicate_instagram_url() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     blogger_repo.save(existing_profile)
-    # Update user with instagram_url
-    updated_user1 = User(
-        user_id=user1.user_id,
-        external_id=user1.external_id,
-        messenger_type=user1.messenger_type,
-        username=user1.username,
-        status=user1.status,
-        issue_count=user1.issue_count,
-        created_at=user1.created_at,
-        instagram_url="https://instagram.com/test_user",
-        confirmed=False,
-    )
-    user_repo.save(updated_user1)
+    # Note: instagram_url and confirmed are now in profiles, not User
 
     # Create second user
     user2 = User(
@@ -231,4 +218,74 @@ def test_register_blogger_invalid_geo_and_price() -> None:
             audience_age_max=35,
             audience_geo="Moscow",
             price=0.0,
+        )
+
+
+def test_register_blogger_with_metrics() -> None:
+    """Register blogger with metrics collector."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = _seed_user(user_repo)
+
+    class MockMetricsCollector:
+        """Mock metrics collector."""
+
+        def record_blogger_registration(self, user_id: str) -> None:
+            """Record registration."""
+            self.recorded_user_id = user_id
+
+    metrics_collector = MockMetricsCollector()
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        metrics_collector=metrics_collector,
+    )
+
+    profile = service.register_blogger(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test_user",
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1500.0,
+    )
+
+    assert profile.user_id == user_id
+    assert metrics_collector.recorded_user_id == str(user_id)
+
+
+def test_register_blogger_negative_age() -> None:
+    """Reject negative or zero audience age."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = _seed_user(user_repo)
+
+    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+
+    with pytest.raises(BloggerRegistrationError, match="positive"):
+        service.register_blogger(
+            user_id=user_id,
+            instagram_url="https://instagram.com/test_user",
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=-1,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1500.0,
+        )
+
+    with pytest.raises(BloggerRegistrationError, match="positive"):
+        service.register_blogger(
+            user_id=user_id,
+            instagram_url="https://instagram.com/test_user",
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=0,
+            audience_geo="Moscow",
+            price=1500.0,
         )

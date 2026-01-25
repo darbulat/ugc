@@ -52,13 +52,22 @@ async def start_verification(
         await message.answer("Пользователи на паузе не могут подтверждать аккаунт.")
         return
 
-    # Check if user already has Instagram verification
-    if user.confirmed:
+    # Check profiles for Instagram URL and confirmation status
+    blogger_profile = profile_service.get_blogger_profile(user.user_id)
+    advertiser_profile = profile_service.get_advertiser_profile(user.user_id)
+
+    # Check if user already has Instagram verification in any profile
+    if (blogger_profile and blogger_profile.confirmed) or (
+        advertiser_profile and advertiser_profile.confirmed
+    ):
         await message.answer("Ваш Instagram уже подтвержден.")
         return
 
-    # Check if user has Instagram URL
-    if user.instagram_url is None:
+    # Check if user has Instagram URL in any profile
+    has_instagram = (blogger_profile and blogger_profile.instagram_url) or (
+        advertiser_profile and advertiser_profile.instagram_url
+    )
+    if not has_instagram:
         await message.answer(
             "У вас нет Instagram URL. "
             "Для блогеров: заполните профиль через /register. "

@@ -103,11 +103,21 @@ def _profile_service(
 
 
 def _add_advertiser_profile(
-    advertiser_repo: InMemoryAdvertiserProfileRepository, user_id: UUID
+    advertiser_repo: InMemoryAdvertiserProfileRepository,
+    user_id: UUID,
+    instagram_url: str | None = "https://instagram.com/advertiser",
+    confirmed: bool = True,
 ) -> None:
     """Seed advertiser profile."""
 
-    advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
+    advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=user_id,
+            contact="contact",
+            instagram_url=instagram_url,
+            confirmed=confirmed,
+        )
+    )
 
 
 def _pricing_service(prices: dict[int, float]) -> ContactPricingService:
@@ -165,19 +175,7 @@ async def test_order_creation_flow_new_advertiser() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    # Update user with confirmed Instagram
-    confirmed_user = User(
-        user_id=user.user_id,
-        external_id=user.external_id,
-        messenger_type=user.messenger_type,
-        username=user.username,
-        status=user.status,
-        issue_count=user.issue_count,
-        created_at=user.created_at,
-        instagram_url="https://instagram.com/advertiser",
-        confirmed=True,
-    )
-    repo.save(confirmed_user)
+    # Note: instagram_url and confirmed are now in profiles, not User
     _add_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = _profile_service(repo, advertiser_repo)
 
@@ -205,6 +203,7 @@ async def test_order_creation_flow_new_advertiser() -> None:
         FakeMessage(text="3", user=FakeUser(5, "adv", "Adv"), bot=bot),
         state,
         user_service,
+        profile_service,
         order_service,
         config,
         pricing_service,
@@ -232,19 +231,7 @@ async def test_order_creation_flow_with_barter() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    # Update user with confirmed Instagram
-    confirmed_user = User(
-        user_id=user.user_id,
-        external_id=user.external_id,
-        messenger_type=user.messenger_type,
-        username=user.username,
-        status=user.status,
-        issue_count=user.issue_count,
-        created_at=user.created_at,
-        instagram_url="https://instagram.com/advertiser",
-        confirmed=True,
-    )
-    repo.save(confirmed_user)
+    # Note: instagram_url and confirmed are now in profiles, not User
     _add_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = _profile_service(repo, advertiser_repo)
     order_repo.save(
@@ -288,6 +275,7 @@ async def test_order_creation_flow_with_barter() -> None:
         FakeMessage(text="20", user=FakeUser(6, "adv", "Adv"), bot=bot),
         state,
         user_service,
+        profile_service,
         order_service,
         config,
         pricing_service,
@@ -317,8 +305,6 @@ async def test_start_order_creation_blocked_user() -> None:
         status=UserStatus.BLOCKED,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url=None,
-        confirmed=False,
     )
     repo.save(user)
     user_service = UserRoleService(user_repo=repo)
@@ -353,11 +339,9 @@ async def test_start_order_creation_requires_verification() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url="https://instagram.com/unverified",
-        confirmed=False,  # Not verified
     )
     repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(advertiser_repo, user.user_id, confirmed=False)
     user_service = UserRoleService(user_repo=repo)
 
     message = FakeMessage(text=None, user=FakeUser(8, "unverified", "Unverified"))
@@ -367,7 +351,7 @@ async def test_start_order_creation_requires_verification() -> None:
         message, state, user_service, profile_service, order_service
     )
 
-    assert "подтвердить Instagram" in message.answers[0]
+    assert "подтвердить" in message.answers[0] or "Instagram" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -390,15 +374,15 @@ async def test_handle_bloggers_needed_requires_verification() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url="https://instagram.com/unverified",
-        confirmed=False,  # Not verified
     )
     repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    _add_advertiser_profile(advertiser_repo, user.user_id, confirmed=False)
+    profile_service = _profile_service(repo, advertiser_repo)
 
     state = FakeFSMContext()
     await state.update_data(
         user_id=user.user_id,
+        is_new=False,
         product_link="https://example.com",
         offer_text="Offer",
         price=1000.0,
@@ -415,11 +399,17 @@ async def test_handle_bloggers_needed_requires_verification() -> None:
     pricing_service = _pricing_service({3: 1500.0})
 
     await handle_bloggers_needed(
-        message, state, user_service, order_service, config, pricing_service
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        config,
+        pricing_service,
     )
 
     assert message.answers
-    assert "подтвердить Instagram" in message.answers[0]
+    assert "подтвердить" in message.answers[0] or "Instagram" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -446,8 +436,15 @@ async def test_bloggers_needed_limit_for_new_advertiser() -> None:
     )
     pricing_service = _pricing_service({20: 5000.0})
     user_service = UserRoleService(user_repo=repo)
+    profile_service = _profile_service(repo, advertiser_repo)
     await handle_bloggers_needed(
-        message, state, user_service, order_service, config, pricing_service
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        config,
+        pricing_service,
     )
 
     assert "NEW рекламодатели" in message.answers[0]

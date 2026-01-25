@@ -63,6 +63,7 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
+            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -72,21 +73,9 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
             updated_at=datetime.now(timezone.utc),
         )
     )
-    # Update user with confirmed Instagram
-    confirmed_blogger = User(
-        user_id=blogger.user_id,
-        external_id=blogger.external_id,
-        messenger_type=blogger.messenger_type,
-        username=blogger.username,
-        status=blogger.status,
-        issue_count=blogger.issue_count,
-        created_at=blogger.created_at,
-        instagram_url="https://instagram.com/blogger",
-        confirmed=True,
-    )
-    user_repo.save(confirmed_blogger)
+    # Note: instagram_url and confirmed are now in profiles, not User
 
-    assert service.dispatch(order.order_id) == [confirmed_blogger]
+    assert service.dispatch(order.order_id) == [blogger]
 
 
 def test_dispatch_requires_active_order() -> None:
@@ -153,6 +142,7 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
         BloggerProfile(
             user_id=UUID("00000000-0000-0000-0000-000000000622"),
             instagram_url="https://instagram.com/ghost",
+            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -178,6 +168,7 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
         BloggerProfile(
             user_id=UUID("00000000-0000-0000-0000-000000000623"),
             instagram_url="https://instagram.com/advertiser",
+            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -266,6 +257,7 @@ def test_dispatch_excludes_order_author() -> None:
         BloggerProfile(
             user_id=advertiser_id,
             instagram_url="https://instagram.com/advertiser",
+            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -275,19 +267,7 @@ def test_dispatch_excludes_order_author() -> None:
             updated_at=datetime.now(timezone.utc),
         )
     )
-    # Update advertiser_blogger with confirmed Instagram
-    confirmed_advertiser = User(
-        user_id=advertiser_blogger.user_id,
-        external_id=advertiser_blogger.external_id,
-        messenger_type=advertiser_blogger.messenger_type,
-        username=advertiser_blogger.username,
-        status=advertiser_blogger.status,
-        issue_count=advertiser_blogger.issue_count,
-        created_at=advertiser_blogger.created_at,
-        instagram_url="https://instagram.com/advertiser",
-        confirmed=True,
-    )
-    user_repo.save(confirmed_advertiser)
+    # Note: instagram_url and confirmed are now in profiles, not User
 
     # Another blogger
     other_blogger = User(
@@ -304,6 +284,7 @@ def test_dispatch_excludes_order_author() -> None:
         BloggerProfile(
             user_id=other_blogger.user_id,
             instagram_url="https://instagram.com/other",
+            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -313,19 +294,7 @@ def test_dispatch_excludes_order_author() -> None:
             updated_at=datetime.now(timezone.utc),
         )
     )
-    # Update other_blogger with confirmed Instagram
-    confirmed_other = User(
-        user_id=other_blogger.user_id,
-        external_id=other_blogger.external_id,
-        messenger_type=other_blogger.messenger_type,
-        username=other_blogger.username,
-        status=other_blogger.status,
-        issue_count=other_blogger.issue_count,
-        created_at=other_blogger.created_at,
-        instagram_url="https://instagram.com/other",
-        confirmed=True,
-    )
-    user_repo.save(confirmed_other)
+    # Note: instagram_url and confirmed are now in profiles, not User
 
     # Should only return other_blogger, not advertiser_blogger
     result = service.dispatch(order.order_id)

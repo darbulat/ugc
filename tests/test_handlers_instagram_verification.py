@@ -102,6 +102,7 @@ async def test_start_verification_requires_role() -> None:
     verification_service = InstagramVerificationService(
         user_repo=repo,
         blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
     profile_service = _profile_service(repo, blogger_repo)
@@ -137,6 +138,7 @@ async def test_start_verification_user_not_found() -> None:
     verification_service = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -172,14 +174,28 @@ async def test_start_verification_already_confirmed() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url="https://instagram.com/test",
-        confirmed=True,  # Already confirmed
     )
     user_repo.save(user)
+    # Create confirmed blogger profile
+    blogger_repo.save(
+        BloggerProfile(
+            user_id=user.user_id,
+            instagram_url="https://instagram.com/test",
+            confirmed=True,  # Already confirmed
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -221,6 +237,7 @@ async def test_start_verification_blocked_user() -> None:
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -260,6 +277,7 @@ async def test_start_verification_paused_user() -> None:
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -317,6 +335,7 @@ async def test_start_verification_via_button() -> None:
     blogger_profile = BloggerProfile(
         user_id=user.user_id,
         instagram_url="https://instagram.com/test",
+        confirmed=False,
         topics={"selected": ["tech"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -326,24 +345,12 @@ async def test_start_verification_via_button() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     blogger_repo.save(blogger_profile)
-    # Update user with instagram_url
-    updated_user = User(
-        user_id=user.user_id,
-        external_id=user.external_id,
-        messenger_type=user.messenger_type,
-        username=user.username,
-        status=user.status,
-        issue_count=user.issue_count,
-        created_at=user.created_at,
-        instagram_url="https://instagram.com/test",
-        confirmed=False,
-    )
-    user_repo.save(updated_user)
 
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
     )
     profile_service = _profile_service(user_repo, blogger_repo)

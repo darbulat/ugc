@@ -57,7 +57,11 @@ def _seed_user(
         created_at=datetime.now(timezone.utc),
     )
     repo.save(user)
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=user.user_id, contact="contact", instagram_url=None, confirmed=False
+        )
+    )
     return user.user_id
 
 

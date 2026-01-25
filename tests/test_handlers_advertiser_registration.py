@@ -8,16 +8,18 @@ import pytest
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
     handle_contact,
     handle_instagram_url,
     start_advertiser_registration,
 )
-from ugc_bot.domain.entities import User
+from ugc_bot.domain.entities import AdvertiserProfile, User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
+    InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
 )
 
@@ -66,16 +68,30 @@ class FakeFSMContext:
         self.state = None
 
 
+def _profile_service(
+    user_repo: InMemoryUserRepository,
+    advertiser_repo: InMemoryAdvertiserProfileRepository,
+) -> ProfileService:
+    """Create profile service for handler tests."""
+
+    return ProfileService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        advertiser_repo=advertiser_repo,
+    )
+
+
 @pytest.mark.asyncio
 async def test_start_advertiser_registration_requires_user() -> None:
     """Require existing user before registration."""
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
+    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(message, state, service, profile_service)
 
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
@@ -87,6 +103,7 @@ async def test_start_advertiser_registration_sets_state() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
+    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
     service.set_user(
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
@@ -95,7 +112,7 @@ async def test_start_advertiser_registration_sets_state() -> None:
     message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(message, state, service, profile_service)
 
     assert state._data["user_id"] is not None
     assert state.state is not None
@@ -117,10 +134,11 @@ async def test_start_advertiser_registration_blocked_user() -> None:
     )
     repo.save(blocked_user)
     service = UserRoleService(user_repo=repo)
+    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
     message = FakeMessage(text=None, user=FakeUser(11, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(message, state, service, profile_service)
 
     assert message.answers
     assert "Заблокированные" in message.answers[0]
@@ -142,10 +160,11 @@ async def test_start_advertiser_registration_paused_user() -> None:
     )
     repo.save(paused_user)
     service = UserRoleService(user_repo=repo)
+    profile_service = _profile_service(repo, InMemoryAdvertiserProfileRepository())
     message = FakeMessage(text=None, user=FakeUser(12, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(message, state, service, profile_service)
 
     assert message.answers
     assert "паузе" in message.answers[0]
@@ -200,7 +219,9 @@ async def test_start_advertiser_registration_with_instagram_url() -> None:
     """Skip Instagram URL step if user already has Instagram URL."""
 
     repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     service = UserRoleService(user_repo=repo)
+    profile_service = _profile_service(repo, advertiser_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000722"),
         external_id="13",
@@ -209,14 +230,20 @@ async def test_start_advertiser_registration_with_instagram_url() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url="https://instagram.com/advertiser",
-        confirmed=False,
     )
     repo.save(user)
+    advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=user.user_id,
+            instagram_url="https://instagram.com/advertiser",
+            confirmed=False,
+            contact="test@example.com",
+        )
+    )
     message = FakeMessage(text=None, user=FakeUser(13, "adv", "Adv"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(message, state, service, profile_service)
 
     assert state._data["user_id"] is not None
     assert "контактные данные" in message.answers[0].lower()
@@ -227,7 +254,9 @@ async def test_start_advertiser_registration_with_confirmed() -> None:
     """Skip Instagram URL step if user already has confirmed Instagram."""
 
     repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
     service = UserRoleService(user_repo=repo)
+    profile_service = _profile_service(repo, advertiser_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000723"),
         external_id="14",
@@ -236,14 +265,20 @@ async def test_start_advertiser_registration_with_confirmed() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        instagram_url="https://instagram.com/advertiser",
-        confirmed=True,
     )
     repo.save(user)
+    advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=user.user_id,
+            instagram_url="https://instagram.com/advertiser",
+            confirmed=True,
+            contact="test@example.com",
+        )
+    )
     message = FakeMessage(text=None, user=FakeUser(14, "adv", "Adv"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(message, state, service, profile_service)
 
     assert state._data["user_id"] is not None
     assert "контактные данные" in message.answers[0].lower()
@@ -270,10 +305,6 @@ async def test_handle_instagram_url_success() -> None:
 
     assert state._data["instagram_url"] == "https://instagram.com/test"
     assert "контактные данные" in message.answers[0].lower()
-    # Check user was updated with Instagram URL
-    updated_user = user_repo.get_by_id(user.user_id)
-    assert updated_user is not None
-    assert updated_user.instagram_url == "https://instagram.com/test"
 
 
 @pytest.mark.asyncio
@@ -314,3 +345,65 @@ async def test_handle_instagram_url_empty() -> None:
     await handle_instagram_url(message, state, user_service)
 
     assert "не может быть пустым" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_contact_exception_handling() -> None:
+    """Handle exceptions during advertiser registration."""
+
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = user_service.set_user(
+        external_id="18",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    class FailingAdvertiserRegistrationService:
+        """Service that raises exceptions."""
+
+        def register_advertiser(self, user_id, contact, instagram_url=None):  # type: ignore[no-untyped-def]
+            """Raise exception."""
+            from ugc_bot.application.errors import AdvertiserRegistrationError
+
+            raise AdvertiserRegistrationError("Test error")
+
+    message = FakeMessage(text="@contact", user=FakeUser(18, "adv", "Adv"))
+    state = FakeFSMContext()
+    await state.update_data(user_id=user.user_id)
+
+    failing_service = FailingAdvertiserRegistrationService()
+    await handle_contact(message, state, failing_service)
+
+    assert message.answers
+    assert "Ошибка регистрации" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_contact_unexpected_exception() -> None:
+    """Handle unexpected exceptions during advertiser registration."""
+
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = user_service.set_user(
+        external_id="19",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    class FailingAdvertiserRegistrationService:
+        """Service that raises unexpected exceptions."""
+
+        def register_advertiser(self, user_id, contact, instagram_url=None):  # type: ignore[no-untyped-def]
+            """Raise unexpected exception."""
+            raise RuntimeError("Unexpected error")
+
+    message = FakeMessage(text="@contact", user=FakeUser(19, "adv", "Adv"))
+    state = FakeFSMContext()
+    await state.update_data(user_id=user.user_id)
+
+    failing_service = FailingAdvertiserRegistrationService()
+    await handle_contact(message, state, failing_service)
+
+    assert message.answers
+    assert "неожиданная ошибка" in message.answers[0]

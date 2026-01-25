@@ -16,6 +16,7 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard, cancel_keyboard
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -37,6 +38,7 @@ async def start_advertiser_registration(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
+    profile_service: ProfileService,
 ) -> None:
     """Start advertiser registration flow."""
 
@@ -57,8 +59,10 @@ async def start_advertiser_registration(
         await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
-    # Check if user already has Instagram verification
-    if user.confirmed:
+    # Check advertiser profile if exists
+    existing_profile = profile_service.get_advertiser_profile(user.user_id)
+
+    if existing_profile and existing_profile.confirmed:
         await state.update_data(user_id=user.user_id)
         await message.answer(
             "У вас уже есть подтвержденный Instagram. Введите контактные данные для связи:",
@@ -67,8 +71,7 @@ async def start_advertiser_registration(
         await state.set_state(AdvertiserRegistrationStates.contact)
         return
 
-    # Check if user already has Instagram URL
-    if user.instagram_url:
+    if existing_profile and existing_profile.instagram_url:
         await state.update_data(user_id=user.user_id)
         await message.answer(
             "У вас уже указан Instagram. Введите контактные данные для связи:",
@@ -109,26 +112,6 @@ async def handle_instagram_url(
         )
         return
 
-    data = await state.get_data()
-    user_id_raw = data["user_id"]
-    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-
-    # Update user with Instagram URL
-    user = user_role_service.get_user_by_id(user_id)
-    if user:
-        updated_user = user.__class__(
-            user_id=user.user_id,
-            external_id=user.external_id,
-            messenger_type=user.messenger_type,
-            username=user.username,
-            status=user.status,
-            issue_count=user.issue_count,
-            created_at=user.created_at,
-            instagram_url=instagram_url,
-            confirmed=False,
-        )
-        user_role_service.user_repo.save(updated_user)
-
     await state.update_data(instagram_url=instagram_url)
     await message.answer(
         "Введите контактные данные для связи:",
@@ -157,11 +140,13 @@ async def handle_contact(
     # Convert user_id from string (Redis) back to UUID if needed
     user_id_raw = data["user_id"]
     user_id: UUID = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+    instagram_url = data.get("instagram_url")
 
     try:
         profile = advertiser_registration_service.register_advertiser(
             user_id=user_id,
             contact=contact,
+            instagram_url=instagram_url,
         )
     except (AdvertiserRegistrationError, UserNotFoundError) as exc:
         logger.warning(

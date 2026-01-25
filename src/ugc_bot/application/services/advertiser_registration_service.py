@@ -20,7 +20,9 @@ class AdvertiserRegistrationService:
     advertiser_repo: AdvertiserProfileRepository
     metrics_collector: Optional[Any] = None
 
-    def register_advertiser(self, user_id: UUID, contact: str) -> AdvertiserProfile:
+    def register_advertiser(
+        self, user_id: UUID, contact: str, instagram_url: str | None = None
+    ) -> AdvertiserProfile:
         """Create an advertiser profile after validating input."""
 
         user = self.user_repo.get_by_id(user_id)
@@ -31,7 +33,12 @@ class AdvertiserRegistrationService:
         if not contact:
             raise AdvertiserRegistrationError("Contact is required.")
 
-        profile = AdvertiserProfile(user_id=user.user_id, contact=contact)
+        profile = AdvertiserProfile(
+            user_id=user.user_id,
+            instagram_url=instagram_url,
+            confirmed=False,
+            contact=contact,
+        )
         self.advertiser_repo.save(profile)
 
         if self.metrics_collector:

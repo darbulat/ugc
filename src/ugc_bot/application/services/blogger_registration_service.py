@@ -60,24 +60,10 @@ class BloggerRegistrationService:
         if price <= 0:
             raise BloggerRegistrationError("Price must be positive.")
 
-        # Update user with Instagram URL if not set
-        if user.instagram_url is None:
-            updated_user = user.__class__(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
-                username=user.username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
-                instagram_url=instagram_url,
-                confirmed=False,
-            )
-            self.user_repo.save(updated_user)
-
         profile = BloggerProfile(
             user_id=user.user_id,
             instagram_url=instagram_url,
+            confirmed=False,
             topics=topics,
             audience_gender=audience_gender,
             audience_age_min=audience_age_min,
