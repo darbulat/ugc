@@ -28,8 +28,6 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
     )
     advertiser_repo.save(advertiser_profile)
 
@@ -155,8 +153,6 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
     )
     advertiser_repo.save(advertiser_profile)
 
@@ -244,8 +240,6 @@ async def test_feedback_mixed_responses_aggregation(
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
     )
     advertiser_repo.save(advertiser_profile)
 
@@ -334,8 +328,6 @@ async def test_feedback_issue_status_blocks_user(
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
-        instagram_url=None,
-        confirmed=False,
     )
     advertiser_repo.save(advertiser_profile)
 

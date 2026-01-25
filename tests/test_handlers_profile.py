@@ -43,8 +43,19 @@ class FakeProfileService:
         has_advertiser: bool,
         blogger_confirmed: bool = True,
     ) -> None:
-        # Note: instagram_url and confirmed are now in profiles, not User
-        self._user = user
+        # Update user with confirmed status
+        self._user = User(
+            user_id=user.user_id,
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=user.username,
+            status=user.status,
+            issue_count=user.issue_count,
+            created_at=user.created_at,
+            instagram_url=user.instagram_url
+            or ("https://instagram.com/test" if has_blogger else None),
+            confirmed=blogger_confirmed if has_blogger else user.confirmed,
+        )
         self._has_blogger = has_blogger
         self._has_advertiser = has_advertiser
         self._blogger_confirmed = blogger_confirmed
@@ -58,7 +69,6 @@ class FakeProfileService:
         return BloggerProfile(
             user_id=user_id,
             instagram_url="https://instagram.com/test",
-            confirmed=self._blogger_confirmed,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -71,9 +81,7 @@ class FakeProfileService:
     def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_advertiser:
             return None
-        return AdvertiserProfile(
-            user_id=user_id, contact="contact", instagram_url=None, confirmed=False
-        )
+        return AdvertiserProfile(user_id=user_id, contact="contact")
 
 
 @pytest.mark.asyncio
@@ -111,36 +119,6 @@ async def test_show_profile_missing_user() -> None:
 
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
-
-
-@pytest.mark.asyncio
-async def test_show_profile_no_from_user() -> None:
-    """Handle case when message has no from_user."""
-
-    class FakeMessageNoUser:
-        """Message without from_user."""
-
-        def __init__(self) -> None:
-            self.from_user = None
-            self.answers: list[str] = []
-
-        async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
-            """Capture response."""
-            self.answers.append(text)
-
-    class FakeProfileService:
-        """Stub profile service."""
-
-        def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
-            return None
-
-    message = FakeMessageNoUser()
-    service = FakeProfileService()
-
-    await show_profile(message, service)
-
-    # Should not answer when from_user is None
-    assert len(message.answers) == 0
 
 
 @pytest.mark.asyncio

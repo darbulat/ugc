@@ -129,11 +129,7 @@ async def test_my_orders_empty() -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=user.user_id, contact="contact", instagram_url=None, confirmed=False
-        )
-    )
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
 
     message = FakeMessage(text="/my_orders")
     await show_my_orders(
@@ -177,11 +173,7 @@ async def test_my_orders_list() -> None:
         created_at=datetime.now(timezone.utc),
     )
     user_repo.save(user)
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=user.user_id, contact="contact", instagram_url=None, confirmed=False
-        )
-    )
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
         advertiser_id=user.user_id,
@@ -239,11 +231,7 @@ async def test_my_orders_pagination() -> None:
         created_at=datetime.now(timezone.utc),
     )
     user_repo.save(user)
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=user.user_id, contact="contact", instagram_url=None, confirmed=False
-        )
-    )
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
     for idx in range(6):
         order_repo.save(
             Order(
@@ -316,11 +304,7 @@ async def test_my_orders_with_complaint_button() -> None:
     user_repo.save(user)
     user_repo.save(blogger)
     user_repo.save(user)
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=user.user_id, contact="contact", instagram_url=None, confirmed=False
-        )
-    )
+    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000922"),

@@ -181,10 +181,7 @@ def dispatcher(session_factory, mock_bot: Bot):
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=advertiser_repo,
-        verification_repo=instagram_repo,
+        user_repo=user_repo, blogger_repo=blogger_repo, verification_repo=instagram_repo
     )
     dispatcher["order_service"] = OrderService(
         user_repo=user_repo, advertiser_repo=advertiser_repo, order_repo=order_repo

@@ -14,7 +14,6 @@ from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundErr
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     blogger_menu_keyboard,
@@ -245,7 +244,6 @@ async def handle_agreements(
     state: FSMContext,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
-    profile_service: ProfileService,
 ) -> None:
     """Finalize registration after agreements."""
 
@@ -306,9 +304,9 @@ async def handle_agreements(
         return
 
     await state.clear()
-    # Get confirmed status from profile
-    blogger_profile = profile_service.get_blogger_profile(user_id)
-    confirmed_status = blogger_profile.confirmed if blogger_profile else False
+    # Get updated user to check confirmed status
+    updated_user = user_role_service.get_user_by_id(user_id)
+    confirmed_status = updated_user.confirmed if updated_user else False
     await message.answer(
         "Профиль создан. Статус подтверждения Instagram: НЕ ПОДТВЕРЖДЁН.\n"
         f"Ваш Instagram: {profile.instagram_url}",

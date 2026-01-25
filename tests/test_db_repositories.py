@@ -197,7 +197,6 @@ def test_blogger_profile_repository_save() -> None:
     profile = BloggerProfile(
         user_id=UUID("00000000-0000-0000-0000-000000000113"),
         instagram_url="https://instagram.com/test",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -277,8 +276,6 @@ def test_advertiser_profile_repository_save_and_get() -> None:
     profile = AdvertiserProfile(
         user_id=UUID("00000000-0000-0000-0000-000000000116"),
         contact="@contact",
-        instagram_url=None,
-        confirmed=False,
     )
     repo.save(profile)
     assert session.merged is not None

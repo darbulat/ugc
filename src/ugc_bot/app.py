@@ -177,7 +177,6 @@ def build_dispatcher(
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
-        advertiser_repo=advertiser_repo,
         verification_repo=instagram_repo,
         instagram_api_client=instagram_api_client,
     )

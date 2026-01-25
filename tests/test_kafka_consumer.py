@@ -142,7 +142,6 @@ async def test_send_offers_sends_messages() -> None:
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
-            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -152,7 +151,19 @@ async def test_send_offers_sends_messages() -> None:
             updated_at=now,
         )
     )
-    # Note: instagram_url and confirmed are now in profiles, not User
+    # Update user with confirmed Instagram
+    confirmed_blogger = User(
+        user_id=blogger.user_id,
+        external_id=blogger.external_id,
+        messenger_type=blogger.messenger_type,
+        username=blogger.username,
+        status=blogger.status,
+        issue_count=blogger.issue_count,
+        created_at=blogger.created_at,
+        instagram_url="https://instagram.com/blogger",
+        confirmed=True,
+    )
+    user_repo.save(confirmed_blogger)
 
     class FakeBot:
         def __init__(self) -> None:
@@ -312,7 +323,6 @@ async def test_send_offers_retries_then_succeeds() -> None:
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
-            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -322,7 +332,19 @@ async def test_send_offers_retries_then_succeeds() -> None:
             updated_at=now,
         )
     )
-    # Note: instagram_url and confirmed are now in profiles, not User
+    # Update user with confirmed Instagram
+    confirmed_blogger = User(
+        user_id=blogger.user_id,
+        external_id=blogger.external_id,
+        messenger_type=blogger.messenger_type,
+        username=blogger.username,
+        status=blogger.status,
+        issue_count=blogger.issue_count,
+        created_at=blogger.created_at,
+        instagram_url="https://instagram.com/blogger",
+        confirmed=True,
+    )
+    user_repo.save(confirmed_blogger)
 
     class FlakyBot:
         def __init__(self) -> None:
@@ -399,7 +421,6 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
-            confirmed=False,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -409,7 +430,19 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
             updated_at=now,
         )
     )
-    # Note: instagram_url and confirmed are now in profiles, not User
+    # Update user with confirmed Instagram
+    confirmed_blogger = User(
+        user_id=blogger.user_id,
+        external_id=blogger.external_id,
+        messenger_type=blogger.messenger_type,
+        username=blogger.username,
+        status=blogger.status,
+        issue_count=blogger.issue_count,
+        created_at=blogger.created_at,
+        instagram_url="https://instagram.com/blogger",
+        confirmed=True,
+    )
+    user_repo.save(confirmed_blogger)
 
     class AlwaysFailBot:
         async def send_message(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]

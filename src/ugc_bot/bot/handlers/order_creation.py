@@ -71,14 +71,8 @@ async def start_order_creation(
         )
         return
 
-    # Check Instagram verification in advertiser profile
-    if advertiser.instagram_url is None:
-        await message.answer(
-            "Для создания заказа необходимо указать Instagram аккаунт.\n"
-            "Используйте команду /register_advertiser для указания Instagram."
-        )
-        return
-    if not advertiser.confirmed:
+    # Check Instagram verification
+    if not user.confirmed:
         await message.answer(
             "Для создания заказа необходимо подтвердить Instagram аккаунт.\n"
             "Используйте команду /verify_instagram или нажмите кнопку 'Пройти верификацию'."
@@ -235,7 +229,6 @@ async def handle_bloggers_needed(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
-    profile_service: ProfileService,
     order_service: OrderService,
     config: AppConfig,
     contact_pricing_service: ContactPricingService,
@@ -266,19 +259,7 @@ async def handle_bloggers_needed(
         if user is None:
             await message.answer("Пользователь не найден.")
             return
-
-        # Get advertiser profile to check confirmation
-        advertiser_profile = profile_service.get_advertiser_profile(user_id)
-        if advertiser_profile is None:
-            await message.answer("Профиль рекламодателя не найден.")
-            return
-        if advertiser_profile.instagram_url is None:
-            await message.answer(
-                "Для создания заказа необходимо указать Instagram аккаунт.\n"
-                "Используйте команду /register_advertiser для указания Instagram."
-            )
-            return
-        if not advertiser_profile.confirmed:
+        if not user.confirmed:
             await message.answer(
                 "Для создания заказа необходимо подтвердить Instagram аккаунт.\n"
                 "Используйте команду /verify_instagram или нажмите кнопку 'Пройти верификацию'."

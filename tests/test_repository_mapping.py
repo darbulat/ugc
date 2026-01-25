@@ -31,6 +31,8 @@ def test_user_mapping_roundtrip() -> None:
         status=UserStatus.ACTIVE,
         issue_count=1,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,
+        confirmed=False,
     )
 
     model = _to_user_model(user)
@@ -47,7 +49,6 @@ def test_blogger_profile_mapping_roundtrip() -> None:
     profile = BloggerProfile(
         user_id=UUID("00000000-0000-0000-0000-000000000011"),
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,

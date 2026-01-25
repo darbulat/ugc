@@ -65,8 +65,6 @@ class TestOutboxIntegration:
         profile = AdvertiserProfile(
             user_id=user.user_id,
             contact="test@example.com",
-            instagram_url=None,
-            confirmed=False,
         )
         advertiser_repo.save(profile)
 
@@ -338,8 +336,6 @@ class TestOutboxIntegration:
         profile = AdvertiserProfile(
             user_id=user.user_id,
             contact="test@example.com",
-            instagram_url=None,
-            confirmed=False,
         )
         advertiser_repo.save(profile)
 

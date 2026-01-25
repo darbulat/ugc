@@ -138,9 +138,12 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         with self.session_factory() as session:
             # Get users who have blogger profiles and are confirmed
             results = session.execute(
-                select(BloggerProfileModel.user_id).where(
-                    BloggerProfileModel.confirmed.is_(True)
+                select(UserModel.user_id)
+                .join(
+                    BloggerProfileModel,
+                    UserModel.user_id == BloggerProfileModel.user_id,
                 )
+                .where(UserModel.confirmed.is_(True))
             ).scalars()
             return list(results)
 
@@ -496,6 +499,8 @@ def _to_user_entity(model: UserModel) -> User:
         status=model.status,
         issue_count=model.issue_count,
         created_at=model.created_at,
+        instagram_url=model.instagram_url,
+        confirmed=model.confirmed,
     )
 
 
@@ -510,6 +515,8 @@ def _to_user_model(user: User) -> UserModel:
         status=user.status,
         issue_count=user.issue_count,
         created_at=user.created_at,
+        instagram_url=user.instagram_url,
+        confirmed=user.confirmed,
     )
 
 
@@ -521,7 +528,6 @@ def _to_blogger_profile_entity(
     return BloggerProfile(
         user_id=model.user_id,
         instagram_url=model.instagram_url,
-        confirmed=model.confirmed,
         topics=model.topics,
         audience_gender=model.audience_gender,
         audience_age_min=model.audience_age_min,
@@ -540,7 +546,6 @@ def _to_blogger_profile_model(
     return BloggerProfileModel(
         user_id=profile.user_id,
         instagram_url=profile.instagram_url,
-        confirmed=profile.confirmed,
         topics=profile.topics,
         audience_gender=profile.audience_gender,
         audience_age_min=profile.audience_age_min,
@@ -592,12 +597,7 @@ def _to_advertiser_profile_entity(
 ) -> AdvertiserProfile:
     """Map advertiser profile ORM model to domain entity."""
 
-    return AdvertiserProfile(
-        user_id=model.user_id,
-        instagram_url=model.instagram_url,
-        confirmed=model.confirmed,
-        contact=model.contact,
-    )
+    return AdvertiserProfile(user_id=model.user_id, contact=model.contact)
 
 
 def _to_advertiser_profile_model(
@@ -607,8 +607,6 @@ def _to_advertiser_profile_model(
 
     return AdvertiserProfileModel(
         user_id=profile.user_id,
-        instagram_url=profile.instagram_url,
-        confirmed=profile.confirmed,
         contact=profile.contact,
     )
 

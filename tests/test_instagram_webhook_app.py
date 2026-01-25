@@ -17,7 +17,6 @@ from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.instagram_webhook_app import app
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
@@ -150,6 +149,8 @@ def test_webhook_event_processing_success(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=None,
+        instagram_url="https://instagram.com/test_user",
+        confirmed=False,
     )
     user_repo.save(user)
 
@@ -157,7 +158,6 @@ def test_webhook_event_processing_success(
         BloggerProfile(
             user_id=user.user_id,
             instagram_url="https://instagram.com/test_user",
-            confirmed=False,
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -171,7 +171,6 @@ def test_webhook_event_processing_success(
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=verification_repo,
         instagram_api_client=None,
     )
@@ -213,10 +212,10 @@ def test_webhook_event_processing_success(
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
-    # Verify profile was confirmed
-    updated_profile = blogger_repo.get_by_user_id(user.user_id)
-    assert updated_profile is not None
-    assert updated_profile.confirmed is True
+    # Verify user was confirmed
+    updated_user = user_repo.get_by_id(user.user_id)
+    assert updated_user is not None
+    assert updated_user.confirmed is True
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
@@ -307,7 +306,6 @@ def test_webhook_event_no_app_secret(
     verification_service = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
         instagram_api_client=None,
     )

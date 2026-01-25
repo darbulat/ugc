@@ -8,7 +8,6 @@ import pytest
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.blogger_registration import (
     handle_agreements,
@@ -24,7 +23,6 @@ from ugc_bot.bot.handlers.blogger_registration import (
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
 )
@@ -75,19 +73,6 @@ class FakeFSMContext:
     async def clear(self) -> None:
         self._data.clear()
         self.state = None
-
-
-def _profile_service(
-    user_repo: InMemoryUserRepository,
-    blogger_repo: InMemoryBloggerProfileRepository,
-) -> ProfileService:
-    """Create profile service for handler tests."""
-
-    return ProfileService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-    )
 
 
 @pytest.mark.asyncio
@@ -352,13 +337,11 @@ async def test_handle_agreements_creates_profile() -> None:
         price=1500.0,
     )
 
-    profile_service = _profile_service(user_repo, blogger_repo)
     await handle_agreements(
         message,
         state,
         registration_service,
         user_role_service,
-        profile_service,
     )
 
     assert message.answers
@@ -380,13 +363,11 @@ async def test_handle_agreements_requires_consent() -> None:
     message = FakeMessage(text="нет", user=FakeUser(1, "bob", "Bob"))
     state = FakeFSMContext()
 
-    profile_service = _profile_service(user_repo, blogger_repo)
     await handle_agreements(
         message,
         state,
         registration_service,
         user_role_service,
-        profile_service,
     )
 
     assert message.answers
@@ -418,7 +399,6 @@ async def test_handle_instagram_duplicate_url() -> None:
     existing_profile = BloggerProfile(
         user_id=existing_user.user_id,
         instagram_url="https://instagram.com/test_user",
-        confirmed=False,
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -472,13 +452,11 @@ async def test_handle_agreements_shows_verification_button() -> None:
         price=1500.0,
     )
 
-    profile_service = _profile_service(user_repo, blogger_repo)
     await handle_agreements(
         message,
         state,
         registration_service,
         user_role_service,
-        profile_service,
     )
 
     assert message.reply_markups

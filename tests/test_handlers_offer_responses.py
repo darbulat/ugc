@@ -14,13 +14,7 @@ from ugc_bot.bot.handlers.offer_responses import (
     _send_contact_immediately,
     handle_offer_response,
 )
-from ugc_bot.domain.entities import (
-    AdvertiserProfile,
-    BloggerProfile,
-    Order,
-    OrderResponse,
-    User,
-)
+from ugc_bot.domain.entities import BloggerProfile, Order, OrderResponse, User
 from ugc_bot.domain.enums import AudienceGender, MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
@@ -75,14 +69,13 @@ class FakeCallback:
 def _profile_service(
     user_repo: InMemoryUserRepository,
     blogger_repo: InMemoryBloggerProfileRepository,
-    advertiser_repo: InMemoryAdvertiserProfileRepository | None = None,
 ) -> ProfileService:
     """Build profile service for tests."""
 
     return ProfileService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
-        advertiser_repo=advertiser_repo or InMemoryAdvertiserProfileRepository(),
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
     )
 
 
@@ -98,7 +91,6 @@ def _add_blogger_profile(
         BloggerProfile(
             user_id=user_id,
             instagram_url="https://instagram.com/test",
-            confirmed=confirmed,
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
@@ -109,8 +101,22 @@ def _add_blogger_profile(
         )
     )
 
-    # Note: instagram_url and confirmed are now in profiles, not User
-    # This helper just creates the profile, User doesn't need updating
+    # Update user with instagram_url and confirmed status
+    if user_repo:
+        user = user_repo.get_by_id(user_id)
+        if user:
+            updated_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=user.username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                instagram_url="https://instagram.com/test",
+                confirmed=confirmed,
+            )
+            user_repo.save(updated_user)
 
 
 @pytest.mark.asyncio
@@ -307,6 +313,8 @@ async def test_offer_response_handler_success() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=True,
     )
     user_repo.save(advertiser)
 
@@ -1081,19 +1089,10 @@ async def test_offer_response_sends_advertiser_instagram_url() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url="https://instagram.com/advertiser",
+        confirmed=True,
     )
     user_repo.save(advertiser)
-    # Create advertiser profile with Instagram URL
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=advertiser.user_id,
-            contact="contact@example.com",
-            instagram_url="https://instagram.com/advertiser",
-            confirmed=True,
-        )
-    )
-    profile_service = _profile_service(user_repo, blogger_repo, advertiser_repo)
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000751"),
@@ -1166,19 +1165,10 @@ async def test_offer_response_no_advertiser_instagram_url() -> None:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        instagram_url=None,  # No Instagram URL
+        confirmed=False,
     )
     user_repo.save(advertiser)
-    # Create advertiser profile without Instagram URL
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    advertiser_repo.save(
-        AdvertiserProfile(
-            user_id=advertiser.user_id,
-            contact="contact@example.com",
-            instagram_url=None,
-            confirmed=False,
-        )
-    )
-    profile_service = _profile_service(user_repo, blogger_repo, advertiser_repo)
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000754"),
