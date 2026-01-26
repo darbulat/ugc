@@ -6,7 +6,7 @@ filebeat.inputs:
       - add_docker_metadata:
           host: "unix:///var/run/docker.sock"
           match_source: true
-          match_source_index: 4
+          match_source_index: 5
     json.keys_under_root: false
     json.add_error_key: true
     json.message_key: message
