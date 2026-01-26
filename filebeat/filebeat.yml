@@ -23,9 +23,6 @@ processors:
       max_depth: 1
       when.regexp:
         container.name: ".*ugc.*"
-  - drop_fields:
-      fields: ["log", "stream"]
-      ignore_missing: true
 
 output.elasticsearch:
   hosts: ['http://elasticsearch:9200']
