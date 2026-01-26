@@ -6,9 +6,24 @@ route:
   group_by:
     - alertname
     - instance
+    - severity
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    - receiver: telegram_critical
+      matchers:
+        - severity="critical"
+      continue: false
+
+inhibit_rules:
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal:
+      - alertname
+      - instance
 
 receivers:
   - name: telegram
@@ -19,6 +34,21 @@ receivers:
         send_resolved: true
         message: |-
           *Status:* {{ .Status }}
+          *Alert:* {{ .CommonLabels.alertname }}
+          {{ range .Alerts -}}
+          *Instance:* {{ .Labels.instance }}
+          *Summary:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+  - name: telegram_critical
+    telegram_configs:
+      - bot_token: ${TELEGRAM_BOT_TOKEN}
+        chat_id: ${TELEGRAM_CRITICAL_CHAT_ID}
+        parse_mode: Markdown
+        send_resolved: true
+        message: |-
+          *Status:* {{ .Status }}
+          *Severity:* *CRITICAL*
           *Alert:* {{ .CommonLabels.alertname }}
           {{ range .Alerts -}}
           *Instance:* {{ .Labels.instance }}

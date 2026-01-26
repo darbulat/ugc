@@ -218,6 +218,7 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      TELEGRAM_CRITICAL_CHAT_ID: ${TELEGRAM_CRITICAL_CHAT_ID}
     volumes:
       - ./config/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
