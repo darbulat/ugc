@@ -2,7 +2,7 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: default
+  receiver: telegram
   group_by:
     - alertname
     - instance
@@ -11,4 +11,17 @@ route:
   repeat_interval: 4h
 
 receivers:
-  - name: default
+  - name: telegram
+    telegram_configs:
+      - bot_token: ${TELEGRAM_BOT_TOKEN}
+        chat_id: ${TELEGRAM_CHAT_ID}
+        parse_mode: Markdown
+        send_resolved: true
+        message: |-
+          *Status:* {{ .Status }}
+          *Alert:* {{ .CommonLabels.alertname }}
+          {{ range .Alerts -}}
+          *Instance:* {{ .Labels.instance }}
+          *Summary:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
