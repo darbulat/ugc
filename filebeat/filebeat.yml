@@ -11,10 +11,14 @@ filebeat.inputs:
 processors:
   - add_host_metadata:
       when.not.contains.tags: forwarded
+  - dissect:
+      field: "log.file.path"
+      tokenizer: "/var/lib/docker/containers/%{container.id}/%{container.id}-json.log"
+      target_prefix: ""
+      ignore_failure: true
   - add_docker_metadata:
       host: "unix:///var/run/docker.sock"
-      match_source: true
-      match_source_index: 4
+      match_fields: ["container.id"]
   - decode_json_fields:
       fields: ["message"]
       target: ""
