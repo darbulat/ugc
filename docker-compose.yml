@@ -223,6 +223,7 @@ services:
       - ./config/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--config.expand-env"
     ports:
       - "9093:9093"
     restart: unless-stopped
