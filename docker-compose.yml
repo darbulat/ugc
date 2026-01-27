@@ -213,6 +213,21 @@ services:
     networks:
       - default
 
+  alertmanager_renderer:
+    image: alpine:3.20
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      TELEGRAM_CRITICAL_CHAT_ID: ${TELEGRAM_CRITICAL_CHAT_ID}
+    volumes:
+      - ./config/monitoring/alertmanager.yml:/templates/alertmanager.yml:ro
+      - alertmanager_config:/etc/alertmanager
+    entrypoint: ["/bin/sh", "-c"]
+    command: "apk add --no-cache gettext >/dev/null && envsubst < /templates/alertmanager.yml > /etc/alertmanager/alertmanager.yml"
+    restart: "no"
+    networks:
+      - default
+
   alertmanager:
     image: prom/alertmanager:latest
     environment:
@@ -220,9 +235,12 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       TELEGRAM_CRITICAL_CHAT_ID: ${TELEGRAM_CRITICAL_CHAT_ID}
     volumes:
-      - ./config/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command: "sed -e \"s|\\\\$${TELEGRAM_BOT_TOKEN}|$${TELEGRAM_BOT_TOKEN}|g\" -e \"s|\\\\$${TELEGRAM_CHAT_ID}|$${TELEGRAM_CHAT_ID}|g\" -e \"s|\\\\$${TELEGRAM_CRITICAL_CHAT_ID}|$${TELEGRAM_CRITICAL_CHAT_ID}|g\" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml && exec alertmanager --config.file=/tmp/alertmanager.yml"
+      - alertmanager_config:/etc/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    depends_on:
+      alertmanager_renderer:
+        condition: service_completed_successfully
     ports:
       - "9093:9093"
     restart: unless-stopped
@@ -278,6 +296,7 @@ volumes:
   certbot_www:
   prometheus_data:
   grafana_data:
+  alertmanager_config:
 
 networks:
   default:
