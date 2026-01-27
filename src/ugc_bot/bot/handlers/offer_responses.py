@@ -7,8 +7,6 @@ from aiogram import Router
 from aiogram.types import CallbackQuery
 
 from ugc_bot.application.errors import OrderCreationError
-from datetime import datetime, timezone
-
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.profile_service import ProfileService
@@ -18,7 +16,7 @@ from ugc_bot.bot.handlers.security_warnings import (
     BLOGGER_RESPONSE_WARNING,
 )
 from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 router = Router()
@@ -68,31 +66,21 @@ async def handle_offer_response(
         await callback.answer("Неверный идентификатор заказа.")
         return
 
-    order = offer_response_service.order_repo.get_by_id(order_id)
-    if order is None:
-        await callback.answer("Заказ не найден.")
-        return
-    if order.status != OrderStatus.ACTIVE:
-        await callback.answer("Заказ не активен.")
-        return
-    if offer_response_service.response_repo.exists(order_id, user.user_id):
-        await callback.answer("Вы уже откликались на этот заказ.")
-        return
-    if (
-        offer_response_service.response_repo.count_by_order(order_id)
-        >= order.bloggers_needed
-    ):
-        await callback.answer("Лимит откликов по заказу достигнут.")
-        return
-
     try:
-        offer_response_service.respond(order_id, user.user_id)
+        result = offer_response_service.respond_and_finalize(order_id, user.user_id)
     except OrderCreationError as exc:
+        error_map = {
+            "Order not found.": "Заказ не найден.",
+            "Order is not active.": "Заказ не активен.",
+            "You already responded to this order.": "Вы уже откликались на этот заказ.",
+            "Order response limit reached.": "Лимит откликов по заказу достигнут.",
+        }
+        message = error_map.get(str(exc), str(exc))
         logger.warning(
             "Offer response rejected",
             extra={"user_id": user.user_id, "reason": str(exc)},
         )
-        await callback.answer(str(exc))
+        await callback.answer(message)
         return
     except Exception:
         logger.exception(
@@ -112,26 +100,20 @@ async def handle_offer_response(
 
     # Send contact immediately after each response
     await _send_contact_immediately(
-        order_id=order_id,
+        order=result.order,
         blogger_id=user.user_id,
-        offer_response_service=offer_response_service,
+        response_count=result.response_count,
         user_role_service=user_role_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
         bot=callback.message.bot if callback.message else None,
     )
 
-    # Close order if limit reached
-    await _maybe_close_order(
-        order_id=order_id,
-        offer_response_service=offer_response_service,
-    )
-
 
 async def _send_contact_immediately(
-    order_id: UUID,
+    order: Order,
     blogger_id: UUID,
-    offer_response_service: OfferResponseService,
+    response_count: int,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     interaction_service: InteractionService | None,
@@ -139,26 +121,20 @@ async def _send_contact_immediately(
 ) -> None:
     """Send contact to advertiser immediately after each response."""
 
-    order = offer_response_service.order_repo.get_by_id(order_id)
-    if order is None:
-        return
-    if order.status != OrderStatus.ACTIVE:
-        return
-
     # Get blogger info
     user = user_role_service.get_user_by_id(blogger_id)
     profile = profile_service.get_blogger_profile(blogger_id)
     if user is None or profile is None:
         logger.warning(
             "Cannot send contact: user or profile not found",
-            extra={"order_id": order_id, "blogger_id": blogger_id},
+            extra={"order_id": order.order_id, "blogger_id": blogger_id},
         )
         return
 
     # Format contact info
     handle = f"@{user.username}" if user.username else user.external_id
     contact_text = (
-        f"Новый отклик по заказу #{order_id}:\n"
+        f"Новый отклик по заказу #{order.order_id}:\n"
         f"Ник: {handle}\n"
         f"Telegram: {user.external_id}\n"
         f"Instagram: {profile.instagram_url}\n"
@@ -174,7 +150,6 @@ async def _send_contact_immediately(
             text=contact_text,
         )
         # Send security warning only on first contact
-        response_count = offer_response_service.response_repo.count_by_order(order_id)
         if response_count == 1:
             await bot.send_message(
                 chat_id=int(advertiser.external_id),
@@ -189,52 +164,3 @@ async def _send_contact_immediately(
             blogger_id=blogger_id,
             advertiser_id=order.advertiser_id,
         )
-
-    # Update contacts_sent_at timestamp
-    updated_order = Order(
-        order_id=order.order_id,
-        advertiser_id=order.advertiser_id,
-        product_link=order.product_link,
-        offer_text=order.offer_text,
-        ugc_requirements=order.ugc_requirements,
-        barter_description=order.barter_description,
-        price=order.price,
-        bloggers_needed=order.bloggers_needed,
-        status=order.status,
-        created_at=order.created_at,
-        contacts_sent_at=datetime.now(timezone.utc),
-    )
-    offer_response_service.order_repo.save(updated_order)
-
-
-async def _maybe_close_order(
-    order_id: UUID,
-    offer_response_service: OfferResponseService,
-) -> None:
-    """Close order when limit of responses is reached."""
-
-    order = offer_response_service.order_repo.get_by_id(order_id)
-    if order is None:
-        return
-    if order.status != OrderStatus.ACTIVE:
-        return
-
-    response_count = offer_response_service.response_repo.count_by_order(order_id)
-    if response_count < order.bloggers_needed:
-        return
-
-    # Close order when limit reached
-    closed = Order(
-        order_id=order.order_id,
-        advertiser_id=order.advertiser_id,
-        product_link=order.product_link,
-        offer_text=order.offer_text,
-        ugc_requirements=order.ugc_requirements,
-        barter_description=order.barter_description,
-        price=order.price,
-        bloggers_needed=order.bloggers_needed,
-        status=OrderStatus.CLOSED,
-        created_at=order.created_at,
-        contacts_sent_at=order.contacts_sent_at,  # Keep the last contacts_sent_at
-    )
-    offer_response_service.order_repo.save(closed)

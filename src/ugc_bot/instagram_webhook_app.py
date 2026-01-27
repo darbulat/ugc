@@ -32,6 +32,13 @@ def _verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:
     return hmac.compare_digest(computed, expected_signature)
 
 
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Lightweight health check for webhook app."""
+
+    return {"status": "ok"}
+
+
 @app.get("/webhook/instagram")
 async def verify_webhook(request: Request) -> Response:
     """Handle webhook verification request from Meta."""

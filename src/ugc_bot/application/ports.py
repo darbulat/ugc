@@ -83,8 +83,16 @@ class OrderRepository(ABC):
     """Port for order persistence."""
 
     @abstractmethod
-    def get_by_id(self, order_id: UUID) -> Optional[Order]:
+    def get_by_id(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[Order]:
         """Fetch order by ID."""
+
+    @abstractmethod
+    def get_by_id_for_update(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[Order]:
+        """Fetch order by ID with a row lock when supported."""
 
     @abstractmethod
     def list_active(self) -> Iterable[Order]:
@@ -103,7 +111,7 @@ class OrderRepository(ABC):
         """Count orders by advertiser."""
 
     @abstractmethod
-    def save(self, order: Order) -> None:
+    def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
 
 
@@ -111,7 +119,7 @@ class OrderResponseRepository(ABC):
     """Port for order response persistence."""
 
     @abstractmethod
-    def save(self, response: OrderResponse) -> None:
+    def save(self, response: OrderResponse, session: object | None = None) -> None:
         """Persist order response."""
 
     @abstractmethod
@@ -119,11 +127,13 @@ class OrderResponseRepository(ABC):
         """List responses by order."""
 
     @abstractmethod
-    def exists(self, order_id: UUID, blogger_id: UUID) -> bool:
+    def exists(
+        self, order_id: UUID, blogger_id: UUID, session: object | None = None
+    ) -> bool:
         """Check if blogger already responded."""
 
     @abstractmethod
-    def count_by_order(self, order_id: UUID) -> int:
+    def count_by_order(self, order_id: UUID, session: object | None = None) -> int:
         """Count responses by order."""
 
 

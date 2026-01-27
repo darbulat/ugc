@@ -194,8 +194,17 @@ class InMemoryOrderRepository(OrderRepository):
 
     orders: Dict[UUID, Order] = field(default_factory=dict)
 
-    def get_by_id(self, order_id: UUID) -> Optional[Order]:
+    def get_by_id(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[Order]:
         """Fetch order by id."""
+
+        return self.orders.get(order_id)
+
+    def get_by_id_for_update(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[Order]:
+        """Fetch order by id with a row lock (no-op in memory)."""
 
         return self.orders.get(order_id)
 
@@ -237,7 +246,7 @@ class InMemoryOrderRepository(OrderRepository):
             ]
         )
 
-    def save(self, order: Order) -> None:
+    def save(self, order: Order, session: object | None = None) -> None:
         """Persist order in memory."""
 
         self.orders[order.order_id] = order
@@ -249,7 +258,7 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
 
     responses: list[OrderResponse] = field(default_factory=list)
 
-    def save(self, response: OrderResponse) -> None:
+    def save(self, response: OrderResponse, session: object | None = None) -> None:
         """Persist order response."""
 
         self.responses.append(response)
@@ -259,7 +268,9 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
 
         return [resp for resp in self.responses if resp.order_id == order_id]
 
-    def exists(self, order_id: UUID, blogger_id: UUID) -> bool:
+    def exists(
+        self, order_id: UUID, blogger_id: UUID, session: object | None = None
+    ) -> bool:
         """Check if blogger already responded."""
 
         return any(
@@ -267,7 +278,7 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
             for resp in self.responses
         )
 
-    def count_by_order(self, order_id: UUID) -> int:
+    def count_by_order(self, order_id: UUID, session: object | None = None) -> int:
         """Count responses by order."""
 
         return len([resp for resp in self.responses if resp.order_id == order_id])

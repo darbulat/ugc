@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -47,6 +48,22 @@ def test_create_admin_app(monkeypatch: pytest.MonkeyPatch) -> None:
     app = create_admin_app()
     assert isinstance(app, FastAPI)
     assert any(getattr(route, "path", "") == "/admin" for route in app.routes)
+
+
+def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Health endpoint returns ok status."""
+
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "password")
+    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    app = create_admin_app()
+    client = TestClient(app)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] in ("ok", "degraded")
 
 
 def test_get_services() -> None:

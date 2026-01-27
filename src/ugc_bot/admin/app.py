@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import FastAPI
 from sqladmin import Admin, ModelView
 from starlette.requests import Request
+from sqlalchemy import text
 
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.application.services.complaint_service import ComplaintService
@@ -291,6 +292,19 @@ def create_admin_app() -> FastAPI:
     container = Container(config)
     engine = container.get_admin_engine()
     app = FastAPI(title=config.admin.admin_site_name)
+
+    @app.get("/health")
+    async def health() -> dict[str, bool | str]:
+        """Lightweight health check for admin app."""
+
+        db_ok = True
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception:
+            db_ok = False
+        return {"status": "ok" if db_ok else "degraded", "db": db_ok}
+
     auth = AdminAuth(
         secret_key=config.admin.admin_secret,
         username=config.admin.admin_username,

@@ -242,14 +242,40 @@ class SqlAlchemyOrderRepository(OrderRepository):
 
     session_factory: sessionmaker[Session]
 
-    def get_by_id(self, order_id: UUID) -> Optional[Order]:
+    def get_by_id(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[Order]:
         """Fetch order by ID."""
 
-        with self.session_factory() as session:
-            result = session.execute(
-                select(OrderModel).where(OrderModel.order_id == order_id)
-            ).scalar_one_or_none()
-            return _to_order_entity(result) if result else None
+        if session is None:
+            with self.session_factory() as owned_session:
+                result = owned_session.execute(
+                    select(OrderModel).where(OrderModel.order_id == order_id)
+                ).scalar_one_or_none()
+                return _to_order_entity(result) if result else None
+        if not isinstance(session, Session):
+            raise TypeError("Expected SQLAlchemy Session for order fetch.")
+        result = session.execute(
+            select(OrderModel).where(OrderModel.order_id == order_id)
+        ).scalar_one_or_none()
+        return _to_order_entity(result) if result else None
+
+    def get_by_id_for_update(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[Order]:
+        """Fetch order by ID with row lock."""
+
+        stmt = (
+            select(OrderModel).where(OrderModel.order_id == order_id).with_for_update()
+        )
+        if session is None:
+            with self.session_factory() as owned_session:
+                result = owned_session.execute(stmt).scalar_one_or_none()
+                return _to_order_entity(result) if result else None
+        if not isinstance(session, Session):
+            raise TypeError("Expected SQLAlchemy Session for order fetch.")
+        result = session.execute(stmt).scalar_one_or_none()
+        return _to_order_entity(result) if result else None
 
     def list_active(self) -> Iterable[Order]:
         """List active orders."""
@@ -292,13 +318,18 @@ class SqlAlchemyOrderRepository(OrderRepository):
             ).scalar_one()
             return int(result)
 
-    def save(self, order: Order) -> None:
+    def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
 
-        with self.session_factory() as session:
-            model = _to_order_model(order)
-            session.merge(model)
-            session.commit()
+        model = _to_order_model(order)
+        if session is None:
+            with self.session_factory() as owned_session:
+                owned_session.merge(model)
+                owned_session.commit()
+            return
+        if not isinstance(session, Session):
+            raise TypeError("Expected SQLAlchemy Session for order save.")
+        session.merge(model)
 
 
 @dataclass(slots=True)
@@ -363,13 +394,18 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
 
     session_factory: sessionmaker[Session]
 
-    def save(self, response: OrderResponse) -> None:
+    def save(self, response: OrderResponse, session: object | None = None) -> None:
         """Persist order response."""
 
-        with self.session_factory() as session:
-            model = _to_order_response_model(response)
-            session.merge(model)
-            session.commit()
+        model = _to_order_response_model(response)
+        if session is None:
+            with self.session_factory() as owned_session:
+                owned_session.merge(model)
+                owned_session.commit()
+            return
+        if not isinstance(session, Session):
+            raise TypeError("Expected SQLAlchemy Session for response save.")
+        session.merge(model)
 
     def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
         """List responses by order."""
@@ -382,30 +418,53 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
             ).scalars()
             return [_to_order_response_entity(item) for item in results]
 
-    def exists(self, order_id: UUID, blogger_id: UUID) -> bool:
+    def exists(
+        self, order_id: UUID, blogger_id: UUID, session: object | None = None
+    ) -> bool:
         """Check if blogger already responded."""
 
-        with self.session_factory() as session:
-            result = session.execute(
-                select(func.count())
-                .select_from(OrderResponseModel)
-                .where(
-                    OrderResponseModel.order_id == order_id,
-                    OrderResponseModel.blogger_id == blogger_id,
-                )
-            ).scalar_one()
-            return int(result) > 0
+        if session is None:
+            with self.session_factory() as owned_session:
+                result = owned_session.execute(
+                    select(func.count())
+                    .select_from(OrderResponseModel)
+                    .where(
+                        OrderResponseModel.order_id == order_id,
+                        OrderResponseModel.blogger_id == blogger_id,
+                    )
+                ).scalar_one()
+                return int(result) > 0
+        if not isinstance(session, Session):
+            raise TypeError("Expected SQLAlchemy Session for response check.")
+        result = session.execute(
+            select(func.count())
+            .select_from(OrderResponseModel)
+            .where(
+                OrderResponseModel.order_id == order_id,
+                OrderResponseModel.blogger_id == blogger_id,
+            )
+        ).scalar_one()
+        return int(result) > 0
 
-    def count_by_order(self, order_id: UUID) -> int:
+    def count_by_order(self, order_id: UUID, session: object | None = None) -> int:
         """Count responses by order."""
 
-        with self.session_factory() as session:
-            result = session.execute(
-                select(func.count())
-                .select_from(OrderResponseModel)
-                .where(OrderResponseModel.order_id == order_id)
-            ).scalar_one()
-            return int(result)
+        if session is None:
+            with self.session_factory() as owned_session:
+                result = owned_session.execute(
+                    select(func.count())
+                    .select_from(OrderResponseModel)
+                    .where(OrderResponseModel.order_id == order_id)
+                ).scalar_one()
+                return int(result)
+        if not isinstance(session, Session):
+            raise TypeError("Expected SQLAlchemy Session for response count.")
+        result = session.execute(
+            select(func.count())
+            .select_from(OrderResponseModel)
+            .where(OrderResponseModel.order_id == order_id)
+        ).scalar_one()
+        return int(result)
 
 
 @dataclass(slots=True)

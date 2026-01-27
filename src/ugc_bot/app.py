@@ -168,6 +168,7 @@ def build_dispatcher(
         order_repo=repos["order_repo"],
         response_repo=repos["order_response_repo"],
         metrics_collector=metrics_collector,
+        transaction_manager=c.transaction_manager,
     )
     dispatcher["interaction_service"] = InteractionService(
         interaction_repo=repos["interaction_repo"],

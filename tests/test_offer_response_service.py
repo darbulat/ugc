@@ -6,6 +6,8 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError
+from contextlib import contextmanager
+
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus
@@ -120,3 +122,78 @@ def test_offer_response_requires_active_order() -> None:
             order_id=UUID("00000000-0000-0000-0000-000000000830"),
             blogger_id=UUID("00000000-0000-0000-0000-000000000832"),
         )
+
+
+def test_offer_response_finalize_closes_order() -> None:
+    """Finalize response closes order and sets contacts."""
+
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    service = OfferResponseService(order_repo=order_repo, response_repo=response_repo)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000840"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000841"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    order_repo.save(order)
+
+    result = service.respond_and_finalize(
+        order_id=order.order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000842"),
+    )
+
+    updated = order_repo.get_by_id(order.order_id)
+    assert updated is not None
+    assert updated.status == OrderStatus.CLOSED
+    assert updated.contacts_sent_at is not None
+    assert result.response_count == 1
+
+
+def test_offer_response_transaction_manager() -> None:
+    """Use transaction manager path for finalize."""
+
+    @contextmanager
+    def _tx():
+        yield object()
+
+    class FakeTransactionManager:
+        def transaction(self):
+            return _tx()
+
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=FakeTransactionManager(),
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000850"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000851"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    order_repo.save(order)
+
+    result = service.respond_and_finalize(
+        order_id=order.order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000852"),
+    )
+
+    assert result.order.order_id == order.order_id
+    assert result.response_count == 1
