@@ -1,5 +1,6 @@
 """Service for handling offer responses."""
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, ContextManager, Optional, Protocol
@@ -114,6 +115,13 @@ class OfferResponseService:
             order_closed=order_closed,
             contacts_sent_at=now,
         )
+
+    async def respond_and_finalize_async(
+        self, order_id: UUID, blogger_id: UUID
+    ) -> OfferResponseResult:
+        """Run respond_and_finalize in a thread to avoid blocking."""
+
+        return await asyncio.to_thread(self.respond_and_finalize, order_id, blogger_id)
 
 
 def _update_order_after_response(

@@ -11,6 +11,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.config import load_config
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.infrastructure.db.repositories import (
@@ -22,6 +23,8 @@ from ugc_bot.logging_setup import configure_logging
 
 
 logger = logging.getLogger(__name__)
+_send_retries = 3
+_send_retry_delay_seconds = 0.5
 
 
 def _feedback_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
@@ -82,7 +85,8 @@ async def _send_feedback_requests(
             blogger_handle = (
                 f"@{blogger.username}" if blogger and blogger.username else "блогер"
             )
-            await bot.send_message(
+            await send_with_retry(
+                bot,
                 chat_id=int(advertiser.external_id),
                 text=(
                     f"Вы связывались с блогером {blogger_handle} "
@@ -90,6 +94,10 @@ async def _send_feedback_requests(
                     f"Выберите вариант:"
                 ),
                 reply_markup=_feedback_keyboard("adv", interaction.interaction_id),
+                retries=_send_retries,
+                delay_seconds=_send_retry_delay_seconds,
+                logger=logger,
+                extra={"interaction_id": str(interaction.interaction_id)},
             )
 
     # Send to blogger if not yet responded
@@ -100,7 +108,8 @@ async def _send_feedback_requests(
                 if advertiser and advertiser.username
                 else "рекламодатель"
             )
-            await bot.send_message(
+            await send_with_retry(
+                bot,
                 chat_id=int(blogger.external_id),
                 text=(
                     f"Вы связывались с рекламодателем {advertiser_handle} "
@@ -108,6 +117,10 @@ async def _send_feedback_requests(
                     f"Выберите вариант:"
                 ),
                 reply_markup=_feedback_keyboard("blog", interaction.interaction_id),
+                retries=_send_retries,
+                delay_seconds=_send_retry_delay_seconds,
+                logger=logger,
+                extra={"interaction_id": str(interaction.interaction_id)},
             )
 
 
@@ -121,12 +134,21 @@ async def run_once(
     """Run a single feedback dispatch cycle."""
 
     for interaction in _iter_due_interactions(interaction_repo, cutoff):
-        await _send_feedback_requests(
-            bot,
-            interaction,
-            interaction_service,
-            user_role_service,
-        )
+        try:
+            await _send_feedback_requests(
+                bot,
+                interaction,
+                interaction_service,
+                user_role_service,
+            )
+        except Exception as exc:  # pragma: no cover - depends on transport failures
+            logger.warning(
+                "Feedback request failed",
+                extra={
+                    "interaction_id": str(interaction.interaction_id),
+                    "error": str(exc),
+                },
+            )
 
 
 async def run_loop(

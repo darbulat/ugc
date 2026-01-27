@@ -15,12 +15,16 @@ from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_CONTACTS_WARNING,
     BLOGGER_RESPONSE_WARNING,
 )
+from ugc_bot.bot.handlers.utils import RateLimiter, send_with_retry
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 router = Router()
 logger = logging.getLogger(__name__)
+_rate_limiter = RateLimiter(limit=5, window_seconds=10.0)
+_send_retries = 3
+_send_retry_delay_seconds = 0.5
 
 
 @router.callback_query(
@@ -59,6 +63,10 @@ async def handle_offer_response(
         await callback.answer("Подтвердите Instagram перед откликом.")
         return
 
+    if not _rate_limiter.allow(user.external_id):
+        await callback.answer("Слишком много запросов. Попробуйте позже.")
+        return
+
     raw = callback.data.split("offer:", 1)[-1] if callback.data else ""
     try:
         order_id = UUID(raw)
@@ -67,7 +75,9 @@ async def handle_offer_response(
         return
 
     try:
-        result = offer_response_service.respond_and_finalize(order_id, user.user_id)
+        result = await offer_response_service.respond_and_finalize_async(
+            order_id, user.user_id
+        )
     except OrderCreationError as exc:
         error_map = {
             "Order not found.": "Заказ не найден.",
@@ -145,16 +155,26 @@ async def _send_contact_immediately(
     # Send to advertiser
     advertiser = user_role_service.get_user_by_id(order.advertiser_id)
     if advertiser and bot and advertiser.external_id.isdigit():
-        await bot.send_message(
+        await send_with_retry(
+            bot,
             chat_id=int(advertiser.external_id),
             text=contact_text,
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={"order_id": str(order.order_id)},
         )
         # Send security warning only on first contact
         if response_count == 1:
-            await bot.send_message(
+            await send_with_retry(
+                bot,
                 chat_id=int(advertiser.external_id),
                 text=ADVERTISER_CONTACTS_WARNING,
                 parse_mode="Markdown",
+                retries=_send_retries,
+                delay_seconds=_send_retry_delay_seconds,
+                logger=logger,
+                extra={"order_id": str(order.order_id)},
             )
 
     # Create interaction for feedback tracking (72 hour timer starts)
