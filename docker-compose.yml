@@ -222,8 +222,12 @@ services:
     volumes:
       - ./config/monitoring/alertmanager.yml:/templates/alertmanager.yml:ro
       - alertmanager_config:/etc/alertmanager
-    entrypoint: ["/bin/sh", "-c"]
-    command: "apk add --no-cache gettext >/dev/null && envsubst < /templates/alertmanager.yml > /etc/alertmanager/alertmanager.yml"
+    command:
+      [
+        "sh",
+        "-c",
+        "apk add --no-cache gettext >/dev/null && envsubst < /templates/alertmanager.yml > /etc/alertmanager/alertmanager.yml",
+      ]
     restart: "no"
     networks:
       - default
