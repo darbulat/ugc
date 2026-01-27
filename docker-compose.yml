@@ -221,8 +221,12 @@ services:
       TELEGRAM_CRITICAL_CHAT_ID: ${TELEGRAM_CRITICAL_CHAT_ID}
     volumes:
       - ./config/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command: "sed -e \"s|\\$${TELEGRAM_BOT_TOKEN}|$${TELEGRAM_BOT_TOKEN}|g\" -e \"s|\\$${TELEGRAM_CHAT_ID}|$${TELEGRAM_CHAT_ID}|g\" -e \"s|\\$${TELEGRAM_CRITICAL_CHAT_ID}|$${TELEGRAM_CRITICAL_CHAT_ID}|g\" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml && exec alertmanager --config.file=/tmp/alertmanager.yml"
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "sed -e \"s|\\\\$${TELEGRAM_BOT_TOKEN}|$${TELEGRAM_BOT_TOKEN}|g\" -e \"s|\\\\$${TELEGRAM_CHAT_ID}|$${TELEGRAM_CHAT_ID}|g\" -e \"s|\\\\$${TELEGRAM_CRITICAL_CHAT_ID}|$${TELEGRAM_CRITICAL_CHAT_ID}|g\" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml && exec alertmanager --config.file=/tmp/alertmanager.yml",
+      ]
     ports:
       - "9093:9093"
     restart: unless-stopped
