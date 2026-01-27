@@ -121,7 +121,7 @@ async def _notify_user_verification_success(
 
         from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
 
-        user = verification_service.user_repo.get_by_id(user_id)
+        user = await verification_service.user_repo.get_by_id(user_id)
         if user is None:
             logger.warning(
                 "User not found for verification notification",
@@ -129,7 +129,7 @@ async def _notify_user_verification_success(
             )
             return
 
-        telegram_user = verification_service.user_repo.get_by_external(
+        telegram_user = await verification_service.user_repo.get_by_external(
             external_id=user.external_id,
             messenger_type=MessengerType.TELEGRAM,
         )
@@ -140,7 +140,9 @@ async def _notify_user_verification_success(
             )
             return
 
-        blogger_profile = verification_service.blogger_repo.get_by_user_id(user_id)
+        blogger_profile = await verification_service.blogger_repo.get_by_user_id(
+            user_id
+        )
         confirmed = blogger_profile.confirmed if blogger_profile else False
 
         bot = Bot(token=config.bot.bot_token)

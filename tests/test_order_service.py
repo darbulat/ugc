@@ -16,7 +16,7 @@ from ugc_bot.infrastructure.memory_repositories import (
 )
 
 
-def _seed_advertiser(
+async def _seed_advertiser(
     repo: InMemoryUserRepository,
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     status: UserStatus,
@@ -32,25 +32,28 @@ def _seed_advertiser(
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(user)
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    await repo.save(user)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=user.user_id, contact="contact")
+    )
     return user.user_id
 
 
-def test_create_order_success() -> None:
+@pytest.mark.asyncio
+async def test_create_order_success() -> None:
     """Create order with valid data."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
+    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
 
     service = OrderService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
     )
-    order = service.create_order(
+    order = await service.create_order(
         advertiser_id=user_id,
         product_link="https://example.com",
         offer_text="Offer",
@@ -60,10 +63,11 @@ def test_create_order_success() -> None:
         bloggers_needed=3,
     )
 
-    assert order_repo.get_by_id(order.order_id) is not None
+    assert await order_repo.get_by_id(order.order_id) is not None
 
 
-def test_create_order_invalid_user() -> None:
+@pytest.mark.asyncio
+async def test_create_order_invalid_user() -> None:
     """Fail when user is missing."""
 
     service = OrderService(
@@ -73,7 +77,7 @@ def test_create_order_invalid_user() -> None:
     )
 
     with pytest.raises(UserNotFoundError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=UUID("00000000-0000-0000-0000-000000000301"),
             product_link="https://example.com",
             offer_text="Offer",
@@ -84,13 +88,14 @@ def test_create_order_invalid_user() -> None:
         )
 
 
-def test_create_order_new_advertiser_restrictions() -> None:
+@pytest.mark.asyncio
+async def test_create_order_new_advertiser_restrictions() -> None:
     """Enforce NEW advertiser restrictions."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
+    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
 
     service = OrderService(
         user_repo=user_repo,
@@ -99,7 +104,7 @@ def test_create_order_new_advertiser_restrictions() -> None:
     )
 
     with pytest.raises(OrderCreationError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=user_id,
             product_link="https://example.com",
             offer_text="Offer",
@@ -110,7 +115,7 @@ def test_create_order_new_advertiser_restrictions() -> None:
         )
 
     with pytest.raises(OrderCreationError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=user_id,
             product_link="https://example.com",
             offer_text="Offer",
@@ -121,13 +126,14 @@ def test_create_order_new_advertiser_restrictions() -> None:
         )
 
 
-def test_create_order_validation_errors() -> None:
+@pytest.mark.asyncio
+async def test_create_order_validation_errors() -> None:
     """Validate required fields and price."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
+    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
 
     service = OrderService(
         user_repo=user_repo,
@@ -136,7 +142,7 @@ def test_create_order_validation_errors() -> None:
     )
 
     with pytest.raises(OrderCreationError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=user_id,
             product_link="",
             offer_text="Offer",
@@ -147,7 +153,7 @@ def test_create_order_validation_errors() -> None:
         )
 
     with pytest.raises(OrderCreationError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=user_id,
             product_link="https://example.com",
             offer_text="",
@@ -158,7 +164,7 @@ def test_create_order_validation_errors() -> None:
         )
 
     with pytest.raises(OrderCreationError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=user_id,
             product_link="https://example.com",
             offer_text="Offer",
@@ -169,7 +175,7 @@ def test_create_order_validation_errors() -> None:
         )
 
     with pytest.raises(OrderCreationError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=user_id,
             product_link="https://example.com",
             offer_text="Offer",
@@ -180,13 +186,14 @@ def test_create_order_validation_errors() -> None:
         )
 
 
-def test_create_order_requires_advertiser_profile() -> None:
+@pytest.mark.asyncio
+async def test_create_order_requires_advertiser_profile() -> None:
     """Reject users without advertiser profile."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    user_id = _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
+    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
     advertiser_repo.profiles.clear()
 
     service = OrderService(
@@ -195,7 +202,7 @@ def test_create_order_requires_advertiser_profile() -> None:
         order_repo=order_repo,
     )
     with pytest.raises(OrderCreationError):
-        service.create_order(
+        await service.create_order(
             advertiser_id=user_id,
             product_link="https://example.com",
             offer_text="Offer",

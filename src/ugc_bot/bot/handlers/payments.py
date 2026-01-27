@@ -81,7 +81,7 @@ async def pay_order(
     if message.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -95,7 +95,7 @@ async def pay_order(
         await message.answer("Пользователи на паузе не могут оплачивать заказы.")
         return
 
-    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         await message.answer(
             "Профиль рекламодателя не заполнен. Команда: /register_advertiser"
@@ -113,7 +113,7 @@ async def pay_order(
         await message.answer("Неверный формат order_id.")
         return
 
-    order = payment_service.order_repo.get_by_id(order_id)
+    order = await payment_service.order_repo.get_by_id(order_id)
     if order is None:
         await message.answer("Заказ не найден.")
         return
@@ -124,7 +124,7 @@ async def pay_order(
         await message.answer("Заказ не в статусе NEW.")
         return
 
-    contact_price = contact_pricing_service.get_price(order.bloggers_needed)
+    contact_price = await contact_pricing_service.get_price(order.bloggers_needed)
     if contact_price is None:
         await message.answer(
             "Стоимость доступа к контактам не настроена. Свяжитесь с поддержкой."
@@ -166,7 +166,7 @@ async def successful_payment_handler(
     if message.from_user is None or message.successful_payment is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -182,7 +182,7 @@ async def successful_payment_handler(
         return
 
     try:
-        payment_service.confirm_telegram_payment(
+        await payment_service.confirm_telegram_payment(
             user_id=user.user_id,
             order_id=order_id,
             provider_payment_charge_id=message.successful_payment.provider_payment_charge_id,

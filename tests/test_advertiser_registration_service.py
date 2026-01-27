@@ -20,7 +20,7 @@ from ugc_bot.infrastructure.memory_repositories import (
 )
 
 
-def _seed_user(repo: InMemoryUserRepository) -> UUID:
+async def _seed_user(repo: InMemoryUserRepository) -> UUID:
     """Seed a user in the in-memory repo."""
 
     user = User(
@@ -32,27 +32,29 @@ def _seed_user(repo: InMemoryUserRepository) -> UUID:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(user)
+    await repo.save(user)
     return user.user_id
 
 
-def test_register_advertiser_success() -> None:
+@pytest.mark.asyncio
+async def test_register_advertiser_success() -> None:
     """Register an advertiser with valid data."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
-    user_id = _seed_user(user_repo)
+    user_id = await _seed_user(user_repo)
 
     service = AdvertiserRegistrationService(
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
 
-    profile = service.register_advertiser(user_id=user_id, contact="@contact")
+    profile = await service.register_advertiser(user_id=user_id, contact="@contact")
     assert profile.user_id == user_id
     assert profile.contact == "@contact"
 
 
-def test_register_advertiser_missing_user() -> None:
+@pytest.mark.asyncio
+async def test_register_advertiser_missing_user() -> None:
     """Fail when user does not exist."""
 
     service = AdvertiserRegistrationService(
@@ -61,22 +63,63 @@ def test_register_advertiser_missing_user() -> None:
     )
 
     with pytest.raises(UserNotFoundError):
-        service.register_advertiser(
+        await service.register_advertiser(
             user_id=UUID("00000000-0000-0000-0000-000000000121"),
             contact="@contact",
         )
 
 
-def test_register_advertiser_empty_contact() -> None:
+@pytest.mark.asyncio
+async def test_register_advertiser_empty_contact() -> None:
     """Fail when contact is empty."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
-    user_id = _seed_user(user_repo)
+    user_id = await _seed_user(user_repo)
 
     service = AdvertiserRegistrationService(
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
 
     with pytest.raises(AdvertiserRegistrationError):
-        service.register_advertiser(user_id=user_id, contact=" ")
+        await service.register_advertiser(user_id=user_id, contact=" ")
+
+
+@pytest.mark.asyncio
+async def test_register_advertiser_records_metrics_when_enabled() -> None:
+    """Record metrics when collector is provided."""
+
+    from unittest.mock import Mock
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+    metrics = Mock()
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        metrics_collector=metrics,
+    )
+
+    await service.register_advertiser(user_id=user_id, contact="@contact")
+
+    metrics.record_advertiser_registration.assert_called_once_with(str(user_id))
+
+
+@pytest.mark.asyncio
+async def test_get_profile_returns_saved_profile() -> None:
+    """Return profile from repository."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    created = await service.register_advertiser(user_id=user_id, contact="@contact")
+    loaded = await service.get_profile(user_id)
+
+    assert loaded == created

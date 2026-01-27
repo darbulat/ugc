@@ -78,14 +78,14 @@ def _profile_service(
     )
 
 
-def _add_blogger_profile(
+async def _add_blogger_profile(
     blogger_repo: InMemoryBloggerProfileRepository,
     user_id: UUID,
     confirmed: bool = True,
 ) -> None:
     """Seed blogger profile."""
 
-    blogger_repo.save(
+    await blogger_repo.save(
         BloggerProfile(
             user_id=user_id,
             instagram_url="https://instagram.com/test",
@@ -123,7 +123,7 @@ async def test_contact_sent_immediately() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000741"),
         external_id="10",
@@ -133,8 +133,8 @@ async def test_contact_sent_immediately() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(blogger)
-    _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
+    await user_repo.save(blogger)
+    await _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000742"),
@@ -149,8 +149,8 @@ async def test_contact_sent_immediately() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
-    response_repo.save(
+    await order_repo.save(order)
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000743"),
             order_id=order.order_id,
@@ -176,7 +176,7 @@ async def test_contact_sent_immediately() -> None:
     assert any("Instagram:" in answer for answer in bot.answers)
 
     # Check interaction was created
-    interaction = interaction_repo.get_by_participants(
+    interaction = await interaction_repo.get_by_participants(
         order_id=order.order_id,
         blogger_id=blogger.user_id,
         advertiser_id=advertiser.user_id,
@@ -209,14 +209,14 @@ async def test_order_closed_when_limit_reached() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=datetime.now(timezone.utc),
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     blogger1 = UUID("00000000-0000-0000-0000-000000000746")
     blogger2 = UUID("00000000-0000-0000-0000-000000000747")
-    response_service.respond_and_finalize(order.order_id, blogger1)
-    response_service.respond_and_finalize(order.order_id, blogger2)
+    await response_service.respond_and_finalize(order.order_id, blogger1)
+    await response_service.respond_and_finalize(order.order_id, blogger2)
 
-    updated = order_repo.get_by_id(order.order_id)
+    updated = await order_repo.get_by_id(order.order_id)
     assert updated is not None
     assert updated.status == OrderStatus.CLOSED
 
@@ -246,13 +246,13 @@ async def test_offer_response_handler_success() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    user_service.set_user(
+    await user_repo.save(user)
+    await user_service.set_user(
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000701"),
@@ -267,7 +267,7 @@ async def test_offer_response_handler_success() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     message = FakeMessage()
     callback = FakeCallback(
@@ -278,7 +278,8 @@ async def test_offer_response_handler_success() -> None:
         callback, user_service, profile_service, response_service, interaction_service
     )
     assert callback.answers
-    assert response_repo.list_by_order(order.order_id)
+    responses = await response_repo.list_by_order(order.order_id)
+    assert list(responses)
 
 
 @pytest.mark.asyncio
@@ -303,7 +304,7 @@ async def test_offer_response_handler_blocked_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(blocked_user)
+    await user_repo.save(blocked_user)
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
 
@@ -344,13 +345,13 @@ async def test_offer_response_handler_order_not_active() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    user_service.set_user(
+    await user_repo.save(user)
+    await user_service.set_user(
         external_id="12",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000712"),
@@ -365,7 +366,7 @@ async def test_offer_response_handler_order_not_active() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     message = FakeMessage()
     callback = FakeCallback(
@@ -402,9 +403,9 @@ async def test_offer_response_handler_order_not_found() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     message = FakeMessage()
     callback = FakeCallback(
@@ -447,13 +448,13 @@ async def test_offer_response_handler_already_responded() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    user_service.set_user(
+    await user_repo.save(user)
+    await user_service.set_user(
         external_id="14",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000716"),
@@ -468,8 +469,8 @@ async def test_offer_response_handler_already_responded() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
-    response_repo.save(
+    await order_repo.save(order)
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000718"),
             order_id=order.order_id,
@@ -517,13 +518,13 @@ async def test_offer_response_handler_limit_reached() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    user_service.set_user(
+    await user_repo.save(user)
+    await user_service.set_user(
         external_id="15",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000720"),
@@ -538,8 +539,8 @@ async def test_offer_response_handler_limit_reached() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
-    response_repo.save(
+    await order_repo.save(order)
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000722"),
             order_id=order.order_id,
@@ -635,7 +636,7 @@ async def test_offer_response_handler_paused_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(paused_user)
+    await user_repo.save(paused_user)
     user_service = UserRoleService(user_repo=user_repo)
 
     message = FakeMessage()
@@ -671,7 +672,7 @@ async def test_offer_response_handler_no_blogger_profile() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
 
     message = FakeMessage()
@@ -707,9 +708,9 @@ async def test_offer_response_handler_unconfirmed_profile() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=False)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=False)
 
     message = FakeMessage()
     callback = FakeCallback(data="offer:123", user=FakeUser(18), message=message)
@@ -744,9 +745,9 @@ async def test_offer_response_handler_invalid_uuid() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     message = FakeMessage()
     callback = FakeCallback(data="offer:not-a-uuid", user=FakeUser(19), message=message)
@@ -784,13 +785,13 @@ async def test_offer_response_handler_exception() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    user_service.set_user(
+    await user_repo.save(user)
+    await user_service.set_user(
         external_id="20",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await _add_blogger_profile(blogger_repo, user.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000735"),
@@ -805,7 +806,7 @@ async def test_offer_response_handler_exception() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     # Mock response_repo.save to raise exception
     original_save = response_repo.save
@@ -890,8 +891,8 @@ async def test_send_contact_order_not_active() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(blogger)
-    _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
+    await user_repo.save(blogger)
+    await _add_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000800"),
@@ -941,7 +942,7 @@ async def test_maybe_send_contacts_missing_user_or_profile() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000811"),

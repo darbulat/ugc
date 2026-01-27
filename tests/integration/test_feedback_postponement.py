@@ -16,10 +16,10 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
     # === Подготовка ===
     # Создаем пользователей
     user_role_service = dispatcher["user_role_service"]
-    advertiser_user = user_role_service.create_user(
+    advertiser_user = await user_role_service.create_user(
         "advertiser_postpone", username="advertiser_postpone"
     )
-    blogger_user = user_role_service.create_user(
+    blogger_user = await user_role_service.create_user(
         "blogger_postpone", username="blogger_postpone"
     )
 
@@ -29,11 +29,11 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    advertiser_repo.save(advertiser_profile)
+    await advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ
     order_service = dispatcher["order_service"]
-    order = order_service.create_order(
+    order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
         product_link="https://example.com/product",
         offer_text="Test offer",
@@ -60,12 +60,12 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    order_repo.save(updated_order)
+    await order_repo.save(updated_order)
     order = updated_order
 
     # Создаем взаимодействие вручную
     interaction_service = dispatcher["interaction_service"]
-    interaction = interaction_service.create_for_contacts_sent(
+    interaction = await interaction_service.create_for_contacts_sent(
         order.order_id, blogger_user.user_id, advertiser_user.user_id
     )
 
@@ -76,12 +76,12 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
 
     # === Шаг 1: Первый перенос (postpone_count = 1) ===
     # Имитируем выбор "Еще не связался" блогером
-    interaction_service.record_blogger_feedback(
+    await interaction_service.record_blogger_feedback(
         interaction.interaction_id,
         "еще не связался",  # Это означает перенос
     )
 
-    updated_interaction = dispatcher["interaction_repo"].get_by_id(
+    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
         interaction.interaction_id
     )
     assert updated_interaction.postpone_count == 1
@@ -90,24 +90,24 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
 
     # === Шаг 2: Второй перенос (postpone_count = 2) ===
     # Имитируем еще один перенос
-    interaction_service.record_blogger_feedback(
+    await interaction_service.record_blogger_feedback(
         interaction.interaction_id,
         "еще не связался",  # Еще один перенос
     )
 
-    updated_interaction = dispatcher["interaction_repo"].get_by_id(
+    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
         interaction.interaction_id
     )
     assert updated_interaction.postpone_count == 2
     assert updated_interaction.status == InteractionStatus.PENDING
 
     # === Шаг 3: Третий перенос (postpone_count = 3) ===
-    interaction_service.record_blogger_feedback(
+    await interaction_service.record_blogger_feedback(
         interaction.interaction_id,
         "еще не связался",  # Третий перенос
     )
 
-    updated_interaction = dispatcher["interaction_repo"].get_by_id(
+    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
         interaction.interaction_id
     )
     assert updated_interaction.postpone_count == 3
@@ -115,12 +115,12 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
 
     # === Шаг 4: Четвертый перенос (postpone_count = 4 → NO_DEAL) ===
     # Имитируем четвертый перенос, который должен привести к NO_DEAL
-    interaction_service.record_blogger_feedback(
+    await interaction_service.record_blogger_feedback(
         interaction.interaction_id,
         "еще не связался",  # Четвертый перенос
     )
 
-    updated_interaction = dispatcher["interaction_repo"].get_by_id(
+    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
         interaction.interaction_id
     )
     assert updated_interaction.postpone_count == 4
@@ -141,10 +141,10 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
     # === Подготовка ===
     # Создаем пользователей
     user_role_service = dispatcher["user_role_service"]
-    advertiser_user = user_role_service.create_user(
+    advertiser_user = await user_role_service.create_user(
         "advertiser_postpone2", username="advertiser_postpone2"
     )
-    blogger_user = user_role_service.create_user(
+    blogger_user = await user_role_service.create_user(
         "blogger_postpone2", username="blogger_postpone2"
     )
 
@@ -154,11 +154,11 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    advertiser_repo.save(advertiser_profile)
+    await advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ и взаимодействие
     order_service = dispatcher["order_service"]
-    order = order_service.create_order(
+    order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
         product_link="https://example.com/product",
         offer_text="Test offer",
@@ -183,31 +183,31 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    order_repo.save(updated_order)
+    await order_repo.save(updated_order)
     order = updated_order
 
     interaction_service = dispatcher["interaction_service"]
-    interaction = interaction_service.create_for_contacts_sent(
+    interaction = await interaction_service.create_for_contacts_sent(
         order.order_id, blogger_user.user_id, advertiser_user.user_id
     )
 
     # === Шаг 1: Первый перенос ===
-    interaction_service.record_blogger_feedback(
+    await interaction_service.record_blogger_feedback(
         interaction.interaction_id, "еще не связался"
     )
 
-    updated_interaction = dispatcher["interaction_repo"].get_by_id(
+    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
         interaction.interaction_id
     )
     assert updated_interaction.postpone_count == 1
     assert updated_interaction.status == InteractionStatus.PENDING
 
     # === Шаг 2: Второй перенос ===
-    interaction_service.record_blogger_feedback(
+    await interaction_service.record_blogger_feedback(
         interaction.interaction_id, "еще не связался"
     )
 
-    updated_interaction = dispatcher["interaction_repo"].get_by_id(
+    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
         interaction.interaction_id
     )
     assert updated_interaction.postpone_count == 2
@@ -225,13 +225,13 @@ async def test_feedback_mixed_responses_aggregation(
     # === Подготовка ===
     # Создаем пользователей
     user_role_service = dispatcher["user_role_service"]
-    advertiser_user = user_role_service.create_user(
+    advertiser_user = await user_role_service.create_user(
         "advertiser_mixed", username="advertiser_mixed"
     )
-    blogger1_user = user_role_service.create_user(
+    blogger1_user = await user_role_service.create_user(
         "blogger_mixed1", username="blogger_mixed1"
     )
-    blogger2_user = user_role_service.create_user(
+    blogger2_user = await user_role_service.create_user(
         "blogger_mixed2", username="blogger_mixed2"
     )
 
@@ -241,11 +241,11 @@ async def test_feedback_mixed_responses_aggregation(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    advertiser_repo.save(advertiser_profile)
+    await advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ
     order_service = dispatcher["order_service"]
-    order = order_service.create_order(
+    order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
         product_link="https://example.com/product",
         offer_text="Test offer",
@@ -270,34 +270,38 @@ async def test_feedback_mixed_responses_aggregation(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    order_repo.save(updated_order)
+    await order_repo.save(updated_order)
     order = updated_order
 
     interaction_service = dispatcher["interaction_service"]
 
     # Создаем взаимодействия для двух блогеров
-    interaction1 = interaction_service.create_for_contacts_sent(
+    interaction1 = await interaction_service.create_for_contacts_sent(
         order.order_id, blogger1_user.user_id, advertiser_user.user_id
     )
-    interaction2 = interaction_service.create_for_contacts_sent(
+    interaction2 = await interaction_service.create_for_contacts_sent(
         order.order_id, blogger2_user.user_id, advertiser_user.user_id
     )
 
     # === Шаг 1: Рекламодатель отвечает OK на оба ===
-    interaction_service.record_advertiser_feedback(interaction1.interaction_id, "✅")
-    interaction_service.record_advertiser_feedback(interaction2.interaction_id, "✅")
+    await interaction_service.record_advertiser_feedback(
+        interaction1.interaction_id, "✅"
+    )
+    await interaction_service.record_advertiser_feedback(
+        interaction2.interaction_id, "✅"
+    )
 
     # === Шаг 2: Блогеры отвечают по-разному ===
     # Блогер 1: OK
-    interaction_service.record_blogger_feedback(interaction1.interaction_id, "✅")
+    await interaction_service.record_blogger_feedback(interaction1.interaction_id, "✅")
     # Блогер 2: NO_DEAL
-    interaction_service.record_blogger_feedback(interaction2.interaction_id, "❌")
+    await interaction_service.record_blogger_feedback(interaction2.interaction_id, "❌")
 
     # === Шаг 3: Проверяем агрегацию ===
-    final_interaction1 = dispatcher["interaction_repo"].get_by_id(
+    final_interaction1 = await dispatcher["interaction_repo"].get_by_id(
         interaction1.interaction_id
     )
-    final_interaction2 = dispatcher["interaction_repo"].get_by_id(
+    final_interaction2 = await dispatcher["interaction_repo"].get_by_id(
         interaction2.interaction_id
     )
 
@@ -316,10 +320,10 @@ async def test_feedback_issue_status_blocks_user(
 
     # === Подготовка ===
     user_role_service = dispatcher["user_role_service"]
-    advertiser_user = user_role_service.create_user(
+    advertiser_user = await user_role_service.create_user(
         "advertiser_issue", username="advertiser_issue"
     )
-    blogger_user = user_role_service.create_user(
+    blogger_user = await user_role_service.create_user(
         "blogger_issue", username="blogger_issue"
     )
 
@@ -329,11 +333,11 @@ async def test_feedback_issue_status_blocks_user(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    advertiser_repo.save(advertiser_profile)
+    await advertiser_repo.save(advertiser_profile)
 
     # Создаем заказ и взаимодействие
     order_service = dispatcher["order_service"]
-    order = order_service.create_order(
+    order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
         product_link="https://example.com/product",
         offer_text="Test offer",
@@ -358,19 +362,19 @@ async def test_feedback_issue_status_blocks_user(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    order_repo.save(updated_order)
+    await order_repo.save(updated_order)
     order = updated_order
 
     interaction_service = dispatcher["interaction_service"]
-    interaction = interaction_service.create_for_contacts_sent(
+    interaction = await interaction_service.create_for_contacts_sent(
         order.order_id, blogger_user.user_id, advertiser_user.user_id
     )
 
     # === Шаг 1: Один участник отвечает ISSUE ===
-    interaction_service.record_blogger_feedback(interaction.interaction_id, "⚠️")
+    await interaction_service.record_blogger_feedback(interaction.interaction_id, "⚠️")
 
     # Проверяем, что взаимодействие в статусе ISSUE
-    updated_interaction = dispatcher["interaction_repo"].get_by_id(
+    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
         interaction.interaction_id
     )
     assert updated_interaction.status == InteractionStatus.ISSUE

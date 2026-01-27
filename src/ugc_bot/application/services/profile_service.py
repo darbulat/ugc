@@ -21,19 +21,19 @@ class ProfileService:
     blogger_repo: BloggerProfileRepository
     advertiser_repo: AdvertiserProfileRepository
 
-    def get_user_by_external(
+    async def get_user_by_external(
         self, external_id: str, messenger_type: MessengerType
     ) -> User | None:
         """Fetch user by external id."""
 
-        return self.user_repo.get_by_external(external_id, messenger_type)
+        return await self.user_repo.get_by_external(external_id, messenger_type)
 
-    def get_blogger_profile(self, user_id: UUID) -> BloggerProfile | None:
+    async def get_blogger_profile(self, user_id: UUID) -> BloggerProfile | None:
         """Fetch blogger profile by user id."""
 
-        return self.blogger_repo.get_by_user_id(user_id)
+        return await self.blogger_repo.get_by_user_id(user_id)
 
-    def get_advertiser_profile(self, user_id: UUID) -> AdvertiserProfile | None:
+    async def get_advertiser_profile(self, user_id: UUID) -> AdvertiserProfile | None:
         """Fetch advertiser profile by user id."""
 
-        return self.advertiser_repo.get_by_user_id(user_id)
+        return await self.advertiser_repo.get_by_user_id(user_id)

@@ -55,7 +55,7 @@ async def start_registration(
     if message.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -116,8 +116,10 @@ async def handle_instagram(
         return
 
     # Check if Instagram URL is already taken
-    existing_profile = blogger_registration_service.blogger_repo.get_by_instagram_url(
-        instagram_url
+    existing_profile = (
+        await blogger_registration_service.blogger_repo.get_by_instagram_url(
+            instagram_url
+        )
     )
     if existing_profile is not None:
         await message.answer(
@@ -257,12 +259,12 @@ async def handle_agreements(
         # Convert user_id from string (Redis) back to UUID if needed
         user_id_raw = data["user_id"]
         user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-        user_role_service.set_user(
+        await user_role_service.set_user(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
             username=data["nickname"],
         )
-        profile = blogger_registration_service.register_blogger(
+        profile = await blogger_registration_service.register_blogger(
             user_id=user_id,
             instagram_url=data["instagram_url"],
             topics=data["topics"],

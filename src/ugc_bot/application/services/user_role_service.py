@@ -20,7 +20,7 @@ class UserRoleService:
     user_repo: UserRepository
     metrics_collector: Optional[Any] = None
 
-    def set_user(
+    async def set_user(
         self,
         external_id: str,
         messenger_type: MessengerType,
@@ -28,7 +28,7 @@ class UserRoleService:
     ) -> User:
         """Create or update a user."""
 
-        existing = self.user_repo.get_by_external(external_id, messenger_type)
+        existing = await self.user_repo.get_by_external(external_id, messenger_type)
         if existing:
             status = existing.status
             updated = User(
@@ -40,7 +40,7 @@ class UserRoleService:
                 issue_count=existing.issue_count,
                 created_at=existing.created_at,
             )
-            self.user_repo.save(updated)
+            await self.user_repo.save(updated)
             return updated
 
         status = UserStatus.ACTIVE
@@ -53,31 +53,33 @@ class UserRoleService:
             issue_count=0,
             created_at=datetime.now(timezone.utc),
         )
-        self.user_repo.save(new_user)
+        await self.user_repo.save(new_user)
         return new_user
 
-    def get_user(self, external_id: str, messenger_type: MessengerType) -> User | None:
+    async def get_user(
+        self, external_id: str, messenger_type: MessengerType
+    ) -> User | None:
         """Fetch a user by external id."""
 
-        return self.user_repo.get_by_external(external_id, messenger_type)
+        return await self.user_repo.get_by_external(external_id, messenger_type)
 
-    def get_user_id(
+    async def get_user_id(
         self, external_id: str, messenger_type: MessengerType
     ) -> UUID | None:
         """Fetch a user id by external id."""
 
-        user = self.user_repo.get_by_external(external_id, messenger_type)
+        user = await self.user_repo.get_by_external(external_id, messenger_type)
         return user.user_id if user else None
 
-    def get_user_by_id(self, user_id: UUID) -> User | None:
+    async def get_user_by_id(self, user_id: UUID) -> User | None:
         """Fetch a user by internal id."""
 
-        return self.user_repo.get_by_id(user_id)
+        return await self.user_repo.get_by_id(user_id)
 
-    def update_status(self, user_id: UUID, status: UserStatus) -> User:
+    async def update_status(self, user_id: UUID, status: UserStatus) -> User:
         """Update user status."""
 
-        user = self.user_repo.get_by_id(user_id)
+        user = await self.user_repo.get_by_id(user_id)
         if user is None:
             raise ValueError("User not found.")
 
@@ -90,7 +92,7 @@ class UserRoleService:
             issue_count=user.issue_count,
             created_at=user.created_at,
         )
-        self.user_repo.save(updated)
+        await self.user_repo.save(updated)
 
         if status == UserStatus.BLOCKED:
             logger.warning(
@@ -112,7 +114,7 @@ class UserRoleService:
 
         return updated
 
-    def create_user(
+    async def create_user(
         self,
         external_id: str,
         messenger_type: MessengerType = MessengerType.TELEGRAM,
@@ -133,5 +135,5 @@ class UserRoleService:
             issue_count=0,
             created_at=datetime.now(timezone.utc),
         )
-        self.user_repo.save(new_user)
+        await self.user_repo.save(new_user)
         return new_user

@@ -130,7 +130,7 @@ async def test_start_verification_user_not_found() -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    user_service.set_user(
+    await user_service.set_user(
         external_id="3",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
@@ -172,7 +172,7 @@ async def test_start_verification_blocked_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(blocked_user)
+    await user_repo.save(blocked_user)
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
@@ -211,7 +211,7 @@ async def test_start_verification_paused_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(paused_user)
+    await user_repo.save(paused_user)
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(
         user_repo=user_repo,
@@ -269,7 +269,7 @@ async def test_start_verification_via_button() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     blogger_profile = BloggerProfile(
         user_id=user.user_id,
         instagram_url="https://instagram.com/test",
@@ -282,7 +282,7 @@ async def test_start_verification_via_button() -> None:
         price=1000.0,
         updated_at=datetime.now(timezone.utc),
     )
-    blogger_repo.save(blogger_profile)
+    await blogger_repo.save(blogger_profile)
 
     user_service = UserRoleService(user_repo=user_repo)
     verification_service = InstagramVerificationService(

@@ -22,7 +22,7 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
             value_serializer=lambda value: json.dumps(value).encode("utf-8"),
         )
 
-    def publish(self, order: Order) -> None:
+    async def publish(self, order: Order) -> None:
         """Publish order activation message."""
 
         payload = {
@@ -45,7 +45,7 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
 class NoopOrderActivationPublisher(OrderActivationPublisher):
     """No-op publisher used when Kafka is disabled."""
 
-    def publish(self, order: Order) -> None:
+    async def publish(self, order: Order) -> None:
         """Skip publishing."""
 
         return None

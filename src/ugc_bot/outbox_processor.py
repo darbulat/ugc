@@ -71,17 +71,17 @@ class OutboxProcessor:
         """Process a batch of pending events."""
 
         start_time = datetime.now(timezone.utc)
-        self.outbox_publisher.process_pending_events(
+        await self.outbox_publisher.process_pending_events(
             self.kafka_publisher, self.max_retries
         )
         processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         logger.debug(f"Processed pending events in {processing_time:.2f}s")
 
-    def process_once(self) -> None:
+    async def process_once(self) -> None:
         """Process pending events once (for testing/manual runs)."""
 
-        self.outbox_publisher.process_pending_events(
+        await self.outbox_publisher.process_pending_events(
             self.kafka_publisher, self.max_retries
         )
 

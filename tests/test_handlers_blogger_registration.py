@@ -96,7 +96,7 @@ async def test_start_registration_sets_state() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    service.set_user(
+    await service.set_user(
         external_id="7",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
@@ -124,7 +124,7 @@ async def test_start_registration_blocked_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(blocked_user)
+    await repo.save(blocked_user)
     service = UserRoleService(user_repo=repo)
     message = FakeMessage(text=None, user=FakeUser(8, "blocked", "Blocked"))
     state = FakeFSMContext()
@@ -149,7 +149,7 @@ async def test_start_registration_paused_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(paused_user)
+    await repo.save(paused_user)
     service = UserRoleService(user_repo=repo)
     message = FakeMessage(text=None, user=FakeUser(9, "paused", "Paused"))
     state = FakeFSMContext()
@@ -316,7 +316,7 @@ async def test_handle_agreements_creates_profile() -> None:
         user_repo=user_repo, blogger_repo=blogger_repo
     )
 
-    user = user_role_service.set_user(
+    user = await user_role_service.set_user(
         external_id="42",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
@@ -346,7 +346,7 @@ async def test_handle_agreements_creates_profile() -> None:
 
     assert message.answers
     assert "Профиль создан" in message.answers[0]
-    assert blogger_repo.get_by_user_id(user.user_id) is not None
+    assert await blogger_repo.get_by_user_id(user.user_id) is not None
 
 
 @pytest.mark.asyncio
@@ -395,7 +395,7 @@ async def test_handle_instagram_duplicate_url() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(existing_user)
+    await user_repo.save(existing_user)
     existing_profile = BloggerProfile(
         user_id=existing_user.user_id,
         instagram_url="https://instagram.com/test_user",
@@ -408,7 +408,7 @@ async def test_handle_instagram_duplicate_url() -> None:
         price=1000.0,
         updated_at=datetime.now(timezone.utc),
     )
-    blogger_repo.save(existing_profile)
+    await blogger_repo.save(existing_profile)
 
     # Try to register with same Instagram URL
     message = FakeMessage(
@@ -432,7 +432,7 @@ async def test_handle_agreements_shows_verification_button() -> None:
         user_repo=user_repo, blogger_repo=blogger_repo
     )
 
-    user = user_role_service.set_user(
+    user = await user_role_service.set_user(
         external_id="43",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",

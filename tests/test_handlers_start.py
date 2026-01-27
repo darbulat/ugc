@@ -83,7 +83,7 @@ async def test_choose_role_persists_role() -> None:
 
     await choose_role(message, service)
 
-    user = service.get_user("42", MessengerType.TELEGRAM)
+    user = await service.get_user("42", MessengerType.TELEGRAM)
     assert user is not None
     assert user.username == "bob"
 
@@ -97,7 +97,7 @@ async def test_choose_role_without_user() -> None:
     message = FakeMessage(text="Хочу заказать рекламу", user=None)
 
     await choose_role(message, service)
-    assert service.get_user("0", MessengerType.TELEGRAM) is None
+    assert await service.get_user("0", MessengerType.TELEGRAM) is None
 
 
 @pytest.mark.asyncio

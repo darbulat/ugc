@@ -36,7 +36,7 @@ async def show_my_orders(
     if message.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -44,7 +44,7 @@ async def show_my_orders(
         await message.answer("Пользователь не найден. Выберите роль через /role.")
         return
 
-    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         await message.answer(
             "Профиль рекламодателя не заполнен. Команда: /register_advertiser"
@@ -52,7 +52,7 @@ async def show_my_orders(
         return
 
     orders = sorted(
-        order_service.list_by_advertiser(user.user_id),
+        await order_service.list_by_advertiser(user.user_id),
         key=lambda item: item.created_at,
         reverse=True,
     )
@@ -60,7 +60,7 @@ async def show_my_orders(
         await message.answer("У вас пока нет заказов. Создать заказ: /create_order")
         return
 
-    text, keyboard = _render_page(
+    text, keyboard = await _render_page(
         orders, page=1, offer_response_service=offer_response_service
     )
     await message.answer(text, reply_markup=keyboard)
@@ -81,7 +81,7 @@ async def paginate_orders(
     if callback.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(callback.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -89,7 +89,7 @@ async def paginate_orders(
         await callback.answer("Пользователь не найден.")
         return
 
-    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         await callback.answer("Профиль рекламодателя не заполнен.")
         return
@@ -101,11 +101,11 @@ async def paginate_orders(
         page = 1
 
     orders = sorted(
-        order_service.list_by_advertiser(user.user_id),
+        await order_service.list_by_advertiser(user.user_id),
         key=lambda item: item.created_at,
         reverse=True,
     )
-    text, keyboard = _render_page(
+    text, keyboard = await _render_page(
         orders, page=page, offer_response_service=offer_response_service
     )
     message = callback.message
@@ -114,7 +114,7 @@ async def paginate_orders(
     await callback.answer()
 
 
-def _render_page(
+async def _render_page(
     orders, page: int, offer_response_service: OfferResponseService
 ) -> tuple[str, InlineKeyboardMarkup]:
     """Render paginated orders list."""
@@ -143,7 +143,7 @@ def _render_page(
         # Add complaint button for closed orders (when contacts are sent)
         if order.status.value == "closed":
             # Get bloggers who responded to this order
-            responses = offer_response_service.response_repo.list_by_order(
+            responses = await offer_response_service.response_repo.list_by_order(
                 order.order_id
             )
             if responses:

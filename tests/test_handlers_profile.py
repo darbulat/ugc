@@ -48,10 +48,10 @@ class FakeProfileService:
         self._has_advertiser = has_advertiser
         self._blogger_confirmed = blogger_confirmed
 
-    def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
+    async def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
         return self._user
 
-    def get_blogger_profile(self, user_id):  # type: ignore[no-untyped-def]
+    async def get_blogger_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_blogger:
             return None
         return BloggerProfile(
@@ -67,7 +67,7 @@ class FakeProfileService:
             updated_at=datetime.now(timezone.utc),
         )
 
-    def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
+    async def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_advertiser:
             return None
         return AdvertiserProfile(user_id=user_id, contact="contact")
@@ -100,7 +100,7 @@ async def test_show_profile_missing_user() -> None:
     """Notify when user is missing."""
 
     class MissingProfileService:
-        def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
+        async def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
             return None
 
     message = FakeMessage()
@@ -115,7 +115,7 @@ async def test_show_profile_missing_profiles() -> None:
     """Show hints when role profiles are missing."""
 
     class PartialProfileService:
-        def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
+        async def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
             return User(
                 user_id=UUID("00000000-0000-0000-0000-000000000811"),
                 external_id="2",
@@ -126,10 +126,10 @@ async def test_show_profile_missing_profiles() -> None:
                 created_at=datetime.now(timezone.utc),
             )
 
-        def get_blogger_profile(self, user_id):  # type: ignore[no-untyped-def]
+        async def get_blogger_profile(self, user_id):  # type: ignore[no-untyped-def]
             return None
 
-        def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
+        async def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
             return None
 
     message = FakeMessage()

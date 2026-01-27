@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, ContextManager, Optional, Protocol
+from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class TransactionManager(Protocol):
     """Protocol for database transaction handling."""
 
-    def transaction(self) -> ContextManager[Any]:
+    def transaction(self) -> AsyncContextManager[Any]:
         """Return a context manager for a transaction."""
 
 
@@ -42,7 +42,7 @@ class PaymentService:
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
-    def confirm_telegram_payment(
+    async def confirm_telegram_payment(
         self,
         user_id: UUID,
         order_id: UUID,
@@ -52,13 +52,13 @@ class PaymentService:
     ) -> Payment:
         """Confirm a Telegram payment and activate order."""
 
-        user = self.user_repo.get_by_id(user_id)
+        user = await self.user_repo.get_by_id(user_id)
         if user is None:
             raise UserNotFoundError("Advertiser not found.")
-        if self.advertiser_repo.get_by_user_id(user_id) is None:
+        if await self.advertiser_repo.get_by_user_id(user_id) is None:
             raise OrderCreationError("Advertiser profile is not set.")
 
-        order = self.order_repo.get_by_id(order_id)
+        order = await self.order_repo.get_by_id(order_id)
         if order is None:
             raise OrderCreationError("Order not found.")
         if order.advertiser_id != user_id:
@@ -67,7 +67,7 @@ class PaymentService:
         if order.status != OrderStatus.NEW:
             raise OrderCreationError("Order is not in NEW status.")
 
-        existing = self.payment_repo.get_by_order(order_id)
+        existing = await self.payment_repo.get_by_order(order_id)
         if existing and existing.status == PaymentStatus.PAID:
             return existing
 
@@ -84,14 +84,16 @@ class PaymentService:
             paid_at=now,
         )
         if self.transaction_manager is None:
-            self.payment_repo.save(payment)
+            await self.payment_repo.save(payment)
             # Create outbox event for order activation (don't activate immediately)
-            self.outbox_publisher.publish_order_activation(order)
+            await self.outbox_publisher.publish_order_activation(order)
         else:
-            with self.transaction_manager.transaction() as session:
-                self.payment_repo.save(payment, session=session)
+            async with self.transaction_manager.transaction() as session:
+                await self.payment_repo.save(payment, session=session)
                 # Create outbox event for order activation (don't activate immediately)
-                self.outbox_publisher.publish_order_activation(order, session=session)
+                await self.outbox_publisher.publish_order_activation(
+                    order, session=session
+                )
 
         logger.info(
             "Payment confirmed",
@@ -108,7 +110,7 @@ class PaymentService:
 
         return payment
 
-    def _activate_order(self, order: Order) -> None:
+    async def _activate_order(self, order: Order) -> None:
         activated = Order(
             order_id=order.order_id,
             advertiser_id=order.advertiser_id,
@@ -122,6 +124,6 @@ class PaymentService:
             created_at=order.created_at,
             contacts_sent_at=order.contacts_sent_at,
         )
-        self.order_repo.save(activated)
-        self.broadcaster.broadcast_order(activated)
-        self.outbox_publisher.publish_order_activation(activated)
+        await self.order_repo.save(activated)
+        await self.broadcaster.broadcast_order(activated)
+        await self.outbox_publisher.publish_order_activation(activated)

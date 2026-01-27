@@ -1,6 +1,9 @@
 """Tests for database session helpers."""
 
+from collections.abc import AsyncIterator
+
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -11,6 +14,23 @@ from ugc_bot.infrastructure.db.session import (
 )
 
 
+@pytest_asyncio.fixture
+async def session_factory() -> AsyncIterator[object]:
+    """Create an async session factory and dispose engine after test.
+
+    Without explicit disposal, the underlying `aiosqlite` worker threads may
+    linger until interpreter shutdown, which can produce noisy logs or even
+    hang the process on exit in some environments.
+    """
+
+    factory = create_session_factory("sqlite:///:memory:")
+    try:
+        yield factory
+    finally:
+        # `async_sessionmaker` stores engine in `kw["bind"]`
+        await factory.kw["bind"].dispose()  # type: ignore[no-any-return]
+
+
 def test_create_db_engine() -> None:
     """Create database engine."""
 
@@ -18,45 +38,50 @@ def test_create_db_engine() -> None:
     assert isinstance(engine, Engine)
 
 
-def test_create_session_factory() -> None:
+@pytest.mark.asyncio
+async def test_create_session_factory(session_factory) -> None:
     """Create session factory."""
 
-    factory = create_session_factory("sqlite:///:memory:")
-    session = factory()
-    assert session is not None
-    session.close()
+    async with session_factory() as session:
+        assert session is not None
 
 
-def test_transaction_manager_commit() -> None:
+@pytest.mark.asyncio
+async def test_transaction_manager_commit(session_factory) -> None:
     """Transaction manager commits changes."""
 
-    factory = create_session_factory("sqlite:///:memory:")
-    manager = SessionTransactionManager(factory)
+    manager = SessionTransactionManager(session_factory)
 
-    with manager.transaction() as session:
-        session.execute(text("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)"))
-        session.execute(text("INSERT INTO items (value) VALUES ('a')"))
+    async with manager.transaction() as session:
+        await session.execute(
+            text("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)")
+        )
+        await session.execute(text("INSERT INTO items (value) VALUES ('a')"))
 
-    with factory() as session:
-        count = session.execute(text("SELECT count(*) FROM items")).scalar_one()
+    async with session_factory() as session:
+        result = await session.execute(text("SELECT count(*) FROM items"))
+        count = result.scalar_one()
     assert count == 1
 
 
-def test_transaction_manager_rollback() -> None:
+@pytest.mark.asyncio
+async def test_transaction_manager_rollback(session_factory) -> None:
     """Transaction manager rolls back on error."""
 
-    factory = create_session_factory("sqlite:///:memory:")
-    manager = SessionTransactionManager(factory)
+    manager = SessionTransactionManager(session_factory)
 
-    with factory() as session:
-        session.execute(text("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)"))
-        session.commit()
+    async with session_factory() as session:
+        await session.execute(
+            text("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)")
+        )
+        await session.commit()
 
     with pytest.raises(RuntimeError):
-        with manager.transaction() as session:
-            session.execute(text("INSERT INTO items (value) VALUES ('a')"))
+        async with manager.transaction() as session:
+            await session.execute(text("INSERT INTO items (value) VALUES ('a')"))
             raise RuntimeError("boom")
 
-    with factory() as session:
-        count = session.execute(text("SELECT count(*) FROM items")).scalar_one()
+    async with session_factory() as session:
+        result = await session.execute(text("SELECT count(*) FROM items"))
+        count = result.scalar_one()
     assert count == 0

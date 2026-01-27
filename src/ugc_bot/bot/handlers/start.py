@@ -49,7 +49,7 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
     username = message.from_user.username or message.from_user.first_name or "user"
     text = message.text or ""
 
-    user_role_service.set_user(
+    await user_role_service.set_user(
         external_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
         username=username,

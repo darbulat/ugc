@@ -54,7 +54,7 @@ async def test_feedback_handler_advertiser_ok() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
 
     interaction = Interaction(
         interaction_id=UUID("00000000-0000-0000-0000-000000000931"),
@@ -69,7 +69,7 @@ async def test_feedback_handler_advertiser_ok() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    interaction_repo.save(interaction)
+    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:ok", user=FakeUser(42)
@@ -77,7 +77,7 @@ async def test_feedback_handler_advertiser_ok() -> None:
     await handle_feedback(callback, user_service, interaction_service)
 
     assert callback.answers
-    updated = interaction_repo.get_by_id(interaction.interaction_id)
+    updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.from_advertiser == "✅ Сделка состоялась"
 
@@ -109,8 +109,8 @@ async def test_feedback_handler_wrong_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(other_user)
+    await user_repo.save(advertiser)
+    await user_repo.save(other_user)
     interaction = Interaction(
         interaction_id=UUID("00000000-0000-0000-0000-000000000941"),
         order_id=UUID("00000000-0000-0000-0000-000000000942"),
@@ -124,7 +124,7 @@ async def test_feedback_handler_wrong_user() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    interaction_repo.save(interaction)
+    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:ok", user=FakeUser(999)
@@ -225,7 +225,7 @@ async def test_feedback_handler_interaction_not_found() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
 
     callback = FakeCallback(
         data=f"feedback:adv:{UUID('00000000-0000-0000-0000-000000001011')}:ok",
@@ -262,8 +262,8 @@ async def test_feedback_handler_blogger_wrong_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(blogger)
-    user_repo.save(other_user)
+    await user_repo.save(blogger)
+    await user_repo.save(other_user)
 
     interaction = Interaction(
         interaction_id=UUID("00000000-0000-0000-0000-000000001021"),
@@ -278,7 +278,7 @@ async def test_feedback_handler_blogger_wrong_user() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    interaction_repo.save(interaction)
+    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:blog:{interaction.interaction_id}:ok", user=FakeUser(9999)
@@ -305,7 +305,7 @@ async def test_feedback_handler_blogger_feedback() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(blogger)
+    await user_repo.save(blogger)
 
     interaction = Interaction(
         interaction_id=UUID("00000000-0000-0000-0000-000000001031"),
@@ -320,7 +320,7 @@ async def test_feedback_handler_blogger_feedback() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    interaction_repo.save(interaction)
+    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:blog:{interaction.interaction_id}:ok", user=FakeUser(1030)
@@ -328,7 +328,7 @@ async def test_feedback_handler_blogger_feedback() -> None:
     await handle_feedback(callback, user_service, interaction_service)
 
     assert callback.answers
-    updated = interaction_repo.get_by_id(interaction.interaction_id)
+    updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.from_blogger == "✅ Сделка состоялась"
 
@@ -353,7 +353,7 @@ async def test_feedback_handler_postpone() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
 
     interaction = Interaction(
         interaction_id=UUID("00000000-0000-0000-0000-000000001041"),
@@ -368,7 +368,7 @@ async def test_feedback_handler_postpone() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    interaction_repo.save(interaction)
+    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:postpone", user=FakeUser(1040)
@@ -399,7 +399,7 @@ async def test_feedback_handler_postpone_max_reached() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
 
     interaction = Interaction(
         interaction_id=UUID("00000000-0000-0000-0000-000000001051"),
@@ -414,7 +414,7 @@ async def test_feedback_handler_postpone_max_reached() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    interaction_repo.save(interaction)
+    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:postpone", user=FakeUser(1050)
@@ -422,7 +422,7 @@ async def test_feedback_handler_postpone_max_reached() -> None:
     await handle_feedback(callback, user_service, interaction_service)
 
     assert any("максимум переносов" in ans for ans in callback.answers)
-    updated = interaction_repo.get_by_id(interaction.interaction_id)
+    updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.status == InteractionStatus.NO_DEAL
 
@@ -445,7 +445,7 @@ async def test_feedback_handler_exception() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
 
     interaction = Interaction(
         interaction_id=UUID("00000000-0000-0000-0000-000000001061"),
@@ -460,7 +460,7 @@ async def test_feedback_handler_exception() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    interaction_repo.save(interaction)
+    await interaction_repo.save(interaction)
 
     # Mock interaction_service to raise exception
     original_get_by_id = interaction_service.interaction_repo.get_by_id

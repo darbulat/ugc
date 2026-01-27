@@ -50,7 +50,7 @@ async def start_order_creation(
     if message.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -64,14 +64,14 @@ async def start_order_creation(
         await message.answer("Пользователи на паузе не могут создавать заказы.")
         return
 
-    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         await message.answer(
             "Профиль рекламодателя не заполнен. Команда: /register_advertiser"
         )
         return
 
-    is_new = order_service.is_new_advertiser(user.user_id)
+    is_new = await order_service.is_new_advertiser(user.user_id)
     await state.update_data(user_id=user.user_id, is_new=is_new)
     await message.answer("Введите ссылку на продукт:", reply_markup=cancel_keyboard())
     await state.set_state(OrderCreationStates.product_link)
@@ -244,7 +244,7 @@ async def handle_bloggers_needed(
         # Convert user_id from string (Redis) back to UUID if needed
         user_id_raw = data["user_id"]
         user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-        order = order_service.create_order(
+        order = await order_service.create_order(
             advertiser_id=user_id,
             product_link=data["product_link"],
             offer_text=data["offer_text"],
@@ -272,7 +272,7 @@ async def handle_bloggers_needed(
     await message.answer(f"Заказ создан со статусом NEW. Номер: {order.order_id}")
     # Send security warning
     await message.answer(ADVERTISER_ORDER_WARNING)
-    contact_price = contact_pricing_service.get_price(bloggers_needed)
+    contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
         await message.answer(
             "Стоимость доступа к контактам не настроена. Свяжитесь с поддержкой."

@@ -11,8 +11,8 @@ class ContactPricingService:
 
     pricing_repo: ContactPricingRepository
 
-    def get_price(self, bloggers_count: int) -> float | None:
+    async def get_price(self, bloggers_count: int) -> float | None:
         """Get price for bloggers count."""
 
-        pricing = self.pricing_repo.get_by_bloggers_count(bloggers_count)
+        pricing = await self.pricing_repo.get_by_bloggers_count(bloggers_count)
         return pricing.price if pricing else None

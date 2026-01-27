@@ -11,23 +11,25 @@ from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
 
 
-def test_set_user_creates_new_user() -> None:
+@pytest.mark.asyncio
+async def test_set_user_creates_new_user() -> None:
     """Ensure a new user is created when none exists."""
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
 
-    user = service.set_user(
+    user = await service.set_user(
         external_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
     )
 
     assert user.external_id == "123"
-    assert repo.get_by_id(user.user_id) is not None
+    assert await repo.get_by_id(user.user_id) is not None
 
 
-def test_set_user_updates_existing_user() -> None:
+@pytest.mark.asyncio
+async def test_set_user_updates_existing_user() -> None:
     """Ensure existing users are updated."""
 
     repo = InMemoryUserRepository()
@@ -40,10 +42,10 @@ def test_set_user_updates_existing_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(existing)
+    await repo.save(existing)
 
     service = UserRoleService(user_repo=repo)
-    updated = service.set_user(
+    updated = await service.set_user(
         external_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice-updated",
@@ -53,49 +55,54 @@ def test_set_user_updates_existing_user() -> None:
     assert updated.username == "alice-updated"
 
 
-def test_get_user_id() -> None:
+@pytest.mark.asyncio
+async def test_get_user_id() -> None:
     """Return user id when exists."""
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
 
-    created = service.set_user(
+    created = await service.set_user(
         external_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="john",
     )
 
-    assert service.get_user_id("777", MessengerType.TELEGRAM) == created.user_id
-    assert service.get_user_id("999", MessengerType.TELEGRAM) is None
+    assert await service.get_user_id("777", MessengerType.TELEGRAM) == created.user_id
+    assert await service.get_user_id("999", MessengerType.TELEGRAM) is None
 
 
-def test_update_status() -> None:
+@pytest.mark.asyncio
+async def test_update_status() -> None:
     """Update user status."""
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
 
-    user = service.set_user(
+    user = await service.set_user(
         external_id="888",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
     )
 
-    updated = service.update_status(user.user_id, UserStatus.BLOCKED)
+    updated = await service.update_status(user.user_id, UserStatus.BLOCKED)
 
     assert updated.status == UserStatus.BLOCKED
     assert updated.user_id == user.user_id
     assert updated.username == user.username
-    assert repo.get_by_id(user.user_id).status == UserStatus.BLOCKED
+    found = await repo.get_by_id(user.user_id)
+    assert found is not None
+    assert found.status == UserStatus.BLOCKED
 
 
-def test_update_status_not_found() -> None:
+@pytest.mark.asyncio
+async def test_update_status_not_found() -> None:
     """Raise error when updating status of non-existent user."""
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
 
     with pytest.raises(ValueError, match="not found"):
-        service.update_status(
+        await service.update_status(
             UUID("00000000-0000-0000-0000-000000000999"), UserStatus.BLOCKED
         )

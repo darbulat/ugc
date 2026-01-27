@@ -20,10 +20,12 @@ class AdvertiserRegistrationService:
     advertiser_repo: AdvertiserProfileRepository
     metrics_collector: Optional[Any] = None
 
-    def register_advertiser(self, user_id: UUID, contact: str) -> AdvertiserProfile:
+    async def register_advertiser(
+        self, user_id: UUID, contact: str
+    ) -> AdvertiserProfile:
         """Create an advertiser profile after validating input."""
 
-        user = self.user_repo.get_by_id(user_id)
+        user = await self.user_repo.get_by_id(user_id)
         if user is None:
             raise UserNotFoundError("User not found for advertiser registration.")
 
@@ -32,14 +34,14 @@ class AdvertiserRegistrationService:
             raise AdvertiserRegistrationError("Contact is required.")
 
         profile = AdvertiserProfile(user_id=user.user_id, contact=contact)
-        self.advertiser_repo.save(profile)
+        await self.advertiser_repo.save(profile)
 
         if self.metrics_collector:
             self.metrics_collector.record_advertiser_registration(str(user.user_id))
 
         return profile
 
-    def get_profile(self, user_id: UUID) -> Optional[AdvertiserProfile]:
+    async def get_profile(self, user_id: UUID) -> Optional[AdvertiserProfile]:
         """Fetch advertiser profile by user id."""
 
-        return self.advertiser_repo.get_by_user_id(user_id)
+        return await self.advertiser_repo.get_by_user_id(user_id)

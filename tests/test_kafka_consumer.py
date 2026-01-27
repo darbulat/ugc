@@ -70,7 +70,7 @@ async def test_send_offers_sends_messages() -> None:
         issue_count=0,
         created_at=now,
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
         advertiser_id=advertiser.user_id,
@@ -84,7 +84,7 @@ async def test_send_offers_sends_messages() -> None:
         created_at=now,
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000902"),
@@ -95,8 +95,8 @@ async def test_send_offers_sends_messages() -> None:
         issue_count=0,
         created_at=now,
     )
-    user_repo.save(blogger)
-    blogger_repo.save(
+    await user_repo.save(blogger)
+    await blogger_repo.save(
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
@@ -207,6 +207,12 @@ async def test_run_consumer_processes_activation_message(
         "ugc_bot.kafka_consumer.Container",
         lambda _: mock_container,
     )
+
+    # Avoid spawning threadpool threads in tests (can hang interpreter shutdown).
+    async def fake_to_thread(func, /, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("ugc_bot.kafka_consumer.asyncio.to_thread", fake_to_thread)
 
     poll_calls = 0
 
@@ -322,7 +328,7 @@ async def test_send_offers_retries_then_succeeds() -> None:
         issue_count=0,
         created_at=now,
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000911"),
         advertiser_id=advertiser.user_id,
@@ -336,7 +342,7 @@ async def test_send_offers_retries_then_succeeds() -> None:
         created_at=now,
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000912"),
         external_id="2",
@@ -346,8 +352,8 @@ async def test_send_offers_retries_then_succeeds() -> None:
         issue_count=0,
         created_at=now,
     )
-    user_repo.save(blogger)
-    blogger_repo.save(
+    await user_repo.save(blogger)
+    await blogger_repo.save(
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
@@ -408,7 +414,7 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
         issue_count=0,
         created_at=now,
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000921"),
         advertiser_id=advertiser.user_id,
@@ -422,7 +428,7 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
         created_at=now,
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000922"),
         external_id="2",
@@ -432,8 +438,8 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
         issue_count=0,
         created_at=now,
     )
-    user_repo.save(blogger)
-    blogger_repo.save(
+    await user_repo.save(blogger)
+    await blogger_repo.save(
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional
 from uuid import UUID
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from datetime import datetime, timezone
 
@@ -62,85 +62,92 @@ from ugc_bot.infrastructure.db.models import (
 class SqlAlchemyUserRepository(UserRepository):
     """SQLAlchemy-backed user repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def get_by_id(self, user_id: UUID) -> Optional[User]:
+    async def get_by_id(self, user_id: UUID) -> Optional[User]:
         """Fetch a user by ID."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(UserModel).where(UserModel.user_id == user_id)
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_user_entity(result) if result else None
 
-    def get_by_external(
+    async def get_by_external(
         self, external_id: str, messenger_type: MessengerType
     ) -> Optional[User]:
         """Fetch a user by external messenger id."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(UserModel).where(
                     UserModel.external_id == external_id,
                     UserModel.messenger_type == messenger_type.value,
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_user_entity(result) if result else None
 
-    def save(self, user: User) -> None:
+    async def save(self, user: User) -> None:
         """Persist a user."""
 
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             model = _to_user_model(user)
-            session.merge(model)
-            session.commit()
+            await session.merge(model)
+            await session.commit()
 
 
 @dataclass(slots=True)
 class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
     """SQLAlchemy-backed blogger profile repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def get_by_user_id(self, user_id: UUID) -> Optional[BloggerProfile]:
+    async def get_by_user_id(self, user_id: UUID) -> Optional[BloggerProfile]:
         """Fetch blogger profile by user id."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(BloggerProfileModel).where(
                     BloggerProfileModel.user_id == user_id
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_blogger_profile_entity(result) if result else None
 
-    def get_by_instagram_url(self, instagram_url: str) -> Optional[BloggerProfile]:
+    async def get_by_instagram_url(
+        self, instagram_url: str
+    ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram URL."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(BloggerProfileModel).where(
                     BloggerProfileModel.instagram_url == instagram_url
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_blogger_profile_entity(result) if result else None
 
-    def save(self, profile: BloggerProfile) -> None:
+    async def save(self, profile: BloggerProfile) -> None:
         """Persist blogger profile."""
 
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             model = _to_blogger_profile_model(profile)
-            session.merge(model)
-            session.commit()
+            await session.merge(model)
+            await session.commit()
 
-    def list_confirmed_user_ids(self) -> list[UUID]:
+    async def list_confirmed_user_ids(self) -> list[UUID]:
         """List confirmed blogger user ids."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(BloggerProfileModel.user_id).where(
                     BloggerProfileModel.confirmed.is_(True)
                 )
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return list(results)
 
 
@@ -148,57 +155,59 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
 class SqlAlchemyAdvertiserProfileRepository(AdvertiserProfileRepository):
     """SQLAlchemy-backed advertiser profile repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def get_by_user_id(self, user_id: UUID) -> Optional[AdvertiserProfile]:
+    async def get_by_user_id(self, user_id: UUID) -> Optional[AdvertiserProfile]:
         """Fetch advertiser profile by user id."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(AdvertiserProfileModel).where(
                     AdvertiserProfileModel.user_id == user_id
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_advertiser_profile_entity(result) if result else None
 
-    def save(self, profile: AdvertiserProfile) -> None:
+    async def save(self, profile: AdvertiserProfile) -> None:
         """Persist advertiser profile."""
 
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             model = _to_advertiser_profile_model(profile)
-            session.merge(model)
-            session.commit()
+            await session.merge(model)
+            await session.commit()
 
 
 @dataclass(slots=True)
 class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository):
     """SQLAlchemy-backed Instagram verification repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def save(self, code: InstagramVerificationCode) -> None:
+    async def save(self, code: InstagramVerificationCode) -> None:
         """Persist verification code."""
 
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             model = _to_verification_model(code)
-            session.merge(model)
-            session.commit()
+            await session.merge(model)
+            await session.commit()
 
-    def get_valid_code(
+    async def get_valid_code(
         self, user_id: UUID, code: str
     ) -> Optional[InstagramVerificationCode]:
         """Fetch a valid, unexpired verification code."""
 
         now = datetime.now(timezone.utc)
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(InstagramVerificationCodeModel).where(
                     InstagramVerificationCodeModel.user_id == user_id,
                     InstagramVerificationCodeModel.code == code,
                     InstagramVerificationCodeModel.used.is_(False),
                     InstagramVerificationCodeModel.expires_at > now,
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             if result is None:
                 return None
             if result.used or result.expires_at <= now:
@@ -207,28 +216,31 @@ class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository)
                 return None
             return _to_verification_entity(result)
 
-    def mark_used(self, code_id: UUID) -> None:
+    async def mark_used(self, code_id: UUID) -> None:
         """Mark verification code as used."""
 
-        with self.session_factory() as session:
-            model = session.get(InstagramVerificationCodeModel, code_id)
+        async with self.session_factory() as session:
+            model = await session.get(InstagramVerificationCodeModel, code_id)
             if model is None:
                 return
             model.used = True
-            session.commit()
+            await session.commit()
 
-    def get_valid_code_by_code(self, code: str) -> Optional[InstagramVerificationCode]:
+    async def get_valid_code_by_code(
+        self, code: str
+    ) -> Optional[InstagramVerificationCode]:
         """Fetch a valid, unexpired verification code by code string."""
 
         now = datetime.now(timezone.utc)
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(InstagramVerificationCodeModel).where(
                     InstagramVerificationCodeModel.code == code,
                     InstagramVerificationCodeModel.used.is_(False),
                     InstagramVerificationCodeModel.expires_at > now,
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             if result is None:
                 return None
             if result.used or result.expires_at <= now:
@@ -240,27 +252,29 @@ class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository)
 class SqlAlchemyOrderRepository(OrderRepository):
     """SQLAlchemy-backed order repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def get_by_id(
+    async def get_by_id(
         self, order_id: UUID, session: object | None = None
     ) -> Optional[Order]:
         """Fetch order by ID."""
 
         if session is None:
-            with self.session_factory() as owned_session:
-                result = owned_session.execute(
+            async with self.session_factory() as owned_session:
+                exec_result = await owned_session.execute(
                     select(OrderModel).where(OrderModel.order_id == order_id)
-                ).scalar_one_or_none()
+                )
+                result = exec_result.scalar_one_or_none()
                 return _to_order_entity(result) if result else None
-        if not isinstance(session, Session):
+        if not isinstance(session, AsyncSession):
             raise TypeError("Expected SQLAlchemy Session for order fetch.")
-        result = session.execute(
+        exec_result = await session.execute(
             select(OrderModel).where(OrderModel.order_id == order_id)
-        ).scalar_one_or_none()
+        )
+        result = exec_result.scalar_one_or_none()
         return _to_order_entity(result) if result else None
 
-    def get_by_id_for_update(
+    async def get_by_id_for_update(
         self, order_id: UUID, session: object | None = None
     ) -> Optional[Order]:
         """Fetch order by ID with row lock."""
@@ -269,122 +283,133 @@ class SqlAlchemyOrderRepository(OrderRepository):
             select(OrderModel).where(OrderModel.order_id == order_id).with_for_update()
         )
         if session is None:
-            with self.session_factory() as owned_session:
-                result = owned_session.execute(stmt).scalar_one_or_none()
+            async with self.session_factory() as owned_session:
+                exec_result = await owned_session.execute(stmt)
+                result = exec_result.scalar_one_or_none()
                 return _to_order_entity(result) if result else None
-        if not isinstance(session, Session):
+        if not isinstance(session, AsyncSession):
             raise TypeError("Expected SQLAlchemy Session for order fetch.")
-        result = session.execute(stmt).scalar_one_or_none()
+        exec_result = await session.execute(stmt)
+        result = exec_result.scalar_one_or_none()
         return _to_order_entity(result) if result else None
 
-    def list_active(self) -> Iterable[Order]:
+    async def list_active(self) -> Iterable[Order]:
         """List active orders."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(OrderModel).where(OrderModel.status == OrderStatus.ACTIVE)
-            ).scalars()
+            )
+            result = exec_result.scalars()
             return [_to_order_entity(item) for item in result]
 
-    def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
+    async def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
         """List orders by advertiser."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(OrderModel).where(OrderModel.advertiser_id == advertiser_id)
-            ).scalars()
+            )
+            result = exec_result.scalars()
             return [_to_order_entity(item) for item in result]
 
-    def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
+    async def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
         """List orders with contacts_sent_at before cutoff."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(OrderModel).where(
                     OrderModel.contacts_sent_at.is_not(None),
                     OrderModel.contacts_sent_at <= cutoff,
                 )
-            ).scalars()
+            )
+            result = exec_result.scalars()
             return [_to_order_entity(item) for item in result]
 
-    def count_by_advertiser(self, advertiser_id: UUID) -> int:
+    async def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(func.count())
                 .select_from(OrderModel)
                 .where(OrderModel.advertiser_id == advertiser_id)
-            ).scalar_one()
+            )
+            result = exec_result.scalar_one()
             return int(result)
 
-    def save(self, order: Order, session: object | None = None) -> None:
+    async def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
 
         model = _to_order_model(order)
         if session is None:
-            with self.session_factory() as owned_session:
-                owned_session.merge(model)
-                owned_session.commit()
+            async with self.session_factory() as owned_session:
+                await owned_session.merge(model)
+                await owned_session.commit()
             return
-        if not isinstance(session, Session):
+        if not isinstance(session, AsyncSession):
             raise TypeError("Expected SQLAlchemy Session for order save.")
-        session.merge(model)
+        await session.merge(model)
 
 
 @dataclass(slots=True)
 class SqlAlchemyPaymentRepository(PaymentRepository):
     """SQLAlchemy-backed payment repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def get_by_order(self, order_id: UUID) -> Optional[Payment]:
+    async def get_by_order(self, order_id: UUID) -> Optional[Payment]:
         """Fetch payment by order id."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(PaymentModel).where(PaymentModel.order_id == order_id)
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_payment_entity(result) if result else None
 
-    def get_by_external_id(self, external_id: str) -> Optional[Payment]:
+    async def get_by_external_id(self, external_id: str) -> Optional[Payment]:
         """Fetch payment by provider external id."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(PaymentModel).where(PaymentModel.external_id == external_id)
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_payment_entity(result) if result else None
 
-    def save(self, payment: Payment, session: object | None = None) -> None:
+    async def save(self, payment: Payment, session: object | None = None) -> None:
         """Persist payment."""
 
         model = _to_payment_model(payment)
         if session is not None:
-            if not isinstance(session, Session):
+            if not isinstance(session, AsyncSession):
                 raise TypeError("Expected SQLAlchemy Session for payment save.")
-            session.merge(model)
+            await session.merge(model)
             return
-        with self.session_factory() as owned_session:
-            owned_session.merge(model)
-            owned_session.commit()
+        async with self.session_factory() as owned_session:
+            await owned_session.merge(model)
+            await owned_session.commit()
 
 
 @dataclass(slots=True)
 class SqlAlchemyContactPricingRepository(ContactPricingRepository):
     """SQLAlchemy-backed contact pricing repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def get_by_bloggers_count(self, bloggers_count: int) -> Optional[ContactPricing]:
+    async def get_by_bloggers_count(
+        self, bloggers_count: int
+    ) -> Optional[ContactPricing]:
         """Fetch pricing by bloggers count."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(ContactPricingModel).where(
                     ContactPricingModel.bloggers_count == bloggers_count
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_contact_pricing_entity(result) if result else None
 
 
@@ -392,78 +417,87 @@ class SqlAlchemyContactPricingRepository(ContactPricingRepository):
 class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
     """SQLAlchemy-backed order response repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def save(self, response: OrderResponse, session: object | None = None) -> None:
+    async def save(
+        self, response: OrderResponse, session: object | None = None
+    ) -> None:
         """Persist order response."""
 
         model = _to_order_response_model(response)
         if session is None:
-            with self.session_factory() as owned_session:
-                owned_session.merge(model)
-                owned_session.commit()
+            async with self.session_factory() as owned_session:
+                await owned_session.merge(model)
+                await owned_session.commit()
             return
-        if not isinstance(session, Session):
+        if not isinstance(session, AsyncSession):
             raise TypeError("Expected SQLAlchemy Session for response save.")
-        session.merge(model)
+        await session.merge(model)
 
-    def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
+    async def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
         """List responses by order."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(OrderResponseModel).where(
                     OrderResponseModel.order_id == order_id
                 )
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return [_to_order_response_entity(item) for item in results]
 
-    def exists(
+    async def exists(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
     ) -> bool:
         """Check if blogger already responded."""
 
         if session is None:
-            with self.session_factory() as owned_session:
-                result = owned_session.execute(
+            async with self.session_factory() as owned_session:
+                exec_result = await owned_session.execute(
                     select(func.count())
                     .select_from(OrderResponseModel)
                     .where(
                         OrderResponseModel.order_id == order_id,
                         OrderResponseModel.blogger_id == blogger_id,
                     )
-                ).scalar_one()
+                )
+                result = exec_result.scalar_one()
                 return int(result) > 0
-        if not isinstance(session, Session):
+        if not isinstance(session, AsyncSession):
             raise TypeError("Expected SQLAlchemy Session for response check.")
-        result = session.execute(
+        exec_result = await session.execute(
             select(func.count())
             .select_from(OrderResponseModel)
             .where(
                 OrderResponseModel.order_id == order_id,
                 OrderResponseModel.blogger_id == blogger_id,
             )
-        ).scalar_one()
+        )
+        result = exec_result.scalar_one()
         return int(result) > 0
 
-    def count_by_order(self, order_id: UUID, session: object | None = None) -> int:
+    async def count_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
         """Count responses by order."""
 
         if session is None:
-            with self.session_factory() as owned_session:
-                result = owned_session.execute(
+            async with self.session_factory() as owned_session:
+                exec_result = await owned_session.execute(
                     select(func.count())
                     .select_from(OrderResponseModel)
                     .where(OrderResponseModel.order_id == order_id)
-                ).scalar_one()
+                )
+                result = exec_result.scalar_one()
                 return int(result)
-        if not isinstance(session, Session):
+        if not isinstance(session, AsyncSession):
             raise TypeError("Expected SQLAlchemy Session for response count.")
-        result = session.execute(
+        exec_result = await session.execute(
             select(func.count())
             .select_from(OrderResponseModel)
             .where(OrderResponseModel.order_id == order_id)
-        ).scalar_one()
+        )
+        result = exec_result.scalar_one()
         return int(result)
 
 
@@ -471,78 +505,83 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
 class SqlAlchemyInteractionRepository(InteractionRepository):
     """SQLAlchemy-backed interaction repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
+    async def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
         """Fetch interaction by id."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(InteractionModel).where(
                     InteractionModel.interaction_id == interaction_id
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_interaction_entity(result) if result else None
 
-    def get_by_participants(
+    async def get_by_participants(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Optional[Interaction]:
         """Fetch interaction by order/blogger/advertiser."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(InteractionModel).where(
                     InteractionModel.order_id == order_id,
                     InteractionModel.blogger_id == blogger_id,
                     InteractionModel.advertiser_id == advertiser_id,
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_interaction_entity(result) if result else None
 
-    def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
+    async def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
         """List interactions for order."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(InteractionModel).where(InteractionModel.order_id == order_id)
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return [_to_interaction_entity(item) for item in results]
 
-    def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
+    async def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
         """List interactions due for feedback."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(InteractionModel).where(
                     InteractionModel.next_check_at <= cutoff,
                     InteractionModel.status == InteractionStatus.PENDING,
                 )
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return [_to_interaction_entity(item) for item in results]
 
-    def list_by_status(self, status: InteractionStatus) -> Iterable[Interaction]:
+    async def list_by_status(self, status: InteractionStatus) -> Iterable[Interaction]:
         """List interactions by status."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(InteractionModel).where(InteractionModel.status == status)
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return [_to_interaction_entity(item) for item in results]
 
-    def save(self, interaction: Interaction) -> None:
+    async def save(self, interaction: Interaction) -> None:
         """Persist interaction."""
 
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             model = _to_interaction_model(interaction)
-            session.merge(model)
-            session.commit()
+            await session.merge(model)
+            await session.commit()
 
 
 @dataclass(slots=True)
 class NoopOfferBroadcaster(OfferBroadcaster):
     """No-op broadcaster for MVP."""
 
-    def broadcast_order(self, order: Order) -> None:
+    async def broadcast_order(self, order: Order) -> None:
         """No-op implementation."""
 
         return None
@@ -806,79 +845,82 @@ def _to_order_response_model(
 class SqlAlchemyOutboxRepository(OutboxRepository):
     """SQLAlchemy implementation of outbox repository."""
 
-    def __init__(self, session_factory: Callable[[], Session]) -> None:
+    def __init__(self, session_factory: Callable[[], AsyncSession]) -> None:
         self.session_factory = session_factory
 
-    def save(self, event: OutboxEvent, session: object | None = None) -> None:
+    async def save(self, event: OutboxEvent, session: object | None = None) -> None:
         """Persist outbox event."""
 
         model = _to_outbox_event_model(event)
         if session is not None:
-            if not isinstance(session, Session):
+            if not isinstance(session, AsyncSession):
                 raise TypeError("Expected SQLAlchemy Session for outbox save.")
             session.add(model)
             return
-        with self.session_factory() as owned_session:
+        async with self.session_factory() as owned_session:
             owned_session.add(model)
-            owned_session.commit()
+            await owned_session.commit()
 
-    def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
+    async def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
         """Get pending events for processing."""
 
-        with self.session_factory() as session:
-            models = (
-                session.query(OutboxEventModel)
-                .filter(OutboxEventModel.status == OutboxEventStatus.PENDING)
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(OutboxEventModel)
+                .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
                 .order_by(OutboxEventModel.created_at)
                 .limit(limit)
-                .all()
             )
+            models = result.scalars().all()
             return [_to_outbox_event_entity(model) for model in models]
 
-    def mark_as_processing(self, event_id: UUID) -> None:
+    async def mark_as_processing(self, event_id: UUID) -> None:
         """Mark event as processing."""
 
-        with self.session_factory() as session:
-            session.query(OutboxEventModel).filter(
-                OutboxEventModel.event_id == event_id
-            ).update({"status": OutboxEventStatus.PROCESSING})
-            session.commit()
+        async with self.session_factory() as session:
+            await session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == event_id)
+                .values(status=OutboxEventStatus.PROCESSING)
+            )
+            await session.commit()
 
-    def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
+    async def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
         """Mark event as published."""
 
-        with self.session_factory() as session:
-            session.query(OutboxEventModel).filter(
-                OutboxEventModel.event_id == event_id
-            ).update(
-                {"status": OutboxEventStatus.PUBLISHED, "processed_at": processed_at}
+        async with self.session_factory() as session:
+            await session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == event_id)
+                .values(status=OutboxEventStatus.PUBLISHED, processed_at=processed_at)
             )
-            session.commit()
+            await session.commit()
 
-    def mark_as_failed(self, event_id: UUID, error: str, retry_count: int) -> None:
+    async def mark_as_failed(
+        self, event_id: UUID, error: str, retry_count: int
+    ) -> None:
         """Mark event as failed with retry."""
 
-        with self.session_factory() as session:
-            session.query(OutboxEventModel).filter(
-                OutboxEventModel.event_id == event_id
-            ).update(
-                {
-                    "status": OutboxEventStatus.FAILED,
-                    "last_error": error,
-                    "retry_count": retry_count,
-                }
+        async with self.session_factory() as session:
+            await session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == event_id)
+                .values(
+                    status=OutboxEventStatus.FAILED,
+                    last_error=error,
+                    retry_count=retry_count,
+                )
             )
-            session.commit()
+            await session.commit()
 
-    def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
+    async def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
         """Get event by ID."""
 
-        with self.session_factory() as session:
-            model = (
-                session.query(OutboxEventModel)
-                .filter(OutboxEventModel.event_id == event_id)
-                .first()
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
+                select(OutboxEventModel).where(OutboxEventModel.event_id == event_id)
             )
+            model = exec_result.scalar_one_or_none()
             return _to_outbox_event_entity(model) if model else None
 
 
@@ -920,64 +962,69 @@ def _to_outbox_event_model(event: OutboxEvent) -> OutboxEventModel:
 class SqlAlchemyComplaintRepository(ComplaintRepository):
     """SQLAlchemy-backed complaint repository."""
 
-    session_factory: sessionmaker[Session]
+    session_factory: async_sessionmaker[AsyncSession]
 
-    def save(self, complaint: Complaint) -> None:
+    async def save(self, complaint: Complaint) -> None:
         """Persist complaint."""
 
-        with self.session_factory() as session:
+        async with self.session_factory() as session:
             model = _to_complaint_model(complaint)
             session.add(model)
-            session.commit()
+            await session.commit()
 
-    def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
+    async def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
         """Get complaint by ID."""
 
-        with self.session_factory() as session:
-            result = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(ComplaintModel).where(
                     ComplaintModel.complaint_id == complaint_id
                 )
-            ).scalar_one_or_none()
+            )
+            result = exec_result.scalar_one_or_none()
             return _to_complaint_entity(result) if result else None
 
-    def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
+    async def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
         """List complaints for a specific order."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(ComplaintModel).where(ComplaintModel.order_id == order_id)
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return [_to_complaint_entity(item) for item in results]
 
-    def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
+    async def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
         """List complaints filed by a specific user."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(ComplaintModel).where(ComplaintModel.reporter_id == reporter_id)
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return [_to_complaint_entity(item) for item in results]
 
-    def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
+    async def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
         """Check if reporter already filed a complaint for this order."""
 
-        with self.session_factory() as session:
-            count = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(func.count(ComplaintModel.complaint_id)).where(
                     ComplaintModel.order_id == order_id,
                     ComplaintModel.reporter_id == reporter_id,
                 )
-            ).scalar()
+            )
+            count = exec_result.scalar()
             return (count or 0) > 0
 
-    def list_by_status(self, status: ComplaintStatus) -> Iterable[Complaint]:
+    async def list_by_status(self, status: ComplaintStatus) -> Iterable[Complaint]:
         """List complaints by status."""
 
-        with self.session_factory() as session:
-            results = session.execute(
+        async with self.session_factory() as session:
+            exec_result = await session.execute(
                 select(ComplaintModel).where(ComplaintModel.status == status)
-            ).scalars()
+            )
+            results = exec_result.scalars()
             return [_to_complaint_entity(item) for item in results]
 
 

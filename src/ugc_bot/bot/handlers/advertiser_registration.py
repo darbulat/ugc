@@ -42,7 +42,7 @@ async def start_advertiser_registration(
     if message.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -86,7 +86,7 @@ async def handle_contact(
     user_id: UUID = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
 
     try:
-        profile = advertiser_registration_service.register_advertiser(
+        profile = await advertiser_registration_service.register_advertiser(
             user_id=user_id,
             contact=contact,
         )

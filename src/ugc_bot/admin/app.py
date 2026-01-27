@@ -74,7 +74,7 @@ class UserAdmin(ModelView, model=UserModel):
                 container = getattr(self, "_container", None)  # type: ignore[attr-defined]
                 if container:
                     user_role_service, _, _ = _get_services(container)
-                    user = user_role_service.get_user_by_id(UUID(pk))
+                    user = await user_role_service.get_user_by_id(UUID(pk))
                     if user:
                         logger.warning(
                             "User blocked via admin",
@@ -186,7 +186,9 @@ class InteractionAdmin(ModelView, model=InteractionModel):
                 container = getattr(self, "_container", None)  # type: ignore[attr-defined]
                 if container:
                     _, _, interaction_service = _get_services(container)
-                    interaction_service.manually_resolve_issue(UUID(pk), new_status)
+                    await interaction_service.manually_resolve_issue(
+                        UUID(pk), new_status
+                    )
             except Exception:
                 # If service call fails, the status change is already saved
                 pass
@@ -248,9 +250,11 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
                 if container:
                     user_role_service, complaint_service, _ = _get_services(container)
                     # Update complaint status via service (sets reviewed_at)
-                    complaint_service.resolve_complaint_with_action(UUID(pk))
+                    await complaint_service.resolve_complaint_with_action(UUID(pk))
                     # Block the reported user
-                    user_role_service.update_status(reported_id, UserStatus.BLOCKED)
+                    await user_role_service.update_status(
+                        reported_id, UserStatus.BLOCKED
+                    )
             except Exception:
                 # If service call fails, the status change is already saved
                 pass
@@ -260,7 +264,7 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
                 if container:
                     _, complaint_service, _ = _get_services(container)
                     # Update complaint status via service (sets reviewed_at)
-                    complaint_service.dismiss_complaint(UUID(pk))
+                    await complaint_service.dismiss_complaint(UUID(pk))
             except Exception:
                 # If service call fails, the status change is already saved
                 pass

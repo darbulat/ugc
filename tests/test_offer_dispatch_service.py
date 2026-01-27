@@ -21,7 +21,8 @@ from ugc_bot.infrastructure.memory_repositories import (
 )
 
 
-def test_dispatch_selects_confirmed_bloggers() -> None:
+@pytest.mark.asyncio
+async def test_dispatch_selects_confirmed_bloggers() -> None:
     """Dispatch returns only confirmed active bloggers."""
 
     user_repo = InMemoryUserRepository()
@@ -47,7 +48,7 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000602"),
@@ -58,8 +59,8 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(blogger)
-    blogger_repo.save(
+    await user_repo.save(blogger)
+    await blogger_repo.save(
         BloggerProfile(
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
@@ -74,10 +75,12 @@ def test_dispatch_selects_confirmed_bloggers() -> None:
         )
     )
 
-    assert service.dispatch(order.order_id) == [blogger]
+    result = await service.dispatch(order.order_id)
+    assert result == [blogger]
 
 
-def test_dispatch_requires_active_order() -> None:
+@pytest.mark.asyncio
+async def test_dispatch_requires_active_order() -> None:
     """Dispatch fails for inactive orders."""
 
     user_repo = InMemoryUserRepository()
@@ -103,13 +106,14 @@ def test_dispatch_requires_active_order() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     with pytest.raises(OrderCreationError):
-        service.dispatch(order.order_id)
+        await service.dispatch(order.order_id)
 
 
-def test_dispatch_skips_ineligible_bloggers() -> None:
+@pytest.mark.asyncio
+async def test_dispatch_skips_ineligible_bloggers() -> None:
     """Skip bloggers with missing user or invalid status."""
 
     user_repo = InMemoryUserRepository()
@@ -135,9 +139,9 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    blogger_repo.save(
+    await blogger_repo.save(
         BloggerProfile(
             user_id=UUID("00000000-0000-0000-0000-000000000622"),
             instagram_url="https://instagram.com/ghost",
@@ -152,7 +156,7 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
         )
     )
 
-    user_repo.save(
+    await user_repo.save(
         User(
             user_id=UUID("00000000-0000-0000-0000-000000000623"),
             external_id="101",
@@ -163,7 +167,7 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
             created_at=datetime.now(timezone.utc),
         )
     )
-    blogger_repo.save(
+    await blogger_repo.save(
         BloggerProfile(
             user_id=UUID("00000000-0000-0000-0000-000000000623"),
             instagram_url="https://instagram.com/advertiser",
@@ -178,10 +182,11 @@ def test_dispatch_skips_ineligible_bloggers() -> None:
         )
     )
 
-    assert service.dispatch(order.order_id) == []
+    assert await service.dispatch(order.order_id) == []
 
 
-def test_dispatch_no_profiles_returns_empty() -> None:
+@pytest.mark.asyncio
+async def test_dispatch_no_profiles_returns_empty() -> None:
     """Return empty list when no confirmed profiles."""
 
     user_repo = InMemoryUserRepository()
@@ -207,12 +212,14 @@ def test_dispatch_no_profiles_returns_empty() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    assert service.dispatch(order.order_id) == []
+    result = await service.dispatch(order.order_id)
+    assert result == []
 
 
-def test_dispatch_excludes_order_author() -> None:
+@pytest.mark.asyncio
+async def test_dispatch_excludes_order_author() -> None:
     """Do not send order to its author even if they are a confirmed blogger."""
 
     user_repo = InMemoryUserRepository()
@@ -239,7 +246,7 @@ def test_dispatch_excludes_order_author() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     # Advertiser who is also a blogger
     advertiser_blogger = User(
@@ -251,8 +258,8 @@ def test_dispatch_excludes_order_author() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser_blogger)
-    blogger_repo.save(
+    await user_repo.save(advertiser_blogger)
+    await blogger_repo.save(
         BloggerProfile(
             user_id=advertiser_id,
             instagram_url="https://instagram.com/advertiser",
@@ -277,8 +284,8 @@ def test_dispatch_excludes_order_author() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(other_blogger)
-    blogger_repo.save(
+    await user_repo.save(other_blogger)
+    await blogger_repo.save(
         BloggerProfile(
             user_id=other_blogger.user_id,
             instagram_url="https://instagram.com/other",
@@ -294,7 +301,7 @@ def test_dispatch_excludes_order_author() -> None:
     )
 
     # Should only return other_blogger, not advertiser_blogger
-    result = service.dispatch(order.order_id)
+    result = await service.dispatch(order.order_id)
     assert len(result) == 1
     assert result[0].user_id == other_blogger.user_id
     assert result[0].user_id != advertiser_id

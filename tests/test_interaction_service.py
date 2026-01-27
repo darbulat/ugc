@@ -11,23 +11,26 @@ from ugc_bot.domain.enums import InteractionStatus
 from ugc_bot.infrastructure.memory_repositories import InMemoryInteractionRepository
 
 
-def test_get_or_create_interaction() -> None:
+@pytest.mark.asyncio
+async def test_get_or_create_interaction() -> None:
     """Create interaction when missing."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
 
-    interaction = service.get_or_create(
+    interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000902"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000903"),
     )
 
     assert interaction.status == InteractionStatus.PENDING
-    assert repo.get_by_id(interaction.interaction_id) is not None
+    found = await repo.get_by_id(interaction.interaction_id)
+    assert found is not None
 
 
-def test_get_or_create_returns_existing() -> None:
+@pytest.mark.asyncio
+async def test_get_or_create_returns_existing() -> None:
     """Return existing interaction when available."""
 
     repo = InMemoryInteractionRepository()
@@ -45,9 +48,9 @@ def test_get_or_create_returns_existing() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(existing)
+    await repo.save(existing)
 
-    result = service.get_or_create(
+    result = await service.get_or_create(
         order_id=existing.order_id,
         blogger_id=existing.blogger_id,
         advertiser_id=existing.advertiser_id,
@@ -55,52 +58,55 @@ def test_get_or_create_returns_existing() -> None:
     assert result.interaction_id == existing.interaction_id
 
 
-def test_record_advertiser_feedback() -> None:
+@pytest.mark.asyncio
+async def test_record_advertiser_feedback() -> None:
     """Update interaction with advertiser feedback."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
-    interaction = service.get_or_create(
+    interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000911"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000912"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000913"),
     )
 
-    updated = service.record_advertiser_feedback(
+    updated = await service.record_advertiser_feedback(
         interaction.interaction_id, "✅ Сделка состоялась"
     )
     assert updated.from_advertiser == "✅ Сделка состоялась"
     assert updated.status == InteractionStatus.OK
 
 
-def test_record_blogger_feedback_issue() -> None:
+@pytest.mark.asyncio
+async def test_record_blogger_feedback_issue() -> None:
     """Issue from blogger should set ISSUE status."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
-    interaction = service.get_or_create(
+    interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000921"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000922"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000923"),
     )
-    updated = service.record_blogger_feedback(
+    updated = await service.record_blogger_feedback(
         interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
     assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
     assert updated.status == InteractionStatus.ISSUE
 
 
-def test_record_advertiser_feedback_no_deal_aggregate() -> None:
+@pytest.mark.asyncio
+async def test_record_advertiser_feedback_no_deal_aggregate() -> None:
     """Aggregate NO_DEAL when both sides choose it."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
-    interaction = service.get_or_create(
+    interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000931"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000932"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000933"),
     )
-    repo.save(
+    await repo.save(
         Interaction(
             interaction_id=interaction.interaction_id,
             order_id=interaction.order_id,
@@ -115,19 +121,20 @@ def test_record_advertiser_feedback_no_deal_aggregate() -> None:
             updated_at=interaction.updated_at,
         )
     )
-    updated = service.record_advertiser_feedback(
+    updated = await service.record_advertiser_feedback(
         interaction.interaction_id, "❌ Не договорились"
     )
     assert updated.status == InteractionStatus.NO_DEAL
 
 
-def test_record_feedback_missing_interaction() -> None:
+@pytest.mark.asyncio
+async def test_record_feedback_missing_interaction() -> None:
     """Raise when interaction does not exist."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
     with pytest.raises(ValueError):
-        service.record_advertiser_feedback(
+        await service.record_advertiser_feedback(
             UUID("00000000-0000-0000-0000-000000000940"),
             "✅ Сделка состоялась",
         )
@@ -142,18 +149,19 @@ def test_aggregate_defaults_to_pending() -> None:
     )
 
 
-def test_record_advertiser_feedback_pending() -> None:
+@pytest.mark.asyncio
+async def test_record_advertiser_feedback_pending() -> None:
     """Postpone interaction when advertiser chooses PENDING."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo, max_postpone_count=3)
-    interaction = service.get_or_create(
+    interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000951"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000952"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000953"),
     )
 
-    updated = service.record_advertiser_feedback(
+    updated = await service.record_advertiser_feedback(
         interaction.interaction_id, "⏳ Еще не связался"
     )
     assert updated.from_advertiser == "⏳ Еще не связался"
@@ -162,7 +170,8 @@ def test_record_advertiser_feedback_pending() -> None:
     assert updated.next_check_at is not None
 
 
-def test_record_advertiser_feedback_max_postpone() -> None:
+@pytest.mark.asyncio
+async def test_record_advertiser_feedback_max_postpone() -> None:
     """Auto-resolve to NO_DEAL when max postpone count reached."""
 
     repo = InMemoryInteractionRepository()
@@ -180,26 +189,27 @@ def test_record_advertiser_feedback_max_postpone() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(interaction)
+    await repo.save(interaction)
 
-    updated = service.record_advertiser_feedback(
+    updated = await service.record_advertiser_feedback(
         interaction.interaction_id, "⏳ Еще не связался"
     )
     assert updated.status == InteractionStatus.NO_DEAL
 
 
-def test_record_blogger_feedback_pending() -> None:
+@pytest.mark.asyncio
+async def test_record_blogger_feedback_pending() -> None:
     """Postpone interaction when blogger chooses PENDING."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo, max_postpone_count=3)
-    interaction = service.get_or_create(
+    interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000971"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000972"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000973"),
     )
 
-    updated = service.record_blogger_feedback(
+    updated = await service.record_blogger_feedback(
         interaction.interaction_id, "⏳ Еще не связался"
     )
     assert updated.from_blogger == "⏳ Еще не связался"
@@ -208,7 +218,8 @@ def test_record_blogger_feedback_pending() -> None:
     assert updated.next_check_at is not None
 
 
-def test_record_blogger_feedback_max_postpone() -> None:
+@pytest.mark.asyncio
+async def test_record_blogger_feedback_max_postpone() -> None:
     """Auto-resolve to NO_DEAL when max postpone count reached."""
 
     repo = InMemoryInteractionRepository()
@@ -226,15 +237,16 @@ def test_record_blogger_feedback_max_postpone() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(interaction)
+    await repo.save(interaction)
 
-    updated = service.record_blogger_feedback(
+    updated = await service.record_blogger_feedback(
         interaction.interaction_id, "⏳ Еще не связался"
     )
     assert updated.status == InteractionStatus.NO_DEAL
 
 
-def test_postpone_interaction_max_reached() -> None:
+@pytest.mark.asyncio
+async def test_postpone_interaction_max_reached() -> None:
     """Auto-resolve to NO_DEAL when postponing after max count."""
 
     repo = InMemoryInteractionRepository()
@@ -252,9 +264,9 @@ def test_postpone_interaction_max_reached() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(interaction)
+    await repo.save(interaction)
 
-    updated = service._postpone_interaction(
+    updated = await service._postpone_interaction(
         interaction, "advertiser", "⏳ Еще не связался"
     )
     assert updated.status == InteractionStatus.NO_DEAL
@@ -315,7 +327,8 @@ def test_aggregate_fallback_no_deal() -> None:
     )
 
 
-def test_manually_resolve_issue() -> None:
+@pytest.mark.asyncio
+async def test_manually_resolve_issue() -> None:
     """Manually resolve ISSUE interaction with final status."""
 
     repo = InMemoryInteractionRepository()
@@ -334,9 +347,9 @@ def test_manually_resolve_issue() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(interaction)
+    await repo.save(interaction)
 
-    resolved = service.manually_resolve_issue(
+    resolved = await service.manually_resolve_issue(
         interaction.interaction_id, InteractionStatus.OK
     )
 
@@ -345,7 +358,8 @@ def test_manually_resolve_issue() -> None:
     assert resolved.interaction_id == interaction.interaction_id
 
 
-def test_manually_resolve_issue_no_deal() -> None:
+@pytest.mark.asyncio
+async def test_manually_resolve_issue_no_deal() -> None:
     """Manually resolve ISSUE interaction to NO_DEAL."""
 
     repo = InMemoryInteractionRepository()
@@ -364,9 +378,9 @@ def test_manually_resolve_issue_no_deal() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(interaction)
+    await repo.save(interaction)
 
-    resolved = service.manually_resolve_issue(
+    resolved = await service.manually_resolve_issue(
         interaction.interaction_id, InteractionStatus.NO_DEAL
     )
 
@@ -374,7 +388,8 @@ def test_manually_resolve_issue_no_deal() -> None:
     assert resolved.next_check_at is None
 
 
-def test_manually_resolve_issue_not_issue_status() -> None:
+@pytest.mark.asyncio
+async def test_manually_resolve_issue_not_issue_status() -> None:
     """Raise error when resolving non-ISSUE interaction."""
 
     repo = InMemoryInteractionRepository()
@@ -393,15 +408,16 @@ def test_manually_resolve_issue_not_issue_status() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(interaction)
+    await repo.save(interaction)
 
     with pytest.raises(ValueError, match="not in ISSUE status"):
-        service.manually_resolve_issue(
+        await service.manually_resolve_issue(
             interaction.interaction_id, InteractionStatus.NO_DEAL
         )
 
 
-def test_manually_resolve_issue_invalid_status() -> None:
+@pytest.mark.asyncio
+async def test_manually_resolve_issue_invalid_status() -> None:
     """Raise error when resolving with invalid final status."""
 
     repo = InMemoryInteractionRepository()
@@ -420,21 +436,22 @@ def test_manually_resolve_issue_invalid_status() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    repo.save(interaction)
+    await repo.save(interaction)
 
     with pytest.raises(ValueError, match="must be OK or NO_DEAL"):
-        service.manually_resolve_issue(
+        await service.manually_resolve_issue(
             interaction.interaction_id, InteractionStatus.PENDING
         )
 
 
-def test_manually_resolve_issue_not_found() -> None:
+@pytest.mark.asyncio
+async def test_manually_resolve_issue_not_found() -> None:
     """Raise error when resolving non-existent interaction."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
 
     with pytest.raises(ValueError, match="not found"):
-        service.manually_resolve_issue(
+        await service.manually_resolve_issue(
             UUID("00000000-0000-0000-0000-000000000999"), InteractionStatus.OK
         )

@@ -174,101 +174,73 @@ def test_admin_action_methods_exist():
     print("✅ Admin action methods exist test passed!")
 
 
-def test_admin_update_model_logic(db_session: Session):
-    """Test the core logic of admin update_model methods."""
-    from ugc_bot.admin.app import UserAdmin, InteractionAdmin, ComplaintAdmin
-    from ugc_bot.domain.entities import User, Interaction, Complaint, Order
-    from ugc_bot.domain.enums import UserStatus, InteractionStatus, ComplaintStatus
-    from ugc_bot.infrastructure.db.repositories import (
-        SqlAlchemyUserRepository,
-        SqlAlchemyInteractionRepository,
-        SqlAlchemyComplaintRepository,
-    )
-    import uuid
-    from datetime import datetime, timezone
+@pytest.mark.asyncio
+async def test_admin_update_model_logic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Smoke-test custom update_model hooks don't crash.
 
-    # Создаем тестовые данные
-    user_repo = SqlAlchemyUserRepository(lambda: db_session)
-    interaction_repo = SqlAlchemyInteractionRepository(lambda: db_session)
-    complaint_repo = SqlAlchemyComplaintRepository(lambda: db_session)
+    We mock SQLAdmin base update_model and the async session so we can exercise the
+    branch logic without requiring a real AsyncSession/DB.
+    """
 
-    # Создаем пользователя
-    user = User(
-        user_id=uuid.uuid4(),
-        external_id="test_123",
-        messenger_type="telegram",
-        username="testuser",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    user_repo.save(user)
-    db_session.commit()
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from uuid import UUID
 
-    # Создаем заказ для interaction и complaint
-    from ugc_bot.infrastructure.db.repositories import SqlAlchemyOrderRepository
+    from ugc_bot.admin import app as admin_app
+    from ugc_bot.admin.app import ComplaintAdmin, InteractionAdmin, UserAdmin
+    from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
 
-    order_repo = SqlAlchemyOrderRepository(lambda: db_session)
-    order = Order(
-        order_id=uuid.uuid4(),
-        advertiser_id=user.user_id,
-        product_link="https://test.com",
-        offer_text="Test offer",
-        ugc_requirements=None,
-        barter_description=None,
-        bloggers_needed=3,
-        price=1000.0,
-        status=OrderStatus.NEW,
-        created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
-    )
-    order_repo.save(order)
-    db_session.commit()
+    async def _noop_update_model(self, request, pk: str, data: dict) -> None:  # type: ignore[no-untyped-def]
+        return None
 
-    # Создаем interaction
-    interaction = Interaction(
-        interaction_id=uuid.uuid4(),
-        order_id=order.order_id,
-        blogger_id=user.user_id,
-        advertiser_id=user.user_id,
-        status=InteractionStatus.ISSUE,
-        from_advertiser=None,
-        from_blogger=None,
-        postpone_count=0,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    interaction_repo.save(interaction)
-    db_session.commit()
+    monkeypatch.setattr(admin_app.ModelView, "update_model", _noop_update_model)
 
-    # Создаем complaint
-    complaint = Complaint(
-        complaint_id=uuid.uuid4(),
-        reporter_id=user.user_id,
-        reported_id=user.user_id,
-        order_id=order.order_id,
-        reason="Test complaint",
-        status=ComplaintStatus.PENDING,
-        created_at=datetime.now(timezone.utc),
-        reviewed_at=None,
-    )
-    complaint_repo.save(complaint)
-    db_session.commit()
+    class DummySession:
+        """Minimal async session stub for update_model hooks."""
 
-    # Тестируем UserAdmin update_model - просто проверяем что метод существует
+        def __init__(self, objects: list[object]) -> None:
+            self._objects = objects
+            self._idx = 0
+
+        @asynccontextmanager
+        async def begin(self):
+            yield self
+
+        async def get(self, model_cls, pk):  # type: ignore[no-untyped-def]
+            obj = self._objects[self._idx]
+            self._idx += 1
+            return obj
+
+    pk = "00000000-0000-0000-0000-000000000001"
+
     user_admin = UserAdmin()
-    assert hasattr(user_admin, "update_model")
-    print("✅ UserAdmin update_model method exists")
+    user_admin.session = DummySession(  # type: ignore[attr-defined]
+        [
+            SimpleNamespace(status=UserStatus.ACTIVE),
+            SimpleNamespace(status=UserStatus.BLOCKED),
+        ]
+    )
+    await user_admin.update_model(object(), pk, {"status": UserStatus.BLOCKED})
 
-    # Тестируем InteractionAdmin update_model - просто проверяем что метод существует
     interaction_admin = InteractionAdmin()
-    assert hasattr(interaction_admin, "update_model")
-    print("✅ InteractionAdmin update_model method exists")
+    interaction_admin.session = DummySession(  # type: ignore[attr-defined]
+        [
+            SimpleNamespace(status=InteractionStatus.ISSUE),
+            SimpleNamespace(status=InteractionStatus.OK),
+        ]
+    )
+    await interaction_admin.update_model(object(), pk, {"status": InteractionStatus.OK})
 
-    # Тестируем ComplaintAdmin update_model - просто проверяем что метод существует
+    reported_id = UUID("00000000-0000-0000-0000-000000000002")
     complaint_admin = ComplaintAdmin()
-    assert hasattr(complaint_admin, "update_model")
-    print("✅ ComplaintAdmin update_model method exists")
-
-    print("✅ Admin update_model logic test passed!")
+    complaint_admin.session = DummySession(  # type: ignore[attr-defined]
+        [
+            SimpleNamespace(status=ComplaintStatus.PENDING, reported_id=reported_id),
+            SimpleNamespace(
+                status=ComplaintStatus.ACTION_TAKEN, reported_id=reported_id
+            ),
+        ]
+    )
+    await complaint_admin.update_model(
+        object(), pk, {"status": ComplaintStatus.ACTION_TAKEN}
+    )

@@ -102,20 +102,20 @@ def _profile_service(
     )
 
 
-def _add_advertiser_profile(
+async def _add_advertiser_profile(
     advertiser_repo: InMemoryAdvertiserProfileRepository, user_id: UUID
 ) -> None:
     """Seed advertiser profile."""
 
-    advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
+    await advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
 
 
-def _pricing_service(prices: dict[int, float]) -> ContactPricingService:
+async def _pricing_service(prices: dict[int, float]) -> ContactPricingService:
     """Build contact pricing service."""
 
     repo = InMemoryContactPricingRepository()
     for count, price in prices.items():
-        repo.save(
+        await repo.save(
             ContactPricing(
                 bloggers_count=count,
                 price=price,
@@ -160,12 +160,12 @@ async def test_order_creation_flow_new_advertiser() -> None:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
     )
-    user = user_service.set_user(
+    user = await user_service.set_user(
         external_id="5",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = _profile_service(repo, advertiser_repo)
 
     message = FakeMessage(text=None, user=FakeUser(5, "adv", "Adv"))
@@ -187,7 +187,7 @@ async def test_order_creation_flow_new_advertiser() -> None:
         }
     )
     bot = FakeBot()
-    pricing_service = _pricing_service({3: 1500.0})
+    pricing_service = await _pricing_service({3: 1500.0})
     await handle_bloggers_needed(
         FakeMessage(text="3", user=FakeUser(5, "adv", "Adv"), bot=bot),
         state,
@@ -213,14 +213,14 @@ async def test_order_creation_flow_with_barter() -> None:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
     )
-    user = user_service.set_user(
+    user = await user_service.set_user(
         external_id="6",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = _profile_service(repo, advertiser_repo)
-    order_repo.save(
+    await order_repo.save(
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000801"),
             advertiser_id=user.user_id,
@@ -256,7 +256,7 @@ async def test_order_creation_flow_with_barter() -> None:
         }
     )
     bot = FakeBot()
-    pricing_service = _pricing_service({20: 5000.0})
+    pricing_service = await _pricing_service({20: 5000.0})
     await handle_bloggers_needed(
         FakeMessage(text="20", user=FakeUser(6, "adv", "Adv"), bot=bot),
         state,
@@ -290,7 +290,7 @@ async def test_start_order_creation_blocked_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(user)
+    await repo.save(user)
     user_service = UserRoleService(user_repo=repo)
 
     message = FakeMessage(text=None, user=FakeUser(7, "blocked", "Blocked"))
@@ -325,7 +325,7 @@ async def test_bloggers_needed_limit_for_new_advertiser() -> None:
             "TELEGRAM_PROVIDER_TOKEN": "provider",
         }
     )
-    pricing_service = _pricing_service({20: 5000.0})
+    pricing_service = await _pricing_service({20: 5000.0})
     await handle_bloggers_needed(message, state, order_service, config, pricing_service)
 
     assert "NEW рекламодатели" in message.answers[0]

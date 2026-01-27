@@ -86,7 +86,7 @@ async def test_my_orders_no_advertiser_profile() -> None:
         response_repo=InMemoryOrderResponseRepository(),
     )
 
-    user_service.set_user(
+    await user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
@@ -124,12 +124,14 @@ async def test_my_orders_empty() -> None:
         response_repo=InMemoryOrderResponseRepository(),
     )
 
-    user = user_service.set_user(
+    user = await user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=user.user_id, contact="contact")
+    )
 
     message = FakeMessage(text="/my_orders")
     await show_my_orders(
@@ -172,8 +174,10 @@ async def test_my_orders_list() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    await user_repo.save(user)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=user.user_id, contact="contact")
+    )
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
         advertiser_id=user.user_id,
@@ -187,7 +191,7 @@ async def test_my_orders_list() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     message = FakeMessage(text="Мои заказы")
     await show_my_orders(
@@ -230,10 +234,12 @@ async def test_my_orders_pagination() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    await user_repo.save(user)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=user.user_id, contact="contact")
+    )
     for idx in range(6):
-        order_repo.save(
+        await order_repo.save(
             Order(
                 order_id=UUID(f"00000000-0000-0000-0000-00000000091{idx}"),
                 advertiser_id=user.user_id,
@@ -301,10 +307,11 @@ async def test_my_orders_with_complaint_button() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    user_repo.save(blogger)
-    user_repo.save(user)
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    await user_repo.save(user)
+    await user_repo.save(blogger)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=user.user_id, contact="contact")
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000922"),
@@ -319,9 +326,9 @@ async def test_my_orders_with_complaint_button() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=datetime.now(timezone.utc),
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    response_repo.save(
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000923"),
             order_id=order.order_id,

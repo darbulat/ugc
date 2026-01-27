@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from ugc_bot.outbox_processor import OutboxProcessor
 
@@ -33,10 +33,12 @@ class TestOutboxProcessor:
         await processor.stop()
         assert not processor._running
 
-    def test_process_once(self) -> None:
+    @pytest.mark.asyncio
+    async def test_process_once(self) -> None:
         """Process once executes processing."""
 
         outbox_publisher = Mock()
+        outbox_publisher.process_pending_events = AsyncMock()
         kafka_publisher = Mock()
 
         processor = OutboxProcessor(
@@ -46,7 +48,7 @@ class TestOutboxProcessor:
             max_retries=3,
         )
 
-        processor.process_once()
+        await processor.process_once()
 
         # Verify processing was called
         outbox_publisher.process_pending_events.assert_called_once_with(
@@ -58,6 +60,7 @@ class TestOutboxProcessor:
         """Background processing loop works correctly."""
 
         outbox_publisher = Mock()
+        outbox_publisher.process_pending_events = AsyncMock()
         kafka_publisher = Mock()
 
         processor = OutboxProcessor(

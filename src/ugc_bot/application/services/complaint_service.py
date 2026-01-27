@@ -20,7 +20,7 @@ class ComplaintService:
     complaint_repo: ComplaintRepository
     metrics_collector: Optional[Any] = None
 
-    def create_complaint(
+    async def create_complaint(
         self,
         reporter_id: UUID,
         reported_id: UUID,
@@ -30,7 +30,7 @@ class ComplaintService:
         """Create a new complaint."""
 
         # Check if reporter already filed a complaint for this order
-        if self.complaint_repo.exists(order_id, reporter_id):
+        if await self.complaint_repo.exists(order_id, reporter_id):
             raise ValueError("Вы уже подали жалобу по этому заказу.")
 
         complaint = Complaint(
@@ -43,7 +43,7 @@ class ComplaintService:
             created_at=datetime.now(timezone.utc),
             reviewed_at=None,
         )
-        self.complaint_repo.save(complaint)
+        await self.complaint_repo.save(complaint)
 
         logger.warning(
             "Complaint created",
@@ -68,30 +68,30 @@ class ComplaintService:
 
         return complaint
 
-    def get_by_id(self, complaint_id: UUID) -> Complaint | None:
+    async def get_by_id(self, complaint_id: UUID) -> Complaint | None:
         """Get complaint by ID."""
 
-        return self.complaint_repo.get_by_id(complaint_id)
+        return await self.complaint_repo.get_by_id(complaint_id)
 
-    def list_by_order(self, order_id: UUID) -> list[Complaint]:
+    async def list_by_order(self, order_id: UUID) -> list[Complaint]:
         """List complaints for a specific order."""
 
-        return list(self.complaint_repo.list_by_order(order_id))
+        return list(await self.complaint_repo.list_by_order(order_id))
 
-    def list_by_reporter(self, reporter_id: UUID) -> list[Complaint]:
+    async def list_by_reporter(self, reporter_id: UUID) -> list[Complaint]:
         """List complaints filed by a specific user."""
 
-        return list(self.complaint_repo.list_by_reporter(reporter_id))
+        return list(await self.complaint_repo.list_by_reporter(reporter_id))
 
-    def list_by_status(self, status: ComplaintStatus) -> list[Complaint]:
+    async def list_by_status(self, status: ComplaintStatus) -> list[Complaint]:
         """List complaints by status."""
 
-        return list(self.complaint_repo.list_by_status(status))
+        return list(await self.complaint_repo.list_by_status(status))
 
-    def dismiss_complaint(self, complaint_id: UUID) -> Complaint:
+    async def dismiss_complaint(self, complaint_id: UUID) -> Complaint:
         """Dismiss a complaint without taking action."""
 
-        complaint = self.complaint_repo.get_by_id(complaint_id)
+        complaint = await self.complaint_repo.get_by_id(complaint_id)
         if complaint is None:
             raise ValueError("Complaint not found.")
 
@@ -105,7 +105,7 @@ class ComplaintService:
             created_at=complaint.created_at,
             reviewed_at=datetime.now(timezone.utc),
         )
-        self.complaint_repo.save(dismissed)
+        await self.complaint_repo.save(dismissed)
 
         logger.info(
             "Complaint dismissed",
@@ -127,10 +127,10 @@ class ComplaintService:
 
         return dismissed
 
-    def resolve_complaint_with_action(self, complaint_id: UUID) -> Complaint:
+    async def resolve_complaint_with_action(self, complaint_id: UUID) -> Complaint:
         """Resolve complaint by taking action (blocking user)."""
 
-        complaint = self.complaint_repo.get_by_id(complaint_id)
+        complaint = await self.complaint_repo.get_by_id(complaint_id)
         if complaint is None:
             raise ValueError("Complaint not found.")
 
@@ -144,7 +144,7 @@ class ComplaintService:
             created_at=complaint.created_at,
             reviewed_at=datetime.now(timezone.utc),
         )
-        self.complaint_repo.save(resolved)
+        await self.complaint_repo.save(resolved)
 
         logger.warning(
             "Complaint resolved with action",

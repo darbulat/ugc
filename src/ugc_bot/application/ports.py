@@ -28,20 +28,20 @@ class UserRepository(ABC):
     """Port for user persistence."""
 
     @abstractmethod
-    def get_by_id(self, user_id: UUID) -> Optional[User]:
+    async def get_by_id(self, user_id: UUID) -> Optional[User]:
         """Fetch a user by ID."""
 
     @abstractmethod
-    def get_by_external(
+    async def get_by_external(
         self, external_id: str, messenger_type: MessengerType
     ) -> Optional[User]:
         """Fetch a user by external messenger id."""
 
     @abstractmethod
-    def save(self, user: User) -> None:
+    async def save(self, user: User) -> None:
         """Persist a user."""
 
-    def iter_all(self) -> Iterable[User]:
+    async def iter_all(self) -> Iterable[User]:
         """Iterate all users (optional)."""
 
         raise NotImplementedError
@@ -51,19 +51,21 @@ class BloggerProfileRepository(ABC):
     """Port for blogger profile persistence."""
 
     @abstractmethod
-    def get_by_user_id(self, user_id: UUID) -> Optional[BloggerProfile]:
+    async def get_by_user_id(self, user_id: UUID) -> Optional[BloggerProfile]:
         """Fetch blogger profile by user id."""
 
     @abstractmethod
-    def get_by_instagram_url(self, instagram_url: str) -> Optional[BloggerProfile]:
+    async def get_by_instagram_url(
+        self, instagram_url: str
+    ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram URL."""
 
     @abstractmethod
-    def save(self, profile: BloggerProfile) -> None:
+    async def save(self, profile: BloggerProfile) -> None:
         """Persist blogger profile."""
 
     @abstractmethod
-    def list_confirmed_user_ids(self) -> list[UUID]:
+    async def list_confirmed_user_ids(self) -> list[UUID]:
         """List user ids with confirmed blogger profiles."""
 
 
@@ -71,11 +73,11 @@ class AdvertiserProfileRepository(ABC):
     """Port for advertiser profile persistence."""
 
     @abstractmethod
-    def get_by_user_id(self, user_id: UUID) -> Optional[AdvertiserProfile]:
+    async def get_by_user_id(self, user_id: UUID) -> Optional[AdvertiserProfile]:
         """Fetch advertiser profile by user id."""
 
     @abstractmethod
-    def save(self, profile: AdvertiserProfile) -> None:
+    async def save(self, profile: AdvertiserProfile) -> None:
         """Persist advertiser profile."""
 
 
@@ -83,35 +85,35 @@ class OrderRepository(ABC):
     """Port for order persistence."""
 
     @abstractmethod
-    def get_by_id(
+    async def get_by_id(
         self, order_id: UUID, session: object | None = None
     ) -> Optional[Order]:
         """Fetch order by ID."""
 
     @abstractmethod
-    def get_by_id_for_update(
+    async def get_by_id_for_update(
         self, order_id: UUID, session: object | None = None
     ) -> Optional[Order]:
         """Fetch order by ID with a row lock when supported."""
 
     @abstractmethod
-    def list_active(self) -> Iterable[Order]:
+    async def list_active(self) -> Iterable[Order]:
         """List active orders."""
 
     @abstractmethod
-    def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
+    async def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
         """List orders by advertiser."""
 
     @abstractmethod
-    def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
+    async def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
         """List orders with contacts_sent_at before cutoff."""
 
     @abstractmethod
-    def count_by_advertiser(self, advertiser_id: UUID) -> int:
+    async def count_by_advertiser(self, advertiser_id: UUID) -> int:
         """Count orders by advertiser."""
 
     @abstractmethod
-    def save(self, order: Order, session: object | None = None) -> None:
+    async def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
 
 
@@ -119,21 +121,25 @@ class OrderResponseRepository(ABC):
     """Port for order response persistence."""
 
     @abstractmethod
-    def save(self, response: OrderResponse, session: object | None = None) -> None:
+    async def save(
+        self, response: OrderResponse, session: object | None = None
+    ) -> None:
         """Persist order response."""
 
     @abstractmethod
-    def list_by_order(self, order_id: UUID) -> Iterable[OrderResponse]:
+    async def list_by_order(self, order_id: UUID) -> Iterable[OrderResponse]:
         """List responses by order."""
 
     @abstractmethod
-    def exists(
+    async def exists(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
     ) -> bool:
         """Check if blogger already responded."""
 
     @abstractmethod
-    def count_by_order(self, order_id: UUID, session: object | None = None) -> int:
+    async def count_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
         """Count responses by order."""
 
 
@@ -141,29 +147,31 @@ class InteractionRepository(ABC):
     """Port for interaction persistence."""
 
     @abstractmethod
-    def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
+    async def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
         """Fetch interaction by id."""
 
     @abstractmethod
-    def get_by_participants(
+    async def get_by_participants(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Optional[Interaction]:
         """Fetch interaction by order/blogger/advertiser."""
 
     @abstractmethod
-    def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
+    async def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
         """List interactions for order."""
 
     @abstractmethod
-    def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
+    async def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
         """List interactions due for feedback (next_check_at <= cutoff and status=PENDING)."""
 
     @abstractmethod
-    def list_by_status(self, status: "InteractionStatus") -> Iterable[Interaction]:
+    async def list_by_status(
+        self, status: "InteractionStatus"
+    ) -> Iterable[Interaction]:
         """List interactions by status."""
 
     @abstractmethod
-    def save(self, interaction: Interaction) -> None:
+    async def save(self, interaction: Interaction) -> None:
         """Persist interaction."""
 
 
@@ -171,21 +179,23 @@ class InstagramVerificationRepository(ABC):
     """Port for Instagram verification code persistence."""
 
     @abstractmethod
-    def save(self, code: InstagramVerificationCode) -> None:
+    async def save(self, code: InstagramVerificationCode) -> None:
         """Persist verification code."""
 
     @abstractmethod
-    def get_valid_code(
+    async def get_valid_code(
         self, user_id: UUID, code: str
     ) -> Optional[InstagramVerificationCode]:
         """Fetch a valid, unexpired verification code."""
 
     @abstractmethod
-    def mark_used(self, code_id: UUID) -> None:
+    async def mark_used(self, code_id: UUID) -> None:
         """Mark verification code as used."""
 
     @abstractmethod
-    def get_valid_code_by_code(self, code: str) -> Optional[InstagramVerificationCode]:
+    async def get_valid_code_by_code(
+        self, code: str
+    ) -> Optional[InstagramVerificationCode]:
         """Fetch a valid, unexpired verification code by code string (for webhook processing)."""
 
 
@@ -208,15 +218,15 @@ class PaymentRepository(ABC):
     """Port for payment persistence."""
 
     @abstractmethod
-    def get_by_order(self, order_id: UUID) -> Optional[Payment]:
+    async def get_by_order(self, order_id: UUID) -> Optional[Payment]:
         """Fetch payment by order id."""
 
     @abstractmethod
-    def get_by_external_id(self, external_id: str) -> Optional[Payment]:
+    async def get_by_external_id(self, external_id: str) -> Optional[Payment]:
         """Fetch payment by provider external id."""
 
     @abstractmethod
-    def save(self, payment: Payment, session: object | None = None) -> None:
+    async def save(self, payment: Payment, session: object | None = None) -> None:
         """Persist payment."""
 
 
@@ -224,7 +234,9 @@ class ContactPricingRepository(ABC):
     """Port for contact pricing persistence."""
 
     @abstractmethod
-    def get_by_bloggers_count(self, bloggers_count: int) -> Optional[ContactPricing]:
+    async def get_by_bloggers_count(
+        self, bloggers_count: int
+    ) -> Optional[ContactPricing]:
         """Fetch pricing by bloggers count."""
 
 
@@ -232,7 +244,7 @@ class OfferBroadcaster(ABC):
     """Port for broadcasting offers to bloggers."""
 
     @abstractmethod
-    def broadcast_order(self, order: Order) -> None:
+    async def broadcast_order(self, order: Order) -> None:
         """Broadcast offer to eligible bloggers."""
 
 
@@ -240,7 +252,7 @@ class OrderActivationPublisher(ABC):
     """Port for publishing order activation events."""
 
     @abstractmethod
-    def publish(self, order: Order) -> None:
+    async def publish(self, order: Order) -> None:
         """Publish order activation message."""
 
 
@@ -248,27 +260,29 @@ class OutboxRepository(ABC):
     """Port for outbox event persistence."""
 
     @abstractmethod
-    def save(self, event: OutboxEvent, session: object | None = None) -> None:
+    async def save(self, event: OutboxEvent, session: object | None = None) -> None:
         """Persist outbox event."""
 
     @abstractmethod
-    def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
+    async def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
         """Get pending events for processing."""
 
     @abstractmethod
-    def mark_as_processing(self, event_id: UUID) -> None:
+    async def mark_as_processing(self, event_id: UUID) -> None:
         """Mark event as processing."""
 
     @abstractmethod
-    def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
+    async def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
         """Mark event as published."""
 
     @abstractmethod
-    def mark_as_failed(self, event_id: UUID, error: str, retry_count: int) -> None:
+    async def mark_as_failed(
+        self, event_id: UUID, error: str, retry_count: int
+    ) -> None:
         """Mark event as failed with retry."""
 
     @abstractmethod
-    def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
+    async def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
         """Get event by ID."""
 
 
@@ -276,25 +290,25 @@ class ComplaintRepository(ABC):
     """Port for complaint persistence."""
 
     @abstractmethod
-    def save(self, complaint: Complaint) -> None:
+    async def save(self, complaint: Complaint) -> None:
         """Persist complaint."""
 
     @abstractmethod
-    def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
+    async def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
         """Get complaint by ID."""
 
     @abstractmethod
-    def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
+    async def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
         """List complaints for a specific order."""
 
     @abstractmethod
-    def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
+    async def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
         """List complaints filed by a specific user."""
 
     @abstractmethod
-    def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
+    async def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
         """Check if reporter already filed a complaint for this order."""
 
     @abstractmethod
-    def list_by_status(self, status: "ComplaintStatus") -> Iterable[Complaint]:
+    async def list_by_status(self, status: "ComplaintStatus") -> Iterable[Complaint]:
         """List complaints by status."""

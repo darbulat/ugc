@@ -96,7 +96,7 @@ async def test_start_complaint_invalid_format() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
 
     callback = FakeCallback(data="complaint:bad", user=FakeUser(1))
     await start_complaint(
@@ -123,7 +123,7 @@ async def test_start_complaint_order_not_found() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = OrderService(
@@ -178,8 +178,8 @@ async def test_start_complaint_no_access() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(other_user)
+    await user_repo.save(advertiser)
+    await user_repo.save(other_user)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000963"),
@@ -194,7 +194,7 @@ async def test_start_complaint_no_access() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = OrderService(
@@ -250,8 +250,8 @@ async def test_handle_complaint_reason_success() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000973"),
@@ -266,9 +266,9 @@ async def test_handle_complaint_reason_success() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    response_repo.save(
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000974"),
             order_id=order.order_id,
@@ -299,7 +299,7 @@ async def test_handle_complaint_reason_success() -> None:
     await handle_complaint_reason(callback, state, complaint_service, order_service)
 
     assert any("успешно подана" in ans for ans in callback.message.answers)
-    complaints = complaint_service.list_by_order(order.order_id)
+    complaints = await complaint_service.list_by_order(order.order_id)
     assert len(list(complaints)) == 1
 
 
@@ -329,8 +329,8 @@ async def test_select_complaint_target_advertiser() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000983"),
@@ -345,9 +345,9 @@ async def test_select_complaint_target_advertiser() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=datetime.now(timezone.utc),
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    response_repo.save(
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000984"),
             order_id=order.order_id,
@@ -403,7 +403,7 @@ async def test_select_complaint_target_invalid_format() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = OrderService(
@@ -460,8 +460,8 @@ async def test_select_complaint_target_blogger() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000987"),
@@ -476,9 +476,9 @@ async def test_select_complaint_target_blogger() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=datetime.now(timezone.utc),
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    response_repo.save(
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000988"),
             order_id=order.order_id,
@@ -534,7 +534,7 @@ async def test_select_complaint_target_no_bloggers() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
+    await user_repo.save(advertiser)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000990"),
@@ -549,7 +549,7 @@ async def test_select_complaint_target_no_bloggers() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=datetime.now(timezone.utc),
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = OrderService(
@@ -606,8 +606,8 @@ async def test_handle_complaint_reason_text() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000993"),
@@ -622,7 +622,7 @@ async def test_handle_complaint_reason_text() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
@@ -645,7 +645,7 @@ async def test_handle_complaint_reason_text() -> None:
 
     assert message.answers
     assert any("успешно подана" in ans for ans in message.answers)
-    complaints = complaint_service.list_by_order(order.order_id)
+    complaints = await complaint_service.list_by_order(order.order_id)
     assert len(list(complaints)) == 1
 
 
@@ -676,8 +676,8 @@ async def test_handle_complaint_reason_other() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000996"),
@@ -692,9 +692,9 @@ async def test_handle_complaint_reason_other() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    response_repo.save(
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000997"),
             order_id=order.order_id,
@@ -798,7 +798,7 @@ async def test_handle_complaint_reason_duplicate() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(reporter)
+    await user_repo.save(reporter)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000001000"),
@@ -813,10 +813,10 @@ async def test_handle_complaint_reason_duplicate() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
-    complaint_service.create_complaint(
+    await complaint_service.create_complaint(
         reporter_id=reporter.user_id,
         reported_id=UUID("00000000-0000-0000-0000-000000001001"),
         order_id=order.order_id,
@@ -1008,8 +1008,8 @@ async def test_start_complaint_invalid_reported_id() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000001022"),
@@ -1024,9 +1024,9 @@ async def test_start_complaint_invalid_reported_id() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
-    response_repo.save(
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000001023"),
             order_id=order.order_id,
@@ -1119,7 +1119,7 @@ async def test_select_complaint_target_invalid_uuid() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = OrderService(

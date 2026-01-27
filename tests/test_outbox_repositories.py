@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+import pytest
+
 from ugc_bot.infrastructure.memory_repositories import InMemoryOutboxRepository
 from ugc_bot.domain.entities import OutboxEvent
 from ugc_bot.domain.enums import OutboxEventStatus
@@ -11,7 +13,8 @@ from ugc_bot.domain.enums import OutboxEventStatus
 class TestInMemoryOutboxRepository:
     """Test in-memory outbox repository."""
 
-    def test_save_event(self) -> None:
+    @pytest.mark.asyncio
+    async def test_save_event(self) -> None:
         """Event is saved correctly."""
 
         repo = InMemoryOutboxRepository()
@@ -29,7 +32,7 @@ class TestInMemoryOutboxRepository:
             last_error=None,
         )
 
-        repo.save(event)
+        await repo.save(event)
 
         # Verify event was saved
         assert len(repo.events) == 1
@@ -40,7 +43,8 @@ class TestInMemoryOutboxRepository:
         assert saved_event.payload == event.payload
         assert saved_event.status == event.status
 
-    def test_get_pending_events(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_pending_events(self) -> None:
         """Only pending events are returned."""
 
         repo = InMemoryOutboxRepository()
@@ -85,18 +89,19 @@ class TestInMemoryOutboxRepository:
             last_error=None,
         )
 
-        repo.save(pending_event)
-        repo.save(processing_event)
-        repo.save(published_event)
+        await repo.save(pending_event)
+        await repo.save(processing_event)
+        await repo.save(published_event)
 
         # Get pending events
-        pending_events = repo.get_pending_events()
+        pending_events = await repo.get_pending_events()
 
         # Verify only pending event is returned
         assert len(pending_events) == 1
         assert pending_events[0].event_id == pending_event.event_id
 
-    def test_get_pending_events_limit(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_pending_events_limit(self) -> None:
         """Limit is respected when getting pending events."""
 
         repo = InMemoryOutboxRepository()
@@ -115,15 +120,16 @@ class TestInMemoryOutboxRepository:
                 retry_count=0,
                 last_error=None,
             )
-            repo.save(event)
+            await repo.save(event)
 
         # Get with limit
-        pending_events = repo.get_pending_events(limit=3)
+        pending_events = await repo.get_pending_events(limit=3)
 
         # Verify limit is respected
         assert len(pending_events) == 3
 
-    def test_get_pending_events_ordered_by_created_at(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_pending_events_ordered_by_created_at(self) -> None:
         """Events are ordered by creation time (oldest first)."""
 
         repo = InMemoryOutboxRepository()
@@ -142,10 +148,10 @@ class TestInMemoryOutboxRepository:
                 retry_count=0,
                 last_error=None,
             )
-            repo.save(event)
+            await repo.save(event)
 
         # Get pending events
-        pending_events = repo.get_pending_events()
+        pending_events = await repo.get_pending_events()
 
         # Verify order (oldest first)
         assert len(pending_events) == 3
@@ -153,7 +159,8 @@ class TestInMemoryOutboxRepository:
         assert pending_events[1].aggregate_id == "order-3"  # created_at 10:2
         assert pending_events[2].aggregate_id == "order-4"  # created_at 10:3
 
-    def test_mark_as_processing(self) -> None:
+    @pytest.mark.asyncio
+    async def test_mark_as_processing(self) -> None:
         """Event status is updated to processing."""
 
         repo = InMemoryOutboxRepository()
@@ -170,16 +177,17 @@ class TestInMemoryOutboxRepository:
             retry_count=0,
             last_error=None,
         )
-        repo.save(event)
+        await repo.save(event)
 
         # Mark as processing
-        repo.mark_as_processing(event.event_id)
+        await repo.mark_as_processing(event.event_id)
 
         # Verify status was updated
         updated_event = repo.events[event.event_id]
         assert updated_event.status == OutboxEventStatus.PROCESSING
 
-    def test_mark_as_published(self) -> None:
+    @pytest.mark.asyncio
+    async def test_mark_as_published(self) -> None:
         """Event is marked as published with processed_at timestamp."""
 
         repo = InMemoryOutboxRepository()
@@ -196,19 +204,20 @@ class TestInMemoryOutboxRepository:
             retry_count=0,
             last_error=None,
         )
-        repo.save(event)
+        await repo.save(event)
 
         processed_at = datetime.now(timezone.utc)
 
         # Mark as published
-        repo.mark_as_published(event.event_id, processed_at)
+        await repo.mark_as_published(event.event_id, processed_at)
 
         # Verify event was updated
         updated_event = repo.events[event.event_id]
         assert updated_event.status == OutboxEventStatus.PUBLISHED
         assert updated_event.processed_at == processed_at
 
-    def test_mark_as_failed(self) -> None:
+    @pytest.mark.asyncio
+    async def test_mark_as_failed(self) -> None:
         """Event is marked as failed with error and retry count."""
 
         repo = InMemoryOutboxRepository()
@@ -225,13 +234,13 @@ class TestInMemoryOutboxRepository:
             retry_count=1,
             last_error=None,
         )
-        repo.save(event)
+        await repo.save(event)
 
         error_msg = "Kafka connection failed"
         new_retry_count = 2
 
         # Mark as failed
-        repo.mark_as_failed(event.event_id, error_msg, new_retry_count)
+        await repo.mark_as_failed(event.event_id, error_msg, new_retry_count)
 
         # Verify event was updated
         updated_event = repo.events[event.event_id]
@@ -239,7 +248,8 @@ class TestInMemoryOutboxRepository:
         assert updated_event.last_error == error_msg
         assert updated_event.retry_count == new_retry_count
 
-    def test_get_by_id_existing(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_by_id_existing(self) -> None:
         """Existing event is returned by ID."""
 
         repo = InMemoryOutboxRepository()
@@ -256,36 +266,41 @@ class TestInMemoryOutboxRepository:
             retry_count=0,
             last_error=None,
         )
-        repo.save(event)
+        await repo.save(event)
 
         # Get by ID
-        retrieved_event = repo.get_by_id(event.event_id)
+        retrieved_event = await repo.get_by_id(event.event_id)
 
         # Verify correct event was returned
         assert retrieved_event is not None
         assert retrieved_event.event_id == event.event_id
         assert retrieved_event.event_type == event.event_type
 
-    def test_get_by_id_nonexistent(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_by_id_nonexistent(self) -> None:
         """None is returned for nonexistent event ID."""
 
         repo = InMemoryOutboxRepository()
 
         # Get by non-existent ID
-        retrieved_event = repo.get_by_id(UUID("00000000-0000-0000-0000-000000000999"))
+        retrieved_event = await repo.get_by_id(
+            UUID("00000000-0000-0000-0000-000000000999")
+        )
 
         # Verify None was returned
         assert retrieved_event is None
 
-    def test_mark_as_processing_nonexistent_event(self) -> None:
+    @pytest.mark.asyncio
+    async def test_mark_as_processing_nonexistent_event(self) -> None:
         """No error when marking nonexistent event as processing."""
 
         repo = InMemoryOutboxRepository()
 
         # This should not raise an exception
-        repo.mark_as_processing(UUID("00000000-0000-0000-0000-000000000999"))
+        await repo.mark_as_processing(UUID("00000000-0000-0000-0000-000000000999"))
 
-    def test_mark_as_published_nonexistent_event(self) -> None:
+    @pytest.mark.asyncio
+    async def test_mark_as_published_nonexistent_event(self) -> None:
         """No error when marking nonexistent event as published."""
 
         repo = InMemoryOutboxRepository()
@@ -293,14 +308,17 @@ class TestInMemoryOutboxRepository:
         processed_at = datetime.now(timezone.utc)
 
         # This should not raise an exception
-        repo.mark_as_published(
+        await repo.mark_as_published(
             UUID("00000000-0000-0000-0000-000000000999"), processed_at
         )
 
-    def test_mark_as_failed_nonexistent_event(self) -> None:
+    @pytest.mark.asyncio
+    async def test_mark_as_failed_nonexistent_event(self) -> None:
         """No error when marking nonexistent event as failed."""
 
         repo = InMemoryOutboxRepository()
 
         # This should not raise an exception
-        repo.mark_as_failed(UUID("00000000-0000-0000-0000-000000000999"), "error", 1)
+        await repo.mark_as_failed(
+            UUID("00000000-0000-0000-0000-000000000999"), "error", 1
+        )

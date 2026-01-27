@@ -86,7 +86,7 @@ class FakeSuccessfulPayment:
         self.currency = "RUB"
 
 
-def _seed_user(
+async def _seed_user(
     user_repo: InMemoryUserRepository, user_id: UUID, external_id: str
 ) -> User:
     """Seed user with advertiser profile."""
@@ -100,7 +100,7 @@ def _seed_user(
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     return user
 
 
@@ -129,12 +129,12 @@ def _contact_pricing_service() -> ContactPricingService:
     )
 
 
-def _add_advertiser_profile(
+async def _add_advertiser_profile(
     advertiser_repo: InMemoryAdvertiserProfileRepository, user_id: UUID
 ) -> None:
     """Seed advertiser profile."""
 
-    advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
+    await advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
 
 
 def _payment_service(
@@ -182,9 +182,9 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
-    user_service.set_user(
+    await user_repo.save(user)
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
@@ -203,7 +203,7 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     bot = FakeBot()
     message = FakeMessage(
@@ -247,7 +247,7 @@ async def test_pay_order_missing_provider_token() -> None:
     contact_pricing_service = _contact_pricing_service()
 
     # Override price for 3 bloggers to be positive so provider check is needed
-    contact_pricing_service.pricing_repo.save(
+    await contact_pricing_service.pricing_repo.save(
         ContactPricing(
             bloggers_count=3, price=100.0, updated_at=datetime.now(timezone.utc)
         )
@@ -262,15 +262,15 @@ async def test_pay_order_missing_provider_token() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
-    user_service.set_user(
+    await user_repo.save(user)
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
 
-    order_repo.save(
+    await order_repo.save(
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000503"),
             advertiser_id=user.user_id,
@@ -325,8 +325,10 @@ async def test_pay_order_invalid_args() -> None:
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
 
-    user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000510"), "10")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    user = await _seed_user(
+        user_repo, UUID("00000000-0000-0000-0000-000000000510"), "10"
+    )
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
     message = FakeMessage(text="/pay_order", user=FakeUser(10, "adv", "Adv"), bot=None)
     config = FakeConfig.model_validate(
         {
@@ -362,8 +364,10 @@ async def test_pay_order_invalid_uuid() -> None:
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
 
-    user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000511"), "11")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    user = await _seed_user(
+        user_repo, UUID("00000000-0000-0000-0000-000000000511"), "11"
+    )
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
     message = FakeMessage(
         text="/pay_order not-a-uuid", user=FakeUser(11, "adv", "Adv"), bot=None
     )
@@ -401,8 +405,10 @@ async def test_pay_order_order_not_found() -> None:
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
 
-    user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000512"), "12")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    user = await _seed_user(
+        user_repo, UUID("00000000-0000-0000-0000-000000000512"), "12"
+    )
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000599",
         user=FakeUser(12, "adv", "Adv"),
@@ -442,11 +448,15 @@ async def test_pay_order_wrong_owner() -> None:
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
 
-    user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000513"), "13")
-    other = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000514"), "14")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    user = await _seed_user(
+        user_repo, UUID("00000000-0000-0000-0000-000000000513"), "13"
+    )
+    other = await _seed_user(
+        user_repo, UUID("00000000-0000-0000-0000-000000000514"), "14"
+    )
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
 
-    order_repo.save(
+    await order_repo.save(
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000515"),
             advertiser_id=other.user_id,
@@ -501,9 +511,11 @@ async def test_pay_order_not_new_status() -> None:
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
 
-    user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000516"), "15")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
-    order_repo.save(
+    user = await _seed_user(
+        user_repo, UUID("00000000-0000-0000-0000-000000000516"), "15"
+    )
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await order_repo.save(
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000517"),
             advertiser_id=user.user_id,
@@ -566,7 +578,7 @@ async def test_pay_order_blocked_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
         user=FakeUser(16, "adv", "Adv"),
@@ -615,7 +627,7 @@ async def test_pay_order_paused_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
         user=FakeUser(17, "adv", "Adv"),
@@ -655,7 +667,7 @@ async def test_pay_order_missing_profile() -> None:
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
 
-    _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000521"), "21")
+    await _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000521"), "21")
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
         user=FakeUser(21, "adv", "Adv"),
@@ -720,8 +732,8 @@ async def test_successful_payment_handler() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    await user_repo.save(user)
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000505"),
@@ -736,7 +748,7 @@ async def test_successful_payment_handler() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    order_repo.save(order)
+    await order_repo.save(order)
 
     bot = FakeBot()
     message = FakeMessage(
@@ -752,18 +764,22 @@ async def test_successful_payment_handler() -> None:
     assert message.answers
 
     # Order should still be NEW until outbox is processed
-    assert order_repo.get_by_id(order.order_id).status == OrderStatus.NEW
+    fetched_order = await order_repo.get_by_id(order.order_id)
+    assert fetched_order is not None
+    assert fetched_order.status == OrderStatus.NEW
 
     # Process outbox events to activate order
     from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
 
     kafka_publisher = NoopOrderActivationPublisher()
-    payment_service.outbox_publisher.process_pending_events(
+    await payment_service.outbox_publisher.process_pending_events(
         kafka_publisher, max_retries=3
     )
 
     # Now order should be activated
-    assert order_repo.get_by_id(order.order_id).status == OrderStatus.ACTIVE
+    fetched_order = await order_repo.get_by_id(order.order_id)
+    assert fetched_order is not None
+    assert fetched_order.status == OrderStatus.ACTIVE
 
 
 @pytest.mark.asyncio
@@ -778,8 +794,10 @@ async def test_successful_payment_invalid_payload() -> None:
     payment_service = _payment_service(
         user_repo, advertiser_repo, order_repo, payment_repo
     )
-    user = _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000520"), "20")
-    _add_advertiser_profile(advertiser_repo, user.user_id)
+    user = await _seed_user(
+        user_repo, UUID("00000000-0000-0000-0000-000000000520"), "20"
+    )
+    await _add_advertiser_profile(advertiser_repo, user.user_id)
 
     message = FakeMessage(text=None, user=FakeUser(20, "adv", "Adv"), bot=FakeBot())
     message.successful_payment = FakeSuccessfulPayment(payload="bad", charge_id="c")

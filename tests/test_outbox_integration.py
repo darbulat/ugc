@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+import pytest
+
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.domain.entities import AdvertiserProfile, Order, OutboxEvent, User
@@ -29,7 +31,7 @@ class MockKafkaPublisher:
         self.should_fail = should_fail
         self.published_events = []
 
-    def publish(self, order):
+    async def publish(self, order):
         """Mock publish method."""
         if self.should_fail:
             raise Exception("Mock failure")
@@ -40,7 +42,8 @@ class MockKafkaPublisher:
 class TestOutboxIntegration:
     """Integration tests for outbox functionality."""
 
-    def test_payment_service_creates_outbox_event_on_activation(self) -> None:
+    @pytest.mark.asyncio
+    async def test_payment_service_creates_outbox_event_on_activation(self) -> None:
         """Payment service creates outbox event when order is activated."""
 
         # Setup repositories
@@ -60,13 +63,13 @@ class TestOutboxIntegration:
             issue_count=0,
             created_at=datetime.now(timezone.utc),
         )
-        user_repo.save(user)
+        await user_repo.save(user)
 
         profile = AdvertiserProfile(
             user_id=user.user_id,
             contact="test@example.com",
         )
-        advertiser_repo.save(profile)
+        await advertiser_repo.save(profile)
 
         # Setup order
         order = Order(
@@ -82,7 +85,7 @@ class TestOutboxIntegration:
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
         )
-        order_repo.save(order)
+        await order_repo.save(order)
 
         # Don't create payment upfront - let confirm_telegram_payment create it
         # This ensures the outbox event is created
@@ -101,7 +104,7 @@ class TestOutboxIntegration:
         )
 
         # Confirm payment (this should create outbox event)
-        result = payment_service.confirm_telegram_payment(
+        result = await payment_service.confirm_telegram_payment(
             user_id=user.user_id,
             order_id=order.order_id,
             provider_payment_charge_id="test_charge_123",
@@ -114,14 +117,14 @@ class TestOutboxIntegration:
         assert result.order_id == order.order_id
 
         # Verify order was NOT activated yet (activation happens via outbox)
-        updated_order = order_repo.get_by_id(order.order_id)
+        updated_order = await order_repo.get_by_id(order.order_id)
         assert updated_order is not None
         assert (
             updated_order.status == OrderStatus.NEW
         )  # Still NEW until outbox is processed
 
         # Verify outbox event was created
-        outbox_events = outbox_repo.get_pending_events()
+        outbox_events = await outbox_repo.get_pending_events()
         assert len(outbox_events) == 1
 
         event = outbox_events[0]
@@ -136,7 +139,8 @@ class TestOutboxIntegration:
         assert event.payload["bloggers_needed"] == order.bloggers_needed
         assert event.payload["price"] == order.price
 
-    def test_outbox_publisher_processes_event_successfully(self) -> None:
+    @pytest.mark.asyncio
+    async def test_outbox_publisher_processes_event_successfully(self) -> None:
         """Outbox publisher successfully processes pending event."""
 
         # Setup repositories
@@ -165,16 +169,16 @@ class TestOutboxIntegration:
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
         )
-        outbox_publisher.publish_order_activation(test_order)
+        await outbox_publisher.publish_order_activation(test_order)
 
         # Save the order in repository so it can be found during processing
-        order_repo.save(test_order)
+        await order_repo.save(test_order)
 
         # Process events
-        outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Get the processed event
-        pending_events = outbox_repo.get_pending_events()
+        pending_events = await outbox_repo.get_pending_events()
         assert len(pending_events) == 0  # Should be processed
         published_events = [
             e
@@ -192,7 +196,8 @@ class TestOutboxIntegration:
         published_order = kafka_publisher.published_events[0]
         assert published_order.order_id == UUID("00000000-0000-0000-0000-000000000001")
 
-    def test_outbox_publisher_handles_processing_failure(self) -> None:
+    @pytest.mark.asyncio
+    async def test_outbox_publisher_handles_processing_failure(self) -> None:
         """Outbox publisher handles processing failure with retries."""
 
         # Setup repositories
@@ -221,13 +226,13 @@ class TestOutboxIntegration:
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
         )
-        outbox_publisher.publish_order_activation(test_order)
+        await outbox_publisher.publish_order_activation(test_order)
 
         # Save the order in repository so it can be found during processing
-        order_repo.save(test_order)
+        await order_repo.save(test_order)
 
         # Process events (should fail and retry)
-        outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Get the failed event
         failed_events = [
@@ -242,7 +247,8 @@ class TestOutboxIntegration:
         assert updated_event.retry_count == 1
         assert "Mock failure" in updated_event.last_error
 
-    def test_outbox_publisher_handles_max_retries_exceeded(self) -> None:
+    @pytest.mark.asyncio
+    async def test_outbox_publisher_handles_max_retries_exceeded(self) -> None:
         """Outbox publisher marks event as permanently failed after max retries."""
 
         # Setup repositories
@@ -271,10 +277,10 @@ class TestOutboxIntegration:
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
         )
-        outbox_publisher.publish_order_activation(test_order)
+        await outbox_publisher.publish_order_activation(test_order)
 
         # Manually set retry count to max for the created event
-        pending_events = outbox_repo.get_pending_events()
+        pending_events = await outbox_repo.get_pending_events()
         assert len(pending_events) == 1
         event = pending_events[0]
         # Create a new event with updated retry count (since it's frozen)
@@ -290,13 +296,13 @@ class TestOutboxIntegration:
             retry_count=3,  # Set to max retries
             last_error=event.last_error,
         )
-        outbox_repo.save(updated_event)
+        await outbox_repo.save(updated_event)
 
         # Save the order in repository so it can be found during processing
-        order_repo.save(test_order)
+        await order_repo.save(test_order)
 
         # Process events (should mark as permanently failed)
-        outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Get the permanently failed event
         failed_events = [
@@ -311,7 +317,8 @@ class TestOutboxIntegration:
         assert updated_event.retry_count == 3
         assert "Max retries (3) exceeded" in updated_event.last_error
 
-    def test_end_to_end_outbox_flow(self) -> None:
+    @pytest.mark.asyncio
+    async def test_end_to_end_outbox_flow(self) -> None:
         """End-to-end test of outbox flow from payment to Kafka."""
 
         # Setup all repositories
@@ -331,13 +338,13 @@ class TestOutboxIntegration:
             issue_count=0,
             created_at=datetime.now(timezone.utc),
         )
-        user_repo.save(user)
+        await user_repo.save(user)
 
         profile = AdvertiserProfile(
             user_id=user.user_id,
             contact="test@example.com",
         )
-        advertiser_repo.save(profile)
+        await advertiser_repo.save(profile)
 
         # Setup order
         order = Order(
@@ -353,7 +360,7 @@ class TestOutboxIntegration:
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
         )
-        order_repo.save(order)
+        await order_repo.save(order)
 
         # Don't create payment upfront - let confirm_telegram_payment create it
 
@@ -374,7 +381,7 @@ class TestOutboxIntegration:
         kafka_publisher = MockKafkaPublisher()
 
         # 1. Confirm payment (creates outbox event)
-        payment_service.confirm_telegram_payment(
+        await payment_service.confirm_telegram_payment(
             user_id=user.user_id,
             order_id=order.order_id,
             provider_payment_charge_id="test_charge_123",
@@ -383,16 +390,16 @@ class TestOutboxIntegration:
         )
 
         # 2. Process outbox events (activates order and publishes to Kafka)
-        outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify complete flow
         # Order should be activated after outbox processing
-        updated_order = order_repo.get_by_id(order.order_id)
+        updated_order = await order_repo.get_by_id(order.order_id)
         assert updated_order is not None
         assert updated_order.status == OrderStatus.ACTIVE
 
         # Outbox event should be published
-        outbox_events = outbox_repo.get_pending_events()
+        outbox_events = await outbox_repo.get_pending_events()
         assert len(outbox_events) == 0  # No pending events left
 
         published_events = [

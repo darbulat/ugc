@@ -42,7 +42,7 @@ async def handle_offer_response(
     if callback.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(callback.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -55,7 +55,7 @@ async def handle_offer_response(
     if user.status == UserStatus.PAUSE:
         await callback.answer("Пользователи на паузе не могут откликаться.")
         return
-    blogger_profile = profile_service.get_blogger_profile(user.user_id)
+    blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
         await callback.answer("Профиль блогера не заполнен. Команда: /register")
         return
@@ -75,7 +75,7 @@ async def handle_offer_response(
         return
 
     try:
-        result = await offer_response_service.respond_and_finalize_async(
+        result = await offer_response_service.respond_and_finalize(
             order_id, user.user_id
         )
     except OrderCreationError as exc:
@@ -132,8 +132,8 @@ async def _send_contact_immediately(
     """Send contact to advertiser immediately after each response."""
 
     # Get blogger info
-    user = user_role_service.get_user_by_id(blogger_id)
-    profile = profile_service.get_blogger_profile(blogger_id)
+    user = await user_role_service.get_user_by_id(blogger_id)
+    profile = await profile_service.get_blogger_profile(blogger_id)
     if user is None or profile is None:
         logger.warning(
             "Cannot send contact: user or profile not found",
@@ -153,7 +153,7 @@ async def _send_contact_immediately(
     )
 
     # Send to advertiser
-    advertiser = user_role_service.get_user_by_id(order.advertiser_id)
+    advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
     if advertiser and bot and advertiser.external_id.isdigit():
         await send_with_retry(
             bot,
@@ -179,7 +179,7 @@ async def _send_contact_immediately(
 
     # Create interaction for feedback tracking (72 hour timer starts)
     if interaction_service:
-        interaction_service.create_for_contacts_sent(
+        await interaction_service.create_for_contacts_sent(
             order_id=order.order_id,
             blogger_id=blogger_id,
             advertiser_id=order.advertiser_id,

@@ -30,17 +30,17 @@ class OrderService:
     order_repo: OrderRepository
     metrics_collector: Optional[Any] = None
 
-    def is_new_advertiser(self, advertiser_id: UUID) -> bool:
+    async def is_new_advertiser(self, advertiser_id: UUID) -> bool:
         """Return True when advertiser has no previous orders."""
 
-        return self.order_repo.count_by_advertiser(advertiser_id) == 0
+        return await self.order_repo.count_by_advertiser(advertiser_id) == 0
 
-    def list_by_advertiser(self, advertiser_id: UUID) -> list[Order]:
+    async def list_by_advertiser(self, advertiser_id: UUID) -> list[Order]:
         """List orders for advertiser."""
 
-        return list(self.order_repo.list_by_advertiser(advertiser_id))
+        return list(await self.order_repo.list_by_advertiser(advertiser_id))
 
-    def create_order(
+    async def create_order(
         self,
         advertiser_id: UUID,
         product_link: str,
@@ -52,11 +52,11 @@ class OrderService:
     ) -> Order:
         """Create an order after validating input."""
 
-        user = self.user_repo.get_by_id(advertiser_id)
+        user = await self.user_repo.get_by_id(advertiser_id)
         if user is None:
             raise UserNotFoundError("Advertiser not found.")
 
-        advertiser_profile = self.advertiser_repo.get_by_user_id(advertiser_id)
+        advertiser_profile = await self.advertiser_repo.get_by_user_id(advertiser_id)
         if advertiser_profile is None:
             raise OrderCreationError("Advertiser profile is not set.")
 
@@ -80,7 +80,7 @@ class OrderService:
             raise OrderCreationError("Invalid bloggers count.")
 
         barter_description = (barter_description or "").strip() or None
-        is_new = self.is_new_advertiser(advertiser_id)
+        is_new = await self.is_new_advertiser(advertiser_id)
         if is_new and barter_description:
             raise OrderCreationError("Barter is not available for NEW advertisers.")
         if is_new and bloggers_needed > 10:
@@ -99,7 +99,7 @@ class OrderService:
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
         )
-        self.order_repo.save(order)
+        await self.order_repo.save(order)
 
         logger.info(
             "Order created",

@@ -20,7 +20,7 @@ class OutboxPublisher:
     outbox_repo: OutboxRepository
     order_repo: OrderRepository
 
-    def publish_order_activation(
+    async def publish_order_activation(
         self, order: Order, session: object | None = None
     ) -> None:
         """Publish order activation event to outbox."""
@@ -44,7 +44,7 @@ class OutboxPublisher:
             retry_count=0,
             last_error=None,
         )
-        self.outbox_repo.save(event, session=session)
+        await self.outbox_repo.save(event, session=session)
 
     def _create_event_from_order(self, order: Order) -> OutboxEvent:
         """Create outbox event from order (for testing)."""
@@ -68,17 +68,17 @@ class OutboxPublisher:
             last_error=None,
         )
 
-    def process_pending_events(
+    async def process_pending_events(
         self, kafka_publisher: OrderActivationPublisher, max_retries: int = 3
     ) -> None:
         """Process pending events from outbox."""
 
-        pending_events = self.outbox_repo.get_pending_events()
+        pending_events = await self.outbox_repo.get_pending_events()
 
         for event in pending_events:
             if event.retry_count >= max_retries:
                 # Mark as permanently failed
-                self.outbox_repo.mark_as_failed(
+                await self.outbox_repo.mark_as_failed(
                     event.event_id,
                     f"Max retries ({max_retries}) exceeded",
                     event.retry_count,
@@ -87,33 +87,33 @@ class OutboxPublisher:
 
             try:
                 # Mark as processing
-                self.outbox_repo.mark_as_processing(event.event_id)
+                await self.outbox_repo.mark_as_processing(event.event_id)
 
                 # Process the event based on type
                 if event.event_type == "order.activated":
-                    self._process_order_activation(event, kafka_publisher)
+                    await self._process_order_activation(event, kafka_publisher)
                 else:
                     raise ValueError(f"Unknown event type: {event.event_type}")
 
                 # Mark as published
-                self.outbox_repo.mark_as_published(
+                await self.outbox_repo.mark_as_published(
                     event.event_id, datetime.now(timezone.utc)
                 )
 
             except Exception as e:
                 # Mark as failed and increment retry count
-                self.outbox_repo.mark_as_failed(
+                await self.outbox_repo.mark_as_failed(
                     event.event_id, str(e), event.retry_count + 1
                 )
 
-    def _process_order_activation(
+    async def _process_order_activation(
         self, event: OutboxEvent, kafka_publisher: OrderActivationPublisher
     ) -> None:
         """Process order activation event."""
 
         # Get the order from repository
         order_id = UUID(event.payload["order_id"])
-        order = self.order_repo.get_by_id(order_id)
+        order = await self.order_repo.get_by_id(order_id)
         if order is None:
             raise ValueError(f"Order {order_id} not found")
 
@@ -131,7 +131,7 @@ class OutboxPublisher:
             created_at=order.created_at,
             contacts_sent_at=order.contacts_sent_at,
         )
-        self.order_repo.save(activated_order)
+        await self.order_repo.save(activated_order)
 
         # Publish to Kafka
-        kafka_publisher.publish(activated_order)
+        await kafka_publisher.publish(activated_order)

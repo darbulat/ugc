@@ -19,7 +19,7 @@ class BloggerRegistrationService:
     blogger_repo: BloggerProfileRepository
     metrics_collector: Optional[Any] = None
 
-    def register_blogger(
+    async def register_blogger(
         self,
         user_id: UUID,
         instagram_url: str,
@@ -32,7 +32,7 @@ class BloggerRegistrationService:
     ) -> BloggerProfile:
         """Create a blogger profile after validating input."""
 
-        user = self.user_repo.get_by_id(user_id)
+        user = await self.user_repo.get_by_id(user_id)
         if user is None:
             raise UserNotFoundError("User not found for blogger registration.")
 
@@ -41,7 +41,7 @@ class BloggerRegistrationService:
             raise BloggerRegistrationError("Instagram URL is required.")
 
         # Check if Instagram URL is already taken
-        existing_profile = self.blogger_repo.get_by_instagram_url(instagram_url)
+        existing_profile = await self.blogger_repo.get_by_instagram_url(instagram_url)
         if existing_profile is not None:
             raise BloggerRegistrationError(
                 "Этот Instagram аккаунт уже зарегистрирован. "
@@ -72,7 +72,7 @@ class BloggerRegistrationService:
             price=price,
             updated_at=datetime.now(timezone.utc),
         )
-        self.blogger_repo.save(profile)
+        await self.blogger_repo.save(profile)
 
         if self.metrics_collector:
             self.metrics_collector.record_blogger_registration(str(user.user_id))

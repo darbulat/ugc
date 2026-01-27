@@ -96,7 +96,7 @@ async def test_notify_user_verification_missing_telegram_user(
         issue_count=0,
         created_at=None,
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     service = InstagramVerificationService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
@@ -134,8 +134,8 @@ async def test_notify_user_verification_success(test_config: AppConfig) -> None:
         issue_count=0,
         created_at=None,
     )
-    user_repo.save(user)
-    blogger_repo.save(
+    await user_repo.save(user)
+    await blogger_repo.save(
         BloggerProfile(
             user_id=user.user_id,
             instagram_url="https://instagram.com/test_user",
@@ -238,7 +238,8 @@ def test_webhook_verification_missing_challenge(
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
 @patch("ugc_bot.instagram_webhook_app.Container")
-def test_webhook_event_processing_success(
+@pytest.mark.asyncio
+async def test_webhook_event_processing_success(
     mock_container_cls: MagicMock,
     mock_load_config: MagicMock,
     client: TestClient,
@@ -261,9 +262,9 @@ def test_webhook_event_processing_success(
         issue_count=0,
         created_at=None,
     )
-    user_repo.save(user)
+    await user_repo.save(user)
 
-    blogger_repo.save(
+    await blogger_repo.save(
         BloggerProfile(
             user_id=user.user_id,
             instagram_url="https://instagram.com/test_user",
@@ -284,7 +285,7 @@ def test_webhook_event_processing_success(
         verification_repo=verification_repo,
         instagram_api_client=None,
     )
-    verification = verification_service.generate_code(user.user_id)
+    verification = await verification_service.generate_code(user.user_id)
 
     mock_container_cls.return_value.build_instagram_verification_service.return_value = verification_service
 
@@ -325,7 +326,7 @@ def test_webhook_event_processing_success(
     assert response.json() == {"status": "ok"}
 
     # Verify profile was confirmed
-    profile = blogger_repo.get_by_user_id(user.user_id)
+    profile = await blogger_repo.get_by_user_id(user.user_id)
     assert profile is not None
     assert profile.confirmed is True
 

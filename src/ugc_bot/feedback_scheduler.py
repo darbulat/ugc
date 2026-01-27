@@ -62,10 +62,12 @@ def _feedback_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
     )
 
 
-def _iter_due_interactions(interaction_repo, cutoff: datetime) -> Iterable[Interaction]:
+async def _iter_due_interactions(
+    interaction_repo, cutoff: datetime
+) -> Iterable[Interaction]:
     """List interactions due for feedback."""
 
-    return interaction_repo.list_due_for_feedback(cutoff)
+    return await interaction_repo.list_due_for_feedback(cutoff)
 
 
 async def _send_feedback_requests(
@@ -76,8 +78,8 @@ async def _send_feedback_requests(
 ) -> None:
     """Send feedback requests to both sides for a single interaction."""
 
-    blogger = user_role_service.get_user_by_id(interaction.blogger_id)
-    advertiser = user_role_service.get_user_by_id(interaction.advertiser_id)
+    blogger = await user_role_service.get_user_by_id(interaction.blogger_id)
+    advertiser = await user_role_service.get_user_by_id(interaction.advertiser_id)
 
     # Send to advertiser if not yet responded
     if advertiser and interaction.from_advertiser is None:
@@ -133,7 +135,7 @@ async def run_once(
 ) -> None:
     """Run a single feedback dispatch cycle."""
 
-    for interaction in _iter_due_interactions(interaction_repo, cutoff):
+    for interaction in await _iter_due_interactions(interaction_repo, cutoff):
         try:
             await _send_feedback_requests(
                 bot,

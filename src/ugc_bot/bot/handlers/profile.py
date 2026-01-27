@@ -23,7 +23,7 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
     if message.from_user is None:
         return
 
-    user = profile_service.get_user_by_external(
+    user = await profile_service.get_user_by_external(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -31,8 +31,8 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
         await message.answer("Профиль не найден. Выберите роль через /role.")
         return
 
-    blogger = profile_service.get_blogger_profile(user.user_id)
-    advertiser = profile_service.get_advertiser_profile(user.user_id)
+    blogger = await profile_service.get_blogger_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
     roles: list[str] = []
     if blogger is not None:
         roles.append("blogger")

@@ -1,14 +1,14 @@
 """Integration test fixtures for full user flows."""
 
+import asyncio
 from typing import Generator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiogram import Bot
+from aiogram import Bot, Dispatcher
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from ugc_bot.app import build_dispatcher
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.session import create_session_factory
@@ -42,9 +42,22 @@ def engine(test_database_url: str):
 
 
 @pytest.fixture(scope="function")
-def session_factory(engine) -> Generator[object, None, None]:
+def session_factory(
+    engine, request: pytest.FixtureRequest
+) -> Generator[object, None, None]:
     """Create session factory for tests."""
     session_factory = create_session_factory(str(engine.url))
+    async_engine = session_factory.kw["bind"]
+
+    def _dispose_engine() -> None:
+        # Ensure any `aiosqlite` worker threads are stopped before interpreter shutdown.
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(async_engine.dispose())
+        finally:
+            loop.close()
+
+    request.addfinalizer(_dispose_engine)
     yield session_factory
 
 
@@ -86,28 +99,17 @@ def config(test_database_url: str) -> AppConfig:
 
 
 @pytest.fixture(scope="function")
-def dispatcher(session_factory, mock_bot: Bot):
+def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     """Create dispatcher with real services for integration tests."""
-    # Create a config that uses the same session_factory
-    config = AppConfig.model_validate(
-        {
-            "BOT_TOKEN": "test_token_123",
-            "DATABASE_URL": "sqlite:///:memory:",
-            "KAFKA_ENABLED": False,
-            "FEEDBACK_ENABLED": False,
-            "ADMIN_USERNAME": "test_admin",
-            "ADMIN_PASSWORD": "test_pass",
-            "ADMIN_SECRET": "test_secret",
-            "TELEGRAM_PROVIDER_TOKEN": "test_provider_token",
-        }
-    )
-
-    # Use MemoryStorage for tests
+    # Build dispatcher without calling `build_dispatcher`, to avoid creating
+    # an extra async engine / session_factory that is hard to dispose in tests.
     from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
-    dispatcher = build_dispatcher(config, include_routers=False, storage=storage)
-    # Override the session factory in all repositories to use the test one
+    dispatcher = Dispatcher(storage=storage)
+    dispatcher["config"] = config
+
+    # Provide repositories/services wired to the test `session_factory`
     from ugc_bot.infrastructure.db.repositories import (
         SqlAlchemyUserRepository,
         SqlAlchemyOrderRepository,

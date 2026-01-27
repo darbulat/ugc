@@ -86,7 +86,7 @@ async def test_start_advertiser_registration_sets_state() -> None:
 
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
-    service.set_user(
+    await service.set_user(
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
@@ -114,7 +114,7 @@ async def test_start_advertiser_registration_blocked_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(blocked_user)
+    await repo.save(blocked_user)
     service = UserRoleService(user_repo=repo)
     message = FakeMessage(text=None, user=FakeUser(11, "blocked", "Blocked"))
     state = FakeFSMContext()
@@ -139,7 +139,7 @@ async def test_start_advertiser_registration_paused_user() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(paused_user)
+    await repo.save(paused_user)
     service = UserRoleService(user_repo=repo)
     message = FakeMessage(text=None, user=FakeUser(12, "paused", "Paused"))
     state = FakeFSMContext()
@@ -177,7 +177,7 @@ async def test_handle_contact_success() -> None:
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
     )
-    user = user_service.set_user(
+    user = await user_service.set_user(
         external_id="20",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
@@ -191,4 +191,5 @@ async def test_handle_contact_success() -> None:
 
     assert message.answers
     assert "Профиль рекламодателя создан" in message.answers[0]
-    assert advertiser_repo.get_by_user_id(user.user_id) is not None
+    profile = await advertiser_repo.get_by_user_id(user.user_id)
+    assert profile is not None

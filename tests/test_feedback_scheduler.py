@@ -96,9 +96,11 @@ async def test_run_once_sends_feedback_requests() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
-    advertiser_repo.save(AdvertiserProfile(user_id=advertiser.user_id, contact="c"))
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=advertiser.user_id, contact="c")
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000962"),
@@ -113,8 +115,8 @@ async def test_run_once_sends_feedback_requests() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
-    order_repo.save(order)
-    response_repo.save(
+    await order_repo.save(order)
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000963"),
             order_id=order.order_id,
@@ -124,7 +126,7 @@ async def test_run_once_sends_feedback_requests() -> None:
     )
 
     # Create interaction with next_check_at in the past
-    interaction = interaction_service.create_for_contacts_sent(
+    interaction = await interaction_service.create_for_contacts_sent(
         order_id=order.order_id,
         blogger_id=blogger.user_id,
         advertiser_id=advertiser.user_id,
@@ -143,7 +145,7 @@ async def test_run_once_sends_feedback_requests() -> None:
         created_at=interaction.created_at,
         updated_at=interaction.updated_at,
     )
-    interaction_repo.save(past_interaction)
+    await interaction_repo.save(past_interaction)
 
     bot = FakeBot()
     await run_once(
@@ -166,7 +168,7 @@ async def test_run_once_skips_active_orders() -> None:
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
     # Create interaction with future next_check_at (should be skipped)
-    interaction_repo.save(
+    await interaction_repo.save(
         Interaction(
             interaction_id=UUID("00000000-0000-0000-0000-000000000970"),
             order_id=UUID("00000000-0000-0000-0000-000000000971"),
@@ -243,8 +245,8 @@ async def test_run_once_existing_feedback_no_messages() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(advertiser)
-    user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000982"),
@@ -259,8 +261,8 @@ async def test_run_once_existing_feedback_no_messages() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
-    order_repo.save(order)
-    response_repo.save(
+    await order_repo.save(order)
+    await response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000983"),
             order_id=order.order_id,
@@ -268,7 +270,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
             responded_at=datetime.now(timezone.utc),
         )
     )
-    interaction_repo.save(
+    await interaction_repo.save(
         Interaction(
             interaction_id=UUID("00000000-0000-0000-0000-000000000984"),
             order_id=order.order_id,

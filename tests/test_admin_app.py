@@ -179,7 +179,7 @@ async def test_interaction_admin_update_model_resolve_issue() -> None:
     data = {"status": InteractionStatus.OK}
 
     mock_interaction_service = MagicMock()
-    mock_interaction_service.manually_resolve_issue = MagicMock()
+    mock_interaction_service.manually_resolve_issue = AsyncMock()
 
     with patch.object(
         InteractionAdmin.__bases__[0], "update_model", new_callable=AsyncMock
@@ -241,7 +241,7 @@ async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
     data = {"status": InteractionStatus.NO_DEAL}
 
     mock_interaction_service = MagicMock()
-    mock_interaction_service.manually_resolve_issue = MagicMock()
+    mock_interaction_service.manually_resolve_issue = AsyncMock()
 
     with patch.object(
         InteractionAdmin.__bases__[0], "update_model", new_callable=AsyncMock
@@ -298,9 +298,9 @@ async def test_complaint_admin_update_model_action_taken() -> None:
     data = {"status": ComplaintStatus.ACTION_TAKEN}
 
     mock_user_service = MagicMock()
-    mock_user_service.update_status = MagicMock()
+    mock_user_service.update_status = AsyncMock()
     mock_complaint_service = MagicMock()
-    mock_complaint_service.resolve_complaint_with_action = MagicMock()
+    mock_complaint_service.resolve_complaint_with_action = AsyncMock()
 
     with patch.object(
         ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock
@@ -363,7 +363,7 @@ async def test_complaint_admin_update_model_dismissed() -> None:
     data = {"status": ComplaintStatus.DISMISSED}
 
     mock_complaint_service = MagicMock()
-    mock_complaint_service.dismiss_complaint = MagicMock()
+    mock_complaint_service.dismiss_complaint = AsyncMock()
 
     with patch.object(
         ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock

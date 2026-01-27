@@ -50,7 +50,7 @@ async def handle_feedback(
         await callback.answer("Неверный идентификатор.")
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(callback.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -59,7 +59,9 @@ async def handle_feedback(
         return
 
     try:
-        interaction = interaction_service.interaction_repo.get_by_id(interaction_id)
+        interaction = await interaction_service.interaction_repo.get_by_id(
+            interaction_id
+        )
         if interaction is None:
             await callback.answer("Взаимодействие не найдено.")
             return
@@ -72,11 +74,11 @@ async def handle_feedback(
             return
 
         if kind == "adv":
-            updated_interaction = interaction_service.record_advertiser_feedback(
+            updated_interaction = await interaction_service.record_advertiser_feedback(
                 interaction_id, feedback_text
             )
         else:
-            updated_interaction = interaction_service.record_blogger_feedback(
+            updated_interaction = await interaction_service.record_blogger_feedback(
                 interaction_id, feedback_text
             )
 

@@ -54,7 +54,7 @@ async def select_complaint_target(
     if callback.from_user is None or not callback.data:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(callback.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -75,7 +75,7 @@ async def select_complaint_target(
         await callback.answer("Неверный формат идентификатора.")
         return
 
-    order = order_service.order_repo.get_by_id(order_id)
+    order = await order_service.order_repo.get_by_id(order_id)
     if order is None:
         await callback.answer("Заказ не найден.")
         return
@@ -83,14 +83,14 @@ async def select_complaint_target(
     # Verify user has access to this order
     if order.advertiser_id == user.user_id:
         # Advertiser: show list of bloggers who responded
-        responses = offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.response_repo.list_by_order(order_id)
         if not responses:
             await callback.answer("Нет блогеров для жалобы.")
             return
 
         buttons = []
         for response in responses:
-            blogger = user_role_service.get_user_by_id(response.blogger_id)
+            blogger = await user_role_service.get_user_by_id(response.blogger_id)
             blogger_name = (
                 blogger.username
                 if blogger
@@ -111,14 +111,14 @@ async def select_complaint_target(
         )
     else:
         # Blogger: complain about advertiser
-        responses = offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.response_repo.list_by_order(order_id)
         if not any(response.blogger_id == user.user_id for response in responses):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
 
         # Blogger: complain about advertiser
         # Verify access
-        responses = offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.response_repo.list_by_order(order_id)
         if not any(response.blogger_id == user.user_id for response in responses):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
@@ -165,7 +165,7 @@ async def start_complaint(
     if callback.from_user is None or not callback.data:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(callback.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -187,7 +187,7 @@ async def start_complaint(
         await callback.answer("Неверный формат идентификатора.")
         return
 
-    order = order_service.order_repo.get_by_id(order_id)
+    order = await order_service.order_repo.get_by_id(order_id)
     if order is None:
         await callback.answer("Заказ не найден.")
         return
@@ -195,14 +195,14 @@ async def start_complaint(
     # Verify user has access to this order
     if order.advertiser_id != user.user_id:
         # Check if user is a blogger who responded to this order
-        responses = offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.response_repo.list_by_order(order_id)
         if not any(response.blogger_id == user.user_id for response in responses):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
 
     # Verify reported_id is valid (either advertiser or blogger from this order)
     if reported_id != order.advertiser_id:
-        responses = offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.response_repo.list_by_order(order_id)
         if not any(response.blogger_id == reported_id for response in responses):
             await callback.answer("Неверный идентификатор пользователя.")
             return
@@ -272,7 +272,7 @@ async def handle_complaint_reason(
 
     # Create complaint with selected reason
     try:
-        complaint_service.create_complaint(
+        await complaint_service.create_complaint(
             reporter_id=reporter_id,
             reported_id=reported_id,
             order_id=order_id,
@@ -328,7 +328,7 @@ async def handle_complaint_reason_text(
         full_reason = reason_text
 
     try:
-        complaint_service.create_complaint(
+        await complaint_service.create_complaint(
             reporter_id=reporter_id,
             reported_id=reported_id,
             order_id=order_id,

@@ -29,7 +29,8 @@ def _order() -> Order:
     )
 
 
-def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
     """Publish activation event."""
 
     sent = []
@@ -54,12 +55,13 @@ def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
         bootstrap_servers="kafka:9092",
         topic="order_activated",
     )
-    publisher.publish(_order())
+    await publisher.publish(_order())
 
     assert sent
 
 
-def test_kafka_publisher_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_kafka_publisher_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     """Swallow Kafka errors."""
 
     class FakeProducer:
@@ -81,11 +83,12 @@ def test_kafka_publisher_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None
         bootstrap_servers="kafka:9092",
         topic="order_activated",
     )
-    publisher.publish(_order())
+    await publisher.publish(_order())
 
 
-def test_noop_publisher() -> None:
+@pytest.mark.asyncio
+async def test_noop_publisher() -> None:
     """Noop publisher does nothing."""
 
     publisher = NoopOrderActivationPublisher()
-    publisher.publish(_order())
+    await publisher.publish(_order())

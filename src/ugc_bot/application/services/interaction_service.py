@@ -22,7 +22,7 @@ class InteractionService:
     max_postpone_count: int = 3
     metrics_collector: Optional[Any] = None
 
-    def create_for_contacts_sent(
+    async def create_for_contacts_sent(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Interaction:
         """Create interaction when contacts are sent, with initial next_check_at."""
@@ -43,15 +43,15 @@ class InteractionService:
             created_at=now,
             updated_at=now,
         )
-        self.interaction_repo.save(interaction)
+        await self.interaction_repo.save(interaction)
         return interaction
 
-    def get_or_create(
+    async def get_or_create(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Interaction:
         """Fetch existing interaction or create a new one."""
 
-        existing = self.interaction_repo.get_by_participants(
+        existing = await self.interaction_repo.get_by_participants(
             order_id=order_id, blogger_id=blogger_id, advertiser_id=advertiser_id
         )
         if existing is not None:
@@ -71,20 +71,22 @@ class InteractionService:
             created_at=now,
             updated_at=now,
         )
-        self.interaction_repo.save(interaction)
+        await self.interaction_repo.save(interaction)
         return interaction
 
-    def record_advertiser_feedback(
+    async def record_advertiser_feedback(
         self, interaction_id: UUID, feedback_text: str
     ) -> Interaction:
         """Record advertiser feedback and update status."""
 
-        interaction = self._require(interaction_id)
+        interaction = await self._require(interaction_id)
         outcome = self._parse_feedback(feedback_text)
 
         # Handle postpone case
         if outcome == InteractionStatus.PENDING:
-            return self._postpone_interaction(interaction, "advertiser", feedback_text)
+            return await self._postpone_interaction(
+                interaction, "advertiser", feedback_text
+            )
 
         # Check if we need to auto-resolve after max postpones
         if interaction.postpone_count >= self.max_postpone_count:
@@ -106,7 +108,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        self.interaction_repo.save(updated)
+        await self.interaction_repo.save(updated)
 
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
@@ -119,17 +121,19 @@ class InteractionService:
 
         return updated
 
-    def record_blogger_feedback(
+    async def record_blogger_feedback(
         self, interaction_id: UUID, feedback_text: str
     ) -> Interaction:
         """Record blogger feedback and update status."""
 
-        interaction = self._require(interaction_id)
+        interaction = await self._require(interaction_id)
         outcome = self._parse_feedback(feedback_text)
 
         # Handle postpone case
         if outcome == InteractionStatus.PENDING:
-            return self._postpone_interaction(interaction, "blogger", feedback_text)
+            return await self._postpone_interaction(
+                interaction, "blogger", feedback_text
+            )
 
         # Check if we need to auto-resolve after max postpones
         if interaction.postpone_count >= self.max_postpone_count:
@@ -151,7 +155,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        self.interaction_repo.save(updated)
+        await self.interaction_repo.save(updated)
 
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
@@ -164,7 +168,7 @@ class InteractionService:
 
         return updated
 
-    def _postpone_interaction(
+    async def _postpone_interaction(
         self, interaction: Interaction, side: str, feedback_text: str
     ) -> Interaction:
         """Postpone interaction check by 72 hours."""
@@ -197,7 +201,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        self.interaction_repo.save(updated)
+        await self.interaction_repo.save(updated)
 
         # Record postponement metric
         if self.metrics_collector:
@@ -208,8 +212,8 @@ class InteractionService:
 
         return updated
 
-    def _require(self, interaction_id: UUID) -> Interaction:
-        interaction = self.interaction_repo.get_by_id(interaction_id)
+    async def _require(self, interaction_id: UUID) -> Interaction:
+        interaction = await self.interaction_repo.get_by_id(interaction_id)
         if interaction is None:
             raise ValueError("Interaction not found.")
         return interaction
@@ -281,7 +285,7 @@ class InteractionService:
 
         return InteractionStatus.NO_DEAL
 
-    def manually_resolve_issue(
+    async def manually_resolve_issue(
         self, interaction_id: UUID, final_status: InteractionStatus
     ) -> Interaction:
         """Manually resolve ISSUE interaction with final status."""
@@ -291,7 +295,7 @@ class InteractionService:
                 "Final status must be OK or NO_DEAL for manual resolution."
             )
 
-        interaction = self._require(interaction_id)
+        interaction = await self._require(interaction_id)
         if interaction.status != InteractionStatus.ISSUE:
             raise ValueError("Interaction is not in ISSUE status.")
 
@@ -308,7 +312,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        self.interaction_repo.save(resolved)
+        await self.interaction_repo.save(resolved)
 
         logger.info(
             "Interaction issue manually resolved",

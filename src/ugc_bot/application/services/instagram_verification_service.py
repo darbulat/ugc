@@ -28,10 +28,10 @@ class InstagramVerificationService:
     verification_repo: InstagramVerificationRepository
     instagram_api_client: InstagramGraphApiClient | None = None
 
-    def generate_code(self, user_id: UUID) -> InstagramVerificationCode:
+    async def generate_code(self, user_id: UUID) -> InstagramVerificationCode:
         """Generate and store a new verification code."""
 
-        if self.user_repo.get_by_id(user_id) is None:
+        if await self.user_repo.get_by_id(user_id) is None:
             raise UserNotFoundError("User not found for Instagram verification.")
 
         code = _generate_code()
@@ -44,23 +44,23 @@ class InstagramVerificationService:
             used=False,
             created_at=now,
         )
-        self.verification_repo.save(verification)
+        await self.verification_repo.save(verification)
         return verification
 
-    def verify_code(self, user_id: UUID, code: str) -> bool:
+    async def verify_code(self, user_id: UUID, code: str) -> bool:
         """Validate code and confirm blogger profile."""
 
-        profile = self.blogger_repo.get_by_user_id(user_id)
+        profile = await self.blogger_repo.get_by_user_id(user_id)
         if profile is None:
             raise BloggerRegistrationError("Blogger profile not found.")
 
-        valid_code = self.verification_repo.get_valid_code(
+        valid_code = await self.verification_repo.get_valid_code(
             user_id, code.strip().upper()
         )
         if valid_code is None:
             return False
 
-        self.verification_repo.mark_used(valid_code.code_id)
+        await self.verification_repo.mark_used(valid_code.code_id)
         confirmed_profile = profile.__class__(
             user_id=profile.user_id,
             instagram_url=profile.instagram_url,
@@ -73,7 +73,7 @@ class InstagramVerificationService:
             price=profile.price,
             updated_at=datetime.now(timezone.utc),
         )
-        self.blogger_repo.save(confirmed_profile)
+        await self.blogger_repo.save(confirmed_profile)
         return True
 
     async def verify_code_by_instagram_sender(
@@ -101,13 +101,13 @@ class InstagramVerificationService:
         code_upper = code.strip().upper()
 
         # Find valid code by code string
-        valid_code = self.verification_repo.get_valid_code_by_code(code_upper)
+        valid_code = await self.verification_repo.get_valid_code_by_code(code_upper)
         if valid_code is None:
             logger.debug("No valid code found for webhook verification")
             return None
 
         # Get blogger profile
-        profile = self.blogger_repo.get_by_user_id(valid_code.user_id)
+        profile = await self.blogger_repo.get_by_user_id(valid_code.user_id)
         if profile is None:
             logger.warning(
                 "Blogger profile not found for verification code",
@@ -172,7 +172,7 @@ class InstagramVerificationService:
         )
 
         # Mark code as used and confirm profile
-        self.verification_repo.mark_used(valid_code.code_id)
+        await self.verification_repo.mark_used(valid_code.code_id)
         confirmed_profile = profile.__class__(
             user_id=profile.user_id,
             instagram_url=profile.instagram_url,
@@ -185,7 +185,7 @@ class InstagramVerificationService:
             price=profile.price,
             updated_at=datetime.now(timezone.utc),
         )
-        self.blogger_repo.save(confirmed_profile)
+        await self.blogger_repo.save(confirmed_profile)
         logger.info(
             "Instagram profile confirmed via webhook",
             extra={"user_id": str(valid_code.user_id)},

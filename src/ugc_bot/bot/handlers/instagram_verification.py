@@ -36,7 +36,7 @@ async def start_verification(
     if message.from_user is None:
         return
 
-    user = user_role_service.get_user(
+    user = await user_role_service.get_user(
         external_id=str(message.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
@@ -51,13 +51,13 @@ async def start_verification(
     if user.status == UserStatus.PAUSE:
         await message.answer("Пользователи на паузе не могут подтверждать аккаунт.")
         return
-    blogger_profile = profile_service.get_blogger_profile(user.user_id)
+    blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
         await message.answer("Профиль блогера не заполнен. Команда: /register")
         return
 
     try:
-        verification = instagram_verification_service.generate_code(user.user_id)
+        verification = await instagram_verification_service.generate_code(user.user_id)
     except (BloggerRegistrationError, UserNotFoundError) as exc:
         logger.warning(
             "Instagram verification start failed",

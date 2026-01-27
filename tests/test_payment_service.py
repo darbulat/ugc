@@ -1,11 +1,11 @@
 """Tests for Telegram payment service."""
 
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
@@ -43,7 +43,7 @@ def _service(
     )
 
 
-def _seed_user(
+async def _seed_user(
     repo: InMemoryUserRepository,
     advertiser_repo: InMemoryAdvertiserProfileRepository,
 ) -> UUID:
@@ -58,12 +58,14 @@ def _seed_user(
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    repo.save(user)
-    advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact="contact"))
+    await repo.save(user)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=user.user_id, contact="contact")
+    )
     return user.user_id
 
 
-def _seed_order(repo: InMemoryOrderRepository, user_id: UUID) -> UUID:
+async def _seed_order(repo: InMemoryOrderRepository, user_id: UUID) -> UUID:
     """Seed order."""
 
     order = Order(
@@ -79,22 +81,23 @@ def _seed_order(repo: InMemoryOrderRepository, user_id: UUID) -> UUID:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    repo.save(order)
+    await repo.save(order)
     return order.order_id
 
 
-def test_confirm_payment_success() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_success() -> None:
     """Confirm payment activates order and stores payment."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo, advertiser_repo)
-    order_id = _seed_order(order_repo, user_id)
+    user_id = await _seed_user(user_repo, advertiser_repo)
+    order_id = await _seed_order(order_repo, user_id)
 
     service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
-    payment = service.confirm_telegram_payment(
+    payment = await service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
         provider_payment_charge_id="charge_1",
@@ -106,28 +109,35 @@ def test_confirm_payment_success() -> None:
     assert payment.amount == 1000.0
 
     # Order should still be NEW until outbox is processed
-    assert order_repo.get_by_id(order_id).status == OrderStatus.NEW
+    order = await order_repo.get_by_id(order_id)
+    assert order is not None
+    assert order.status == OrderStatus.NEW
 
     # Process outbox events to activate order
     from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
 
     kafka_publisher = NoopOrderActivationPublisher()
-    service.outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+    await service.outbox_publisher.process_pending_events(
+        kafka_publisher, max_retries=3
+    )
 
     # Now order should be activated
-    assert order_repo.get_by_id(order_id).status == OrderStatus.ACTIVE
+    order = await order_repo.get_by_id(order_id)
+    assert order is not None
+    assert order.status == OrderStatus.ACTIVE
 
 
-def test_confirm_payment_idempotent() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_idempotent() -> None:
     """Return existing payment if already paid."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo, advertiser_repo)
-    order_id = _seed_order(order_repo, user_id)
-    payment_repo.save(
+    user_id = await _seed_user(user_repo, advertiser_repo)
+    order_id = await _seed_order(order_repo, user_id)
+    await payment_repo.save(
         Payment(
             payment_id=UUID("00000000-0000-0000-0000-000000000450"),
             order_id=order_id,
@@ -142,7 +152,7 @@ def test_confirm_payment_idempotent() -> None:
     )
 
     service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
-    payment = service.confirm_telegram_payment(
+    payment = await service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
         provider_payment_charge_id="charge_1",
@@ -152,7 +162,8 @@ def test_confirm_payment_idempotent() -> None:
     assert payment.payment_id == UUID("00000000-0000-0000-0000-000000000450")
 
 
-def test_confirm_payment_invalid_user() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_invalid_user() -> None:
     """Fail when user missing."""
 
     service = _service(
@@ -163,7 +174,7 @@ def test_confirm_payment_invalid_user() -> None:
     )
 
     with pytest.raises(UserNotFoundError):
-        service.confirm_telegram_payment(
+        await service.confirm_telegram_payment(
             UUID("00000000-0000-0000-0000-000000000402"),
             UUID(int=0),
             "charge",
@@ -172,7 +183,8 @@ def test_confirm_payment_invalid_user() -> None:
         )
 
 
-def test_confirm_payment_missing_profile() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_missing_profile() -> None:
     """Fail when advertiser profile missing."""
 
     user_repo = InMemoryUserRepository()
@@ -188,10 +200,10 @@ def test_confirm_payment_missing_profile() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(user)
+    await user_repo.save(user)
     service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     with pytest.raises(OrderCreationError):
-        service.confirm_telegram_payment(
+        await service.confirm_telegram_payment(
             user.user_id,
             UUID(int=0),
             "charge",
@@ -200,7 +212,8 @@ def test_confirm_payment_missing_profile() -> None:
         )
 
 
-def test_confirm_payment_uses_transaction_manager() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_uses_transaction_manager() -> None:
     """Confirm payment uses transaction manager session."""
 
     user_id = UUID("00000000-0000-0000-0000-000000000501")
@@ -228,21 +241,23 @@ def test_confirm_payment_uses_transaction_manager() -> None:
         contacts_sent_at=None,
     )
     payment_repo = Mock()
-    payment_repo.get_by_order.return_value = None
+    payment_repo.get_by_order = AsyncMock(return_value=None)
+    payment_repo.save = AsyncMock()
     user_repo = Mock()
-    user_repo.get_by_id.return_value = user
+    user_repo.get_by_id = AsyncMock(return_value=user)
     advertiser_repo = Mock()
-    advertiser_repo.get_by_user_id.return_value = AdvertiserProfile(
-        user_id=user_id, contact="contact"
+    advertiser_repo.get_by_user_id = AsyncMock(
+        return_value=AdvertiserProfile(user_id=user_id, contact="contact")
     )
     order_repo = Mock()
-    order_repo.get_by_id.return_value = order
+    order_repo.get_by_id = AsyncMock(return_value=order)
     outbox_publisher = Mock()
+    outbox_publisher.publish_order_activation = AsyncMock()
 
     session_marker = object()
 
-    @contextmanager
-    def fake_transaction():
+    @asynccontextmanager
+    async def fake_transaction():
         yield session_marker
 
     transaction_manager = Mock()
@@ -258,7 +273,7 @@ def test_confirm_payment_uses_transaction_manager() -> None:
         transaction_manager=transaction_manager,
     )
 
-    service.confirm_telegram_payment(
+    await service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
         provider_payment_charge_id="charge_1",
@@ -267,25 +282,29 @@ def test_confirm_payment_uses_transaction_manager() -> None:
     )
 
     payment_repo.save.assert_called_once()
-    assert payment_repo.save.call_args.kwargs["session"] is session_marker
+    # Check that save was called with session parameter
+    call_kwargs = payment_repo.save.call_args.kwargs
+    assert "session" in call_kwargs
+    assert call_kwargs["session"] is session_marker
     outbox_publisher.publish_order_activation.assert_called_once()
-    assert (
-        outbox_publisher.publish_order_activation.call_args.kwargs["session"]
-        is session_marker
-    )
+    # Check that publish_order_activation was called with session parameter
+    pub_call_kwargs = outbox_publisher.publish_order_activation.call_args.kwargs
+    assert "session" in pub_call_kwargs
+    assert pub_call_kwargs["session"] is session_marker
 
 
-def test_confirm_payment_order_not_found() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_order_not_found() -> None:
     """Fail when order does not exist."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo, advertiser_repo)
+    user_id = await _seed_user(user_repo, advertiser_repo)
     service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     with pytest.raises(OrderCreationError):
-        service.confirm_telegram_payment(
+        await service.confirm_telegram_payment(
             user_id,
             UUID(int=0),
             "charge",
@@ -294,14 +313,15 @@ def test_confirm_payment_order_not_found() -> None:
         )
 
 
-def test_confirm_payment_wrong_owner() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_wrong_owner() -> None:
     """Fail when order belongs to another advertiser."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo, advertiser_repo)
+    user_id = await _seed_user(user_repo, advertiser_repo)
     other_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000491"),
         external_id="999",
@@ -311,8 +331,8 @@ def test_confirm_payment_wrong_owner() -> None:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    user_repo.save(other_user)
-    order_repo.save(
+    await user_repo.save(other_user)
+    await order_repo.save(
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000492"),
             advertiser_id=other_user.user_id,
@@ -329,7 +349,7 @@ def test_confirm_payment_wrong_owner() -> None:
     )
     service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     with pytest.raises(OrderCreationError):
-        service.confirm_telegram_payment(
+        await service.confirm_telegram_payment(
             user_id,
             UUID("00000000-0000-0000-0000-000000000492"),
             "charge",
@@ -338,17 +358,19 @@ def test_confirm_payment_wrong_owner() -> None:
         )
 
 
-def test_confirm_payment_order_not_new() -> None:
+@pytest.mark.asyncio
+async def test_confirm_payment_order_not_new() -> None:
     """Fail when order is not NEW."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
-    user_id = _seed_user(user_repo, advertiser_repo)
-    order_id = _seed_order(order_repo, user_id)
-    order = order_repo.get_by_id(order_id)
-    order_repo.save(
+    user_id = await _seed_user(user_repo, advertiser_repo)
+    order_id = await _seed_order(order_repo, user_id)
+    order = await order_repo.get_by_id(order_id)
+    assert order is not None
+    await order_repo.save(
         Order(
             order_id=order.order_id,
             advertiser_id=order.advertiser_id,
@@ -365,7 +387,7 @@ def test_confirm_payment_order_not_new() -> None:
     )
     service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
     with pytest.raises(OrderCreationError):
-        service.confirm_telegram_payment(
+        await service.confirm_telegram_payment(
             user_id,
             order_id,
             "charge",

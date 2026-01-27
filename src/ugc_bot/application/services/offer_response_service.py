@@ -1,9 +1,8 @@
 """Service for handling offer responses."""
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, ContextManager, Optional, Protocol
+from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError
@@ -15,7 +14,7 @@ from ugc_bot.domain.enums import OrderStatus
 class TransactionManager(Protocol):
     """Protocol for database transaction handling."""
 
-    def transaction(self) -> ContextManager[Any]:
+    def transaction(self) -> AsyncContextManager[Any]:
         """Return a context manager for a transaction."""
 
 
@@ -39,28 +38,28 @@ class OfferResponseService:
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
-    def respond(self, order_id: UUID, blogger_id: UUID) -> OrderResponse:
+    async def respond(self, order_id: UUID, blogger_id: UUID) -> OrderResponse:
         """Create an order response if possible."""
 
-        result = self.respond_and_finalize(order_id, blogger_id)
+        result = await self.respond_and_finalize(order_id, blogger_id)
         return result.response
 
-    def respond_and_finalize(
+    async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID
     ) -> OfferResponseResult:
         """Create response and update order in a single flow."""
 
         now = datetime.now(timezone.utc)
         if self.transaction_manager is None:
-            order = self.order_repo.get_by_id(order_id)
+            order = await self.order_repo.get_by_id(order_id)
             if order is None:
                 raise OrderCreationError("Order not found.")
             if order.status != OrderStatus.ACTIVE:
                 raise OrderCreationError("Order is not active.")
-            if self.response_repo.exists(order_id, blogger_id):
+            if await self.response_repo.exists(order_id, blogger_id):
                 raise OrderCreationError("You already responded to this order.")
 
-            response_count = self.response_repo.count_by_order(order_id)
+            response_count = await self.response_repo.count_by_order(order_id)
             if response_count >= order.bloggers_needed:
                 raise OrderCreationError("Order response limit reached.")
 
@@ -70,21 +69,25 @@ class OfferResponseService:
                 blogger_id=blogger_id,
                 responded_at=now,
             )
-            self.response_repo.save(response)
+            await self.response_repo.save(response)
             response_count += 1
             updated = _update_order_after_response(order, response_count, now=now)
-            self.order_repo.save(updated)
+            await self.order_repo.save(updated)
         else:
-            with self.transaction_manager.transaction() as session:
-                order = self.order_repo.get_by_id_for_update(order_id, session=session)
+            async with self.transaction_manager.transaction() as session:
+                order = await self.order_repo.get_by_id_for_update(
+                    order_id, session=session
+                )
                 if order is None:
                     raise OrderCreationError("Order not found.")
                 if order.status != OrderStatus.ACTIVE:
                     raise OrderCreationError("Order is not active.")
-                if self.response_repo.exists(order_id, blogger_id, session=session):
+                if await self.response_repo.exists(
+                    order_id, blogger_id, session=session
+                ):
                     raise OrderCreationError("You already responded to this order.")
 
-                response_count = self.response_repo.count_by_order(
+                response_count = await self.response_repo.count_by_order(
                     order_id, session=session
                 )
                 if response_count >= order.bloggers_needed:
@@ -96,10 +99,10 @@ class OfferResponseService:
                     blogger_id=blogger_id,
                     responded_at=now,
                 )
-                self.response_repo.save(response, session=session)
+                await self.response_repo.save(response, session=session)
                 response_count += 1
                 updated = _update_order_after_response(order, response_count, now=now)
-                self.order_repo.save(updated, session=session)
+                await self.order_repo.save(updated, session=session)
 
         if self.metrics_collector:
             self.metrics_collector.record_blogger_response(
@@ -115,13 +118,6 @@ class OfferResponseService:
             order_closed=order_closed,
             contacts_sent_at=now,
         )
-
-    async def respond_and_finalize_async(
-        self, order_id: UUID, blogger_id: UUID
-    ) -> OfferResponseResult:
-        """Run respond_and_finalize in a thread to avoid blocking."""
-
-        return await asyncio.to_thread(self.respond_and_finalize, order_id, blogger_id)
 
 
 def _update_order_after_response(

@@ -21,16 +21,16 @@ class OfferDispatchService:
     blogger_repo: BloggerProfileRepository
     order_repo: OrderRepository
 
-    def dispatch(self, order_id: UUID) -> list[User]:
+    async def dispatch(self, order_id: UUID) -> list[User]:
         """Return eligible bloggers for an active order."""
 
-        order = self.order_repo.get_by_id(order_id)
+        order = await self.order_repo.get_by_id(order_id)
         if order is None:
             raise OrderCreationError("Order not found.")
         if order.status != OrderStatus.ACTIVE:
             raise OrderCreationError("Order is not active.")
 
-        confirmed_ids = self.blogger_repo.list_confirmed_user_ids()
+        confirmed_ids = await self.blogger_repo.list_confirmed_user_ids()
         if not confirmed_ids:
             return []
 
@@ -39,7 +39,7 @@ class OfferDispatchService:
             # Exclude order author from receiving their own order
             if user_id == order.advertiser_id:
                 continue
-            user = self.user_repo.get_by_id(user_id)
+            user = await self.user_repo.get_by_id(user_id)
             if user is None:
                 continue
             if user.status != UserStatus.ACTIVE:
