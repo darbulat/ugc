@@ -360,7 +360,8 @@ def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF1234567890abcdef1234567890")
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
     monkeypatch.setattr(
-        "ugc_bot.feedback_scheduler.create_session_factory", lambda _: object()
+        "ugc_bot.feedback_scheduler.create_session_factory",
+        lambda _, **__: object(),
     )
 
     def _run(coro) -> None:  # type: ignore[no-untyped-def]

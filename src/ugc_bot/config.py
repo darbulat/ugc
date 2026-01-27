@@ -18,7 +18,7 @@ _ENV = SettingsConfigDict(
 _FLAT_KEYS = {
     "bot": ["BOT_TOKEN", "TELEGRAM_PROVIDER_TOKEN"],
     "log": ["LOG_LEVEL", "LOG_FORMAT"],
-    "db": ["DATABASE_URL"],
+    "db": ["DATABASE_URL", "DB_POOL_SIZE", "DB_MAX_OVERFLOW", "DB_POOL_TIMEOUT"],
     "admin": ["ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_SECRET", "ADMIN_SITE_NAME"],
     "kafka": [
         "KAFKA_ENABLED",
@@ -93,6 +93,9 @@ class DbConfig(BaseSettings):
     model_config = _ENV
 
     database_url: str = Field(default="", alias="DATABASE_URL")
+    pool_size: int = Field(default=5, alias="DB_POOL_SIZE")
+    max_overflow: int = Field(default=10, alias="DB_MAX_OVERFLOW")
+    pool_timeout: int = Field(default=30, alias="DB_POOL_TIMEOUT")
 
 
 class AdminConfig(BaseSettings):

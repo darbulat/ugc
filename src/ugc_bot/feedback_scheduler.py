@@ -193,7 +193,12 @@ def main() -> None:
         logger.info("Feedback scheduler disabled by config")
         return
 
-    session_factory = create_session_factory(config.db.database_url)
+    session_factory = create_session_factory(
+        config.db.database_url,
+        pool_size=config.db.pool_size,
+        max_overflow=config.db.max_overflow,
+        pool_timeout=config.db.pool_timeout,
+    )
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
     interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
 

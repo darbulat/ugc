@@ -1,6 +1,5 @@
 """Shared dependency container for entrypoints."""
 
-from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from ugc_bot.application.services.complaint_service import ComplaintService
@@ -27,6 +26,7 @@ from ugc_bot.infrastructure.db.repositories import (
 )
 from ugc_bot.infrastructure.db.session import (
     SessionTransactionManager,
+    create_db_engine,
     create_session_factory,
 )
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
@@ -38,7 +38,12 @@ class Container:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
         self._session_factory = (
-            create_session_factory(config.db.database_url)
+            create_session_factory(
+                config.db.database_url,
+                pool_size=config.db.pool_size,
+                max_overflow=config.db.max_overflow,
+                pool_timeout=config.db.pool_timeout,
+            )
             if config.db.database_url
             else None
         )
@@ -60,7 +65,12 @@ class Container:
         """Engine for SQLAdmin (pool_pre_ping)."""
         if not self._config.db.database_url:
             raise ValueError("DATABASE_URL is required for admin.")
-        return create_engine(self._config.db.database_url, pool_pre_ping=True)
+        return create_db_engine(
+            self._config.db.database_url,
+            pool_size=self._config.db.pool_size,
+            max_overflow=self._config.db.max_overflow,
+            pool_timeout=self._config.db.pool_timeout,
+        )
 
     def build_repos(self) -> dict:
         """All repos for the main bot dispatcher."""
