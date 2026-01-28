@@ -56,9 +56,9 @@ def create_async_db_engine(
 
     url = _ensure_async_url(make_url(database_url))
     if url.drivername.startswith("sqlite"):
-        return create_async_engine(str(url), pool_pre_ping=True)
+        return create_async_engine(url, pool_pre_ping=True)
     return create_async_engine(
-        str(url),
+        url,
         pool_pre_ping=True,
         pool_size=pool_size,
         max_overflow=max_overflow,
