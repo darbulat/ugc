@@ -1,6 +1,7 @@
 """Service for dispatching offers to bloggers."""
 
 from dataclasses import dataclass
+from typing import Any, AsyncContextManager, Protocol
 from uuid import UUID
 
 from ugc_bot.application.errors import OrderCreationError
@@ -13,6 +14,13 @@ from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import OrderStatus, UserStatus
 
 
+class TransactionManager(Protocol):
+    """Protocol for database transaction handling."""
+
+    def transaction(self) -> AsyncContextManager[Any]:
+        """Return a context manager for a transaction."""
+
+
 @dataclass(slots=True)
 class OfferDispatchService:
     """Select eligible bloggers for offers."""
@@ -20,26 +28,33 @@ class OfferDispatchService:
     user_repo: UserRepository
     blogger_repo: BloggerProfileRepository
     order_repo: OrderRepository
+    transaction_manager: TransactionManager | None = None
 
     async def dispatch(self, order_id: UUID) -> list[User]:
         """Return eligible bloggers for an active order."""
 
-        order = await self.order_repo.get_by_id(order_id)
+        if self.transaction_manager is None:
+            return await self._dispatch(order_id, session=None)
+
+        async with self.transaction_manager.transaction() as session:
+            return await self._dispatch(order_id, session=session)
+
+    async def _dispatch(self, order_id: UUID, session: object | None) -> list[User]:
+        order = await self.order_repo.get_by_id(order_id, session=session)
         if order is None:
             raise OrderCreationError("Order not found.")
         if order.status != OrderStatus.ACTIVE:
             raise OrderCreationError("Order is not active.")
 
-        confirmed_ids = await self.blogger_repo.list_confirmed_user_ids()
+        confirmed_ids = await self.blogger_repo.list_confirmed_user_ids(session=session)
         if not confirmed_ids:
             return []
 
         users: list[User] = []
         for user_id in confirmed_ids:
-            # Exclude order author from receiving their own order
             if user_id == order.advertiser_id:
                 continue
-            user = await self.user_repo.get_by_id(user_id)
+            user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
                 continue
             if user.status != UserStatus.ACTIVE:

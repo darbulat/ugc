@@ -240,3 +240,21 @@ class MetricsCollector:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
+
+    def record_error(
+        self,
+        error_type: str,
+        error_message: str,
+        user_id: str,
+    ) -> None:
+        """Record application or unexpected error."""
+        logger.warning(
+            "Metric: Error occurred",
+            extra={
+                "metric_type": "error",
+                "error_type": error_type,
+                "error_message": error_message,
+                "user_id": user_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )

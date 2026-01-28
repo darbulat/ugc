@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
@@ -18,6 +18,13 @@ from ugc_bot.domain.enums import OrderStatus, UserStatus
 logger = logging.getLogger(__name__)
 
 
+class TransactionManager(Protocol):
+    """Protocol for database transaction handling."""
+
+    def transaction(self) -> AsyncContextManager[Any]:
+        """Return a context manager for a transaction."""
+
+
 _ALLOWED_BLOGGER_COUNTS = {3, 10, 20, 30, 50}
 
 
@@ -29,16 +36,30 @@ class OrderService:
     advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
     metrics_collector: Optional[Any] = None
+    transaction_manager: TransactionManager | None = None
 
     async def is_new_advertiser(self, advertiser_id: UUID) -> bool:
         """Return True when advertiser has no previous orders."""
 
-        return await self.order_repo.count_by_advertiser(advertiser_id) == 0
+        if self.transaction_manager is None:
+            return await self.order_repo.count_by_advertiser(advertiser_id) == 0
+        async with self.transaction_manager.transaction() as session:
+            return (
+                await self.order_repo.count_by_advertiser(
+                    advertiser_id, session=session
+                )
+                == 0
+            )
 
     async def list_by_advertiser(self, advertiser_id: UUID) -> list[Order]:
         """List orders for advertiser."""
 
-        return list(await self.order_repo.list_by_advertiser(advertiser_id))
+        if self.transaction_manager is None:
+            return list(await self.order_repo.list_by_advertiser(advertiser_id))
+        async with self.transaction_manager.transaction() as session:
+            return list(
+                await self.order_repo.list_by_advertiser(advertiser_id, session=session)
+            )
 
     async def create_order(
         self,
@@ -52,13 +73,27 @@ class OrderService:
     ) -> Order:
         """Create an order after validating input."""
 
-        user = await self.user_repo.get_by_id(advertiser_id)
-        if user is None:
-            raise UserNotFoundError("Advertiser not found.")
+        if self.transaction_manager is None:
+            user = await self.user_repo.get_by_id(advertiser_id)
+            if user is None:
+                raise UserNotFoundError("Advertiser not found.")
 
-        advertiser_profile = await self.advertiser_repo.get_by_user_id(advertiser_id)
-        if advertiser_profile is None:
-            raise OrderCreationError("Advertiser profile is not set.")
+            advertiser_profile = await self.advertiser_repo.get_by_user_id(
+                advertiser_id
+            )
+            if advertiser_profile is None:
+                raise OrderCreationError("Advertiser profile is not set.")
+        else:
+            async with self.transaction_manager.transaction() as session:
+                user = await self.user_repo.get_by_id(advertiser_id, session=session)
+                if user is None:
+                    raise UserNotFoundError("Advertiser not found.")
+
+                advertiser_profile = await self.advertiser_repo.get_by_user_id(
+                    advertiser_id, session=session
+                )
+                if advertiser_profile is None:
+                    raise OrderCreationError("Advertiser profile is not set.")
 
         if user.status == UserStatus.BLOCKED:
             raise OrderCreationError("Blocked users cannot create orders.")
@@ -99,7 +134,11 @@ class OrderService:
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
         )
-        await self.order_repo.save(order)
+        if self.transaction_manager is None:
+            await self.order_repo.save(order)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.order_repo.save(order, session=session)
 
         logger.info(
             "Order created",

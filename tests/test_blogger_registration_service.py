@@ -276,3 +276,29 @@ async def test_register_blogger_records_metrics_when_enabled() -> None:
     )
 
     metrics.record_blogger_registration.assert_called_once_with(str(user_id))
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for register_blogger."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        transaction_manager=fake_tm,
+    )
+    profile = await service.register_blogger(
+        user_id=user_id,
+        instagram_url="https://instagram.com/tm_user",
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1500.0,
+    )
+    assert profile.user_id == user_id
+    assert profile.confirmed is False

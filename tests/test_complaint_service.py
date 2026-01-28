@@ -233,3 +233,55 @@ async def test_resolve_complaint_with_action_not_found() -> None:
         await service.resolve_complaint_with_action(
             UUID("00000000-0000-0000-0000-000000000999")
         )
+
+
+@pytest.mark.asyncio
+async def test_create_and_get_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for create_complaint and get_by_id."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000981"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000982"),
+        order_id=UUID("00000000-0000-0000-0000-000000000983"),
+        reason="Мошенничество",
+    )
+    assert complaint.status == ComplaintStatus.PENDING
+    found = await service.get_by_id(complaint.complaint_id)
+    assert found is not None and found.complaint_id == complaint.complaint_id
+
+
+@pytest.mark.asyncio
+async def test_list_and_dismiss_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for list_by_order and dismiss_complaint."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
+    order_id = UUID("00000000-0000-0000-0000-000000000991")
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000992"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000993"),
+        order_id=order_id,
+        reason="Мошенничество",
+    )
+    complaints = await service.list_by_order(order_id)
+    assert len(list(complaints)) >= 1
+    dismissed = await service.dismiss_complaint(complaint.complaint_id)
+    assert dismissed.status == ComplaintStatus.DISMISSED
+
+
+@pytest.mark.asyncio
+async def test_resolve_with_action_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for resolve_complaint_with_action."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000971"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000972"),
+        order_id=UUID("00000000-0000-0000-0000-000000000973"),
+        reason="Мошенничество",
+    )
+    resolved = await service.resolve_complaint_with_action(complaint.complaint_id)
+    assert resolved.status == ComplaintStatus.ACTION_TAKEN

@@ -50,13 +50,18 @@ class InMemoryUserRepository(UserRepository):
     users: Dict[UUID, User] = field(default_factory=dict)
     external_index: Dict[Tuple[str, MessengerType], UUID] = field(default_factory=dict)
 
-    async def get_by_id(self, user_id: UUID) -> Optional[User]:
+    async def get_by_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[User]:
         """Fetch a user by ID."""
 
         return self.users.get(user_id)
 
     async def get_by_external(
-        self, external_id: str, messenger_type: MessengerType
+        self,
+        external_id: str,
+        messenger_type: MessengerType,
+        session: object | None = None,
     ) -> Optional[User]:
         """Fetch a user by external messenger id."""
 
@@ -64,7 +69,7 @@ class InMemoryUserRepository(UserRepository):
         user_id = self.external_index.get(key)
         return self.users.get(user_id) if user_id else None
 
-    async def save(self, user: User) -> None:
+    async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user in memory."""
 
         self.users[user.user_id] = user
@@ -82,13 +87,15 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
 
     profiles: Dict[UUID, BloggerProfile] = field(default_factory=dict)
 
-    async def get_by_user_id(self, user_id: UUID) -> Optional[BloggerProfile]:
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by user id."""
 
         return self.profiles.get(user_id)
 
     async def get_by_instagram_url(
-        self, instagram_url: str
+        self, instagram_url: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram URL."""
 
@@ -97,12 +104,16 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
                 return profile
         return None
 
-    async def save(self, profile: BloggerProfile) -> None:
+    async def save(
+        self, profile: BloggerProfile, session: object | None = None
+    ) -> None:
         """Persist blogger profile in memory."""
 
         self.profiles[profile.user_id] = profile
 
-    async def list_confirmed_user_ids(self) -> list[UUID]:
+    async def list_confirmed_user_ids(
+        self, session: object | None = None
+    ) -> list[UUID]:
         """List confirmed blogger user ids."""
 
         return [
@@ -116,12 +127,16 @@ class InMemoryAdvertiserProfileRepository(AdvertiserProfileRepository):
 
     profiles: Dict[UUID, AdvertiserProfile] = field(default_factory=dict)
 
-    async def get_by_user_id(self, user_id: UUID) -> Optional[AdvertiserProfile]:
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[AdvertiserProfile]:
         """Fetch advertiser profile by user id."""
 
         return self.profiles.get(user_id)
 
-    async def save(self, profile: AdvertiserProfile) -> None:
+    async def save(
+        self, profile: AdvertiserProfile, session: object | None = None
+    ) -> None:
         """Persist advertiser profile in memory."""
 
         self.profiles[profile.user_id] = profile
@@ -133,13 +148,15 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
 
     codes: Dict[UUID, InstagramVerificationCode] = field(default_factory=dict)
 
-    async def save(self, code: InstagramVerificationCode) -> None:
+    async def save(
+        self, code: InstagramVerificationCode, session: object | None = None
+    ) -> None:
         """Persist verification code in memory."""
 
         self.codes[code.code_id] = code
 
     async def get_valid_code(
-        self, user_id: UUID, code: str
+        self, user_id: UUID, code: str, session: object | None = None
     ) -> Optional[InstagramVerificationCode]:
         """Fetch a valid, unexpired verification code."""
 
@@ -155,7 +172,7 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
         return None
 
     async def get_valid_code_by_code(
-        self, code: str
+        self, code: str, session: object | None = None
     ) -> Optional[InstagramVerificationCode]:
         """Fetch a valid, unexpired verification code by code string (for webhook processing)."""
 
@@ -165,7 +182,7 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
                 return item
         return None
 
-    async def mark_used(self, code_id: UUID) -> None:
+    async def mark_used(self, code_id: UUID, session: object | None = None) -> None:
         """Mark verification code as used."""
 
         if code_id not in self.codes:
@@ -212,7 +229,7 @@ class InMemoryOrderRepository(OrderRepository):
 
         return self.orders.get(order_id)
 
-    async def list_active(self) -> Iterable[Order]:
+    async def list_active(self, session: object | None = None) -> Iterable[Order]:
         """List active orders."""
 
         return [
@@ -221,7 +238,9 @@ class InMemoryOrderRepository(OrderRepository):
             if order.status == OrderStatus.ACTIVE
         ]
 
-    async def list_by_advertiser(self, advertiser_id: UUID) -> Iterable[Order]:
+    async def list_by_advertiser(
+        self, advertiser_id: UUID, session: object | None = None
+    ) -> Iterable[Order]:
         """List orders by advertiser."""
 
         return [
@@ -230,7 +249,9 @@ class InMemoryOrderRepository(OrderRepository):
             if order.advertiser_id == advertiser_id
         ]
 
-    async def list_with_contacts_before(self, cutoff: datetime) -> Iterable[Order]:
+    async def list_with_contacts_before(
+        self, cutoff: datetime, session: object | None = None
+    ) -> Iterable[Order]:
         """List orders with contacts_sent_at before cutoff."""
 
         return [
@@ -239,7 +260,9 @@ class InMemoryOrderRepository(OrderRepository):
             if order.contacts_sent_at and order.contacts_sent_at <= cutoff
         ]
 
-    async def count_by_advertiser(self, advertiser_id: UUID) -> int:
+    async def count_by_advertiser(
+        self, advertiser_id: UUID, session: object | None = None
+    ) -> int:
         """Count orders by advertiser."""
 
         return len(
@@ -269,7 +292,9 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
 
         self.responses.append(response)
 
-    async def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[OrderResponse]:
         """List responses by order."""
 
         return [resp for resp in self.responses if resp.order_id == order_id]
@@ -298,13 +323,19 @@ class InMemoryInteractionRepository(InteractionRepository):
 
     interactions: Dict[UUID, Interaction] = field(default_factory=dict)
 
-    async def get_by_id(self, interaction_id: UUID) -> Optional[Interaction]:
+    async def get_by_id(
+        self, interaction_id: UUID, session: object | None = None
+    ) -> Optional[Interaction]:
         """Fetch interaction by id."""
 
         return self.interactions.get(interaction_id)
 
     async def get_by_participants(
-        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        advertiser_id: UUID,
+        session: object | None = None,
     ) -> Optional[Interaction]:
         """Fetch interaction by order/blogger/advertiser."""
 
@@ -317,14 +348,18 @@ class InMemoryInteractionRepository(InteractionRepository):
                 return item
         return None
 
-    async def list_by_order(self, order_id: UUID) -> Iterable[Interaction]:
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> Iterable[Interaction]:
         """List interactions for order."""
 
         return [
             item for item in self.interactions.values() if item.order_id == order_id
         ]
 
-    async def list_due_for_feedback(self, cutoff: datetime) -> Iterable[Interaction]:
+    async def list_due_for_feedback(
+        self, cutoff: datetime, session: object | None = None
+    ) -> Iterable[Interaction]:
         """List interactions due for feedback."""
 
         return [
@@ -335,12 +370,16 @@ class InMemoryInteractionRepository(InteractionRepository):
             and item.status == InteractionStatus.PENDING
         ]
 
-    async def list_by_status(self, status: InteractionStatus) -> Iterable[Interaction]:
+    async def list_by_status(
+        self, status: InteractionStatus, session: object | None = None
+    ) -> Iterable[Interaction]:
         """List interactions by status."""
 
         return [item for item in self.interactions.values() if item.status == status]
 
-    async def save(self, interaction: Interaction) -> None:
+    async def save(
+        self, interaction: Interaction, session: object | None = None
+    ) -> None:
         """Persist interaction in memory."""
 
         self.interactions[interaction.interaction_id] = interaction
@@ -352,7 +391,9 @@ class InMemoryPaymentRepository(PaymentRepository):
 
     payments: Dict[UUID, Payment] = field(default_factory=dict)
 
-    async def get_by_order(self, order_id: UUID) -> Optional[Payment]:
+    async def get_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[Payment]:
         """Fetch payment by order id."""
 
         for payment in self.payments.values():
@@ -360,7 +401,9 @@ class InMemoryPaymentRepository(PaymentRepository):
                 return payment
         return None
 
-    async def get_by_external_id(self, external_id: str) -> Optional[Payment]:
+    async def get_by_external_id(
+        self, external_id: str, session: object | None = None
+    ) -> Optional[Payment]:
         """Fetch payment by provider external id."""
 
         for payment in self.payments.values():
@@ -394,7 +437,7 @@ class InMemoryContactPricingRepository(ContactPricingRepository):
             }
 
     async def get_by_bloggers_count(
-        self, bloggers_count: int
+        self, bloggers_count: int, session: object | None = None
     ) -> Optional[ContactPricing]:
         """Fetch pricing by bloggers count."""
 
@@ -417,7 +460,9 @@ class InMemoryOutboxRepository(OutboxRepository):
 
         self.events[event.event_id] = event
 
-    async def get_pending_events(self, limit: int = 100) -> List[OutboxEvent]:
+    async def get_pending_events(
+        self, limit: int = 100, session: object | None = None
+    ) -> List[OutboxEvent]:
         """Get pending events for processing."""
 
         pending_events = [
@@ -427,7 +472,9 @@ class InMemoryOutboxRepository(OutboxRepository):
         ]
         return sorted(pending_events, key=lambda e: e.created_at)[:limit]
 
-    async def mark_as_processing(self, event_id: UUID) -> None:
+    async def mark_as_processing(
+        self, event_id: UUID, session: object | None = None
+    ) -> None:
         """Mark event as processing."""
 
         if event_id in self.events:
@@ -445,7 +492,9 @@ class InMemoryOutboxRepository(OutboxRepository):
                 last_error=event.last_error,
             )
 
-    async def mark_as_published(self, event_id: UUID, processed_at: datetime) -> None:
+    async def mark_as_published(
+        self, event_id: UUID, processed_at: datetime, session: object | None = None
+    ) -> None:
         """Mark event as published."""
 
         if event_id in self.events:
@@ -464,7 +513,11 @@ class InMemoryOutboxRepository(OutboxRepository):
             )
 
     async def mark_as_failed(
-        self, event_id: UUID, error: str, retry_count: int
+        self,
+        event_id: UUID,
+        error: str,
+        retry_count: int,
+        session: object | None = None,
     ) -> None:
         """Mark event as failed with retry."""
 
@@ -483,7 +536,9 @@ class InMemoryOutboxRepository(OutboxRepository):
                 last_error=error,
             )
 
-    async def get_by_id(self, event_id: UUID) -> Optional[OutboxEvent]:
+    async def get_by_id(
+        self, event_id: UUID, session: object | None = None
+    ) -> Optional[OutboxEvent]:
         """Get event by ID."""
 
         return self.events.get(event_id)
@@ -495,17 +550,21 @@ class InMemoryComplaintRepository(ComplaintRepository):
 
     complaints: Dict[UUID, Complaint] = field(default_factory=dict)
 
-    async def save(self, complaint: Complaint) -> None:
+    async def save(self, complaint: Complaint, session: object | None = None) -> None:
         """Persist complaint."""
 
         self.complaints[complaint.complaint_id] = complaint
 
-    async def get_by_id(self, complaint_id: UUID) -> Optional[Complaint]:
+    async def get_by_id(
+        self, complaint_id: UUID, session: object | None = None
+    ) -> Optional[Complaint]:
         """Get complaint by ID."""
 
         return self.complaints.get(complaint_id)
 
-    async def list_by_order(self, order_id: UUID) -> Iterable[Complaint]:
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> Iterable[Complaint]:
         """List complaints for a specific order."""
 
         return [
@@ -514,7 +573,9 @@ class InMemoryComplaintRepository(ComplaintRepository):
             if complaint.order_id == order_id
         ]
 
-    async def list_by_reporter(self, reporter_id: UUID) -> Iterable[Complaint]:
+    async def list_by_reporter(
+        self, reporter_id: UUID, session: object | None = None
+    ) -> Iterable[Complaint]:
         """List complaints filed by a specific user."""
 
         return [
@@ -523,7 +584,9 @@ class InMemoryComplaintRepository(ComplaintRepository):
             if complaint.reporter_id == reporter_id
         ]
 
-    async def exists(self, order_id: UUID, reporter_id: UUID) -> bool:
+    async def exists(
+        self, order_id: UUID, reporter_id: UUID, session: object | None = None
+    ) -> bool:
         """Check if reporter already filed a complaint for this order."""
 
         return any(
@@ -531,7 +594,9 @@ class InMemoryComplaintRepository(ComplaintRepository):
             for complaint in self.complaints.values()
         )
 
-    async def list_by_status(self, status: ComplaintStatus) -> Iterable[Complaint]:
+    async def list_by_status(
+        self, status: ComplaintStatus, session: object | None = None
+    ) -> Iterable[Complaint]:
         """List complaints by status."""
 
         return [

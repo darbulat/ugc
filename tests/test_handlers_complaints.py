@@ -64,7 +64,7 @@ class FakeCallback:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_invalid_format() -> None:
+async def test_start_complaint_invalid_format(fake_tm: object) -> None:
     """Reject malformed callback data."""
 
     user_repo = InMemoryUserRepository()
@@ -78,7 +78,9 @@ async def test_start_complaint_invalid_format() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -107,7 +109,7 @@ async def test_start_complaint_invalid_format() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_order_not_found() -> None:
+async def test_start_complaint_order_not_found(fake_tm: object) -> None:
     """Reject complaint for non-existent order."""
 
     user_repo = InMemoryUserRepository()
@@ -132,7 +134,9 @@ async def test_start_complaint_order_not_found() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -153,7 +157,7 @@ async def test_start_complaint_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_no_access() -> None:
+async def test_start_complaint_no_access(fake_tm: object) -> None:
     """Reject complaint when user has no access to order."""
 
     user_repo = InMemoryUserRepository()
@@ -203,7 +207,9 @@ async def test_start_complaint_no_access() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -224,7 +230,7 @@ async def test_start_complaint_no_access() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_success() -> None:
+async def test_handle_complaint_reason_success(fake_tm: object) -> None:
     """Successfully create complaint with selected reason."""
 
     user_repo = InMemoryUserRepository()
@@ -304,7 +310,7 @@ async def test_handle_complaint_reason_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_advertiser() -> None:
+async def test_select_complaint_target_advertiser(fake_tm: object) -> None:
     """Advertiser can select blogger to complain about."""
 
     user_repo = InMemoryUserRepository()
@@ -363,7 +369,9 @@ async def test_select_complaint_target_advertiser() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -387,7 +395,7 @@ async def test_select_complaint_target_advertiser() -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_invalid_format() -> None:
+async def test_select_complaint_target_invalid_format(fake_tm: object) -> None:
     """Reject invalid callback format."""
 
     user_repo = InMemoryUserRepository()
@@ -412,7 +420,9 @@ async def test_select_complaint_target_invalid_format() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -435,7 +445,7 @@ async def test_select_complaint_target_invalid_format() -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_blogger() -> None:
+async def test_select_complaint_target_blogger(fake_tm: object) -> None:
     """Blogger can complain about advertiser."""
 
     user_repo = InMemoryUserRepository()
@@ -494,7 +504,9 @@ async def test_select_complaint_target_blogger() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -518,7 +530,7 @@ async def test_select_complaint_target_blogger() -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_no_bloggers() -> None:
+async def test_select_complaint_target_no_bloggers(fake_tm: object) -> None:
     """Show message when no bloggers responded."""
 
     user_repo = InMemoryUserRepository()
@@ -558,7 +570,9 @@ async def test_select_complaint_target_no_bloggers() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -581,7 +595,7 @@ async def test_select_complaint_target_no_bloggers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text() -> None:
+async def test_handle_complaint_reason_text(fake_tm: object) -> None:
     """Handle text input for complaint reason."""
 
     user_repo = InMemoryUserRepository()
@@ -650,7 +664,7 @@ async def test_handle_complaint_reason_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_other() -> None:
+async def test_handle_complaint_reason_other(fake_tm: object) -> None:
     """Handle 'Другое' reason selection."""
 
     user_repo = InMemoryUserRepository()
@@ -729,7 +743,7 @@ async def test_handle_complaint_reason_other() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_no_state() -> None:
+async def test_handle_complaint_reason_no_state(fake_tm: object) -> None:
     """Handle complaint reason when state is empty."""
 
     complaint_repo = InMemoryComplaintRepository()
@@ -753,7 +767,7 @@ async def test_handle_complaint_reason_no_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_invalid_reason() -> None:
+async def test_handle_complaint_reason_invalid_reason(fake_tm: object) -> None:
     """Reject invalid reason."""
 
     complaint_repo = InMemoryComplaintRepository()
@@ -782,7 +796,7 @@ async def test_handle_complaint_reason_invalid_reason() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_duplicate() -> None:
+async def test_handle_complaint_reason_duplicate(fake_tm: object) -> None:
     """Handle duplicate complaint."""
 
     user_repo = InMemoryUserRepository()
@@ -847,7 +861,7 @@ async def test_handle_complaint_reason_duplicate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text_no_state() -> None:
+async def test_handle_complaint_reason_text_no_state(fake_tm: object) -> None:
     """Handle text input when state is empty."""
 
     complaint_repo = InMemoryComplaintRepository()
@@ -868,7 +882,7 @@ async def test_handle_complaint_reason_text_no_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text_empty() -> None:
+async def test_handle_complaint_reason_text_empty(fake_tm: object) -> None:
     """Handle empty text input."""
 
     complaint_repo = InMemoryComplaintRepository()
@@ -895,7 +909,7 @@ async def test_handle_complaint_reason_text_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text_no_text() -> None:
+async def test_handle_complaint_reason_text_no_text(fake_tm: object) -> None:
     """Handle message without text."""
 
     complaint_repo = InMemoryComplaintRepository()
@@ -916,7 +930,7 @@ async def test_handle_complaint_reason_text_no_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_no_data() -> None:
+async def test_start_complaint_no_data(fake_tm: object) -> None:
     """Handle callback without data."""
 
     user_repo = InMemoryUserRepository()
@@ -930,7 +944,9 @@ async def test_start_complaint_no_data() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -948,7 +964,7 @@ async def test_start_complaint_no_data() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_user_not_found() -> None:
+async def test_start_complaint_user_not_found(fake_tm: object) -> None:
     """Handle complaint when user is not found."""
 
     user_repo = InMemoryUserRepository()
@@ -962,7 +978,9 @@ async def test_start_complaint_user_not_found() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -983,7 +1001,7 @@ async def test_start_complaint_user_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_invalid_reported_id() -> None:
+async def test_start_complaint_invalid_reported_id(fake_tm: object) -> None:
     """Reject complaint with invalid reported_id."""
 
     user_repo = InMemoryUserRepository()
@@ -1042,7 +1060,9 @@ async def test_start_complaint_invalid_reported_id() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -1064,7 +1084,7 @@ async def test_start_complaint_invalid_reported_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_no_from_user() -> None:
+async def test_select_complaint_target_no_from_user(fake_tm: object) -> None:
     """Handle callback without from_user."""
 
     user_repo = InMemoryUserRepository()
@@ -1078,7 +1098,9 @@ async def test_select_complaint_target_no_from_user() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -1103,7 +1125,7 @@ async def test_select_complaint_target_no_from_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_invalid_uuid() -> None:
+async def test_select_complaint_target_invalid_uuid(fake_tm: object) -> None:
     """Reject invalid UUID format."""
 
     user_repo = InMemoryUserRepository()
@@ -1128,7 +1150,9 @@ async def test_select_complaint_target_invalid_uuid() -> None:
         order_repo=order_repo,
     )
     offer_response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage

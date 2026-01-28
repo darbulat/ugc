@@ -27,8 +27,9 @@ def _service(
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     order_repo: InMemoryOrderRepository,
     payment_repo: InMemoryPaymentRepository,
+    transaction_manager: object,
 ) -> PaymentService:
-    """Build payment service."""
+    """Build payment service with required transaction_manager."""
 
     outbox_repo = InMemoryOutboxRepository()
     outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
@@ -40,6 +41,7 @@ def _service(
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
+        transaction_manager=transaction_manager,
     )
 
 
@@ -86,7 +88,7 @@ async def _seed_order(repo: InMemoryOrderRepository, user_id: UUID) -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_confirm_payment_success() -> None:
+async def test_confirm_payment_success(fake_tm: object) -> None:
     """Confirm payment activates order and stores payment."""
 
     user_repo = InMemoryUserRepository()
@@ -96,7 +98,7 @@ async def test_confirm_payment_success() -> None:
     user_id = await _seed_user(user_repo, advertiser_repo)
     order_id = await _seed_order(order_repo, user_id)
 
-    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo, fake_tm)
     payment = await service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
@@ -128,7 +130,7 @@ async def test_confirm_payment_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirm_payment_idempotent() -> None:
+async def test_confirm_payment_idempotent(fake_tm: object) -> None:
     """Return existing payment if already paid."""
 
     user_repo = InMemoryUserRepository()
@@ -151,7 +153,7 @@ async def test_confirm_payment_idempotent() -> None:
         )
     )
 
-    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo, fake_tm)
     payment = await service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
@@ -163,7 +165,37 @@ async def test_confirm_payment_idempotent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirm_payment_invalid_user() -> None:
+async def test_confirm_payment_requires_transaction_manager() -> None:
+    """Raise when transaction_manager is None."""
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    payment_repo = InMemoryPaymentRepository()
+    user_id = await _seed_user(user_repo, advertiser_repo)
+    order_id = await _seed_order(order_repo, user_id)
+    outbox_repo = InMemoryOutboxRepository()
+    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+    service = PaymentService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+        payment_repo=payment_repo,
+        broadcaster=NoopOfferBroadcaster(),
+        outbox_publisher=outbox_publisher,
+        transaction_manager=None,
+    )
+    with pytest.raises(ValueError, match="transaction_manager"):
+        await service.confirm_telegram_payment(
+            user_id=user_id,
+            order_id=order_id,
+            provider_payment_charge_id="charge_1",
+            total_amount=100000,
+            currency="RUB",
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_payment_invalid_user(fake_tm: object) -> None:
     """Fail when user missing."""
 
     service = _service(
@@ -171,6 +203,7 @@ async def test_confirm_payment_invalid_user() -> None:
         InMemoryAdvertiserProfileRepository(),
         InMemoryOrderRepository(),
         InMemoryPaymentRepository(),
+        fake_tm,
     )
 
     with pytest.raises(UserNotFoundError):
@@ -184,7 +217,7 @@ async def test_confirm_payment_invalid_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirm_payment_missing_profile() -> None:
+async def test_confirm_payment_missing_profile(fake_tm: object) -> None:
     """Fail when advertiser profile missing."""
 
     user_repo = InMemoryUserRepository()
@@ -201,7 +234,7 @@ async def test_confirm_payment_missing_profile() -> None:
         created_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
-    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo, fake_tm)
     with pytest.raises(OrderCreationError):
         await service.confirm_telegram_payment(
             user.user_id,
@@ -294,7 +327,7 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirm_payment_order_not_found() -> None:
+async def test_confirm_payment_order_not_found(fake_tm: object) -> None:
     """Fail when order does not exist."""
 
     user_repo = InMemoryUserRepository()
@@ -302,7 +335,7 @@ async def test_confirm_payment_order_not_found() -> None:
     order_repo = InMemoryOrderRepository()
     payment_repo = InMemoryPaymentRepository()
     user_id = await _seed_user(user_repo, advertiser_repo)
-    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo, fake_tm)
     with pytest.raises(OrderCreationError):
         await service.confirm_telegram_payment(
             user_id,
@@ -314,7 +347,7 @@ async def test_confirm_payment_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirm_payment_wrong_owner() -> None:
+async def test_confirm_payment_wrong_owner(fake_tm: object) -> None:
     """Fail when order belongs to another advertiser."""
 
     user_repo = InMemoryUserRepository()
@@ -347,7 +380,7 @@ async def test_confirm_payment_wrong_owner() -> None:
             contacts_sent_at=None,
         )
     )
-    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo, fake_tm)
     with pytest.raises(OrderCreationError):
         await service.confirm_telegram_payment(
             user_id,
@@ -359,7 +392,7 @@ async def test_confirm_payment_wrong_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirm_payment_order_not_new() -> None:
+async def test_confirm_payment_order_not_new(fake_tm: object) -> None:
     """Fail when order is not NEW."""
 
     user_repo = InMemoryUserRepository()
@@ -385,7 +418,7 @@ async def test_confirm_payment_order_not_new() -> None:
             contacts_sent_at=order.contacts_sent_at,
         )
     )
-    service = _service(user_repo, advertiser_repo, order_repo, payment_repo)
+    service = _service(user_repo, advertiser_repo, order_repo, payment_repo, fake_tm)
     with pytest.raises(OrderCreationError):
         await service.confirm_telegram_payment(
             user_id,

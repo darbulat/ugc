@@ -2,9 +2,19 @@
 
 import pytest
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from ugc_bot.domain.enums import InteractionStatus, OrderStatus
 from ugc_bot.domain.entities import AdvertiserProfile
+
+
+async def _get_interaction(dispatcher, interaction_id: UUID):
+    """Load interaction within a transaction (repos require session)."""
+    tm = dispatcher["transaction_manager"]
+    async with tm.transaction() as session:
+        return await dispatcher["interaction_repo"].get_by_id(
+            interaction_id, session=session
+        )
 
 
 @pytest.mark.asyncio
@@ -29,7 +39,9 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    await advertiser_repo.save(advertiser_profile)
+    tm = dispatcher["transaction_manager"]
+    async with tm.transaction() as session:
+        await advertiser_repo.save(advertiser_profile, session=session)
 
     # Создаем заказ
     order_service = dispatcher["order_service"]
@@ -60,7 +72,8 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    await order_repo.save(updated_order)
+    async with tm.transaction() as session:
+        await order_repo.save(updated_order, session=session)
     order = updated_order
 
     # Создаем взаимодействие вручную
@@ -81,9 +94,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Это означает перенос
     )
 
-    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
-        interaction.interaction_id
-    )
+    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
     assert updated_interaction.postpone_count == 1
     assert updated_interaction.status == InteractionStatus.PENDING
     assert updated_interaction.next_check_at is not None
@@ -95,9 +106,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Еще один перенос
     )
 
-    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
-        interaction.interaction_id
-    )
+    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
     assert updated_interaction.postpone_count == 2
     assert updated_interaction.status == InteractionStatus.PENDING
 
@@ -107,9 +116,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Третий перенос
     )
 
-    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
-        interaction.interaction_id
-    )
+    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
     assert updated_interaction.postpone_count == 3
     assert updated_interaction.status == InteractionStatus.PENDING  # Еще PENDING
 
@@ -120,9 +127,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Четвертый перенос
     )
 
-    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
-        interaction.interaction_id
-    )
+    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
     assert updated_interaction.postpone_count == 4
     assert (
         updated_interaction.status == InteractionStatus.NO_DEAL
@@ -154,7 +159,9 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    await advertiser_repo.save(advertiser_profile)
+    tm = dispatcher["transaction_manager"]
+    async with tm.transaction() as session:
+        await advertiser_repo.save(advertiser_profile, session=session)
 
     # Создаем заказ и взаимодействие
     order_service = dispatcher["order_service"]
@@ -183,7 +190,8 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    await order_repo.save(updated_order)
+    async with tm.transaction() as session:
+        await order_repo.save(updated_order, session=session)
     order = updated_order
 
     interaction_service = dispatcher["interaction_service"]
@@ -196,9 +204,7 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         interaction.interaction_id, "еще не связался"
     )
 
-    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
-        interaction.interaction_id
-    )
+    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
     assert updated_interaction.postpone_count == 1
     assert updated_interaction.status == InteractionStatus.PENDING
 
@@ -207,9 +213,7 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         interaction.interaction_id, "еще не связался"
     )
 
-    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
-        interaction.interaction_id
-    )
+    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
     assert updated_interaction.postpone_count == 2
     assert updated_interaction.status == InteractionStatus.PENDING  # Еще не NO_DEAL
 
@@ -241,7 +245,9 @@ async def test_feedback_mixed_responses_aggregation(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    await advertiser_repo.save(advertiser_profile)
+    tm = dispatcher["transaction_manager"]
+    async with tm.transaction() as session:
+        await advertiser_repo.save(advertiser_profile, session=session)
 
     # Создаем заказ
     order_service = dispatcher["order_service"]
@@ -270,7 +276,8 @@ async def test_feedback_mixed_responses_aggregation(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    await order_repo.save(updated_order)
+    async with tm.transaction() as session:
+        await order_repo.save(updated_order, session=session)
     order = updated_order
 
     interaction_service = dispatcher["interaction_service"]
@@ -298,12 +305,8 @@ async def test_feedback_mixed_responses_aggregation(
     await interaction_service.record_blogger_feedback(interaction2.interaction_id, "❌")
 
     # === Шаг 3: Проверяем агрегацию ===
-    final_interaction1 = await dispatcher["interaction_repo"].get_by_id(
-        interaction1.interaction_id
-    )
-    final_interaction2 = await dispatcher["interaction_repo"].get_by_id(
-        interaction2.interaction_id
-    )
+    final_interaction1 = await _get_interaction(dispatcher, interaction1.interaction_id)
+    final_interaction2 = await _get_interaction(dispatcher, interaction2.interaction_id)
 
     # Оба должны быть OK (advertiser OK + blogger OK/NO_DEAL)
     assert final_interaction1.status == InteractionStatus.OK
@@ -333,7 +336,9 @@ async def test_feedback_issue_status_blocks_user(
         user_id=advertiser_user.user_id,
         contact="test@example.com",
     )
-    await advertiser_repo.save(advertiser_profile)
+    tm = dispatcher["transaction_manager"]
+    async with tm.transaction() as session:
+        await advertiser_repo.save(advertiser_profile, session=session)
 
     # Создаем заказ и взаимодействие
     order_service = dispatcher["order_service"]
@@ -362,7 +367,8 @@ async def test_feedback_issue_status_blocks_user(
         contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
-    await order_repo.save(updated_order)
+    async with tm.transaction() as session:
+        await order_repo.save(updated_order, session=session)
     order = updated_order
 
     interaction_service = dispatcher["interaction_service"]
@@ -374,9 +380,7 @@ async def test_feedback_issue_status_blocks_user(
     await interaction_service.record_blogger_feedback(interaction.interaction_id, "⚠️")
 
     # Проверяем, что взаимодействие в статусе ISSUE
-    updated_interaction = await dispatcher["interaction_repo"].get_by_id(
-        interaction.interaction_id
-    )
+    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
     assert updated_interaction.status == InteractionStatus.ISSUE
 
     print("✅ Feedback ISSUE status test passed!")

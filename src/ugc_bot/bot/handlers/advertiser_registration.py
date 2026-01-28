@@ -9,10 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 
-from ugc_bot.application.errors import (
-    AdvertiserRegistrationError,
-    UserNotFoundError,
-)
+# Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -85,25 +82,11 @@ async def handle_contact(
     user_id_raw = data["user_id"]
     user_id: UUID = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
 
-    try:
-        profile = await advertiser_registration_service.register_advertiser(
-            user_id=user_id,
-            contact=contact,
-        )
-    except (AdvertiserRegistrationError, UserNotFoundError) as exc:
-        logger.warning(
-            "Advertiser registration failed",
-            extra={"user_id": data.get("user_id"), "reason": str(exc)},
-        )
-        await message.answer(f"Ошибка регистрации: {exc}")
-        return
-    except Exception:
-        logger.exception(
-            "Unexpected error during advertiser registration",
-            extra={"user_id": data.get("user_id")},
-        )
-        await message.answer("Произошла неожиданная ошибка. Попробуйте позже.")
-        return
+    # Middleware handles AdvertiserRegistrationError, UserNotFoundError, and other exceptions
+    profile = await advertiser_registration_service.register_advertiser(
+        user_id=user_id,
+        contact=contact,
+    )
 
     await state.clear()
     await message.answer(

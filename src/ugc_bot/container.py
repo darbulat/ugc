@@ -2,15 +2,28 @@
 
 from sqlalchemy.engine import Engine
 
+from ugc_bot.application.services.advertiser_registration_service import (
+    AdvertiserRegistrationService,
+)
+from ugc_bot.application.services.blogger_registration_service import (
+    BloggerRegistrationService,
+)
 from ugc_bot.application.services.complaint_service import ComplaintService
+from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
+from ugc_bot.application.services.payment_service import PaymentService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
+from ugc_bot.infrastructure.db.repositories import NoopOfferBroadcaster
+from ugc_bot.metrics.collector import MetricsCollector
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
@@ -173,19 +186,118 @@ class Container:
         verification_repo = SqlAlchemyInstagramVerificationRepository(
             session_factory=self._session_factory
         )
-        instagram_api_client = None
-        if self._config.instagram.instagram_access_token:
-            from ugc_bot.infrastructure.instagram.graph_api_client import (
-                HttpInstagramGraphApiClient,
-            )
-
-            instagram_api_client = HttpInstagramGraphApiClient(
-                access_token=self._config.instagram.instagram_access_token,
-                base_url=self._config.instagram.instagram_api_base_url,
-            )
+        instagram_api_client = self.build_instagram_api_client()
         return InstagramVerificationService(
             user_repo=user_repo,
             blogger_repo=blogger_repo,
             verification_repo=verification_repo,
             instagram_api_client=instagram_api_client,
         )
+
+    def build_metrics_collector(self) -> MetricsCollector:
+        """Create metrics collector."""
+        return MetricsCollector()
+
+    def build_instagram_api_client(self):
+        """Create Instagram Graph API client if configured."""
+        if (
+            not self._config.instagram.instagram_access_token
+            or not self._config.instagram.instagram_access_token.strip()
+        ):
+            return None
+        from ugc_bot.infrastructure.instagram.graph_api_client import (
+            HttpInstagramGraphApiClient,
+        )
+
+        return HttpInstagramGraphApiClient(
+            access_token=self._config.instagram.instagram_access_token,
+            base_url=self._config.instagram.instagram_api_base_url,
+        )
+
+    def build_bot_services(self) -> dict:
+        """Build all services for the bot dispatcher."""
+        if not self._session_factory:
+            raise ValueError("DATABASE_URL is required for bot services.")
+        repos = self.build_repos()
+        metrics_collector = self.build_metrics_collector()
+        instagram_api_client = self.build_instagram_api_client()
+        outbox_publisher = OutboxPublisher(
+            outbox_repo=repos["outbox_repo"], order_repo=repos["order_repo"]
+        )
+
+        return {
+            "metrics_collector": metrics_collector,
+            "user_role_service": UserRoleService(
+                user_repo=repos["user_repo"],
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "blogger_registration_service": BloggerRegistrationService(
+                user_repo=repos["user_repo"],
+                blogger_repo=repos["blogger_repo"],
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "advertiser_registration_service": AdvertiserRegistrationService(
+                user_repo=repos["user_repo"],
+                advertiser_repo=repos["advertiser_repo"],
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "instagram_verification_service": InstagramVerificationService(
+                user_repo=repos["user_repo"],
+                blogger_repo=repos["blogger_repo"],
+                verification_repo=repos["instagram_repo"],
+                instagram_api_client=instagram_api_client,
+                transaction_manager=self._transaction_manager,
+            ),
+            "order_service": OrderService(
+                user_repo=repos["user_repo"],
+                advertiser_repo=repos["advertiser_repo"],
+                order_repo=repos["order_repo"],
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "offer_dispatch_service": OfferDispatchService(
+                user_repo=repos["user_repo"],
+                blogger_repo=repos["blogger_repo"],
+                order_repo=repos["order_repo"],
+                transaction_manager=self._transaction_manager,
+            ),
+            "offer_response_service": OfferResponseService(
+                order_repo=repos["order_repo"],
+                response_repo=repos["order_response_repo"],
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "interaction_service": InteractionService(
+                interaction_repo=repos["interaction_repo"],
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "payment_service": PaymentService(
+                user_repo=repos["user_repo"],
+                advertiser_repo=repos["advertiser_repo"],
+                order_repo=repos["order_repo"],
+                payment_repo=repos["payment_repo"],
+                broadcaster=NoopOfferBroadcaster(),
+                outbox_publisher=outbox_publisher,
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "contact_pricing_service": ContactPricingService(
+                pricing_repo=repos["pricing_repo"],
+                transaction_manager=self._transaction_manager,
+            ),
+            "profile_service": ProfileService(
+                user_repo=repos["user_repo"],
+                blogger_repo=repos["blogger_repo"],
+                advertiser_repo=repos["advertiser_repo"],
+                transaction_manager=self._transaction_manager,
+            ),
+            "complaint_service": ComplaintService(
+                complaint_repo=repos["complaint_repo"],
+                metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+        }

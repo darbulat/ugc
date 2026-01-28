@@ -5,6 +5,7 @@ import secrets
 import string
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any, AsyncContextManager, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
@@ -19,6 +20,13 @@ from ugc_bot.domain.entities import InstagramVerificationCode
 logger = logging.getLogger(__name__)
 
 
+class TransactionManager(Protocol):
+    """Protocol for database transaction handling."""
+
+    def transaction(self) -> AsyncContextManager[Any]:
+        """Return a context manager for a transaction."""
+
+
 @dataclass(slots=True)
 class InstagramVerificationService:
     """Generate and verify Instagram confirmation codes."""
@@ -27,12 +35,20 @@ class InstagramVerificationService:
     blogger_repo: BloggerProfileRepository
     verification_repo: InstagramVerificationRepository
     instagram_api_client: InstagramGraphApiClient | None = None
+    transaction_manager: TransactionManager | None = None
 
     async def generate_code(self, user_id: UUID) -> InstagramVerificationCode:
         """Generate and store a new verification code."""
 
-        if await self.user_repo.get_by_id(user_id) is None:
-            raise UserNotFoundError("User not found for Instagram verification.")
+        if self.transaction_manager is None:
+            if await self.user_repo.get_by_id(user_id) is None:
+                raise UserNotFoundError("User not found for Instagram verification.")
+        else:
+            async with self.transaction_manager.transaction() as session:
+                if await self.user_repo.get_by_id(user_id, session=session) is None:
+                    raise UserNotFoundError(
+                        "User not found for Instagram verification."
+                    )
 
         code = _generate_code()
         now = datetime.now(timezone.utc)
@@ -44,37 +60,69 @@ class InstagramVerificationService:
             used=False,
             created_at=now,
         )
-        await self.verification_repo.save(verification)
+        if self.transaction_manager is None:
+            await self.verification_repo.save(verification)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.verification_repo.save(verification, session=session)
         return verification
 
     async def verify_code(self, user_id: UUID, code: str) -> bool:
         """Validate code and confirm blogger profile."""
 
-        profile = await self.blogger_repo.get_by_user_id(user_id)
-        if profile is None:
-            raise BloggerRegistrationError("Blogger profile not found.")
+        if self.transaction_manager is None:
+            profile = await self.blogger_repo.get_by_user_id(user_id)
+            if profile is None:
+                raise BloggerRegistrationError("Blogger profile not found.")
 
-        valid_code = await self.verification_repo.get_valid_code(
-            user_id, code.strip().upper()
-        )
-        if valid_code is None:
-            return False
+            valid_code = await self.verification_repo.get_valid_code(
+                user_id, code.strip().upper()
+            )
+            if valid_code is None:
+                return False
 
-        await self.verification_repo.mark_used(valid_code.code_id)
-        confirmed_profile = profile.__class__(
-            user_id=profile.user_id,
-            instagram_url=profile.instagram_url,
-            confirmed=True,
-            topics=profile.topics,
-            audience_gender=profile.audience_gender,
-            audience_age_min=profile.audience_age_min,
-            audience_age_max=profile.audience_age_max,
-            audience_geo=profile.audience_geo,
-            price=profile.price,
-            updated_at=datetime.now(timezone.utc),
-        )
-        await self.blogger_repo.save(confirmed_profile)
-        return True
+            await self.verification_repo.mark_used(valid_code.code_id)
+            confirmed_profile = profile.__class__(
+                user_id=profile.user_id,
+                instagram_url=profile.instagram_url,
+                confirmed=True,
+                topics=profile.topics,
+                audience_gender=profile.audience_gender,
+                audience_age_min=profile.audience_age_min,
+                audience_age_max=profile.audience_age_max,
+                audience_geo=profile.audience_geo,
+                price=profile.price,
+                updated_at=datetime.now(timezone.utc),
+            )
+            await self.blogger_repo.save(confirmed_profile)
+            return True
+
+        async with self.transaction_manager.transaction() as session:
+            profile = await self.blogger_repo.get_by_user_id(user_id, session=session)
+            if profile is None:
+                raise BloggerRegistrationError("Blogger profile not found.")
+
+            valid_code = await self.verification_repo.get_valid_code(
+                user_id, code.strip().upper(), session=session
+            )
+            if valid_code is None:
+                return False
+
+            await self.verification_repo.mark_used(valid_code.code_id, session=session)
+            confirmed_profile = profile.__class__(
+                user_id=profile.user_id,
+                instagram_url=profile.instagram_url,
+                confirmed=True,
+                topics=profile.topics,
+                audience_gender=profile.audience_gender,
+                audience_age_min=profile.audience_age_min,
+                audience_age_max=profile.audience_age_max,
+                audience_geo=profile.audience_geo,
+                price=profile.price,
+                updated_at=datetime.now(timezone.utc),
+            )
+            await self.blogger_repo.save(confirmed_profile, session=session)
+            return True
 
     async def verify_code_by_instagram_sender(
         self,
@@ -101,13 +149,25 @@ class InstagramVerificationService:
         code_upper = code.strip().upper()
 
         # Find valid code by code string
-        valid_code = await self.verification_repo.get_valid_code_by_code(code_upper)
+        if self.transaction_manager is None:
+            valid_code = await self.verification_repo.get_valid_code_by_code(code_upper)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                valid_code = await self.verification_repo.get_valid_code_by_code(
+                    code_upper, session=session
+                )
         if valid_code is None:
             logger.debug("No valid code found for webhook verification")
             return None
 
         # Get blogger profile
-        profile = await self.blogger_repo.get_by_user_id(valid_code.user_id)
+        if self.transaction_manager is None:
+            profile = await self.blogger_repo.get_by_user_id(valid_code.user_id)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                profile = await self.blogger_repo.get_by_user_id(
+                    valid_code.user_id, session=session
+                )
         if profile is None:
             logger.warning(
                 "Blogger profile not found for verification code",
@@ -172,7 +232,13 @@ class InstagramVerificationService:
         )
 
         # Mark code as used and confirm profile
-        await self.verification_repo.mark_used(valid_code.code_id)
+        if self.transaction_manager is None:
+            await self.verification_repo.mark_used(valid_code.code_id)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.verification_repo.mark_used(
+                    valid_code.code_id, session=session
+                )
         confirmed_profile = profile.__class__(
             user_id=profile.user_id,
             instagram_url=profile.instagram_url,
@@ -185,7 +251,11 @@ class InstagramVerificationService:
             price=profile.price,
             updated_at=datetime.now(timezone.utc),
         )
-        await self.blogger_repo.save(confirmed_profile)
+        if self.transaction_manager is None:
+            await self.blogger_repo.save(confirmed_profile)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.blogger_repo.save(confirmed_profile, session=session)
         logger.info(
             "Instagram profile confirmed via webhook",
             extra={"user_id": str(valid_code.user_id)},

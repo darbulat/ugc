@@ -566,3 +566,45 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
+
+
+@pytest.mark.asyncio
+async def test_generate_code_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for generate_code."""
+
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        transaction_manager=fake_tm,
+    )
+    verification = await service.generate_code(user_id)
+    assert verification.user_id == user_id
+    assert verification.code is not None
+
+
+@pytest.mark.asyncio
+async def test_verify_code_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for verify_code (get profile and save)."""
+
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        transaction_manager=fake_tm,
+    )
+    verification = await service.generate_code(user_id)
+    result = await service.verify_code(user_id, verification.code)
+    assert result is True
+    profile = await profile_repo.get_by_user_id(user_id)
+    assert profile is not None and profile.confirmed is True

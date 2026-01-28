@@ -43,7 +43,9 @@ class TestOutboxIntegration:
     """Integration tests for outbox functionality."""
 
     @pytest.mark.asyncio
-    async def test_payment_service_creates_outbox_event_on_activation(self) -> None:
+    async def test_payment_service_creates_outbox_event_on_activation(
+        self, fake_tm: object
+    ) -> None:
         """Payment service creates outbox event when order is activated."""
 
         # Setup repositories
@@ -101,6 +103,7 @@ class TestOutboxIntegration:
             payment_repo=payment_repo,
             broadcaster=NoopOfferBroadcaster(),
             outbox_publisher=outbox_publisher,
+            transaction_manager=fake_tm,
         )
 
         # Confirm payment (this should create outbox event)
@@ -318,7 +321,7 @@ class TestOutboxIntegration:
         assert "Max retries (3) exceeded" in updated_event.last_error
 
     @pytest.mark.asyncio
-    async def test_end_to_end_outbox_flow(self) -> None:
+    async def test_end_to_end_outbox_flow(self, fake_tm: object) -> None:
         """End-to-end test of outbox flow from payment to Kafka."""
 
         # Setup all repositories
@@ -375,6 +378,7 @@ class TestOutboxIntegration:
             payment_repo=payment_repo,
             broadcaster=NoopOfferBroadcaster(),
             outbox_publisher=outbox_publisher,
+            transaction_manager=fake_tm,
         )
 
         # Create mock Kafka publisher

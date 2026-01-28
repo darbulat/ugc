@@ -211,3 +211,32 @@ async def test_create_order_requires_advertiser_profile() -> None:
             price=1000.0,
             bloggers_needed=3,
         )
+
+
+@pytest.mark.asyncio
+async def test_create_order_and_list_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for create_order and list_orders."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+        transaction_manager=fake_tm,
+    )
+    order = await service.create_order(
+        advertiser_id=user_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    assert order.order_id is not None
+    orders = await service.list_by_advertiser(advertiser_id=user_id)
+    assert len(orders) >= 1
+    assert any(o.order_id == order.order_id for o in orders)

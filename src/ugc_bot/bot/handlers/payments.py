@@ -8,7 +8,7 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
 
-from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.errors import OrderCreationError, UserNotFoundError  # noqa: F401 - used in except
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
@@ -190,11 +190,7 @@ async def successful_payment_handler(
             currency=message.successful_payment.currency,
         )
     except (OrderCreationError, UserNotFoundError) as exc:
-        logger.warning(
-            "Payment confirmation failed",
-            extra={"user_id": user.user_id, "reason": str(exc)},
-        )
-        # Record failed payment metric
+        # Record failed payment metric (middleware handles logging and user message)
         metrics_collector = None
         if hasattr(payment_service, "metrics_collector"):
             metrics_collector = payment_service.metrics_collector
@@ -203,15 +199,8 @@ async def successful_payment_handler(
                 order_id=str(order_id),
                 reason=str(exc),
             )
-        await message.answer(f"Ошибка подтверждения оплаты: {exc}")
-        return
-    except Exception:
-        logger.exception(
-            "Unexpected error during payment confirmation",
-            extra={"user_id": user.user_id},
-        )
-        await message.answer("Произошла неожиданная ошибка. Попробуйте позже.")
-        return
+        # Re-raise so middleware can handle it
+        raise
 
     await message.answer("Оплата подтверждена. Заказ активирован и отправлен блогерам.")
     # Send security warning

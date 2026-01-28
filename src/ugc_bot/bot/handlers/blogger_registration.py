@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import KeyboardButton, Message
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+# Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -274,15 +274,8 @@ async def handle_agreements(
             audience_geo=data["audience_geo"],
             price=data["price"],
         )
-    except (BloggerRegistrationError, UserNotFoundError) as exc:
-        logger.warning(
-            "Blogger registration failed",
-            extra={"user_id": data.get("user_id"), "reason": str(exc)},
-        )
-        await message.answer(f"Ошибка регистрации: {exc}")
-        return
     except Exception as exc:
-        # Check for unique constraint violation
+        # Check for unique constraint violation (database-level error, not application error)
         error_str = str(exc)
         if "UniqueViolation" in error_str and "instagram_url" in error_str:
             logger.warning(
@@ -297,13 +290,8 @@ async def handle_agreements(
                 "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
             )
             return
-
-        logger.exception(
-            "Unexpected error during blogger registration",
-            extra={"user_id": data.get("user_id")},
-        )
-        await message.answer("Произошла неожиданная ошибка. Попробуйте позже.")
-        return
+        # Re-raise so middleware can handle BloggerRegistrationError, UserNotFoundError, and other exceptions
+        raise
 
     await state.clear()
     await message.answer(

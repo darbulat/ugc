@@ -128,6 +128,12 @@ def _session_factory(result):
     return FakeAsyncSessionMaker(result)
 
 
+def _repo_session(repo):  # type: ignore[no-untyped-def]
+    """Create a fake session for a repository call."""
+
+    return repo.session_factory()  # type: ignore[attr-defined]
+
+
 @pytest.mark.asyncio
 async def test_user_repository_get_by_external() -> None:
     """Fetch user by external id."""
@@ -143,7 +149,9 @@ async def test_user_repository_get_by_external() -> None:
     )
     repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
 
-    user = await repo.get_by_external("123", MessengerType.TELEGRAM)
+    user = await repo.get_by_external(
+        "123", MessengerType.TELEGRAM, session=_repo_session(repo)
+    )
     assert user is not None
     assert user.external_id == "123"
 
@@ -163,7 +171,7 @@ async def test_user_repository_get_by_id() -> None:
     )
     repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
 
-    user = await repo.get_by_id(model.user_id)
+    user = await repo.get_by_id(model.user_id, session=_repo_session(repo))
     assert user is not None
     assert user.user_id == model.user_id
 
@@ -192,9 +200,9 @@ async def test_user_repository_save() -> None:
         created_at=datetime.now(timezone.utc),
     )
 
-    await repo.save(user)
+    await repo.save(user, session=session)
     assert session.merged is not None
-    assert session.committed is True
+    assert session.committed is False
 
 
 @pytest.mark.asyncio
@@ -226,9 +234,9 @@ async def test_blogger_profile_repository_save() -> None:
         updated_at=datetime.now(timezone.utc),
     )
 
-    await repo.save(profile)
+    await repo.save(profile, session=session)
     assert session.merged is not None
-    assert session.committed is True
+    assert session.committed is False
 
 
 @pytest.mark.asyncio
@@ -249,7 +257,9 @@ async def test_blogger_profile_repository_get_by_instagram_url() -> None:
     )
 
     repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))
-    profile = await repo.get_by_instagram_url("https://instagram.com/test_user")
+    profile = await repo.get_by_instagram_url(
+        "https://instagram.com/test_user", session=_repo_session(repo)
+    )
 
     assert profile is not None
     assert profile.instagram_url == "https://instagram.com/test_user"
@@ -261,7 +271,9 @@ async def test_blogger_profile_repository_get_by_instagram_url_not_found() -> No
     """Return None when Instagram URL not found."""
 
     repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(None))
-    profile = await repo.get_by_instagram_url("https://instagram.com/nonexistent")
+    profile = await repo.get_by_instagram_url(
+        "https://instagram.com/nonexistent", session=_repo_session(repo)
+    )
 
     assert profile is None
 
@@ -284,7 +296,7 @@ async def test_blogger_profile_repository_get() -> None:
     )
     repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))
 
-    profile = await repo.get_by_user_id(model.user_id)
+    profile = await repo.get_by_user_id(model.user_id, session=_repo_session(repo))
     assert profile is not None
     assert profile.instagram_url.endswith("test")
 
@@ -309,9 +321,9 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000116"),
         contact="@contact",
     )
-    await repo.save(profile)
+    await repo.save(profile, session=session)
     assert session.merged is not None
-    assert session.committed is True
+    assert session.committed is False
 
     repo_get = SqlAlchemyAdvertiserProfileRepository(
         session_factory=_session_factory(
@@ -321,7 +333,9 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
             )
         )
     )
-    fetched = await repo_get.get_by_user_id(profile.user_id)
+    fetched = await repo_get.get_by_user_id(
+        profile.user_id, session=_repo_session(repo_get)
+    )
     assert fetched is not None
     assert fetched.contact == "@contact"
 
@@ -350,9 +364,9 @@ async def test_instagram_verification_repository_save_and_get() -> None:
         used=False,
         created_at=datetime.now(timezone.utc),
     )
-    await repo.save(code)
+    await repo.save(code, session=session)
     assert session.merged is not None
-    assert session.committed is True
+    assert session.committed is False
 
     model = InstagramVerificationCodeModel(
         code_id=code.code_id,
@@ -365,7 +379,9 @@ async def test_instagram_verification_repository_save_and_get() -> None:
     repo_get = SqlAlchemyInstagramVerificationRepository(
         session_factory=_session_factory(model)
     )
-    fetched = await repo_get.get_valid_code(code.user_id, code.code)
+    fetched = await repo_get.get_valid_code(
+        code.user_id, code.code, session=_repo_session(repo_get)
+    )
     assert fetched is not None
 
 
@@ -384,7 +400,14 @@ async def test_instagram_verification_repository_get_invalid() -> None:
     repo = SqlAlchemyInstagramVerificationRepository(
         session_factory=_session_factory(expired_model)
     )
-    assert await repo.get_valid_code(expired_model.user_id, expired_model.code) is None
+    assert (
+        await repo.get_valid_code(
+            expired_model.user_id,
+            expired_model.code,
+            session=_repo_session(repo),
+        )
+        is None
+    )
 
     used_model = InstagramVerificationCodeModel(
         code_id=UUID("00000000-0000-0000-0000-000000000142"),
@@ -397,7 +420,12 @@ async def test_instagram_verification_repository_get_invalid() -> None:
     repo_used = SqlAlchemyInstagramVerificationRepository(
         session_factory=_session_factory(used_model)
     )
-    assert await repo_used.get_valid_code(used_model.user_id, used_model.code) is None
+    assert (
+        await repo_used.get_valid_code(
+            used_model.user_id, used_model.code, session=_repo_session(repo_used)
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -424,7 +452,7 @@ async def test_instagram_verification_repository_mark_used() -> None:
     repo = SqlAlchemyInstagramVerificationRepository(
         session_factory=FakeAsyncSessionMaker(session)
     )
-    await repo.mark_used(model.code_id)
+    await repo.mark_used(model.code_id, session=session)
     assert model.used is True
 
 
@@ -446,13 +474,15 @@ async def test_instagram_verification_repository_get_valid_code_by_code() -> Non
     )
 
     # Test getting valid code
-    fetched = await repo.get_valid_code_by_code("TESTCODE")
+    fetched = await repo.get_valid_code_by_code("TESTCODE", session=_repo_session(repo))
     assert fetched is not None
     assert fetched.code == "TESTCODE"
     assert fetched.user_id == user_id
 
     # Test case insensitive
-    fetched_lower = await repo.get_valid_code_by_code("testcode")
+    fetched_lower = await repo.get_valid_code_by_code(
+        "testcode", session=_repo_session(repo)
+    )
     assert fetched_lower is not None
     assert fetched_lower.code == "TESTCODE"
 
@@ -467,7 +497,7 @@ async def test_instagram_verification_repository_get_valid_code_by_code_not_foun
         session_factory=_session_factory(None)
     )
 
-    invalid = await repo.get_valid_code_by_code("INVALID")
+    invalid = await repo.get_valid_code_by_code("INVALID", session=_repo_session(repo))
     assert invalid is None
 
 
@@ -489,7 +519,9 @@ async def test_instagram_verification_repository_get_valid_code_by_code_expired(
         session_factory=_session_factory(expired_model)
     )
 
-    expired_fetched = await repo.get_valid_code_by_code("EXPIRED")
+    expired_fetched = await repo.get_valid_code_by_code(
+        "EXPIRED", session=_repo_session(repo)
+    )
     assert expired_fetched is None
 
 
@@ -509,7 +541,9 @@ async def test_instagram_verification_repository_get_valid_code_by_code_used() -
         session_factory=_session_factory(used_model)
     )
 
-    used_fetched = await repo.get_valid_code_by_code("USEDCODE")
+    used_fetched = await repo.get_valid_code_by_code(
+        "USEDCODE", session=_repo_session(repo)
+    )
     assert used_fetched is None
 
 
@@ -540,9 +574,9 @@ async def test_order_repository_save_and_get() -> None:
         created_at=datetime.now(timezone.utc),
         contacts_sent_at=None,
     )
-    await repo.save(order)
+    await repo.save(order, session=session)
     assert session.merged is not None
-    assert session.committed is True
+    assert session.committed is False
 
     model = OrderModel(
         order_id=order.order_id,
@@ -558,7 +592,7 @@ async def test_order_repository_save_and_get() -> None:
         contacts_sent_at=None,
     )
     repo_get = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
-    fetched = await repo_get.get_by_id(order.order_id)
+    fetched = await repo_get.get_by_id(order.order_id, session=_repo_session(repo_get))
     assert fetched is not None
 
 
@@ -582,7 +616,9 @@ async def test_order_repository_list_by_advertiser() -> None:
     )
     repo = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
 
-    orders_iter = await repo.list_by_advertiser(advertiser_id)
+    orders_iter = await repo.list_by_advertiser(
+        advertiser_id, session=_repo_session(repo)
+    )
     orders = list(orders_iter)
     assert orders
 
@@ -612,9 +648,9 @@ async def test_payment_repository_save_and_get() -> None:
         created_at=datetime.now(timezone.utc),
         paid_at=datetime.now(timezone.utc),
     )
-    await repo.save(payment)
+    await repo.save(payment, session=session)
     assert session.merged is not None
-    assert session.committed is True
+    assert session.committed is False
 
     model = PaymentModel(
         payment_id=payment.payment_id,
@@ -628,9 +664,12 @@ async def test_payment_repository_save_and_get() -> None:
         paid_at=payment.paid_at,
     )
     repo_get = SqlAlchemyPaymentRepository(session_factory=_session_factory(model))
-    fetched = await repo_get.get_by_order(payment.order_id)
+    sess = _repo_session(repo_get)
+    fetched = await repo_get.get_by_order(payment.order_id, session=sess)
     assert fetched is not None
-    fetched_external = await repo_get.get_by_external_id(payment.external_id)
+    fetched_external = await repo_get.get_by_external_id(
+        payment.external_id, session=sess
+    )
     assert fetched_external is not None
 
 
@@ -650,8 +689,8 @@ async def test_payment_repository_rejects_invalid_session() -> None:
         created_at=datetime.now(timezone.utc),
         paid_at=datetime.now(timezone.utc),
     )
-    with pytest.raises(TypeError):
-        await repo.save(payment, session=object())
+    with pytest.raises(RuntimeError):
+        await repo.save(payment)
 
 
 @pytest.mark.asyncio
@@ -664,7 +703,7 @@ async def test_contact_pricing_repository_get() -> None:
         updated_at=datetime.now(timezone.utc),
     )
     repo = SqlAlchemyContactPricingRepository(session_factory=_session_factory(model))
-    pricing = await repo.get_by_bloggers_count(10)
+    pricing = await repo.get_by_bloggers_count(10, session=_repo_session(repo))
     assert pricing is not None
     assert pricing.bloggers_count == 10
 
@@ -691,9 +730,9 @@ async def test_order_response_repository_methods() -> None:
         blogger_id=UUID("00000000-0000-0000-0000-000000000192"),
         responded_at=datetime.now(timezone.utc),
     )
-    await repo.save(response)
+    await repo.save(response, session=session)
     assert session.merged is not None
-    assert session.committed is True
+    assert session.committed is False
 
     model = OrderResponseModel(
         response_id=response.response_id,
@@ -704,14 +743,26 @@ async def test_order_response_repository_methods() -> None:
     repo_get = SqlAlchemyOrderResponseRepository(
         session_factory=_session_factory(model)
     )
-    responses = await repo_get.list_by_order(response.order_id)
+    responses = await repo_get.list_by_order(
+        response.order_id, session=_repo_session(repo_get)
+    )
     assert list(responses)
 
     repo_exists = SqlAlchemyOrderResponseRepository(session_factory=_session_factory(1))
-    assert await repo_exists.exists(response.order_id, response.blogger_id) is True
+    assert (
+        await repo_exists.exists(
+            response.order_id, response.blogger_id, session=_repo_session(repo_exists)
+        )
+        is True
+    )
 
     repo_count = SqlAlchemyOrderResponseRepository(session_factory=_session_factory(2))
-    assert await repo_count.count_by_order(response.order_id) == 2
+    assert (
+        await repo_count.count_by_order(
+            response.order_id, session=_repo_session(repo_count)
+        )
+        == 2
+    )
 
 
 @pytest.mark.asyncio
@@ -761,7 +812,7 @@ async def test_outbox_repository_save_and_get() -> None:
             return self._session
 
     repo = SqlAlchemyOutboxRepository(session_factory=FakeAsyncSessionMaker(session))
-    await repo.save(event)
+    await repo.save(event, session=session)
 
     assert len(saved_models) == 1
     saved_model = saved_models[0]
@@ -794,14 +845,8 @@ async def test_outbox_repository_rejects_invalid_session() -> None:
         last_error=None,
     )
     repo = SqlAlchemyOutboxRepository(session_factory=lambda: FakeSession(None))
-
-    class FakeAsyncSessionMaker:
-        def __call__(self):
-            return FakeSession(None)
-
-    repo = SqlAlchemyOutboxRepository(session_factory=FakeAsyncSessionMaker())
-    with pytest.raises(TypeError):
-        await repo.save(event, session=object())
+    with pytest.raises(RuntimeError):
+        await repo.save(event)
 
 
 def test_outbox_repository_get_pending_events() -> None:

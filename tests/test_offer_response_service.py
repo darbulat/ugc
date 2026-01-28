@@ -7,8 +7,6 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError
-from contextlib import asynccontextmanager
-
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus
@@ -19,12 +17,31 @@ from ugc_bot.infrastructure.memory_repositories import (
 
 
 @pytest.mark.asyncio
-async def test_offer_response_success() -> None:
+async def test_offer_response_requires_transaction_manager() -> None:
+    """Raise when transaction_manager is None."""
+    service = OfferResponseService(
+        order_repo=InMemoryOrderRepository(),
+        response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=None,
+    )
+    with pytest.raises(ValueError, match="transaction_manager"):
+        await service.respond_and_finalize(
+            order_id=UUID("00000000-0000-0000-0000-000000000800"),
+            blogger_id=UUID("00000000-0000-0000-0000-000000000802"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_offer_response_success(fake_tm: object) -> None:
     """Create response for active order."""
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
-    service = OfferResponseService(order_repo=order_repo, response_repo=response_repo)
+    service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000800"),
@@ -49,12 +66,16 @@ async def test_offer_response_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_limit() -> None:
+async def test_offer_response_limit(fake_tm: object) -> None:
     """Prevent responses above limit."""
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
-    service = OfferResponseService(order_repo=order_repo, response_repo=response_repo)
+    service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000810"),
@@ -83,12 +104,13 @@ async def test_offer_response_limit() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_order_not_found() -> None:
+async def test_offer_response_order_not_found(fake_tm: object) -> None:
     """Fail when order is missing."""
 
     service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
 
     with pytest.raises(OrderCreationError):
@@ -99,12 +121,16 @@ async def test_offer_response_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_requires_active_order() -> None:
+async def test_offer_response_requires_active_order(fake_tm: object) -> None:
     """Fail when order is not active."""
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
-    service = OfferResponseService(order_repo=order_repo, response_repo=response_repo)
+    service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
+    )
 
     await order_repo.save(
         Order(
@@ -130,12 +156,16 @@ async def test_offer_response_requires_active_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_finalize_closes_order() -> None:
+async def test_offer_response_finalize_closes_order(fake_tm: object) -> None:
     """Finalize response closes order and sets contacts."""
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
-    service = OfferResponseService(order_repo=order_repo, response_repo=response_repo)
+    service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
+    )
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000840"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000841"),
@@ -164,23 +194,15 @@ async def test_offer_response_finalize_closes_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_transaction_manager() -> None:
+async def test_offer_response_transaction_manager(fake_tm: object) -> None:
     """Use transaction manager path for finalize."""
-
-    @asynccontextmanager
-    async def _tx():
-        yield object()
-
-    class FakeTransactionManager:
-        def transaction(self):
-            return _tx()
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
     service = OfferResponseService(
         order_repo=order_repo,
         response_repo=response_repo,
-        transaction_manager=FakeTransactionManager(),
+        transaction_manager=fake_tm,
     )
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000850"),
@@ -207,14 +229,17 @@ async def test_offer_response_transaction_manager() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_records_metrics_when_enabled() -> None:
+async def test_offer_response_records_metrics_when_enabled(fake_tm: object) -> None:
     """Record metrics when collector is provided."""
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
     metrics = Mock()
     service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo, metrics_collector=metrics
+        order_repo=order_repo,
+        response_repo=response_repo,
+        metrics_collector=metrics,
+        transaction_manager=fake_tm,
     )
 
     order = Order(
@@ -242,21 +267,13 @@ async def test_offer_response_records_metrics_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_tx_order_not_found() -> None:
+async def test_offer_response_tx_order_not_found(fake_tm: object) -> None:
     """Transaction path: fail when order is missing."""
-
-    @asynccontextmanager
-    async def _tx():
-        yield object()
-
-    class FakeTransactionManager:
-        def transaction(self):
-            return _tx()
 
     service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
-        transaction_manager=FakeTransactionManager(),
+        transaction_manager=fake_tm,
     )
 
     with pytest.raises(OrderCreationError):
@@ -267,23 +284,15 @@ async def test_offer_response_tx_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_tx_requires_active_order() -> None:
+async def test_offer_response_tx_requires_active_order(fake_tm: object) -> None:
     """Transaction path: fail when order is not active."""
-
-    @asynccontextmanager
-    async def _tx():
-        yield object()
-
-    class FakeTransactionManager:
-        def transaction(self):
-            return _tx()
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
     service = OfferResponseService(
         order_repo=order_repo,
         response_repo=response_repo,
-        transaction_manager=FakeTransactionManager(),
+        transaction_manager=fake_tm,
     )
 
     await order_repo.save(
@@ -310,23 +319,17 @@ async def test_offer_response_tx_requires_active_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_tx_duplicate_response_is_rejected() -> None:
+async def test_offer_response_tx_duplicate_response_is_rejected(
+    fake_tm: object,
+) -> None:
     """Transaction path: reject duplicate response."""
-
-    @asynccontextmanager
-    async def _tx():
-        yield object()
-
-    class FakeTransactionManager:
-        def transaction(self):
-            return _tx()
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
     service = OfferResponseService(
         order_repo=order_repo,
         response_repo=response_repo,
-        transaction_manager=FakeTransactionManager(),
+        transaction_manager=fake_tm,
     )
 
     order_id = UUID("00000000-0000-0000-0000-000000000890")

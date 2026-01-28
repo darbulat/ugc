@@ -47,19 +47,28 @@ class OfferResponseService:
     async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID
     ) -> OfferResponseResult:
-        """Create response and update order in a single flow."""
+        """Create response and update order in a single atomic transaction."""
+
+        if self.transaction_manager is None:
+            raise ValueError(
+                "OfferResponseService requires transaction_manager for atomic operations."
+            )
 
         now = datetime.now(timezone.utc)
-        if self.transaction_manager is None:
-            order = await self.order_repo.get_by_id(order_id)
+        async with self.transaction_manager.transaction() as session:
+            order = await self.order_repo.get_by_id_for_update(
+                order_id, session=session
+            )
             if order is None:
                 raise OrderCreationError("Order not found.")
             if order.status != OrderStatus.ACTIVE:
                 raise OrderCreationError("Order is not active.")
-            if await self.response_repo.exists(order_id, blogger_id):
+            if await self.response_repo.exists(order_id, blogger_id, session=session):
                 raise OrderCreationError("You already responded to this order.")
 
-            response_count = await self.response_repo.count_by_order(order_id)
+            response_count = await self.response_repo.count_by_order(
+                order_id, session=session
+            )
             if response_count >= order.bloggers_needed:
                 raise OrderCreationError("Order response limit reached.")
 
@@ -69,40 +78,10 @@ class OfferResponseService:
                 blogger_id=blogger_id,
                 responded_at=now,
             )
-            await self.response_repo.save(response)
+            await self.response_repo.save(response, session=session)
             response_count += 1
             updated = _update_order_after_response(order, response_count, now=now)
-            await self.order_repo.save(updated)
-        else:
-            async with self.transaction_manager.transaction() as session:
-                order = await self.order_repo.get_by_id_for_update(
-                    order_id, session=session
-                )
-                if order is None:
-                    raise OrderCreationError("Order not found.")
-                if order.status != OrderStatus.ACTIVE:
-                    raise OrderCreationError("Order is not active.")
-                if await self.response_repo.exists(
-                    order_id, blogger_id, session=session
-                ):
-                    raise OrderCreationError("You already responded to this order.")
-
-                response_count = await self.response_repo.count_by_order(
-                    order_id, session=session
-                )
-                if response_count >= order.bloggers_needed:
-                    raise OrderCreationError("Order response limit reached.")
-
-                response = OrderResponse(
-                    response_id=uuid4(),
-                    order_id=order_id,
-                    blogger_id=blogger_id,
-                    responded_at=now,
-                )
-                await self.response_repo.save(response, session=session)
-                response_count += 1
-                updated = _update_order_after_response(order, response_count, now=now)
-                await self.order_repo.save(updated, session=session)
+            await self.order_repo.save(updated, session=session)
 
         if self.metrics_collector:
             self.metrics_collector.record_blogger_response(

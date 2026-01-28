@@ -71,6 +71,11 @@ class PaymentService:
         if existing and existing.status == PaymentStatus.PAID:
             return existing
 
+        if self.transaction_manager is None:
+            raise ValueError(
+                "PaymentService requires transaction_manager for atomic payment+outbox."
+            )
+
         now = datetime.now(timezone.utc)
         payment = Payment(
             payment_id=existing.payment_id if existing else uuid4(),
@@ -83,17 +88,9 @@ class PaymentService:
             created_at=now,
             paid_at=now,
         )
-        if self.transaction_manager is None:
-            await self.payment_repo.save(payment)
-            # Create outbox event for order activation (don't activate immediately)
-            await self.outbox_publisher.publish_order_activation(order)
-        else:
-            async with self.transaction_manager.transaction() as session:
-                await self.payment_repo.save(payment, session=session)
-                # Create outbox event for order activation (don't activate immediately)
-                await self.outbox_publisher.publish_order_activation(
-                    order, session=session
-                )
+        async with self.transaction_manager.transaction() as session:
+            await self.payment_repo.save(payment, session=session)
+            await self.outbox_publisher.publish_order_activation(order, session=session)
 
         logger.info(
             "Payment confirmed",

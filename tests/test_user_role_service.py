@@ -106,3 +106,65 @@ async def test_update_status_not_found() -> None:
         await service.update_status(
             UUID("00000000-0000-0000-0000-000000000999"), UserStatus.BLOCKED
         )
+
+
+@pytest.mark.asyncio
+async def test_set_user_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path: set_user creates and updates user."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    user = await service.set_user(
+        external_id="tm-123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="tm_user",
+    )
+    assert user.external_id == "tm-123"
+    updated = await service.set_user(
+        external_id="tm-123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="tm_user_updated",
+    )
+    assert updated.username == "tm_user_updated"
+
+
+@pytest.mark.asyncio
+async def test_get_user_id_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for get_user_id."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    await service.set_user(
+        external_id="tid-1", messenger_type=MessengerType.TELEGRAM, username="u"
+    )
+    uid = await service.get_user_id("tid-1", MessengerType.TELEGRAM)
+    assert uid is not None
+    assert await service.get_user_id("nonexistent", MessengerType.TELEGRAM) is None
+
+
+@pytest.mark.asyncio
+async def test_get_user_and_get_by_id_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for get_user and get_user_by_id."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    created = await service.set_user(
+        external_id="gid-1", messenger_type=MessengerType.TELEGRAM, username="u"
+    )
+    found = await service.get_user("gid-1", MessengerType.TELEGRAM)
+    assert found is not None and found.user_id == created.user_id
+    by_id = await service.get_user_by_id(created.user_id)
+    assert by_id is not None and by_id.user_id == created.user_id
+
+
+@pytest.mark.asyncio
+async def test_update_status_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for update_status."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    user = await service.set_user(
+        external_id="st-1", messenger_type=MessengerType.TELEGRAM, username="u"
+    )
+    updated = await service.update_status(user.user_id, UserStatus.BLOCKED)
+    assert updated.status == UserStatus.BLOCKED

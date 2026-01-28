@@ -142,6 +142,7 @@ def _payment_service(
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     order_repo: InMemoryOrderRepository,
     payment_repo: InMemoryPaymentRepository,
+    transaction_manager: object,
 ) -> PaymentService:
     """Create payment service for tests."""
 
@@ -155,11 +156,14 @@ def _payment_service(
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
+        transaction_manager=transaction_manager,
     )
 
 
 @pytest.mark.asyncio
-async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_pay_order_success(
+    monkeypatch: pytest.MonkeyPatch, fake_tm: object
+) -> None:
     """Invoice is sent when order is valid."""
 
     user_repo = InMemoryUserRepository()
@@ -168,7 +172,7 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -232,7 +236,7 @@ async def test_pay_order_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_missing_provider_token() -> None:
+async def test_pay_order_missing_provider_token(fake_tm: object) -> None:
     """Reject when provider token missing."""
 
     user_repo = InMemoryUserRepository()
@@ -241,7 +245,7 @@ async def test_pay_order_missing_provider_token() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -311,7 +315,7 @@ async def test_pay_order_missing_provider_token() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_invalid_args() -> None:
+async def test_pay_order_invalid_args(fake_tm: object) -> None:
     """Reject missing order id argument."""
 
     user_repo = InMemoryUserRepository()
@@ -320,7 +324,7 @@ async def test_pay_order_invalid_args() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -350,7 +354,7 @@ async def test_pay_order_invalid_args() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_invalid_uuid() -> None:
+async def test_pay_order_invalid_uuid(fake_tm: object) -> None:
     """Reject invalid order id format."""
 
     user_repo = InMemoryUserRepository()
@@ -359,7 +363,7 @@ async def test_pay_order_invalid_uuid() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -391,7 +395,7 @@ async def test_pay_order_invalid_uuid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_order_not_found() -> None:
+async def test_pay_order_order_not_found(fake_tm: object) -> None:
     """Reject missing order."""
 
     user_repo = InMemoryUserRepository()
@@ -400,7 +404,7 @@ async def test_pay_order_order_not_found() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -434,7 +438,7 @@ async def test_pay_order_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_wrong_owner() -> None:
+async def test_pay_order_wrong_owner(fake_tm: object) -> None:
     """Reject payments for чужие заказы."""
 
     user_repo = InMemoryUserRepository()
@@ -443,7 +447,7 @@ async def test_pay_order_wrong_owner() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -497,7 +501,7 @@ async def test_pay_order_wrong_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_not_new_status() -> None:
+async def test_pay_order_not_new_status(fake_tm: object) -> None:
     """Reject payments for non-NEW orders."""
 
     user_repo = InMemoryUserRepository()
@@ -506,7 +510,7 @@ async def test_pay_order_not_new_status() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -555,7 +559,7 @@ async def test_pay_order_not_new_status() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_blocked_user() -> None:
+async def test_pay_order_blocked_user(fake_tm: object) -> None:
     """Reject blocked users."""
 
     user_repo = InMemoryUserRepository()
@@ -564,7 +568,7 @@ async def test_pay_order_blocked_user() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -604,7 +608,7 @@ async def test_pay_order_blocked_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_paused_user() -> None:
+async def test_pay_order_paused_user(fake_tm: object) -> None:
     """Reject paused users."""
 
     user_repo = InMemoryUserRepository()
@@ -613,7 +617,7 @@ async def test_pay_order_paused_user() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -653,7 +657,7 @@ async def test_pay_order_paused_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_missing_profile() -> None:
+async def test_pay_order_missing_profile(fake_tm: object) -> None:
     """Reject missing advertiser profile."""
 
     user_repo = InMemoryUserRepository()
@@ -662,7 +666,7 @@ async def test_pay_order_missing_profile() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     profile_service = _profile_service(user_repo, advertiser_repo)
     contact_pricing_service = _contact_pricing_service()
@@ -693,7 +697,7 @@ async def test_pay_order_missing_profile() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_checkout_query_ok() -> None:
+async def test_pre_checkout_query_ok(fake_tm: object) -> None:
     """Confirm pre-checkout query."""
 
     bot = FakeBot()
@@ -703,7 +707,7 @@ async def test_pre_checkout_query_ok() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_checkout_query_without_bot() -> None:
+async def test_pre_checkout_query_without_bot(fake_tm: object) -> None:
     """Skip when bot is missing."""
 
     query = FakePreCheckoutQuery("q1", None)
@@ -711,7 +715,7 @@ async def test_pre_checkout_query_without_bot() -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_payment_handler() -> None:
+async def test_successful_payment_handler(fake_tm: object) -> None:
     """Confirm payment on successful payment message."""
 
     user_repo = InMemoryUserRepository()
@@ -720,7 +724,7 @@ async def test_successful_payment_handler() -> None:
     payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
 
     user = User(
@@ -783,7 +787,7 @@ async def test_successful_payment_handler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_payment_invalid_payload() -> None:
+async def test_successful_payment_invalid_payload(fake_tm: object) -> None:
     """Reject invalid payload."""
 
     user_repo = InMemoryUserRepository()
@@ -792,7 +796,7 @@ async def test_successful_payment_invalid_payload() -> None:
     order_repo = InMemoryOrderRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
     user = await _seed_user(
         user_repo, UUID("00000000-0000-0000-0000-000000000520"), "20"
@@ -806,7 +810,7 @@ async def test_successful_payment_invalid_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_payment_user_not_found() -> None:
+async def test_successful_payment_user_not_found(fake_tm: object) -> None:
     """Reject when user is not found."""
 
     user_repo = InMemoryUserRepository()
@@ -815,7 +819,7 @@ async def test_successful_payment_user_not_found() -> None:
     order_repo = InMemoryOrderRepository()
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
     )
 
     message = FakeMessage(text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot())

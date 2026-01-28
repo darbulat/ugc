@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import KeyboardButton, Message
 
-from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+# Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.profile_service import ProfileService
@@ -240,33 +240,19 @@ async def handle_bloggers_needed(
         await message.answer("NEW рекламодатели могут выбрать только 3 или 10.")
         return
 
-    try:
-        # Convert user_id from string (Redis) back to UUID if needed
-        user_id_raw = data["user_id"]
-        user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-        order = await order_service.create_order(
-            advertiser_id=user_id,
-            product_link=data["product_link"],
-            offer_text=data["offer_text"],
-            ugc_requirements=data.get("ugc_requirements"),
-            barter_description=data.get("barter_description"),
-            price=data["price"],
-            bloggers_needed=bloggers_needed,
-        )
-    except (OrderCreationError, UserNotFoundError) as exc:
-        logger.warning(
-            "Order creation failed",
-            extra={"user_id": data.get("user_id"), "reason": str(exc)},
-        )
-        await message.answer(f"Ошибка создания заказа: {exc}")
-        return
-    except Exception:
-        logger.exception(
-            "Unexpected error during order creation",
-            extra={"user_id": data.get("user_id")},
-        )
-        await message.answer("Произошла неожиданная ошибка. Попробуйте позже.")
-        return
+    # Convert user_id from string (Redis) back to UUID if needed
+    user_id_raw = data["user_id"]
+    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+    # Middleware handles OrderCreationError, UserNotFoundError, and other exceptions
+    order = await order_service.create_order(
+        advertiser_id=user_id,
+        product_link=data["product_link"],
+        offer_text=data["offer_text"],
+        ugc_requirements=data.get("ugc_requirements"),
+        barter_description=data.get("barter_description"),
+        price=data["price"],
+        bloggers_needed=bloggers_needed,
+    )
 
     await state.clear()
     await message.answer(f"Заказ создан со статусом NEW. Номер: {order.order_id}")

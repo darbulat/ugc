@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.session import create_session_factory
+from ugc_bot.infrastructure.db.session import SessionTransactionManager
 
 
 @pytest.fixture(scope="session")
@@ -144,6 +145,9 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
     outbox_repo = SqlAlchemyOutboxRepository(session_factory=session_factory)
 
+    transaction_manager = SessionTransactionManager(session_factory)
+    dispatcher["transaction_manager"] = transaction_manager
+
     from ugc_bot.application.services.user_role_service import UserRoleService
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
@@ -166,27 +170,45 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 
-    dispatcher["user_role_service"] = UserRoleService(user_repo=user_repo)
+    dispatcher["user_role_service"] = UserRoleService(
+        user_repo=user_repo, transaction_manager=transaction_manager
+    )
     dispatcher["blogger_registration_service"] = BloggerRegistrationService(
-        user_repo=user_repo, blogger_repo=blogger_repo
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        transaction_manager=transaction_manager,
     )
     dispatcher["advertiser_registration_service"] = AdvertiserRegistrationService(
-        user_repo=user_repo, advertiser_repo=advertiser_repo
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        transaction_manager=transaction_manager,
     )
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
-        user_repo=user_repo, blogger_repo=blogger_repo, verification_repo=instagram_repo
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=instagram_repo,
+        transaction_manager=transaction_manager,
     )
     dispatcher["order_service"] = OrderService(
-        user_repo=user_repo, advertiser_repo=advertiser_repo, order_repo=order_repo
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+        transaction_manager=transaction_manager,
     )
     dispatcher["offer_dispatch_service"] = OfferDispatchService(
-        user_repo=user_repo, blogger_repo=blogger_repo, order_repo=order_repo
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        transaction_manager=transaction_manager,
     )
     dispatcher["offer_response_service"] = OfferResponseService(
-        order_repo=order_repo, response_repo=order_response_repo
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=transaction_manager,
     )
     dispatcher["interaction_service"] = InteractionService(
-        interaction_repo=interaction_repo
+        interaction_repo=interaction_repo,
+        transaction_manager=transaction_manager,
     )
     outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
     dispatcher["payment_service"] = PaymentService(
@@ -196,14 +218,21 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         payment_repo=payment_repo,
         broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
+        transaction_manager=transaction_manager,
     )
     dispatcher["contact_pricing_service"] = ContactPricingService(
-        pricing_repo=pricing_repo
+        pricing_repo=pricing_repo,
+        transaction_manager=transaction_manager,
     )
     dispatcher["profile_service"] = ProfileService(
-        user_repo=user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        advertiser_repo=advertiser_repo,
+        transaction_manager=transaction_manager,
     )
-    dispatcher["complaint_service"] = ComplaintService(complaint_repo=complaint_repo)
+    dispatcher["complaint_service"] = ComplaintService(
+        complaint_repo=complaint_repo, transaction_manager=transaction_manager
+    )
 
     # Add repositories for easier testing
     dispatcher["user_repo"] = user_repo

@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import InteractionRepository
@@ -11,6 +11,13 @@ from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
 
 logger = logging.getLogger(__name__)
+
+
+class TransactionManager(Protocol):
+    """Protocol for database transaction handling."""
+
+    def transaction(self) -> AsyncContextManager[Any]:
+        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)
@@ -21,6 +28,43 @@ class InteractionService:
     postpone_delay_hours: int = 72
     max_postpone_count: int = 3
     metrics_collector: Optional[Any] = None
+    transaction_manager: TransactionManager | None = None
+
+    async def _save(self, interaction: Interaction) -> None:
+        """Persist interaction using an optional transaction boundary."""
+
+        if self.transaction_manager is None:
+            await self.interaction_repo.save(interaction)
+            return
+        async with self.transaction_manager.transaction() as session:
+            await self.interaction_repo.save(interaction, session=session)
+
+    async def _get_by_id(self, interaction_id: UUID) -> Interaction | None:
+        """Fetch interaction by id using an optional transaction boundary."""
+
+        if self.transaction_manager is None:
+            return await self.interaction_repo.get_by_id(interaction_id)
+        async with self.transaction_manager.transaction() as session:
+            return await self.interaction_repo.get_by_id(
+                interaction_id, session=session
+            )
+
+    async def _get_by_participants(
+        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+    ) -> Interaction | None:
+        """Fetch interaction by participants using an optional transaction boundary."""
+
+        if self.transaction_manager is None:
+            return await self.interaction_repo.get_by_participants(
+                order_id=order_id, blogger_id=blogger_id, advertiser_id=advertiser_id
+            )
+        async with self.transaction_manager.transaction() as session:
+            return await self.interaction_repo.get_by_participants(
+                order_id=order_id,
+                blogger_id=blogger_id,
+                advertiser_id=advertiser_id,
+                session=session,
+            )
 
     async def create_for_contacts_sent(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
@@ -43,7 +87,7 @@ class InteractionService:
             created_at=now,
             updated_at=now,
         )
-        await self.interaction_repo.save(interaction)
+        await self._save(interaction)
         return interaction
 
     async def get_or_create(
@@ -51,7 +95,7 @@ class InteractionService:
     ) -> Interaction:
         """Fetch existing interaction or create a new one."""
 
-        existing = await self.interaction_repo.get_by_participants(
+        existing = await self._get_by_participants(
             order_id=order_id, blogger_id=blogger_id, advertiser_id=advertiser_id
         )
         if existing is not None:
@@ -71,7 +115,7 @@ class InteractionService:
             created_at=now,
             updated_at=now,
         )
-        await self.interaction_repo.save(interaction)
+        await self._save(interaction)
         return interaction
 
     async def record_advertiser_feedback(
@@ -108,7 +152,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        await self.interaction_repo.save(updated)
+        await self._save(updated)
 
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
@@ -155,7 +199,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        await self.interaction_repo.save(updated)
+        await self._save(updated)
 
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
@@ -201,7 +245,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        await self.interaction_repo.save(updated)
+        await self._save(updated)
 
         # Record postponement metric
         if self.metrics_collector:
@@ -213,7 +257,7 @@ class InteractionService:
         return updated
 
     async def _require(self, interaction_id: UUID) -> Interaction:
-        interaction = await self.interaction_repo.get_by_id(interaction_id)
+        interaction = await self._get_by_id(interaction_id)
         if interaction is None:
             raise ValueError("Interaction not found.")
         return interaction
@@ -312,7 +356,7 @@ class InteractionService:
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
-        await self.interaction_repo.save(resolved)
+        await self._save(resolved)
 
         logger.info(
             "Interaction issue manually resolved",

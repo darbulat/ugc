@@ -7,25 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 
-from ugc_bot.application.services.advertiser_registration_service import (
-    AdvertiserRegistrationService,
-)
-from ugc_bot.application.services.blogger_registration_service import (
-    BloggerRegistrationService,
-)
-from ugc_bot.application.services.instagram_verification_service import (
-    InstagramVerificationService,
-)
-from ugc_bot.application.services.interaction_service import InteractionService
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
-from ugc_bot.application.services.offer_response_service import OfferResponseService
-from ugc_bot.application.services.order_service import OrderService
-from ugc_bot.application.services.outbox_publisher import OutboxPublisher
-from ugc_bot.application.services.payment_service import PaymentService
-from ugc_bot.application.services.profile_service import ProfileService
-from ugc_bot.application.services.complaint_service import ComplaintService
-from ugc_bot.application.services.contact_pricing_service import ContactPricingService
-from ugc_bot.application.services.user_role_service import UserRoleService
+# Services are built via Container.build_bot_services()
 from ugc_bot.bot.handlers.cancel import router as cancel_router
 from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.handlers.advertiser_registration import (
@@ -42,11 +24,10 @@ from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
 from ugc_bot.bot.handlers.feedback import router as feedback_router
 from ugc_bot.bot.handlers.complaints import router as complaints_router
+from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
-from ugc_bot.infrastructure.db.repositories import NoopOfferBroadcaster
 from ugc_bot.logging_setup import configure_logging
-from ugc_bot.metrics.collector import MetricsCollector
 from ugc_bot.startup_logging import log_startup_info
 
 
@@ -118,89 +99,18 @@ def build_dispatcher(
     dispatcher = Dispatcher(storage=storage)
     dispatcher["config"] = config
 
-    c = Container(config)
-    repos = c.build_repos()
-    metrics_collector = MetricsCollector()
-    dispatcher["metrics_collector"] = metrics_collector
-    dispatcher["user_role_service"] = UserRoleService(
-        user_repo=repos["user_repo"],
-        metrics_collector=metrics_collector,
-    )
-    dispatcher["blogger_registration_service"] = BloggerRegistrationService(
-        user_repo=repos["user_repo"],
-        blogger_repo=repos["blogger_repo"],
-        metrics_collector=metrics_collector,
-    )
-    dispatcher["advertiser_registration_service"] = AdvertiserRegistrationService(
-        user_repo=repos["user_repo"],
-        advertiser_repo=repos["advertiser_repo"],
-        metrics_collector=metrics_collector,
-    )
-    # Create Instagram Graph API client if access token is configured
-    instagram_api_client = None
-    if config.instagram.instagram_access_token:
-        from ugc_bot.infrastructure.instagram.graph_api_client import (
-            HttpInstagramGraphApiClient,
-        )
+    container = Container(config)
+    services = container.build_bot_services()
 
-        instagram_api_client = HttpInstagramGraphApiClient(
-            access_token=config.instagram.instagram_access_token,
-            base_url=config.instagram.instagram_api_base_url,
-        )
+    # Register error handling middleware for all updates
+    error_handler = ErrorHandlerMiddleware(
+        metrics_collector=services["metrics_collector"]
+    )
+    dispatcher.update.outer_middleware(error_handler)
 
-    dispatcher["instagram_verification_service"] = InstagramVerificationService(
-        user_repo=repos["user_repo"],
-        blogger_repo=repos["blogger_repo"],
-        verification_repo=repos["instagram_repo"],
-        instagram_api_client=instagram_api_client,
-    )
-    dispatcher["order_service"] = OrderService(
-        user_repo=repos["user_repo"],
-        advertiser_repo=repos["advertiser_repo"],
-        order_repo=repos["order_repo"],
-        metrics_collector=metrics_collector,
-    )
-    dispatcher["offer_dispatch_service"] = OfferDispatchService(
-        user_repo=repos["user_repo"],
-        blogger_repo=repos["blogger_repo"],
-        order_repo=repos["order_repo"],
-    )
-    dispatcher["offer_response_service"] = OfferResponseService(
-        order_repo=repos["order_repo"],
-        response_repo=repos["order_response_repo"],
-        metrics_collector=metrics_collector,
-        transaction_manager=c.transaction_manager,
-    )
-    dispatcher["interaction_service"] = InteractionService(
-        interaction_repo=repos["interaction_repo"],
-        metrics_collector=metrics_collector,
-    )
-    outbox_publisher = OutboxPublisher(
-        outbox_repo=repos["outbox_repo"], order_repo=repos["order_repo"]
-    )
-
-    dispatcher["payment_service"] = PaymentService(
-        user_repo=repos["user_repo"],
-        advertiser_repo=repos["advertiser_repo"],
-        order_repo=repos["order_repo"],
-        payment_repo=repos["payment_repo"],
-        broadcaster=NoopOfferBroadcaster(),
-        outbox_publisher=outbox_publisher,
-        metrics_collector=metrics_collector,
-        transaction_manager=c.transaction_manager,
-    )
-    dispatcher["contact_pricing_service"] = ContactPricingService(
-        pricing_repo=repos["pricing_repo"]
-    )
-    dispatcher["profile_service"] = ProfileService(
-        user_repo=repos["user_repo"],
-        blogger_repo=repos["blogger_repo"],
-        advertiser_repo=repos["advertiser_repo"],
-    )
-    dispatcher["complaint_service"] = ComplaintService(
-        complaint_repo=repos["complaint_repo"],
-        metrics_collector=metrics_collector,
-    )
+    # Register all services in dispatcher
+    for key, service in services.items():
+        dispatcher[key] = service
     if include_routers:
         dispatcher.include_router(cancel_router)
         dispatcher.include_router(start_router)

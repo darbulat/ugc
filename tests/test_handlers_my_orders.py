@@ -64,7 +64,7 @@ class FakeCallback:
 
 
 @pytest.mark.asyncio
-async def test_my_orders_no_advertiser_profile() -> None:
+async def test_my_orders_no_advertiser_profile(fake_tm: object) -> None:
     """Show hint when advertiser profile is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -84,6 +84,7 @@ async def test_my_orders_no_advertiser_profile() -> None:
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
 
     await user_service.set_user(
@@ -102,7 +103,7 @@ async def test_my_orders_no_advertiser_profile() -> None:
 
 
 @pytest.mark.asyncio
-async def test_my_orders_empty() -> None:
+async def test_my_orders_empty(fake_tm: object) -> None:
     """Show hint when no orders exist."""
 
     user_repo = InMemoryUserRepository()
@@ -122,6 +123,7 @@ async def test_my_orders_empty() -> None:
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
 
     user = await user_service.set_user(
@@ -143,7 +145,7 @@ async def test_my_orders_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_my_orders_list() -> None:
+async def test_my_orders_list(fake_tm: object) -> None:
     """List existing orders."""
 
     user_repo = InMemoryUserRepository()
@@ -163,6 +165,7 @@ async def test_my_orders_list() -> None:
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
 
     user = User(
@@ -203,7 +206,7 @@ async def test_my_orders_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_my_orders_pagination() -> None:
+async def test_my_orders_pagination(fake_tm: object) -> None:
     """Paginate orders list."""
 
     user_repo = InMemoryUserRepository()
@@ -223,6 +226,7 @@ async def test_my_orders_pagination() -> None:
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
 
     user = User(
@@ -266,7 +270,7 @@ async def test_my_orders_pagination() -> None:
 
 
 @pytest.mark.asyncio
-async def test_my_orders_with_complaint_button() -> None:
+async def test_my_orders_with_complaint_button(fake_tm: object) -> None:
     """Show complaint button for closed orders with responses."""
 
     user_repo = InMemoryUserRepository()
@@ -287,6 +291,7 @@ async def test_my_orders_with_complaint_button() -> None:
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     user = User(

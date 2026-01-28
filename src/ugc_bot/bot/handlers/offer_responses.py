@@ -6,7 +6,6 @@ from uuid import UUID
 from aiogram import Router
 from aiogram.types import CallbackQuery
 
-from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.profile_service import ProfileService
@@ -74,31 +73,8 @@ async def handle_offer_response(
         await callback.answer("Неверный идентификатор заказа.")
         return
 
-    try:
-        result = await offer_response_service.respond_and_finalize(
-            order_id, user.user_id
-        )
-    except OrderCreationError as exc:
-        error_map = {
-            "Order not found.": "Заказ не найден.",
-            "Order is not active.": "Заказ не активен.",
-            "You already responded to this order.": "Вы уже откликались на этот заказ.",
-            "Order response limit reached.": "Лимит откликов по заказу достигнут.",
-        }
-        message = error_map.get(str(exc), str(exc))
-        logger.warning(
-            "Offer response rejected",
-            extra={"user_id": user.user_id, "reason": str(exc)},
-        )
-        await callback.answer(message)
-        return
-    except Exception:
-        logger.exception(
-            "Unexpected offer response error",
-            extra={"user_id": user.user_id},
-        )
-        await callback.answer("Произошла ошибка. Попробуйте позже.")
-        return
+    # Middleware handles OrderCreationError and other exceptions
+    result = await offer_response_service.respond_and_finalize(order_id, user.user_id)
 
     await callback.answer("Отклик принят! Ожидайте связи от рекламодателя.")
     if callback.message:

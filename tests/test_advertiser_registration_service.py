@@ -123,3 +123,21 @@ async def test_get_profile_returns_saved_profile() -> None:
     loaded = await service.get_profile(user_id)
 
     assert loaded == created
+
+
+@pytest.mark.asyncio
+async def test_register_advertiser_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for register_advertiser and get_profile."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        transaction_manager=fake_tm,
+    )
+    profile = await service.register_advertiser(user_id=user_id, contact="@tm_contact")
+    assert profile.contact == "@tm_contact"
+    loaded = await service.get_profile(user_id)
+    assert loaded == profile

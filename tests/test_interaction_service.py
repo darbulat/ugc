@@ -455,3 +455,22 @@ async def test_manually_resolve_issue_not_found() -> None:
         await service.manually_resolve_issue(
             UUID("00000000-0000-0000-0000-000000000999"), InteractionStatus.OK
         )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for get_or_create (save and get_by_participants)."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, transaction_manager=fake_tm)
+    interaction = await service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000001101"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001102"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001103"),
+    )
+    assert interaction.status == InteractionStatus.PENDING
+    found_in_repo = await repo.get_by_id(interaction.interaction_id)
+    assert (
+        found_in_repo is not None
+        and found_in_repo.interaction_id == interaction.interaction_id
+    )

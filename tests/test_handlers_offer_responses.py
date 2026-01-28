@@ -13,6 +13,7 @@ from ugc_bot.bot.handlers.offer_responses import (
     _send_contact_immediately,
     handle_offer_response,
 )
+from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.domain.entities import BloggerProfile, Order, OrderResponse, User
 from ugc_bot.domain.enums import AudienceGender, MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
@@ -23,6 +24,19 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOrderResponseRepository,
     InMemoryUserRepository,
 )
+from ugc_bot.metrics.collector import MetricsCollector
+
+
+async def _call_handler_with_middleware(handler, *args, **kwargs):
+    """Call handler wrapped in error handling middleware."""
+    error_handler = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
+
+    async def wrapped_handler(event, data):
+        return await handler(*args, **kwargs)
+
+    # First arg should be the event (callback or message)
+    event = args[0] if args else None
+    return await error_handler(wrapped_handler, event, {})
 
 
 class FakeUser:
@@ -102,7 +116,7 @@ async def _add_blogger_profile(
 
 
 @pytest.mark.asyncio
-async def test_contact_sent_immediately() -> None:
+async def test_contact_sent_immediately(fake_tm: object) -> None:
     """Send contact immediately after each response."""
 
     user_repo = InMemoryUserRepository()
@@ -187,13 +201,15 @@ async def test_contact_sent_immediately() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_closed_when_limit_reached() -> None:
+async def test_order_closed_when_limit_reached(fake_tm: object) -> None:
     """Close order when limit of responses is reached."""
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
     response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
 
     order = Order(
@@ -222,7 +238,7 @@ async def test_order_closed_when_limit_reached() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_success() -> None:
+async def test_offer_response_handler_success(fake_tm: object) -> None:
     """Blogger can respond to offer."""
 
     user_repo = InMemoryUserRepository()
@@ -232,7 +248,9 @@ async def test_offer_response_handler_success() -> None:
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -283,7 +301,7 @@ async def test_offer_response_handler_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_blocked_user() -> None:
+async def test_offer_response_handler_blocked_user(fake_tm: object) -> None:
     """Reject blocked bloggers early."""
 
     user_repo = InMemoryUserRepository()
@@ -292,6 +310,7 @@ async def test_offer_response_handler_blocked_user() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -320,7 +339,7 @@ async def test_offer_response_handler_blocked_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_order_not_active() -> None:
+async def test_offer_response_handler_order_not_active(fake_tm: object) -> None:
     """Reject responses for inactive orders."""
 
     user_repo = InMemoryUserRepository()
@@ -332,6 +351,7 @@ async def test_offer_response_handler_order_not_active() -> None:
     response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -373,8 +393,14 @@ async def test_offer_response_handler_order_not_active() -> None:
         data=f"offer:{order.order_id}", user=FakeUser(12), message=message
     )
 
-    await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+    # Wrap handler call with middleware to handle errors
+    await _call_handler_with_middleware(
+        handle_offer_response,
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -382,7 +408,7 @@ async def test_offer_response_handler_order_not_active() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_order_not_found() -> None:
+async def test_offer_response_handler_order_not_found(fake_tm: object) -> None:
     """Reject responses for unknown order."""
 
     user_repo = InMemoryUserRepository()
@@ -391,6 +417,7 @@ async def test_offer_response_handler_order_not_found() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -414,8 +441,14 @@ async def test_offer_response_handler_order_not_found() -> None:
         message=message,
     )
 
-    await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+    # Wrap handler call with middleware to handle errors
+    await _call_handler_with_middleware(
+        handle_offer_response,
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -423,7 +456,7 @@ async def test_offer_response_handler_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_already_responded() -> None:
+async def test_offer_response_handler_already_responded(fake_tm: object) -> None:
     """Reject duplicate responses."""
 
     user_repo = InMemoryUserRepository()
@@ -435,6 +468,7 @@ async def test_offer_response_handler_already_responded() -> None:
     response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -484,8 +518,14 @@ async def test_offer_response_handler_already_responded() -> None:
         data=f"offer:{order.order_id}", user=FakeUser(14), message=message
     )
 
-    await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+    # Wrap handler call with middleware to handle errors
+    await _call_handler_with_middleware(
+        handle_offer_response,
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -493,7 +533,7 @@ async def test_offer_response_handler_already_responded() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_limit_reached() -> None:
+async def test_offer_response_handler_limit_reached(fake_tm: object) -> None:
     """Reject responses when limit reached."""
 
     user_repo = InMemoryUserRepository()
@@ -505,6 +545,7 @@ async def test_offer_response_handler_limit_reached() -> None:
     response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -554,8 +595,14 @@ async def test_offer_response_handler_limit_reached() -> None:
         data=f"offer:{order.order_id}", user=FakeUser(15), message=message
     )
 
-    await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+    # Wrap handler call with middleware to handle errors
+    await _call_handler_with_middleware(
+        handle_offer_response,
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -563,7 +610,7 @@ async def test_offer_response_handler_limit_reached() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_no_from_user() -> None:
+async def test_offer_response_handler_no_from_user(fake_tm: object) -> None:
     """Handle callback without from_user."""
 
     user_repo = InMemoryUserRepository()
@@ -572,6 +619,7 @@ async def test_offer_response_handler_no_from_user() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -589,7 +637,7 @@ async def test_offer_response_handler_no_from_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_user_not_found() -> None:
+async def test_offer_response_handler_user_not_found(fake_tm: object) -> None:
     """Reject when user is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -598,6 +646,7 @@ async def test_offer_response_handler_user_not_found() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -615,7 +664,7 @@ async def test_offer_response_handler_user_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_paused_user() -> None:
+async def test_offer_response_handler_paused_user(fake_tm: object) -> None:
     """Reject paused bloggers."""
 
     user_repo = InMemoryUserRepository()
@@ -624,6 +673,7 @@ async def test_offer_response_handler_paused_user() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -651,7 +701,7 @@ async def test_offer_response_handler_paused_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_no_blogger_profile() -> None:
+async def test_offer_response_handler_no_blogger_profile(fake_tm: object) -> None:
     """Reject when blogger profile is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -660,6 +710,7 @@ async def test_offer_response_handler_no_blogger_profile() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -687,7 +738,7 @@ async def test_offer_response_handler_no_blogger_profile() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_unconfirmed_profile() -> None:
+async def test_offer_response_handler_unconfirmed_profile(fake_tm: object) -> None:
     """Reject when Instagram is not confirmed."""
 
     user_repo = InMemoryUserRepository()
@@ -696,6 +747,7 @@ async def test_offer_response_handler_unconfirmed_profile() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -724,7 +776,7 @@ async def test_offer_response_handler_unconfirmed_profile() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_invalid_uuid() -> None:
+async def test_offer_response_handler_invalid_uuid(fake_tm: object) -> None:
     """Reject invalid UUID in callback data."""
 
     user_repo = InMemoryUserRepository()
@@ -733,6 +785,7 @@ async def test_offer_response_handler_invalid_uuid() -> None:
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         response_repo=InMemoryOrderResponseRepository(),
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -761,7 +814,7 @@ async def test_offer_response_handler_invalid_uuid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_exception() -> None:
+async def test_offer_response_handler_exception(fake_tm: object) -> None:
     """Handle exceptions gracefully."""
 
     user_repo = InMemoryUserRepository()
@@ -771,7 +824,9 @@ async def test_offer_response_handler_exception() -> None:
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
-        order_repo=order_repo, response_repo=response_repo
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = _profile_service(user_repo, blogger_repo)
@@ -811,7 +866,7 @@ async def test_offer_response_handler_exception() -> None:
     # Mock response_repo.save to raise exception
     original_save = response_repo.save
 
-    def failing_save(response):
+    async def failing_save(response, session=None):
         raise Exception("Test exception")
 
     response_repo.save = failing_save  # type: ignore[assignment]
@@ -821,8 +876,14 @@ async def test_offer_response_handler_exception() -> None:
         data=f"offer:{order.order_id}", user=FakeUser(20), message=message
     )
 
-    await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+    # Wrap handler call with middleware to handle exceptions
+    await _call_handler_with_middleware(
+        handle_offer_response,
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -833,7 +894,7 @@ async def test_offer_response_handler_exception() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_contact_order_not_found() -> None:
+async def test_send_contact_order_not_found(fake_tm: object) -> None:
     """Handle missing user or profile gracefully."""
 
     user_repo = InMemoryUserRepository()
@@ -872,7 +933,7 @@ async def test_send_contact_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_contact_order_not_active() -> None:
+async def test_send_contact_order_not_active(fake_tm: object) -> None:
     """Skip sending contacts when advertiser is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -923,7 +984,7 @@ async def test_send_contact_order_not_active() -> None:
 
 
 @pytest.mark.asyncio
-async def test_maybe_send_contacts_missing_user_or_profile() -> None:
+async def test_maybe_send_contacts_missing_user_or_profile(fake_tm: object) -> None:
     """Skip sending contacts when user or profile is missing."""
 
     user_repo = InMemoryUserRepository()

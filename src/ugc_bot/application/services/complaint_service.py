@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import ComplaintRepository
@@ -13,12 +13,20 @@ from ugc_bot.domain.enums import ComplaintStatus
 logger = logging.getLogger(__name__)
 
 
+class TransactionManager(Protocol):
+    """Protocol for database transaction handling."""
+
+    def transaction(self) -> AsyncContextManager[Any]:
+        """Return a context manager for a transaction."""
+
+
 @dataclass(slots=True)
 class ComplaintService:
     """Handle complaint creation and management."""
 
     complaint_repo: ComplaintRepository
     metrics_collector: Optional[Any] = None
+    transaction_manager: TransactionManager | None = None
 
     async def create_complaint(
         self,
@@ -29,9 +37,15 @@ class ComplaintService:
     ) -> Complaint:
         """Create a new complaint."""
 
-        # Check if reporter already filed a complaint for this order
-        if await self.complaint_repo.exists(order_id, reporter_id):
-            raise ValueError("Вы уже подали жалобу по этому заказу.")
+        if self.transaction_manager is None:
+            if await self.complaint_repo.exists(order_id, reporter_id):
+                raise ValueError("Вы уже подали жалобу по этому заказу.")
+        else:
+            async with self.transaction_manager.transaction() as session:
+                if await self.complaint_repo.exists(
+                    order_id, reporter_id, session=session
+                ):
+                    raise ValueError("Вы уже подали жалобу по этому заказу.")
 
         complaint = Complaint(
             complaint_id=uuid4(),
@@ -43,7 +57,11 @@ class ComplaintService:
             created_at=datetime.now(timezone.utc),
             reviewed_at=None,
         )
-        await self.complaint_repo.save(complaint)
+        if self.transaction_manager is None:
+            await self.complaint_repo.save(complaint)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.complaint_repo.save(complaint, session=session)
 
         logger.warning(
             "Complaint created",
@@ -71,27 +89,51 @@ class ComplaintService:
     async def get_by_id(self, complaint_id: UUID) -> Complaint | None:
         """Get complaint by ID."""
 
-        return await self.complaint_repo.get_by_id(complaint_id)
+        if self.transaction_manager is None:
+            return await self.complaint_repo.get_by_id(complaint_id)
+        async with self.transaction_manager.transaction() as session:
+            return await self.complaint_repo.get_by_id(complaint_id, session=session)
 
     async def list_by_order(self, order_id: UUID) -> list[Complaint]:
         """List complaints for a specific order."""
 
-        return list(await self.complaint_repo.list_by_order(order_id))
+        if self.transaction_manager is None:
+            return list(await self.complaint_repo.list_by_order(order_id))
+        async with self.transaction_manager.transaction() as session:
+            return list(
+                await self.complaint_repo.list_by_order(order_id, session=session)
+            )
 
     async def list_by_reporter(self, reporter_id: UUID) -> list[Complaint]:
         """List complaints filed by a specific user."""
 
-        return list(await self.complaint_repo.list_by_reporter(reporter_id))
+        if self.transaction_manager is None:
+            return list(await self.complaint_repo.list_by_reporter(reporter_id))
+        async with self.transaction_manager.transaction() as session:
+            return list(
+                await self.complaint_repo.list_by_reporter(reporter_id, session=session)
+            )
 
     async def list_by_status(self, status: ComplaintStatus) -> list[Complaint]:
         """List complaints by status."""
 
-        return list(await self.complaint_repo.list_by_status(status))
+        if self.transaction_manager is None:
+            return list(await self.complaint_repo.list_by_status(status))
+        async with self.transaction_manager.transaction() as session:
+            return list(
+                await self.complaint_repo.list_by_status(status, session=session)
+            )
 
     async def dismiss_complaint(self, complaint_id: UUID) -> Complaint:
         """Dismiss a complaint without taking action."""
 
-        complaint = await self.complaint_repo.get_by_id(complaint_id)
+        if self.transaction_manager is None:
+            complaint = await self.complaint_repo.get_by_id(complaint_id)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                complaint = await self.complaint_repo.get_by_id(
+                    complaint_id, session=session
+                )
         if complaint is None:
             raise ValueError("Complaint not found.")
 
@@ -105,7 +147,11 @@ class ComplaintService:
             created_at=complaint.created_at,
             reviewed_at=datetime.now(timezone.utc),
         )
-        await self.complaint_repo.save(dismissed)
+        if self.transaction_manager is None:
+            await self.complaint_repo.save(dismissed)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.complaint_repo.save(dismissed, session=session)
 
         logger.info(
             "Complaint dismissed",
@@ -130,7 +176,13 @@ class ComplaintService:
     async def resolve_complaint_with_action(self, complaint_id: UUID) -> Complaint:
         """Resolve complaint by taking action (blocking user)."""
 
-        complaint = await self.complaint_repo.get_by_id(complaint_id)
+        if self.transaction_manager is None:
+            complaint = await self.complaint_repo.get_by_id(complaint_id)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                complaint = await self.complaint_repo.get_by_id(
+                    complaint_id, session=session
+                )
         if complaint is None:
             raise ValueError("Complaint not found.")
 
@@ -144,7 +196,11 @@ class ComplaintService:
             created_at=complaint.created_at,
             reviewed_at=datetime.now(timezone.utc),
         )
-        await self.complaint_repo.save(resolved)
+        if self.transaction_manager is None:
+            await self.complaint_repo.save(resolved)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.complaint_repo.save(resolved, session=session)
 
         logger.warning(
             "Complaint resolved with action",

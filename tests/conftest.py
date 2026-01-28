@@ -4,10 +4,36 @@ import asyncio
 import sys
 import threading
 import traceback
+from contextlib import asynccontextmanager
 
 import logging
 
 import pytest
+
+
+def fake_transaction_manager():
+    """Return a fake transaction manager that yields a dummy session.
+
+    Use in unit tests to cover service code paths that use
+    async with self.transaction_manager.transaction() as session.
+    In-memory repos accept session= and ignore it.
+    """
+
+    @asynccontextmanager
+    async def _tx():
+        yield object()
+
+    class FakeTM:
+        def transaction(self):
+            return _tx()
+
+    return FakeTM()
+
+
+@pytest.fixture
+def fake_tm():
+    """Pytest fixture that provides a fake transaction manager."""
+    return fake_transaction_manager()
 
 
 _TRACKED_ASYNC_ENGINES: list[object] = []

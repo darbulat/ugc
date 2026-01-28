@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+# Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -56,22 +56,8 @@ async def start_verification(
         await message.answer("Профиль блогера не заполнен. Команда: /register")
         return
 
-    try:
-        verification = await instagram_verification_service.generate_code(user.user_id)
-    except (BloggerRegistrationError, UserNotFoundError) as exc:
-        logger.warning(
-            "Instagram verification start failed",
-            extra={"user_id": user.user_id, "reason": str(exc)},
-        )
-        await message.answer(f"Ошибка подтверждения: {exc}")
-        return
-    except Exception:
-        logger.exception(
-            "Unexpected error during instagram verification start",
-            extra={"user_id": user.user_id},
-        )
-        await message.answer("Произошла неожиданная ошибка. Попробуйте позже.")
-        return
+    # Middleware handles BloggerRegistrationError, UserNotFoundError, and other exceptions
+    verification = await instagram_verification_service.generate_code(user.user_id)
     await state.clear()
     await message.answer(
         _verification_instruction(

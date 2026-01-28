@@ -80,6 +80,61 @@ async def test_dispatch_selects_confirmed_bloggers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
+    """Cover transaction_manager path for dispatch."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        transaction_manager=fake_tm,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000650"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000651"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    await order_repo.save(order)
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000652"),
+        external_id="200",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_tm",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger.user_id,
+            instagram_url="https://instagram.com/blogger_tm",
+            confirmed=True,
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == [blogger]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_requires_active_order() -> None:
     """Dispatch fails for inactive orders."""
 
