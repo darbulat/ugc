@@ -2,8 +2,11 @@
 
 import asyncio
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
+import json
 import logging
-from typing import Iterable
+from typing import Any, Iterable
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 from uuid import UUID
 
 from aiogram import Bot
@@ -25,6 +28,120 @@ from ugc_bot.logging_setup import configure_logging
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+_MASK = "***"
+_SENSITIVE_KEYS = {
+    "admin_password",
+    "admin_secret",
+    "bot_token",
+    "database_url",
+    "instagram_access_token",
+    "instagram_app_secret",
+    "instagram_webhook_verify_token",
+    "redis_url",
+    "telegram_provider_token",
+}
+_SENSITIVE_KEYWORDS = ("password", "secret", "token")
+
+
+def _get_service_version() -> str:
+    """Return installed service version if available."""
+
+    for dist_name in ("ugc-bot", "ugc_bot"):
+        try:
+            return version(dist_name)
+        except PackageNotFoundError:
+            continue
+    return "unknown"
+
+
+def _mask_url_credentials(value: str) -> str:
+    """Mask credentials in URLs like scheme://user:pass@host."""
+
+    try:
+        parts: SplitResult = urlsplit(value)
+    except Exception:
+        return value
+
+    if not parts.scheme or not parts.netloc:
+        return value
+
+    if "@" not in parts.netloc:
+        return value
+
+    userinfo, hostinfo = parts.netloc.rsplit("@", 1)
+    if ":" not in userinfo:
+        return value
+
+    username = userinfo.split(":", 1)[0]
+    masked_netloc = f"{username}:{_MASK}@{hostinfo}"
+    return urlunsplit(
+        (parts.scheme, masked_netloc, parts.path, parts.query, parts.fragment)
+    )
+
+
+def _is_sensitive_key(key: str) -> bool:
+    """Return True if key likely holds sensitive value."""
+
+    lowered = key.lower()
+    if lowered in _SENSITIVE_KEYS:
+        return True
+    return any(marker in lowered for marker in _SENSITIVE_KEYWORDS)
+
+
+def _sanitize_for_logging(obj: Any, *, key: str | None = None) -> Any:
+    """Recursively sanitize config for safe logging."""
+
+    if key is not None and _is_sensitive_key(key):
+        return _MASK
+
+    if isinstance(obj, dict):
+        return {str(k): _sanitize_for_logging(v, key=str(k)) for k, v in obj.items()}
+
+    if isinstance(obj, list):
+        return [_sanitize_for_logging(v) for v in obj]
+
+    if isinstance(obj, str):
+        return _mask_url_credentials(obj)
+
+    return obj
+
+
+def _safe_config_for_logging(config: Any) -> dict[str, Any]:
+    """Return config dump suitable for logs (secrets masked)."""
+
+    raw = config.model_dump() if hasattr(config, "model_dump") else dict(config)
+    sanitized = _sanitize_for_logging(raw)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
+def _log_startup_info(config: Any) -> None:
+    """Log service version and sanitized config at startup."""
+
+    service_version = _get_service_version()
+    safe_config = _safe_config_for_logging(config)
+    log_format = (
+        getattr(getattr(config, "log", None), "log_format", "")
+        if config is not None
+        else ""
+    )
+    is_json = str(log_format).lower() == "json"
+
+    # In text logs, standard formatter drops extra fields. Include details in message.
+    if not is_json:
+        logger.info(
+            "Feedback scheduler starting (version=%s, config=%s)",
+            service_version,
+            json.dumps(safe_config, ensure_ascii=False, default=str, sort_keys=True),
+        )
+        return
+
+    logger.info(
+        "Feedback scheduler starting",
+        extra={
+            "service_version": service_version,
+            "config": safe_config,
+        },
+    )
 
 
 def _feedback_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
@@ -191,6 +308,7 @@ def main() -> None:
     configure_logging(
         config.log.log_level, json_format=config.log.log_format.lower() == "json"
     )
+    _log_startup_info(config)
     if not config.feedback.feedback_enabled:
         logger.info("Feedback scheduler disabled by config")
         return

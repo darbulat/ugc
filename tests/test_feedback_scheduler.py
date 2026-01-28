@@ -7,6 +7,7 @@ import pytest
 
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.config import load_config
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     Interaction,
@@ -20,7 +21,14 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     UserStatus,
 )
-from ugc_bot.feedback_scheduler import _feedback_keyboard, main, run_loop, run_once
+from ugc_bot.feedback_scheduler import (
+    _feedback_keyboard,
+    _log_startup_info,
+    _safe_config_for_logging,
+    main,
+    run_loop,
+    run_once,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryInteractionRepository,
@@ -352,7 +360,16 @@ def test_main_feedback_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FEEDBACK_ENABLED", "false")
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+    called: dict[str, object] = {}
+
+    def _fake_log_startup_info(cfg) -> None:  # type: ignore[no-untyped-def]
+        called["config"] = cfg
+
+    monkeypatch.setattr(
+        "ugc_bot.feedback_scheduler._log_startup_info", _fake_log_startup_info
+    )
     main()
+    assert "config" in called
 
 
 def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -371,3 +388,55 @@ def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("ugc_bot.feedback_scheduler.asyncio.run", _run)
     main()
+
+
+def test_safe_config_for_logging_masks_sensitive_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ensure sensitive config values are masked before logging."""
+
+    monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass")
+    monkeypatch.setenv("ADMIN_SECRET", "admin-secret")
+    monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "ig-secret-token")
+    monkeypatch.setenv("INSTAGRAM_APP_SECRET", "ig-app-secret")
+    monkeypatch.setenv("INSTAGRAM_WEBHOOK_VERIFY_TOKEN", "verify-token")
+    monkeypatch.setenv("REDIS_URL", "redis://user:pass@localhost:6379/0")
+    monkeypatch.setenv("INSTAGRAM_API_BASE_URL", "https://user:pass@example.com/api")
+
+    config = load_config()
+    safe = _safe_config_for_logging(config)
+
+    assert safe["bot"]["bot_token"] == "***"
+    assert safe["db"]["database_url"] == "***"
+    assert safe["admin"]["admin_password"] == "***"
+    assert safe["admin"]["admin_secret"] == "***"
+    assert safe["instagram"]["instagram_access_token"] == "***"
+    assert safe["instagram"]["instagram_app_secret"] == "***"
+    assert safe["instagram"]["instagram_webhook_verify_token"] == "***"
+    assert safe["redis"]["redis_url"] == "***"
+    assert (
+        safe["instagram"]["instagram_api_base_url"]
+        == "https://user:***@example.com/api"
+    )
+
+
+def test_log_startup_info_includes_config_in_text_logs(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """In text log format, startup log must include version and sanitized config."""
+
+    monkeypatch.setenv("LOG_FORMAT", "text")
+    monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+
+    config = load_config()
+    with caplog.at_level("INFO"):
+        _log_startup_info(config)
+
+    message = "\n".join(r.getMessage() for r in caplog.records)
+    assert "Feedback scheduler starting" in message
+    assert "version=" in message
+    assert '"bot_token": "***"' in message
+    assert '"database_url": "***"' in message
