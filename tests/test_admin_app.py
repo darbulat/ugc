@@ -45,9 +45,17 @@ def test_create_admin_app(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_SECRET", "secret")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@localhost/db")
 
+    startup_called: dict[str, object] = {}
+
+    def _fake_startup_log(**kwargs):  # type: ignore[no-untyped-def]
+        startup_called.update(kwargs)
+
+    monkeypatch.setattr("ugc_bot.admin.app.log_startup_info", _fake_startup_log)
+
     app = create_admin_app()
     assert isinstance(app, FastAPI)
     assert any(getattr(route, "path", "") == "/admin" for route in app.routes)
+    assert startup_called.get("service_name") == "admin"
 
 
 def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:

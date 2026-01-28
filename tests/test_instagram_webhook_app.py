@@ -19,6 +19,7 @@ from ugc_bot.instagram_webhook_app import (
     _notify_user_verification_success,
     _verify_signature,
     app,
+    main,
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
@@ -506,3 +507,25 @@ def test_webhook_event_processing_exception(
     assert response.status_code == 200
     assert response.json() == {"status": "error", "message": "Test exception"}
     mock_notify.assert_not_called()
+
+
+@patch("ugc_bot.instagram_webhook_app.log_startup_info")
+@patch("ugc_bot.instagram_webhook_app.configure_logging")
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("uvicorn.run")
+def test_main_logs_startup_info(
+    mock_uvicorn_run: MagicMock,
+    mock_load_config: MagicMock,
+    mock_configure_logging: MagicMock,
+    mock_log_startup_info: MagicMock,
+    test_config: AppConfig,
+) -> None:
+    """main configures logging and logs startup information."""
+
+    _ = mock_uvicorn_run, mock_configure_logging
+    mock_load_config.return_value = test_config
+
+    main()
+
+    mock_log_startup_info.assert_called_once()
+    assert mock_log_startup_info.call_args.kwargs["service_name"] == "instagram-webhook"

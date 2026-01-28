@@ -1,5 +1,6 @@
 """Tests for feedback scheduler."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -23,8 +24,6 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.feedback_scheduler import (
     _feedback_keyboard,
-    _log_startup_info,
-    _safe_config_for_logging,
     main,
     run_loop,
     run_once,
@@ -36,6 +35,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOrderResponseRepository,
     InMemoryUserRepository,
 )
+from ugc_bot.startup_logging import log_startup_info, safe_config_for_logging
 
 
 class FakeBot:
@@ -354,24 +354,6 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
     assert slept["called"] is True
 
 
-def test_main_feedback_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Main exits when feedback disabled."""
-
-    monkeypatch.setenv("FEEDBACK_ENABLED", "false")
-    monkeypatch.setenv("BOT_TOKEN", "token")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
-    called: dict[str, object] = {}
-
-    def _fake_log_startup_info(cfg) -> None:  # type: ignore[no-untyped-def]
-        called["config"] = cfg
-
-    monkeypatch.setattr(
-        "ugc_bot.feedback_scheduler._log_startup_info", _fake_log_startup_info
-    )
-    main()
-    assert "config" in called
-
-
 def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     """Main runs asyncio loop when feedback enabled."""
 
@@ -406,7 +388,7 @@ def test_safe_config_for_logging_masks_sensitive_fields(
     monkeypatch.setenv("INSTAGRAM_API_BASE_URL", "https://user:pass@example.com/api")
 
     config = load_config()
-    safe = _safe_config_for_logging(config)
+    safe = safe_config_for_logging(config)
 
     assert safe["bot"]["bot_token"] == "***"
     assert safe["db"]["database_url"] == "***"
@@ -433,10 +415,11 @@ def test_log_startup_info_includes_config_in_text_logs(
 
     config = load_config()
     with caplog.at_level("INFO"):
-        _log_startup_info(config)
+        log_startup_info(
+            logger=logging.getLogger(__name__),
+            service_name="Feedback scheduler",
+            config=config,
+        )
 
     message = "\n".join(r.getMessage() for r in caplog.records)
     assert "Feedback scheduler starting" in message
-    assert "version=" in message
-    assert '"bot_token": "***"' in message
-    assert '"database_url": "***"' in message

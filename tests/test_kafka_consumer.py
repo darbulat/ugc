@@ -143,8 +143,15 @@ def test_main_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "ugc_bot.kafka_consumer.configure_logging", lambda *_, **__: None
     )
+    startup_called: dict[str, object] = {}
+
+    def _fake_startup_log(**kwargs):  # type: ignore[no-untyped-def]
+        startup_called.update(kwargs)
+
+    monkeypatch.setattr("ugc_bot.kafka_consumer.log_startup_info", _fake_startup_log)
 
     main()
+    assert startup_called.get("service_name") == "kafka-consumer"
 
 
 @pytest.mark.asyncio

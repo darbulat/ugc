@@ -265,6 +265,14 @@ class TestRunProcessor:
 
         monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
         monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
+        startup_called: dict[str, object] = {}
+
+        def _fake_startup_log(**kwargs):  # type: ignore[no-untyped-def]
+            startup_called.update(kwargs)
+
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.log_startup_info", _fake_startup_log
+        )
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.Container",
             lambda _: fake_container,
@@ -279,6 +287,7 @@ class TestRunProcessor:
         mock_logger.error.assert_called_once()
         error_call = mock_logger.error.call_args[0][0]
         assert "Kafka is disabled" in error_call
+        assert startup_called.get("service_name") == "outbox-processor"
 
     @pytest.mark.asyncio
     async def test_run_processor_missing_database_url(

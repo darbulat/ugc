@@ -17,10 +17,23 @@ from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Instagram Webhook")
+
+
+@app.on_event("startup")
+async def _log_startup() -> None:
+    """Log version and sanitized config on server startup.
+
+    This runs when the app is served by Uvicorn (including docker-compose),
+    where `main()` is typically not executed.
+    """
+
+    config = load_config()
+    log_startup_info(logger=logger, service_name="instagram-webhook", config=config)
 
 
 def _verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:
@@ -306,6 +319,7 @@ def main() -> None:
         config.log.log_level,
         json_format=config.log.log_format.lower() == "json",
     )
+    log_startup_info(logger=logger, service_name="instagram-webhook", config=config)
 
     import uvicorn
 

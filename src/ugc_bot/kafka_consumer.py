@@ -15,6 +15,7 @@ from ugc_bot.bot.handlers.security_warnings import BLOGGER_OFFER_WARNING
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +196,7 @@ async def run_consumer() -> None:
     configure_logging(
         config.log.log_level, json_format=config.log.log_format.lower() == "json"
     )
+    log_startup_info(logger=logger, service_name="kafka-consumer", config=config)
     if not config.kafka.kafka_enabled:
         logger.info("Kafka consumer disabled by config")
         return

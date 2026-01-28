@@ -112,8 +112,16 @@ async def test_run_bot_uses_dispatcher(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
 
+    startup_called: dict[str, object] = {}
+
+    def _fake_startup_log(**kwargs):  # type: ignore[no-untyped-def]
+        startup_called.update(kwargs)
+
+    monkeypatch.setattr("ugc_bot.app.log_startup_info", _fake_startup_log)
+
     await run_bot()
     assert fake_dispatcher.started is True
+    assert startup_called.get("service_name") == "ugc-bot"
 
 
 def test_main_invokes_asyncio(monkeypatch: pytest.MonkeyPatch) -> None:

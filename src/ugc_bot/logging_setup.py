@@ -6,6 +6,24 @@ import os
 from typing import Any
 
 
+class EnvLevelFilter(logging.Filter):
+    """Filter log records below LOG_LEVEL environment threshold.
+
+    This is used by Uvicorn `--log-config` to keep a single JSON formatter for all
+    logs while still respecting LOG_LEVEL.
+    """
+
+    def __init__(self, env_var: str = "LOG_LEVEL", default: str = "INFO") -> None:
+        super().__init__()
+        raw = os.getenv(env_var, default).strip().upper()
+        self._min_level = logging._nameToLevel.get(raw, logging.INFO)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return True if record should be logged."""
+
+        return record.levelno >= self._min_level
+
+
 class JSONFormatter(logging.Formatter):
     """JSON formatter for structured logging in production."""
 

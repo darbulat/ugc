@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "filters": {
+    "env_level": {
+      "()": "ugc_bot.logging_setup.EnvLevelFilter"
+    }
+  },
+  "formatters": {
+    "json": {
+      "()": "ugc_bot.logging_setup.JSONFormatter"
+    }
+  },
+  "handlers": {
+    "default": {
+      "class": "logging.StreamHandler",
+      "formatter": "json",
+      "filters": [
+        "env_level"
+      ],
+      "level": "DEBUG",
+      "stream": "ext://sys.stdout"
+    }
+  },
+  "loggers": {
+    "uvicorn": {
+      "handlers": [
+        "default"
+      ],
+      "level": "DEBUG",
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "handlers": [
+        "default"
+      ],
+      "level": "DEBUG",
+      "propagate": false
+    },
+    "uvicorn.access": {
+      "handlers": [
+        "default"
+      ],
+      "level": "DEBUG",
+      "propagate": false
+    }
+  },
+  "root": {
+    "handlers": [
+      "default"
+    ],
+    "level": "DEBUG"
+  }
+}
+

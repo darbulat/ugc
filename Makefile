@@ -28,7 +28,7 @@ docker-down:
 	docker compose down
 
 admin:
-	uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001
+	uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001 --log-config config/uvicorn_log_config.json
 
 # Instagram Webhook commands
 # These commands run inside the Docker container where Python and dependencies are available

@@ -47,6 +47,7 @@ from ugc_bot.container import Container
 from ugc_bot.infrastructure.db.repositories import NoopOfferBroadcaster
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.metrics.collector import MetricsCollector
+from ugc_bot.startup_logging import log_startup_info
 
 
 def _json_dumps(obj: dict) -> str:
@@ -225,7 +226,9 @@ async def run_bot() -> None:
         json_format=config.log.log_format.lower() == "json",
     )
 
-    logging.getLogger(__name__).info("Starting UGC bot")
+    log_startup_info(
+        logger=logging.getLogger(__name__), service_name="ugc-bot", config=config
+    )
     storage = await create_storage(config)
     dispatcher = build_dispatcher(config, storage=storage)
     bot = Bot(token=config.bot.bot_token)

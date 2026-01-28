@@ -10,6 +10,7 @@ from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,7 @@ async def run_processor() -> None:
     configure_logging(
         config.log.log_level, json_format=config.log.log_format.lower() == "json"
     )
-
-    logger.info("Starting outbox processor")
+    log_startup_info(logger=logger, service_name="outbox-processor", config=config)
 
     if not config.db.database_url:
         logger.error("DATABASE_URL is required for outbox processor")

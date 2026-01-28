@@ -26,6 +26,8 @@ from ugc_bot.infrastructure.db.models import (
     OrderResponseModel,
     UserModel,
 )
+from ugc_bot.logging_setup import configure_logging
+from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
 
@@ -288,6 +290,12 @@ def create_admin_app() -> FastAPI:
     """Create a FastAPI app with SQLAdmin."""
 
     config = load_config()
+    configure_logging(
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
+    )
+
+    log_startup_info(logger=logger, service_name="admin", config=config)
     if not config.admin.admin_secret:
         raise ValueError("ADMIN_SECRET is required for SQLAdmin.")
     if not config.admin.admin_password:
