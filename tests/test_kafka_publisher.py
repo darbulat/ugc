@@ -1,5 +1,8 @@
 """Tests for Kafka publisher."""
 
+from datetime import datetime, timezone
+from uuid import UUID
+
 import pytest
 
 from ugc_bot.domain.entities import Order
@@ -8,9 +11,6 @@ from ugc_bot.infrastructure.kafka.publisher import (
     KafkaOrderActivationPublisher,
     NoopOrderActivationPublisher,
 )
-from datetime import datetime, timezone
-from types import SimpleNamespace
-from uuid import UUID
 
 
 def _order() -> Order:
@@ -33,22 +33,31 @@ def _order() -> Order:
 async def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
     """Publish activation event."""
 
-    sent = []
+    created: dict[str, object] = {}
+    sent: list[tuple[str, object]] = []
 
     class FakeProducer:
-        def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-            pass
+        def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
 
-        def send(self, topic, value):  # type: ignore[no-untyped-def]
+        async def start(self) -> None:
+            self.started = True
+
+        async def send_and_wait(self, topic, value):  # type: ignore[no-untyped-def]
             sent.append((topic, value))
-            return SimpleNamespace()
-
-        def flush(self):  # type: ignore[no-untyped-def]
             return None
 
+        async def stop(self) -> None:
+            self.stopped = True
+
+    def fake_producer_factory(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        created["producer"] = FakeProducer()
+        return created["producer"]
+
     monkeypatch.setattr(
-        "ugc_bot.infrastructure.kafka.publisher.KafkaProducer",
-        FakeProducer,
+        "ugc_bot.infrastructure.kafka.publisher.AIOKafkaProducer",
+        fake_producer_factory,
     )
 
     publisher = KafkaOrderActivationPublisher(
@@ -58,25 +67,41 @@ async def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
     await publisher.publish(_order())
 
     assert sent
+    producer = created["producer"]
+    assert isinstance(producer, FakeProducer)
+    assert producer.started is True
+
+    await publisher.stop()
+    assert producer.stopped is True
 
 
 @pytest.mark.asyncio
 async def test_kafka_publisher_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     """Swallow Kafka errors."""
 
-    class FakeProducer:
-        def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-            pass
+    created: dict[str, object] = {}
 
-        def send(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+    class FakeProducer:
+        def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
+
+        async def start(self) -> None:
+            self.started = True
+
+        async def send_and_wait(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
             raise RuntimeError("boom")
 
-        def flush(self):  # type: ignore[no-untyped-def]
-            return None
+        async def stop(self) -> None:
+            self.stopped = True
+
+    def fake_producer_factory(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        created["producer"] = FakeProducer()
+        return created["producer"]
 
     monkeypatch.setattr(
-        "ugc_bot.infrastructure.kafka.publisher.KafkaProducer",
-        FakeProducer,
+        "ugc_bot.infrastructure.kafka.publisher.AIOKafkaProducer",
+        fake_producer_factory,
     )
 
     publisher = KafkaOrderActivationPublisher(
@@ -84,6 +109,13 @@ async def test_kafka_publisher_handles_errors(monkeypatch: pytest.MonkeyPatch) -
         topic="order_activated",
     )
     await publisher.publish(_order())
+
+    producer = created["producer"]
+    assert isinstance(producer, FakeProducer)
+    assert producer.started is True
+
+    await publisher.stop()
+    assert producer.stopped is True
 
 
 @pytest.mark.asyncio

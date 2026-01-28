@@ -124,6 +124,12 @@ async def run_processor() -> None:
         logger.info("Shutting down outbox processor")
     finally:
         await processor.stop()
+        stop_publisher = getattr(kafka_publisher, "stop", None)
+        if callable(stop_publisher):
+            try:
+                await stop_publisher()
+            except Exception:
+                logger.exception("Failed to stop Kafka publisher")
 
 
 def main() -> None:

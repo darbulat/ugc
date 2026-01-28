@@ -8,11 +8,11 @@ from uuid import UUID
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from kafka import KafkaConsumer, KafkaProducer  # type: ignore[import-untyped]
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # type: ignore[import-untyped]
 
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
 from ugc_bot.bot.handlers.security_warnings import BLOGGER_OFFER_WARNING
-from ugc_bot.config import load_config
+from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
 
@@ -36,7 +36,7 @@ async def _send_offers(
     order_id: UUID,
     bot: Bot,
     offer_dispatch_service: OfferDispatchService,
-    dlq_producer: KafkaProducer | None,
+    dlq_producer: AIOKafkaProducer | None,
     dlq_topic: str,
     retries: int,
     retry_delay_seconds: float,
@@ -99,7 +99,7 @@ async def _send_offers(
                     },
                 )
                 if attempt >= retries:
-                    _publish_dlq(
+                    await _publish_dlq(
                         dlq_producer,
                         dlq_topic,
                         {
@@ -114,16 +114,78 @@ async def _send_offers(
                     await asyncio.sleep(retry_delay_seconds)
 
 
-def _publish_dlq(
-    producer: KafkaProducer | None, topic: str, payload: dict[str, Any]
+async def _publish_dlq(
+    producer: AIOKafkaProducer | None, topic: str, payload: dict[str, Any]
 ) -> None:
+    """Publish a message to the DLQ topic (best-effort)."""
     if producer is None:
         return
     try:
-        producer.send(topic, payload)
-        producer.flush()
+        await producer.send_and_wait(topic, payload)
     except Exception:
         logger.exception("Failed to publish DLQ message")
+
+
+def _create_kafka_clients(
+    config: AppConfig,
+) -> tuple[AIOKafkaProducer, AIOKafkaConsumer]:
+    """Create Kafka DLQ producer and activation consumer."""
+    dlq_producer = AIOKafkaProducer(
+        bootstrap_servers=config.kafka.kafka_bootstrap_servers,
+        value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+    )
+    consumer = AIOKafkaConsumer(
+        config.kafka.kafka_topic,
+        bootstrap_servers=config.kafka.kafka_bootstrap_servers,
+        group_id=config.kafka.kafka_group_id,
+        value_deserializer=lambda value: json.loads(value.decode("utf-8")),
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
+    )
+    return dlq_producer, consumer
+
+
+async def _consume_forever(
+    *,
+    consumer: AIOKafkaConsumer,
+    dlq_producer: AIOKafkaProducer,
+    bot: Bot,
+    offer_dispatch_service: OfferDispatchService,
+    config: AppConfig,
+) -> None:
+    """Start Kafka clients and process activation events forever."""
+    producer_started = False
+    consumer_started = False
+    try:
+        await dlq_producer.start()
+        producer_started = True
+        await consumer.start()
+        consumer_started = True
+
+        async for msg in consumer:
+            val = getattr(msg, "value", None)
+            if not isinstance(val, dict):
+                continue
+            order_id = _parse_order_id(val)
+            if order_id is None:
+                continue
+            await _send_offers(
+                order_id,
+                bot,
+                offer_dispatch_service,
+                dlq_producer,
+                config.kafka.kafka_dlq_topic,
+                config.kafka.kafka_send_retries,
+                config.kafka.kafka_send_retry_delay_seconds,
+            )
+    finally:
+        try:
+            if consumer_started:
+                await consumer.stop()
+        finally:
+            if producer_started:
+                await dlq_producer.stop()
+            await bot.session.close()
 
 
 async def run_consumer() -> None:
@@ -143,48 +205,17 @@ async def run_consumer() -> None:
     container = Container(config)
     offer_dispatch_service = container.build_offer_dispatch_service()
 
-    dlq_producer: KafkaProducer | None = KafkaProducer(
-        bootstrap_servers=config.kafka.kafka_bootstrap_servers,
-        value_serializer=lambda value: json.dumps(value).encode("utf-8"),
-    )
-    consumer = KafkaConsumer(
-        config.kafka.kafka_topic,
-        bootstrap_servers=config.kafka.kafka_bootstrap_servers,
-        group_id=config.kafka.kafka_group_id,
-        value_deserializer=lambda value: json.loads(value.decode("utf-8")),
-        auto_offset_reset="earliest",
-        enable_auto_commit=True,
-    )
+    dlq_producer, consumer = _create_kafka_clients(config)
     logger.info("Kafka consumer started", extra={"topic": config.kafka.kafka_topic})
 
     bot = Bot(token=config.bot.bot_token)
-    try:
-        while True:
-            # Poll in thread so the event loop is not blocked
-            batch = await asyncio.to_thread(consumer.poll, timeout_ms=1000)
-            if not batch:
-                continue
-            for _tp, records in batch.items():
-                for rec in records:
-                    val = getattr(rec, "value", None)
-                    if not isinstance(val, dict):
-                        continue
-                    order_id = _parse_order_id(val)
-                    if order_id is not None:
-                        await _send_offers(
-                            order_id,
-                            bot,
-                            offer_dispatch_service,
-                            dlq_producer,
-                            config.kafka.kafka_dlq_topic,
-                            config.kafka.kafka_send_retries,
-                            config.kafka.kafka_send_retry_delay_seconds,
-                        )
-    finally:
-        consumer.close()
-        await bot.session.close()
-        if dlq_producer is not None:
-            dlq_producer.close()
+    await _consume_forever(
+        consumer=consumer,
+        dlq_producer=dlq_producer,
+        bot=bot,
+        offer_dispatch_service=offer_dispatch_service,
+        config=config,
+    )
 
 
 def main() -> None:

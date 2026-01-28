@@ -1,9 +1,10 @@
 """Kafka publisher for order activation events."""
 
+import asyncio
 import json
 import logging
 
-from kafka import KafkaProducer  # type: ignore[import-untyped]
+from aiokafka import AIOKafkaProducer  # type: ignore[import-untyped]
 
 from ugc_bot.application.ports import OrderActivationPublisher
 from ugc_bot.domain.entities import Order
@@ -17,10 +18,22 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
 
     def __init__(self, bootstrap_servers: str, topic: str) -> None:
         self._topic = topic
-        self._producer = KafkaProducer(
+        self._producer = AIOKafkaProducer(
             bootstrap_servers=bootstrap_servers,
             value_serializer=lambda value: json.dumps(value).encode("utf-8"),
         )
+        self._started = False
+        self._start_lock = asyncio.Lock()
+
+    async def _ensure_started(self) -> None:
+        """Start the producer once (lazy-init)."""
+        if self._started:
+            return
+        async with self._start_lock:
+            if self._started:
+                return
+            await self._producer.start()
+            self._started = True
 
     async def publish(self, order: Order) -> None:
         """Publish order activation message."""
@@ -36,10 +49,19 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
             "created_at": order.created_at.isoformat(),
         }
         try:
-            self._producer.send(self._topic, payload)
-            self._producer.flush()
+            await self._ensure_started()
+            await self._producer.send_and_wait(self._topic, payload)
         except Exception:
             logger.exception("Failed to publish order activation to Kafka")
+
+    async def stop(self) -> None:
+        """Stop producer (best-effort)."""
+        if not self._started:
+            return
+        try:
+            await self._producer.stop()
+        finally:
+            self._started = False
 
 
 class NoopOrderActivationPublisher(OrderActivationPublisher):
