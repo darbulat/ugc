@@ -5,9 +5,9 @@ from typing import Generator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 from aiogram import Bot, Dispatcher
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.db.base import Base
@@ -62,14 +62,18 @@ def session_factory(
     yield session_factory
 
 
-@pytest.fixture(scope="function")
-def session(session_factory) -> Generator[Session, None, None]:
-    """Create database session for tests."""
-    session = session_factory()
+@pytest_asyncio.fixture(scope="function")
+async def session(session_factory):
+    """Create async database session for tests."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    db_session = session_factory()
+    if not isinstance(db_session, AsyncSession):
+        raise TypeError("session_factory must yield AsyncSession")
     try:
-        yield session
+        yield db_session
     finally:
-        session.close()
+        await db_session.close()
 
 
 @pytest.fixture(scope="function")
@@ -119,7 +123,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         SqlAlchemyPaymentRepository,
         SqlAlchemyContactPricingRepository,
         SqlAlchemyComplaintRepository,
-        SqlAlchemyOutboxRepository,
         SqlAlchemyBloggerProfileRepository,
         SqlAlchemyAdvertiserProfileRepository,
         SqlAlchemyInstagramVerificationRepository,
@@ -143,7 +146,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
     pricing_repo = SqlAlchemyContactPricingRepository(session_factory=session_factory)
     complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
-    outbox_repo = SqlAlchemyOutboxRepository(session_factory=session_factory)
 
     transaction_manager = SessionTransactionManager(session_factory)
     dispatcher["transaction_manager"] = transaction_manager
@@ -168,7 +170,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     )
     from ugc_bot.application.services.profile_service import ProfileService
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 
     dispatcher["user_role_service"] = UserRoleService(
         user_repo=user_repo, transaction_manager=transaction_manager
@@ -210,7 +211,36 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         interaction_repo=interaction_repo,
         transaction_manager=transaction_manager,
     )
-    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+    # Use sync-activation outbox so order becomes ACTIVE without outbox_events table
+    # (outbox_events uses JSONB, not compatible with SQLite in integration tests)
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import OrderStatus
+
+    class SyncActivationOutboxPublisher:
+        """Activates order immediately without persisting to outbox (SQLite-friendly)."""
+
+        def __init__(self, order_repo: object) -> None:
+            self.order_repo = order_repo
+
+        async def publish_order_activation(
+            self, order: Order, session: object | None = None
+        ) -> None:
+            activated = Order(
+                order_id=order.order_id,
+                advertiser_id=order.advertiser_id,
+                product_link=order.product_link,
+                offer_text=order.offer_text,
+                ugc_requirements=order.ugc_requirements,
+                barter_description=order.barter_description,
+                price=order.price,
+                bloggers_needed=order.bloggers_needed,
+                status=OrderStatus.ACTIVE,
+                created_at=order.created_at,
+                contacts_sent_at=order.contacts_sent_at,
+            )
+            await self.order_repo.save(activated, session=session)
+
+    outbox_publisher = SyncActivationOutboxPublisher(order_repo=order_repo)
     dispatcher["payment_service"] = PaymentService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
@@ -239,6 +269,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     dispatcher["advertiser_repo"] = advertiser_repo
     dispatcher["blogger_repo"] = blogger_repo
     dispatcher["order_repo"] = order_repo
+    dispatcher["payment_repo"] = payment_repo
     dispatcher["interaction_repo"] = interaction_repo
 
     dispatcher.bot = mock_bot
@@ -258,12 +289,14 @@ def create_test_user(session):
     """Helper to create test user."""
 
     def _create_user(external_id: str, messenger_type: str = "telegram"):
+        from uuid import uuid4
+
         from ugc_bot.domain.entities import User
         from ugc_bot.domain.enums import MessengerType, UserStatus
         from datetime import datetime, timezone
 
         user = User(
-            user_id=None,  # Will be set by repo
+            user_id=uuid4(),
             external_id=external_id,
             messenger_type=MessengerType.TELEGRAM,
             username=f"user_{external_id}",
@@ -316,12 +349,16 @@ def create_test_order(session):
 
         defaults = {
             "order_id": uuid4(),
+            "advertiser_id": advertiser_id,
             "product_link": "https://example.com/product",
             "offer_text": "Test offer",
+            "ugc_requirements": None,
+            "barter_description": None,
             "bloggers_needed": 3,
             "price": 15000.0,
             "status": OrderStatus.NEW,
             "created_at": datetime.now(timezone.utc),
+            "contacts_sent_at": None,
         }
         defaults.update(kwargs)
 

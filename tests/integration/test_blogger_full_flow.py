@@ -1,19 +1,21 @@
 """Integration test for complete blogger user flow."""
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 import pytest
 from aiogram import Dispatcher
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from unittest.mock import AsyncMock
 
-from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.entities import AdvertiserProfile, Payment
+from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 
 
-@pytest.mark.skip(reason="Requires PostgreSQL-specific UUID functions")
 @pytest.mark.asyncio
 async def test_blogger_full_flow(
     dispatcher: Dispatcher,
-    session: Session,
-    session_factory,
+    session: AsyncSession,
     mock_bot: AsyncMock,
     create_test_user,
     create_test_blogger_profile,
@@ -21,89 +23,75 @@ async def test_blogger_full_flow(
 ) -> None:
     """Test complete blogger flow: registration → Instagram verification → offer response → feedback."""
 
-    # === Шаг 1: Регистрация блогера ===
-    # Создаем репозитории
-    from ugc_bot.infrastructure.db.repositories import SqlAlchemyUserRepository
-
-    user_repo = SqlAlchemyUserRepository(session_factory)
-
-    # Создаем пользователя
+    # === Step 1: Blogger registration ===
+    user_repo = dispatcher["user_repo"]
     blogger_user = create_test_user("blogger_123")
-    blogger_user = user_repo.save(blogger_user)
-    session.commit()
+    await user_repo.save(blogger_user, session=session)
+    await session.commit()
 
-    # Пропускаем создание профиля блогера (таблица несовместима с SQLite)
-    # blogger_profile = create_test_blogger_profile(blogger_user.user_id)
-    # blogger_repo = dispatcher["blogger_profile_repo"]
-    # blogger_profile = blogger_repo.save(blogger_profile)
-    # session.commit()
-
-    # === Шаг 2: Подтверждение Instagram ===
-    # Имитируем успешное подтверждение Instagram
+    # === Step 2: Instagram verification (generate_code only; verify_code needs blogger_profiles) ===
     verification_service = dispatcher["instagram_verification_service"]
-    code = verification_service.generate_code(blogger_user.user_id)
-    session.commit()
+    code = await verification_service.generate_code(blogger_user.user_id)
+    await session.commit()
 
-    # Проверяем, что код создан
     assert code is not None
     assert code.user_id == blogger_user.user_id
+    # Skip verify_code: it requires blogger_profiles table (JSONB, not in SQLite test schema)
 
-    # Подтверждаем код
-    success = verification_service.verify_code(blogger_user.user_id, code.code)
-    assert success
-
-    # Пропускаем обновление профиля (таблица несовместима с SQLite)
-
-    # === Шаг 3: Создание заказа рекламодателем ===
-    # Создаем рекламодателя
+    # === Step 3: Advertiser creates order ===
     advertiser_user = create_test_user("advertiser_456")
-    advertiser_user = user_repo.save(advertiser_user)
-    session.commit()
+    await user_repo.save(advertiser_user, session=session)
+    await session.commit()
 
-    # Создаем заказ
-    order = create_test_order(advertiser_user.user_id)
+    advertiser_repo = dispatcher["advertiser_repo"]
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=advertiser_user.user_id, contact="test_contact"),
+        session=session,
+    )
+    await session.commit()
+
+    order_template = create_test_order(advertiser_user.user_id)
     order_service = dispatcher["order_service"]
-    order = order_service.create_order(order)
-    session.commit()
+    order = await order_service.create_order(
+        advertiser_id=advertiser_user.user_id,
+        product_link=order_template.product_link,
+        offer_text=order_template.offer_text,
+        ugc_requirements=order_template.ugc_requirements,
+        barter_description=order_template.barter_description,
+        price=order_template.price,
+        bloggers_needed=order_template.bloggers_needed,
+    )
 
-    # === Шаг 4: Оплата заказа ===
-    # Имитируем оплату
+    # === Step 4: Payment and order activation (same transaction, no outbox table) ===
+    now = datetime.now(timezone.utc)
+    payment = Payment(
+        payment_id=uuid4(),
+        order_id=order.order_id,
+        provider="yookassa_telegram",
+        status=PaymentStatus.PAID,
+        amount=order.price,
+        currency="RUB",
+        external_id="test_charge_2",
+        created_at=now,
+        paid_at=now,
+    )
+    transaction_manager = dispatcher["transaction_manager"]
     payment_service = dispatcher["payment_service"]
-    payment = payment_service.create_payment(order.order_id, order.price)
-    session.commit()
+    async with transaction_manager.transaction() as tx_session:
+        await dispatcher["payment_repo"].save(payment, session=tx_session)
+        await payment_service.outbox_publisher.publish_order_activation(
+            order, session=tx_session
+        )
 
-    # Имитируем успешную оплату
-    payment_service.confirm_payment(payment.external_id)
-    session.commit()
-
-    # Проверяем, что заказ стал активным
-    updated_order = order_service.get_by_id(order.order_id)
+    order_repo = dispatcher["order_repo"]
+    updated_order = await order_repo.get_by_id(order.order_id, session=session)
+    assert updated_order is not None
     assert updated_order.status == OrderStatus.ACTIVE
 
-    # === Шаг 5: Пропускаем рассылку оффера ===
-    # offer_dispatch_service = dispatcher["offer_dispatch_service"]
-    # await offer_dispatch_service.dispatch_offers_to_bloggers(order.order_id)
-    # session.commit()
-
-    # Пропускаем проверку отклика (нужен профиль блогера для реальной рассылки)
-
-    # === Шаг 6: Пропускаем отклик блогера ===
-    # Требует профилей блогеров
-
-    # === Шаг 7: Пропускаем передачу контактов ===
-    # Требует профилей блогеров
-
-    # === Шаг 8: Пропускаем фидбек ===
-    # Требует взаимодействий
-
-    # === Финальные проверки ===
-    # Проверяем основные сервисы
-    assert order.status == OrderStatus.NEW  # Заказ создан
+    # === Final checks ===
     assert order.advertiser_id == advertiser_user.user_id
-
-    # Проверяем работу основных сервисов
-    assert user_repo.get_by_id(blogger_user.user_id) is not None
-    assert user_repo.get_by_id(advertiser_user.user_id) is not None
-    assert order_service.get_by_id(order.order_id) is not None
-
-    print("✅ Blogger full flow test passed (basic services)!")
+    assert await user_repo.get_by_id(blogger_user.user_id, session=session) is not None
+    assert (
+        await user_repo.get_by_id(advertiser_user.user_id, session=session) is not None
+    )
+    assert await order_repo.get_by_id(order.order_id, session=session) is not None

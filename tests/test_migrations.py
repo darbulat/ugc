@@ -17,6 +17,17 @@ def _alembic_config() -> Config:
     return Config(str(root / "alembic.ini"))
 
 
+def _psycopg_conninfo(database_url: str) -> str:
+    """Convert SQLAlchemy-style URL to conninfo string for psycopg.
+
+    psycopg expects 'postgresql://...' or libpq key=value form.
+    SQLAlchemy uses 'postgresql+psycopg://...' which psycopg does not accept.
+    """
+    url = make_url(database_url)
+    # Build standard postgresql:// URI (no +dialect)
+    return url.set(drivername="postgresql").render_as_string(hide_password=False)
+
+
 def _build_urls(database_url: str, schema: str) -> tuple[str, str]:
     """Return (admin_url, migrations_url) with search_path set."""
 
@@ -38,18 +49,18 @@ def test_migrations_upgrade_downgrade_upgrade() -> None:
         pytest.skip("DATABASE_URL is required for migration tests.")
 
     schema_name = "migration_test"
-    admin_url, migrations_url = _build_urls(database_url, schema_name)
+    conninfo = _psycopg_conninfo(database_url)
 
-    with psycopg.connect(admin_url, autocommit=True) as connection:
+    with psycopg.connect(conninfo, autocommit=True) as connection:
         connection.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
 
     config = _alembic_config()
-    os.environ["DATABASE_URL"] = migrations_url
+    os.environ["DATABASE_URL"] = database_url
 
     try:
         command.upgrade(config, "head")
         command.downgrade(config, "base")
         command.upgrade(config, "head")
     finally:
-        with psycopg.connect(admin_url, autocommit=True) as connection:
+        with psycopg.connect(conninfo, autocommit=True) as connection:
             connection.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
