@@ -2,74 +2,36 @@
 
 import pytest
 from uuid import UUID
-from datetime import datetime, timezone
 
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.feedback import handle_feedback
-from ugc_bot.domain.entities import Interaction, User
-from ugc_bot.domain.enums import InteractionStatus, MessengerType, UserStatus
-from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryInteractionRepository,
-    InMemoryUserRepository,
-)
-
-
-class FakeUser:
-    """Minimal user stub."""
-
-    def __init__(self, user_id: int) -> None:
-        self.id = user_id
-
-
-class FakeCallback:
-    """Minimal callback stub."""
-
-    def __init__(self, data: str, user: FakeUser) -> None:
-        self.data = data
-        self.from_user = user
-        self.answers: list[str] = []
-
-    async def answer(self, text: str) -> None:
-        """Capture callback answer."""
-
-        self.answers.append(text)
+from ugc_bot.domain.enums import InteractionStatus
+from tests.helpers.fakes import FakeCallback, FakeUser
+from tests.helpers.factories import create_test_interaction, create_test_user
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_advertiser_ok() -> None:
+async def test_feedback_handler_advertiser_ok(user_repo, interaction_repo) -> None:
     """Advertiser feedback updates interaction."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    advertiser = User(
+    advertiser = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000930"),
         external_id="42",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(advertiser)
 
-    interaction = Interaction(
-        interaction_id=UUID("00000000-0000-0000-0000-000000000931"),
+    interaction = await create_test_interaction(
+        interaction_repo,
         order_id=UUID("00000000-0000-0000-0000-000000000932"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000933"),
         advertiser_id=advertiser.user_id,
-        status=InteractionStatus.PENDING,
-        from_advertiser=None,
-        from_blogger=None,
-        postpone_count=0,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        interaction_id=UUID("00000000-0000-0000-0000-000000000931"),
     )
-    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:ok", user=FakeUser(42)
@@ -83,48 +45,31 @@ async def test_feedback_handler_advertiser_ok() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_wrong_user() -> None:
+async def test_feedback_handler_wrong_user(user_repo, interaction_repo) -> None:
     """Reject feedback from unrelated user."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    advertiser = User(
+    advertiser = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000940"),
         external_id="100",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    other_user = User(
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000944"),
         external_id="999",
-        messenger_type=MessengerType.TELEGRAM,
         username="other",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(advertiser)
-    await user_repo.save(other_user)
-    interaction = Interaction(
-        interaction_id=UUID("00000000-0000-0000-0000-000000000941"),
+    interaction = await create_test_interaction(
+        interaction_repo,
         order_id=UUID("00000000-0000-0000-0000-000000000942"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000943"),
         advertiser_id=advertiser.user_id,
-        status=InteractionStatus.PENDING,
-        from_advertiser=None,
-        from_blogger=None,
-        postpone_count=0,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        interaction_id=UUID("00000000-0000-0000-0000-000000000941"),
     )
-    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:ok", user=FakeUser(999)
@@ -134,11 +79,9 @@ async def test_feedback_handler_wrong_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_invalid_format() -> None:
+async def test_feedback_handler_invalid_format(user_repo, interaction_repo) -> None:
     """Reject malformed callback data."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(data="feedback:bad", user=FakeUser(1))
@@ -147,11 +90,9 @@ async def test_feedback_handler_invalid_format() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_invalid_status() -> None:
+async def test_feedback_handler_invalid_status(user_repo, interaction_repo) -> None:
     """Reject unknown status values."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(
@@ -162,11 +103,9 @@ async def test_feedback_handler_invalid_status() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_invalid_uuid() -> None:
+async def test_feedback_handler_invalid_uuid(user_repo, interaction_repo) -> None:
     """Reject invalid UUID values."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(data="feedback:adv:not-a-uuid:ok", user=FakeUser(1))
@@ -175,11 +114,9 @@ async def test_feedback_handler_invalid_uuid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_user_not_found() -> None:
+async def test_feedback_handler_user_not_found(user_repo, interaction_repo) -> None:
     """Reject when user is missing."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(
@@ -191,11 +128,9 @@ async def test_feedback_handler_user_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_no_from_user() -> None:
+async def test_feedback_handler_no_from_user(user_repo, interaction_repo) -> None:
     """Handle callback without from_user."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(
@@ -208,24 +143,20 @@ async def test_feedback_handler_no_from_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_interaction_not_found() -> None:
+async def test_feedback_handler_interaction_not_found(
+    user_repo, interaction_repo
+) -> None:
     """Handle missing interaction."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    advertiser = User(
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000001010"),
         external_id="1010",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(advertiser)
 
     callback = FakeCallback(
         data=f"feedback:adv:{UUID('00000000-0000-0000-0000-000000001011')}:ok",
@@ -236,49 +167,32 @@ async def test_feedback_handler_interaction_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_blogger_wrong_user() -> None:
+async def test_feedback_handler_blogger_wrong_user(user_repo, interaction_repo) -> None:
     """Reject feedback from unrelated blogger."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    blogger = User(
+    blogger = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000001020"),
         external_id="1020",
-        messenger_type=MessengerType.TELEGRAM,
         username="blogger",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    other_user = User(
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000001024"),
         external_id="9999",
-        messenger_type=MessengerType.TELEGRAM,
         username="other",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(blogger)
-    await user_repo.save(other_user)
 
-    interaction = Interaction(
-        interaction_id=UUID("00000000-0000-0000-0000-000000001021"),
+    interaction = await create_test_interaction(
+        interaction_repo,
         order_id=UUID("00000000-0000-0000-0000-000000001022"),
         blogger_id=blogger.user_id,
         advertiser_id=UUID("00000000-0000-0000-0000-000000001023"),
-        status=InteractionStatus.PENDING,
-        from_advertiser=None,
-        from_blogger=None,
-        postpone_count=0,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001021"),
     )
-    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:blog:{interaction.interaction_id}:ok", user=FakeUser(9999)
@@ -288,39 +202,26 @@ async def test_feedback_handler_blogger_wrong_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_blogger_feedback() -> None:
+async def test_feedback_handler_blogger_feedback(user_repo, interaction_repo) -> None:
     """Blogger feedback updates interaction."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    blogger = User(
+    blogger = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000001030"),
         external_id="1030",
-        messenger_type=MessengerType.TELEGRAM,
         username="blogger",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(blogger)
 
-    interaction = Interaction(
-        interaction_id=UUID("00000000-0000-0000-0000-000000001031"),
+    interaction = await create_test_interaction(
+        interaction_repo,
         order_id=UUID("00000000-0000-0000-0000-000000001032"),
         blogger_id=blogger.user_id,
         advertiser_id=UUID("00000000-0000-0000-0000-000000001033"),
-        status=InteractionStatus.PENDING,
-        from_advertiser=None,
-        from_blogger=None,
-        postpone_count=0,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001031"),
     )
-    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:blog:{interaction.interaction_id}:ok", user=FakeUser(1030)
@@ -334,41 +235,29 @@ async def test_feedback_handler_blogger_feedback() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_postpone() -> None:
+async def test_feedback_handler_postpone(user_repo, interaction_repo) -> None:
     """Handle postpone feedback with remaining postpones."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(
         interaction_repo=interaction_repo, max_postpone_count=3
     )
 
-    advertiser = User(
+    advertiser = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000001040"),
         external_id="1040",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(advertiser)
 
-    interaction = Interaction(
-        interaction_id=UUID("00000000-0000-0000-0000-000000001041"),
+    interaction = await create_test_interaction(
+        interaction_repo,
         order_id=UUID("00000000-0000-0000-0000-000000001042"),
         blogger_id=UUID("00000000-0000-0000-0000-000000001043"),
         advertiser_id=advertiser.user_id,
-        status=InteractionStatus.PENDING,
-        from_advertiser=None,
-        from_blogger=None,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001041"),
         postpone_count=1,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
     )
-    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:postpone", user=FakeUser(1040)
@@ -380,41 +269,31 @@ async def test_feedback_handler_postpone() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_postpone_max_reached() -> None:
+async def test_feedback_handler_postpone_max_reached(
+    user_repo, interaction_repo
+) -> None:
     """Handle postpone feedback when max postpones reached."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(
         interaction_repo=interaction_repo, max_postpone_count=3
     )
 
-    advertiser = User(
+    advertiser = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000001050"),
         external_id="1050",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(advertiser)
 
-    interaction = Interaction(
-        interaction_id=UUID("00000000-0000-0000-0000-000000001051"),
+    interaction = await create_test_interaction(
+        interaction_repo,
         order_id=UUID("00000000-0000-0000-0000-000000001052"),
         blogger_id=UUID("00000000-0000-0000-0000-000000001053"),
         advertiser_id=advertiser.user_id,
-        status=InteractionStatus.PENDING,
-        from_advertiser=None,
-        from_blogger=None,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001051"),
         postpone_count=3,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
     )
-    await interaction_repo.save(interaction)
 
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:postpone", user=FakeUser(1050)
@@ -428,39 +307,26 @@ async def test_feedback_handler_postpone_max_reached() -> None:
 
 
 @pytest.mark.asyncio
-async def test_feedback_handler_exception() -> None:
+async def test_feedback_handler_exception(user_repo, interaction_repo) -> None:
     """Handle exceptions gracefully."""
 
-    user_repo = InMemoryUserRepository()
-    interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
-    advertiser = User(
+    advertiser = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000001060"),
         external_id="1060",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(advertiser)
 
-    interaction = Interaction(
-        interaction_id=UUID("00000000-0000-0000-0000-000000001061"),
+    interaction = await create_test_interaction(
+        interaction_repo,
         order_id=UUID("00000000-0000-0000-0000-000000001062"),
         blogger_id=UUID("00000000-0000-0000-0000-000000001063"),
         advertiser_id=advertiser.user_id,
-        status=InteractionStatus.PENDING,
-        from_advertiser=None,
-        from_blogger=None,
-        postpone_count=0,
-        next_check_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001061"),
     )
-    await interaction_repo.save(interaction)
 
     # Mock interaction_service to raise exception
     original_get_by_id = interaction_service.interaction_repo.get_by_id

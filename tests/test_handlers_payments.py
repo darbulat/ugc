@@ -1,14 +1,9 @@
 """Tests for payment handlers."""
 
-from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.services.contact_pricing_service import ContactPricingService
-from ugc_bot.application.services.outbox_publisher import OutboxPublisher
-from ugc_bot.application.services.payment_service import PaymentService
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import (
     pay_order,
@@ -16,198 +11,74 @@ from ugc_bot.bot.handlers.payments import (
     successful_payment_handler,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import AdvertiserProfile, ContactPricing, Order, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
-from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
-    InMemoryBloggerProfileRepository,
-    InMemoryContactPricingRepository,
-    InMemoryOrderRepository,
-    InMemoryOutboxRepository,
-    InMemoryPaymentRepository,
-    InMemoryUserRepository,
-    NoopOfferBroadcaster,
+from ugc_bot.domain.enums import OrderStatus
+from tests.helpers.fakes import (
+    FakeBot,
+    FakeMessage,
+    FakePreCheckoutQuery,
+    FakeSuccessfulPayment,
+    FakeUser,
 )
-
-
-class FakeUser:
-    """Minimal user stub."""
-
-    def __init__(self, user_id: int, username: str | None, first_name: str) -> None:
-        self.id = user_id
-        self.username = username
-        self.first_name = first_name
-
-
-class FakeBot:
-    """Minimal bot stub."""
-
-    def __init__(self) -> None:
-        self.invoices: list[dict] = []
-        self.pre_checkout_answers: list[dict] = []
-
-    async def send_invoice(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        self.invoices.append(kwargs)
-
-    async def answer_pre_checkout_query(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        self.pre_checkout_answers.append(kwargs)
-
-
-class FakeMessage:
-    """Minimal message stub for handler tests."""
-
-    def __init__(self, text: str | None, user: FakeUser | None, bot) -> None:
-        self.text = text
-        self.from_user = user
-        self.bot = bot
-        self.answers: list[str] = []
-        self.chat = type("Chat", (), {"id": user.id if user else 0})()
-        self.successful_payment = None
-
-    async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
-        self.answers.append(text)
-
-
-class FakePreCheckoutQuery:
-    """Minimal pre-checkout query stub."""
-
-    def __init__(self, query_id: str, bot) -> None:
-        self.id = query_id
-        self.bot = bot
-
-
-class FakeSuccessfulPayment:
-    """Minimal successful payment stub."""
-
-    def __init__(self, payload: str, charge_id: str) -> None:
-        self.invoice_payload = payload
-        self.provider_payment_charge_id = charge_id
-        self.total_amount = 100000
-        self.currency = "RUB"
-
-
-async def _seed_user(
-    user_repo: InMemoryUserRepository, user_id: UUID, external_id: str
-) -> User:
-    """Seed user with advertiser profile."""
-
-    user = User(
-        user_id=user_id,
-        external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    await user_repo.save(user)
-    return user
+from tests.helpers.factories import (
+    create_test_advertiser_profile,
+    create_test_order,
+    create_test_user,
+)
+from tests.helpers.services import (
+    build_contact_pricing_service,
+    build_payment_service,
+    build_profile_service,
+)
 
 
 class FakeConfig(AppConfig):
     """Config stub with provider token."""
 
 
-def _profile_service(
-    user_repo: InMemoryUserRepository,
-    advertiser_repo: InMemoryAdvertiserProfileRepository,
-) -> ProfileService:
-    """Create profile service for handler tests."""
-
-    return ProfileService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        advertiser_repo=advertiser_repo,
-    )
-
-
-def _contact_pricing_service() -> ContactPricingService:
-    """Create contact pricing service for handler tests."""
-
-    return ContactPricingService(
-        pricing_repo=InMemoryContactPricingRepository(),
-    )
-
-
-async def _add_advertiser_profile(
-    advertiser_repo: InMemoryAdvertiserProfileRepository, user_id: UUID
-) -> None:
-    """Seed advertiser profile."""
-
-    await advertiser_repo.save(AdvertiserProfile(user_id=user_id, contact="contact"))
-
-
-def _payment_service(
-    user_repo: InMemoryUserRepository,
-    advertiser_repo: InMemoryAdvertiserProfileRepository,
-    order_repo: InMemoryOrderRepository,
-    payment_repo: InMemoryPaymentRepository,
-    transaction_manager: object,
-) -> PaymentService:
-    """Create payment service for tests."""
-
-    outbox_repo = InMemoryOutboxRepository()
-    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
-
-    return PaymentService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
-        payment_repo=payment_repo,
-        broadcaster=NoopOfferBroadcaster(),
-        outbox_publisher=outbox_publisher,
-        transaction_manager=transaction_manager,
-    )
-
-
 @pytest.mark.asyncio
 async def test_pay_order_success(
-    monkeypatch: pytest.MonkeyPatch, fake_tm: object
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
 ) -> None:
     """Invoice is sent when order is valid."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
-    user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
-    )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    from uuid import UUID
+    from ugc_bot.domain.enums import MessengerType
 
-    user = User(
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+    )
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+
+    user = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000500"),
         external_id="1",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(user)
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
         external_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
 
-    order = Order(
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
         order_id=UUID("00000000-0000-0000-0000-000000000501"),
-        advertiser_id=user.user_id,
-        product_link="https://example.com",
-        offer_text="Offer",
-        ugc_requirements=None,
-        barter_description=None,
         price=1000.0,
         bloggers_needed=3,
         status=OrderStatus.NEW,
-        created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
     )
-    await order_repo.save(order)
 
     bot = FakeBot()
     message = FakeMessage(
@@ -236,19 +107,28 @@ async def test_pay_order_success(
 
 
 @pytest.mark.asyncio
-async def test_pay_order_missing_provider_token(fake_tm: object) -> None:
+async def test_pay_order_missing_provider_token(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject when provider token missing."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
+    from datetime import datetime, timezone
+    from uuid import UUID
+    from ugc_bot.domain.entities import ContactPricing
+    from ugc_bot.domain.enums import MessengerType
+
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
     # Override price for 3 bloggers to be positive so provider check is needed
     await contact_pricing_service.pricing_repo.save(
@@ -257,37 +137,26 @@ async def test_pay_order_missing_provider_token(fake_tm: object) -> None:
         )
     )
 
-    user = User(
+    user = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000502"),
         external_id="2",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(user)
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
 
-    await order_repo.save(
-        Order(
-            order_id=UUID("00000000-0000-0000-0000-000000000503"),
-            advertiser_id=user.user_id,
-            product_link="https://example.com",
-            offer_text="Offer",
-            ugc_requirements=None,
-            barter_description=None,
-            price=1000.0,
-            bloggers_needed=3,
-            status=OrderStatus.NEW,
-            created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
-        )
+    await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000503"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
     )
 
     message = FakeMessage(
@@ -315,24 +184,30 @@ async def test_pay_order_missing_provider_token(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_invalid_args(fake_tm: object) -> None:
+async def test_pay_order_invalid_args(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject missing order id argument."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    user = await _seed_user(
-        user_repo, UUID("00000000-0000-0000-0000-000000000510"), "10"
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000510"),
+        external_id="10",
     )
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
     message = FakeMessage(text="/pay_order", user=FakeUser(10, "adv", "Adv"), bot=None)
     config = FakeConfig.model_validate(
         {
@@ -354,24 +229,30 @@ async def test_pay_order_invalid_args(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_invalid_uuid(fake_tm: object) -> None:
+async def test_pay_order_invalid_uuid(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject invalid order id format."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    user = await _seed_user(
-        user_repo, UUID("00000000-0000-0000-0000-000000000511"), "11"
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000511"),
+        external_id="11",
     )
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
     message = FakeMessage(
         text="/pay_order not-a-uuid", user=FakeUser(11, "adv", "Adv"), bot=None
     )
@@ -395,24 +276,30 @@ async def test_pay_order_invalid_uuid(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_order_not_found(fake_tm: object) -> None:
+async def test_pay_order_order_not_found(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject missing order."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    user = await _seed_user(
-        user_repo, UUID("00000000-0000-0000-0000-000000000512"), "12"
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000512"),
+        external_id="12",
     )
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000599",
         user=FakeUser(12, "adv", "Adv"),
@@ -438,42 +325,43 @@ async def test_pay_order_order_not_found(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_wrong_owner(fake_tm: object) -> None:
+async def test_pay_order_wrong_owner(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject payments for чужие заказы."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    user = await _seed_user(
-        user_repo, UUID("00000000-0000-0000-0000-000000000513"), "13"
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000513"),
+        external_id="13",
     )
-    other = await _seed_user(
-        user_repo, UUID("00000000-0000-0000-0000-000000000514"), "14"
+    other = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000514"),
+        external_id="14",
     )
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
 
-    await order_repo.save(
-        Order(
-            order_id=UUID("00000000-0000-0000-0000-000000000515"),
-            advertiser_id=other.user_id,
-            product_link="https://example.com",
-            offer_text="Offer",
-            ugc_requirements=None,
-            barter_description=None,
-            price=1000.0,
-            bloggers_needed=3,
-            status=OrderStatus.NEW,
-            created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
-        )
+    await create_test_order(
+        order_repo,
+        other.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000515"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
     )
 
     message = FakeMessage(
@@ -501,38 +389,37 @@ async def test_pay_order_wrong_owner(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_not_new_status(fake_tm: object) -> None:
+async def test_pay_order_not_new_status(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject payments for non-NEW orders."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    user = await _seed_user(
-        user_repo, UUID("00000000-0000-0000-0000-000000000516"), "15"
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000516"),
+        external_id="15",
     )
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
-    await order_repo.save(
-        Order(
-            order_id=UUID("00000000-0000-0000-0000-000000000517"),
-            advertiser_id=user.user_id,
-            product_link="https://example.com",
-            offer_text="Offer",
-            ugc_requirements=None,
-            barter_description=None,
-            price=1000.0,
-            bloggers_needed=3,
-            status=OrderStatus.ACTIVE,
-            created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
-        )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000517"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
     )
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
@@ -559,30 +446,33 @@ async def test_pay_order_not_new_status(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_blocked_user(fake_tm: object) -> None:
+async def test_pay_order_blocked_user(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject blocked users."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    user = User(
+    from ugc_bot.domain.enums import UserStatus
+
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000518"),
         external_id="16",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.BLOCKED,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(user)
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
         user=FakeUser(16, "adv", "Adv"),
@@ -608,30 +498,33 @@ async def test_pay_order_blocked_user(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_paused_user(fake_tm: object) -> None:
+async def test_pay_order_paused_user(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject paused users."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    user = User(
+    from ugc_bot.domain.enums import UserStatus
+
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000519"),
         external_id="17",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.PAUSE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(user)
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
         user=FakeUser(17, "adv", "Adv"),
@@ -657,21 +550,29 @@ async def test_pay_order_paused_user(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pay_order_missing_profile(fake_tm: object) -> None:
+async def test_pay_order_missing_profile(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject missing advertiser profile."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    profile_service = _profile_service(user_repo, advertiser_repo)
-    contact_pricing_service = _contact_pricing_service()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
 
-    await _seed_user(user_repo, UUID("00000000-0000-0000-0000-000000000521"), "21")
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000521"),
+        external_id="21",
+    )
     message = FakeMessage(
         text="/pay_order 00000000-0000-0000-0000-000000000517",
         user=FakeUser(21, "adv", "Adv"),
@@ -697,7 +598,15 @@ async def test_pay_order_missing_profile(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_checkout_query_ok(fake_tm: object) -> None:
+async def test_pre_checkout_query_ok(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Confirm pre-checkout query."""
 
     bot = FakeBot()
@@ -707,7 +616,15 @@ async def test_pre_checkout_query_ok(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_checkout_query_without_bot(fake_tm: object) -> None:
+async def test_pre_checkout_query_without_bot(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Skip when bot is missing."""
 
     query = FakePreCheckoutQuery("q1", None)
@@ -715,44 +632,38 @@ async def test_pre_checkout_query_without_bot(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_payment_handler(fake_tm: object) -> None:
+async def test_successful_payment_handler(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Confirm payment on successful payment message."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    payment_repo = InMemoryPaymentRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
 
-    user = User(
+    user = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000504"),
         external_id="3",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(user)
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
 
-    order = Order(
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
         order_id=UUID("00000000-0000-0000-0000-000000000505"),
-        advertiser_id=user.user_id,
-        product_link="https://example.com",
-        offer_text="Offer",
-        ugc_requirements=None,
-        barter_description=None,
         price=1000.0,
         bloggers_needed=3,
         status=OrderStatus.NEW,
-        created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
     )
-    await order_repo.save(order)
 
     bot = FakeBot()
     message = FakeMessage(
@@ -787,21 +698,27 @@ async def test_successful_payment_handler(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_payment_invalid_payload(fake_tm: object) -> None:
+async def test_successful_payment_invalid_payload(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject invalid payload."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    payment_repo = InMemoryPaymentRepository()
-    order_repo = InMemoryOrderRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
-    user = await _seed_user(
-        user_repo, UUID("00000000-0000-0000-0000-000000000520"), "20"
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000520"),
+        external_id="20",
     )
-    await _add_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
 
     message = FakeMessage(text=None, user=FakeUser(20, "adv", "Adv"), bot=FakeBot())
     message.successful_payment = FakeSuccessfulPayment(payload="bad", charge_id="c")
@@ -810,16 +727,20 @@ async def test_successful_payment_invalid_payload(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_payment_user_not_found(fake_tm: object) -> None:
+async def test_successful_payment_user_not_found(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
     """Reject when user is not found."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    payment_repo = InMemoryPaymentRepository()
-    order_repo = InMemoryOrderRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    payment_service = _payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
     )
 
     message = FakeMessage(text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot())

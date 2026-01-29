@@ -10,6 +10,44 @@ import logging
 
 import pytest
 
+# Import fixtures from helpers to make them available globally
+# Note: Using absolute imports here as conftest.py is loaded directly by pytest
+try:
+    from tests.helpers.repositories import (  # noqa: F401
+        advertiser_repo,
+        blogger_repo,
+        complaint_repo,
+        instagram_verification_repo,
+        interaction_repo,
+        order_repo,
+        order_response_repo,
+        outbox_repo,
+        payment_repo,
+        pricing_repo,
+        repos,
+        user_repo,
+    )
+except ImportError:
+    # Fallback for when tests are run directly
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from tests.helpers.repositories import (  # noqa: F401
+        advertiser_repo,
+        blogger_repo,
+        complaint_repo,
+        instagram_verification_repo,
+        interaction_repo,
+        order_repo,
+        order_response_repo,
+        outbox_repo,
+        payment_repo,
+        pricing_repo,
+        repos,
+        user_repo,
+    )
+
 
 def fake_transaction_manager():
     """Return a fake transaction manager that yields a dummy session.

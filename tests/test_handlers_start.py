@@ -10,35 +10,7 @@ from ugc_bot.bot.handlers.start import (
     start_command,
 )
 from ugc_bot.domain.enums import MessengerType
-from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
-
-
-class FakeUser:
-    """Minimal user stub."""
-
-    def __init__(self, user_id: int, username: str | None, first_name: str) -> None:
-        self.id = user_id
-        self.username = username
-        self.first_name = first_name
-
-
-class FakeMessage:
-    """Minimal message stub for handler tests."""
-
-    def __init__(self, text: str | None, user: FakeUser | None) -> None:
-        self.text = text
-        self.from_user = user
-        self.answers: list[tuple[str, object | None]] = []
-
-    async def answer(
-        self,
-        text: str,
-        reply_markup=None,
-        parse_mode=None,  # type: ignore[no-untyped-def]
-    ) -> None:
-        """Capture response text and markup."""
-
-        self.answers.append((text, reply_markup))
+from tests.helpers.fakes import FakeMessage, FakeUser
 
 
 @pytest.mark.asyncio
@@ -74,11 +46,10 @@ async def test_role_command_shows_keyboard() -> None:
 
 
 @pytest.mark.asyncio
-async def test_choose_role_persists_role() -> None:
+async def test_choose_role_persists_role(user_repo) -> None:
     """Ensure role selection is persisted."""
 
-    repo = InMemoryUserRepository()
-    service = UserRoleService(user_repo=repo)
+    service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Я блогер", user=FakeUser(42, "bob", "Bob"))
 
     await choose_role(message, service)
@@ -89,11 +60,10 @@ async def test_choose_role_persists_role() -> None:
 
 
 @pytest.mark.asyncio
-async def test_choose_role_without_user() -> None:
+async def test_choose_role_without_user(user_repo) -> None:
     """Ignore messages without sender."""
 
-    repo = InMemoryUserRepository()
-    service = UserRoleService(user_repo=repo)
+    service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Хочу заказать рекламу", user=None)
 
     await choose_role(message, service)
@@ -101,11 +71,10 @@ async def test_choose_role_without_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_choose_role_advertiser_response() -> None:
+async def test_choose_role_advertiser_response(user_repo) -> None:
     """Advertiser role should respond accordingly."""
 
-    repo = InMemoryUserRepository()
-    service = UserRoleService(user_repo=repo)
+    service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Хочу заказать рекламу", user=FakeUser(99, None, "Ann"))
 
     await choose_role(message, service)

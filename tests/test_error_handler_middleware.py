@@ -1,7 +1,5 @@
 """Tests for error handling middleware."""
 
-from unittest.mock import Mock
-
 import pytest
 
 from ugc_bot.application.errors import (
@@ -12,32 +10,13 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.metrics.collector import MetricsCollector
+from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 
 
-class FakeMessage:
-    """Fake message for testing."""
-
-    def __init__(self) -> None:
-        self.answers: list[str] = []
-        self.from_user = Mock()
-        self.from_user.id = 123
-
-    async def answer(self, text: str) -> None:
-        """Capture answer."""
-        self.answers.append(text)
-
-
-class FakeCallback:
-    """Fake callback for testing."""
-
-    def __init__(self) -> None:
-        self.answers: list[str] = []
-        self.from_user = Mock()
-        self.from_user.id = 456
-
-    async def answer(self, text: str, show_alert: bool = False) -> None:
-        """Capture answer."""
-        self.answers.append(text)
+def _answer_text(answers: list, index: int = 0) -> str:
+    """Get answer text from message/callback answers (may be str or tuple)."""
+    ans = answers[index]
+    return ans if isinstance(ans, str) else ans[0]
 
 
 @pytest.mark.asyncio
@@ -45,7 +24,7 @@ async def test_middleware_handles_order_creation_error() -> None:
     """Middleware handles OrderCreationError and sends user message."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
         raise OrderCreationError("Order not found.")
@@ -53,7 +32,7 @@ async def test_middleware_handles_order_creation_error() -> None:
     await middleware(handler, message, {})
 
     assert len(message.answers) == 1
-    assert "Заказ не найден" in message.answers[0]
+    assert "Заказ не найден" in _answer_text(message.answers)
 
 
 @pytest.mark.asyncio
@@ -61,7 +40,7 @@ async def test_middleware_handles_user_not_found_error() -> None:
     """Middleware handles UserNotFoundError."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
         raise UserNotFoundError("User not found.")
@@ -69,7 +48,7 @@ async def test_middleware_handles_user_not_found_error() -> None:
     await middleware(handler, message, {})
 
     assert len(message.answers) == 1
-    assert "Пользователь не найден" in message.answers[0]
+    assert "Пользователь не найден" in _answer_text(message.answers)
 
 
 @pytest.mark.asyncio
@@ -77,7 +56,7 @@ async def test_middleware_handles_blogger_registration_error() -> None:
     """Middleware handles BloggerRegistrationError."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    callback = FakeCallback()
+    callback = FakeCallback(data="", user=FakeUser(456))
 
     async def handler(event, data):
         raise BloggerRegistrationError("Invalid data.")
@@ -93,7 +72,7 @@ async def test_middleware_handles_advertiser_registration_error() -> None:
     """Middleware handles AdvertiserRegistrationError."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
         raise AdvertiserRegistrationError("Invalid contact.")
@@ -101,7 +80,7 @@ async def test_middleware_handles_advertiser_registration_error() -> None:
     await middleware(handler, message, {})
 
     assert len(message.answers) == 1
-    assert "Ошибка регистрации рекламодателя" in message.answers[0]
+    assert "Ошибка регистрации рекламодателя" in _answer_text(message.answers)
 
 
 @pytest.mark.asyncio
@@ -109,7 +88,7 @@ async def test_middleware_handles_unexpected_error() -> None:
     """Middleware handles unexpected exceptions."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
         raise ValueError("Unexpected error")
@@ -117,7 +96,7 @@ async def test_middleware_handles_unexpected_error() -> None:
     await middleware(handler, message, {})
 
     assert len(message.answers) == 1
-    assert "неожиданная ошибка" in message.answers[0].lower()
+    assert "неожиданная ошибка" in _answer_text(message.answers).lower()
 
 
 @pytest.mark.asyncio
@@ -126,7 +105,7 @@ async def test_middleware_records_metrics() -> None:
 
     metrics = MetricsCollector()
     middleware = ErrorHandlerMiddleware(metrics_collector=metrics)
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
         raise OrderCreationError("Order not found.")
@@ -142,7 +121,7 @@ async def test_middleware_without_metrics_collector() -> None:
     """Middleware works without metrics collector."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
         raise OrderCreationError("Order not found.")
@@ -157,7 +136,7 @@ async def test_middleware_passes_through_success() -> None:
     """Middleware passes through successful handler execution."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
         return "success"
@@ -173,7 +152,7 @@ async def test_middleware_handles_callback_query() -> None:
     """Middleware handles CallbackQuery events."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    callback = FakeCallback()
+    callback = FakeCallback(data="", user=FakeUser(456))
 
     async def handler(event, data):
         raise OrderCreationError("Order is not active.")
@@ -189,7 +168,7 @@ async def test_middleware_error_message_mapping() -> None:
     """Middleware uses correct error message mappings."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(123))
 
     test_cases = [
         (OrderCreationError("Order not found."), "Заказ не найден"),
@@ -214,4 +193,4 @@ async def test_middleware_error_message_mapping() -> None:
         await middleware(handler, message, {})
 
         assert len(message.answers) == 1
-        assert expected_text in message.answers[0]
+        assert expected_text in _answer_text(message.answers)

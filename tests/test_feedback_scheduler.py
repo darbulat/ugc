@@ -36,34 +36,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.startup_logging import log_startup_info, safe_config_for_logging
-
-
-class FakeBot:
-    """Capture sent messages."""
-
-    def __init__(self) -> None:
-        self.messages: list[tuple[int, str]] = []
-
-    async def send_message(self, chat_id: int, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
-        self.messages.append((chat_id, text))
-
-
-class FakeSession:
-    """Minimal async session."""
-
-    def __init__(self) -> None:
-        self.closed = False
-
-    async def close(self) -> None:
-        self.closed = True
-
-
-class FakeBotWithSession(FakeBot):
-    """Fake bot with session."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.session = FakeSession()
+from tests.helpers.fakes import FakeBot, FakeBotWithSession
 
 
 def test_feedback_keyboard() -> None:

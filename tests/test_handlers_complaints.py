@@ -17,69 +17,22 @@ from ugc_bot.bot.handlers.complaints import (
 )
 from ugc_bot.domain.entities import Order, OrderResponse, User
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
-from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
-    InMemoryComplaintRepository,
-    InMemoryOrderRepository,
-    InMemoryOrderResponseRepository,
-    InMemoryUserRepository,
-)
-
-
-class FakeUser:
-    """Minimal user stub."""
-
-    def __init__(self, user_id: int) -> None:
-        self.id = user_id
-
-
-class FakeMessage:
-    """Minimal message stub."""
-
-    def __init__(self, user: FakeUser | None = None) -> None:
-        self.answers: list[str] = []
-        self.from_user = user
-        self.text: str | None = None
-
-    async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
-        """Capture response."""
-
-        self.answers.append(text)
-
-
-class FakeCallback:
-    """Minimal callback stub."""
-
-    def __init__(self, data: str, user: FakeUser) -> None:
-        self.data = data
-        self.from_user = user
-        self.message = FakeMessage()
-        self.answers: list[str] = []
-
-    async def answer(self, text: str = "") -> None:
-        """Capture callback answer."""
-
-        if text:
-            self.answers.append(text)
+from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
+from tests.helpers.factories import create_test_order, create_test_user
+from tests.helpers.services import build_order_service
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_invalid_format(fake_tm: object) -> None:
+async def test_start_complaint_invalid_format(
+    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+) -> None:
     """Reject malformed callback data."""
 
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -89,16 +42,14 @@ async def test_start_complaint_invalid_format(fake_tm: object) -> None:
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    user = User(
+    from uuid import UUID
+
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000950"),
         external_id="1",
-        messenger_type=MessengerType.TELEGRAM,
         username="user",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(user)
 
     callback = FakeCallback(data="complaint:bad", user=FakeUser(1))
     await start_complaint(
@@ -109,33 +60,25 @@ async def test_start_complaint_invalid_format(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_order_not_found(fake_tm: object) -> None:
+async def test_start_complaint_order_not_found(
+    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+) -> None:
     """Reject complaint for non-existent order."""
 
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    from uuid import UUID
 
-    user = User(
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000951"),
         external_id="1",
-        messenger_type=MessengerType.TELEGRAM,
         username="user",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -157,58 +100,40 @@ async def test_start_complaint_order_not_found(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_no_access(fake_tm: object) -> None:
+async def test_start_complaint_no_access(
+    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+) -> None:
     """Reject complaint when user has no access to order."""
 
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    from uuid import UUID
 
-    advertiser = User(
+    advertiser = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000961"),
         external_id="1",
-        messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    other_user = User(
+    await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000962"),
         external_id="2",
-        messenger_type=MessengerType.TELEGRAM,
         username="other",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(advertiser)
-    await user_repo.save(other_user)
 
-    order = Order(
+    order = await create_test_order(
+        order_repo,
+        advertiser.user_id,
         order_id=UUID("00000000-0000-0000-0000-000000000963"),
-        advertiser_id=advertiser.user_id,
-        product_link="https://example.com",
-        offer_text="Offer",
-        ugc_requirements=None,
-        barter_description=None,
         price=1000.0,
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
     )
-    await order_repo.save(order)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -230,13 +155,15 @@ async def test_start_complaint_no_access(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_success(fake_tm: object) -> None:
+async def test_handle_complaint_reason_success(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Successfully create complaint with selected reason."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-    complaint_repo = InMemoryComplaintRepository()
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000971"),
@@ -274,7 +201,7 @@ async def test_handle_complaint_reason_success(fake_tm: object) -> None:
     )
     await order_repo.save(order)
 
-    await response_repo.save(
+    await order_response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000974"),
             order_id=order.order_id,
@@ -283,11 +210,7 @@ async def test_handle_complaint_reason_success(fake_tm: object) -> None:
         )
     )
 
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -310,12 +233,15 @@ async def test_handle_complaint_reason_success(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_advertiser(fake_tm: object) -> None:
+async def test_select_complaint_target_advertiser(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Advertiser can select blogger to complain about."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000981"),
@@ -353,7 +279,7 @@ async def test_select_complaint_target_advertiser(fake_tm: object) -> None:
     )
     await order_repo.save(order)
 
-    await response_repo.save(
+    await order_response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000984"),
             order_id=order.order_id,
@@ -363,14 +289,10 @@ async def test_select_complaint_target_advertiser(fake_tm: object) -> None:
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -391,16 +313,25 @@ async def test_select_complaint_target_advertiser(fake_tm: object) -> None:
     )
 
     assert callback.message.answers
-    assert any("Выберите блогера" in ans for ans in callback.message.answers)
+
+    def _answer_text(a: str | tuple) -> str:
+        return a if isinstance(a, str) else a[0]
+
+    assert any(
+        "Выберите блогера" in _answer_text(ans) for ans in callback.message.answers
+    )
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_invalid_format(fake_tm: object) -> None:
+async def test_select_complaint_target_invalid_format(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Reject invalid callback format."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000980"),
@@ -414,14 +345,10 @@ async def test_select_complaint_target_invalid_format(fake_tm: object) -> None:
     await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -445,12 +372,15 @@ async def test_select_complaint_target_invalid_format(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_blogger(fake_tm: object) -> None:
+async def test_select_complaint_target_blogger(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Blogger can complain about advertiser."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000985"),
@@ -488,7 +418,7 @@ async def test_select_complaint_target_blogger(fake_tm: object) -> None:
     )
     await order_repo.save(order)
 
-    await response_repo.save(
+    await order_response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000988"),
             order_id=order.order_id,
@@ -498,14 +428,10 @@ async def test_select_complaint_target_blogger(fake_tm: object) -> None:
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -526,16 +452,25 @@ async def test_select_complaint_target_blogger(fake_tm: object) -> None:
     )
 
     assert callback.message.answers
-    assert any("Выберите причину" in ans for ans in callback.message.answers)
+
+    def _answer_text(a: str | tuple) -> str:
+        return a if isinstance(a, str) else a[0]
+
+    assert any(
+        "Выберите причину" in _answer_text(ans) for ans in callback.message.answers
+    )
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_no_bloggers(fake_tm: object) -> None:
+async def test_select_complaint_target_no_bloggers(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Show message when no bloggers responded."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000989"),
@@ -564,14 +499,10 @@ async def test_select_complaint_target_no_bloggers(fake_tm: object) -> None:
     await order_repo.save(order)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -595,12 +526,15 @@ async def test_select_complaint_target_no_bloggers(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text(fake_tm: object) -> None:
+async def test_handle_complaint_reason_text(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Handle text input for complaint reason."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    complaint_repo = InMemoryComplaintRepository()
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000991"),
@@ -664,13 +598,15 @@ async def test_handle_complaint_reason_text(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_other(fake_tm: object) -> None:
+async def test_handle_complaint_reason_other(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Handle 'Другое' reason selection."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-    complaint_repo = InMemoryComplaintRepository()
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000994"),
@@ -708,7 +644,7 @@ async def test_handle_complaint_reason_other(fake_tm: object) -> None:
     )
     await order_repo.save(order)
 
-    await response_repo.save(
+    await order_response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000000997"),
             order_id=order.order_id,
@@ -718,11 +654,7 @@ async def test_handle_complaint_reason_other(fake_tm: object) -> None:
     )
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
 
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
@@ -743,15 +675,16 @@ async def test_handle_complaint_reason_other(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_no_state(fake_tm: object) -> None:
+async def test_handle_complaint_reason_no_state(
+    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+) -> None:
     """Handle complaint reason when state is empty."""
 
-    complaint_repo = InMemoryComplaintRepository()
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
     order_service = OrderService(
-        user_repo=InMemoryUserRepository(),
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=InMemoryOrderRepository(),
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -767,15 +700,16 @@ async def test_handle_complaint_reason_no_state(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_invalid_reason(fake_tm: object) -> None:
+async def test_handle_complaint_reason_invalid_reason(
+    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+) -> None:
     """Reject invalid reason."""
 
-    complaint_repo = InMemoryComplaintRepository()
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
     order_service = OrderService(
-        user_repo=InMemoryUserRepository(),
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=InMemoryOrderRepository(),
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
     )
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -796,12 +730,15 @@ async def test_handle_complaint_reason_invalid_reason(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_duplicate(fake_tm: object) -> None:
+async def test_handle_complaint_reason_duplicate(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Handle duplicate complaint."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    complaint_repo = InMemoryComplaintRepository()
 
     reporter = User(
         user_id=UUID("00000000-0000-0000-0000-000000000999"),
@@ -837,11 +774,7 @@ async def test_handle_complaint_reason_duplicate(fake_tm: object) -> None:
         reason="Мошенничество",
     )
 
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
 
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
@@ -861,10 +794,11 @@ async def test_handle_complaint_reason_duplicate(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text_no_state(fake_tm: object) -> None:
+async def test_handle_complaint_reason_text_no_state(
+    fake_tm: object, complaint_repo
+) -> None:
     """Handle text input when state is empty."""
 
-    complaint_repo = InMemoryComplaintRepository()
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -882,10 +816,11 @@ async def test_handle_complaint_reason_text_no_state(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text_empty(fake_tm: object) -> None:
+async def test_handle_complaint_reason_text_empty(
+    fake_tm: object, complaint_repo
+) -> None:
     """Handle empty text input."""
 
-    complaint_repo = InMemoryComplaintRepository()
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -909,10 +844,11 @@ async def test_handle_complaint_reason_text_empty(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_complaint_reason_text_no_text(fake_tm: object) -> None:
+async def test_handle_complaint_reason_text_no_text(
+    fake_tm: object, complaint_repo
+) -> None:
     """Handle message without text."""
 
-    complaint_repo = InMemoryComplaintRepository()
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -930,22 +866,16 @@ async def test_handle_complaint_reason_text_no_text(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_no_data(fake_tm: object) -> None:
+async def test_start_complaint_no_data(
+    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+) -> None:
     """Handle callback without data."""
 
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -964,22 +894,16 @@ async def test_start_complaint_no_data(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_user_not_found(fake_tm: object) -> None:
+async def test_start_complaint_user_not_found(
+    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+) -> None:
     """Handle complaint when user is not found."""
 
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1001,12 +925,10 @@ async def test_start_complaint_user_not_found(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_complaint_invalid_reported_id(fake_tm: object) -> None:
+async def test_start_complaint_invalid_reported_id(
+    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+) -> None:
     """Reject complaint with invalid reported_id."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001020"),
@@ -1044,7 +966,7 @@ async def test_start_complaint_invalid_reported_id(fake_tm: object) -> None:
     )
     await order_repo.save(order)
 
-    await response_repo.save(
+    await order_response_repo.save(
         OrderResponse(
             response_id=UUID("00000000-0000-0000-0000-000000001023"),
             order_id=order.order_id,
@@ -1054,14 +976,10 @@ async def test_start_complaint_invalid_reported_id(fake_tm: object) -> None:
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1084,22 +1002,21 @@ async def test_start_complaint_invalid_reported_id(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_no_from_user(fake_tm: object) -> None:
+async def test_select_complaint_target_no_from_user(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Handle callback without from_user."""
 
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
-
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1125,12 +1042,15 @@ async def test_select_complaint_target_no_from_user(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_select_complaint_target_invalid_uuid(fake_tm: object) -> None:
+async def test_select_complaint_target_invalid_uuid(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    order_response_repo,
+    advertiser_repo,
+    complaint_repo,
+) -> None:
     """Reject invalid UUID format."""
-
-    user_repo = InMemoryUserRepository()
-    order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000001010"),
@@ -1144,14 +1064,10 @@ async def test_select_complaint_target_invalid_uuid(fake_tm: object) -> None:
     await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=order_repo,
-    )
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 

@@ -7,30 +7,9 @@ import pytest
 
 from ugc_bot.bot.handlers.profile import show_profile
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
-
-
-class FakeUser:
-    """Minimal user stub."""
-
-    def __init__(self, user_id: int) -> None:
-        self.id = user_id
-
-
-class FakeMessage:
-    """Minimal message stub."""
-
-    def __init__(self) -> None:
-        self.from_user = FakeUser(1)
-        self.answers: list[str] = []
-        self.reply_markups: list = []
-
-    async def answer(self, text: str, reply_markup=None) -> None:  # type: ignore[no-untyped-def]
-        """Capture response."""
-
-        self.answers.append(text)
-        if reply_markup is not None:
-            self.reply_markups.append(reply_markup)
+from ugc_bot.domain.enums import AudienceGender
+from tests.helpers.fakes import FakeMessage, FakeUser
+from tests.helpers.factories import create_test_user
 
 
 class FakeProfileService:
@@ -74,25 +53,27 @@ class FakeProfileService:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_both_roles() -> None:
+async def test_show_profile_both_roles(user_repo) -> None:
     """Show both roles in profile output."""
 
-    user = User(
+    user = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000810"),
         external_id="1",
-        messenger_type=MessengerType.TELEGRAM,
         username="user",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(1))
     service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
 
     await show_profile(message, service)
 
     assert message.answers
-    assert "Roles: blogger, advertiser" in message.answers[0]
+    answer_text = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "Roles: blogger, advertiser" in answer_text
 
 
 @pytest.mark.asyncio
@@ -103,7 +84,7 @@ async def test_show_profile_missing_user() -> None:
         async def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
             return None
 
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(1))
     await show_profile(message, MissingProfileService())
 
     assert message.answers
@@ -111,20 +92,19 @@ async def test_show_profile_missing_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_missing_profiles() -> None:
+async def test_show_profile_missing_profiles(user_repo) -> None:
     """Show hints when role profiles are missing."""
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000811"),
+        external_id="2",
+        username="user",
+    )
 
     class PartialProfileService:
         async def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
-            return User(
-                user_id=UUID("00000000-0000-0000-0000-000000000811"),
-                external_id="2",
-                messenger_type=MessengerType.TELEGRAM,
-                username="user",
-                status=UserStatus.ACTIVE,
-                issue_count=0,
-                created_at=datetime.now(timezone.utc),
-            )
+            return user
 
         async def get_blogger_profile(self, user_id):  # type: ignore[no-untyped-def]
             return None
@@ -132,7 +112,7 @@ async def test_show_profile_missing_profiles() -> None:
         async def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
             return None
 
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(2))
     await show_profile(message, PartialProfileService())
 
     assert message.answers
@@ -141,18 +121,15 @@ async def test_show_profile_missing_profiles() -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_blogger_keyboard_not_confirmed() -> None:
+async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
     """Show verification button for unconfirmed blogger."""
-    user = User(
+    user = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000812"),
         external_id="3",
-        messenger_type=MessengerType.TELEGRAM,
         username="blogger",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(3))
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False, blogger_confirmed=False
     )
@@ -168,18 +145,15 @@ async def test_show_profile_blogger_keyboard_not_confirmed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_blogger_keyboard_confirmed() -> None:
+async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
     """Hide verification button for confirmed blogger."""
-    user = User(
+    user = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000813"),
         external_id="4",
-        messenger_type=MessengerType.TELEGRAM,
         username="blogger",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(4))
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False, blogger_confirmed=True
     )
@@ -194,18 +168,15 @@ async def test_show_profile_blogger_keyboard_confirmed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_advertiser_keyboard() -> None:
+async def test_show_profile_advertiser_keyboard(user_repo) -> None:
     """Show advertiser keyboard for advertiser."""
-    user = User(
+    user = await create_test_user(
+        user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000814"),
         external_id="5",
-        messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
     )
-    message = FakeMessage()
+    message = FakeMessage(user=FakeUser(5))
     service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
 
     await show_profile(message, service)

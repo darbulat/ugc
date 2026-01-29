@@ -1,58 +1,24 @@
 """Tests for order service."""
 
-from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
-from ugc_bot.application.services.order_service import OrderService
-from ugc_bot.domain.entities import AdvertiserProfile, User
-from ugc_bot.domain.enums import MessengerType, UserStatus
-from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryAdvertiserProfileRepository,
-    InMemoryOrderRepository,
-    InMemoryUserRepository,
-)
-
-
-async def _seed_advertiser(
-    repo: InMemoryUserRepository,
-    advertiser_repo: InMemoryAdvertiserProfileRepository,
-    status: UserStatus,
-) -> UUID:
-    """Seed an advertiser user."""
-
-    user = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000300"),
-        external_id="888",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-        status=status,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    await repo.save(user)
-    await advertiser_repo.save(
-        AdvertiserProfile(user_id=user.user_id, contact="contact")
-    )
-    return user.user_id
+from ugc_bot.domain.enums import UserStatus
+from tests.helpers.factories import create_test_advertiser
+from tests.helpers.services import build_order_service
 
 
 @pytest.mark.asyncio
-async def test_create_order_success() -> None:
+async def test_create_order_success(user_repo, advertiser_repo, order_repo) -> None:
     """Create order with valid data."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
-
-    service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
     )
+
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
     order = await service.create_order(
         advertiser_id=user_id,
         product_link="https://example.com",
@@ -67,14 +33,12 @@ async def test_create_order_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_order_invalid_user() -> None:
+async def test_create_order_invalid_user(
+    user_repo, advertiser_repo, order_repo
+) -> None:
     """Fail when user is missing."""
 
-    service = OrderService(
-        user_repo=InMemoryUserRepository(),
-        advertiser_repo=InMemoryAdvertiserProfileRepository(),
-        order_repo=InMemoryOrderRepository(),
-    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
 
     with pytest.raises(UserNotFoundError):
         await service.create_order(
@@ -89,19 +53,16 @@ async def test_create_order_invalid_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_order_new_advertiser_restrictions() -> None:
+async def test_create_order_new_advertiser_restrictions(
+    user_repo, advertiser_repo, order_repo
+) -> None:
     """Enforce NEW advertiser restrictions."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
-
-    service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
     )
+
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
 
     with pytest.raises(OrderCreationError):
         await service.create_order(
@@ -127,19 +88,16 @@ async def test_create_order_new_advertiser_restrictions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_order_validation_errors() -> None:
+async def test_create_order_validation_errors(
+    user_repo, advertiser_repo, order_repo
+) -> None:
     """Validate required fields and price."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
-
-    service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
     )
+
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
 
     with pytest.raises(OrderCreationError):
         await service.create_order(
@@ -187,20 +145,17 @@ async def test_create_order_validation_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_order_requires_advertiser_profile() -> None:
+async def test_create_order_requires_advertiser_profile(
+    user_repo, advertiser_repo, order_repo
+) -> None:
     """Reject users without advertiser profile."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
     advertiser_repo.profiles.clear()
 
-    service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
-    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
     with pytest.raises(OrderCreationError):
         await service.create_order(
             advertiser_id=user_id,
@@ -214,18 +169,16 @@ async def test_create_order_requires_advertiser_profile() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_order_and_list_with_transaction_manager(fake_tm: object) -> None:
+async def test_create_order_and_list_with_transaction_manager(
+    fake_tm: object, user_repo, advertiser_repo, order_repo
+) -> None:
     """Cover transaction_manager path for create_order and list_orders."""
 
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    user_id = await _seed_advertiser(user_repo, advertiser_repo, UserStatus.ACTIVE)
-    service = OrderService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        order_repo=order_repo,
-        transaction_manager=fake_tm,
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(
+        user_repo, advertiser_repo, order_repo, transaction_manager=fake_tm
     )
     order = await service.create_order(
         advertiser_id=user_id,
