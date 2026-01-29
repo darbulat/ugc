@@ -15,7 +15,6 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
-from ugc_bot.domain.enums import MessengerType
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -134,7 +133,9 @@ async def _notify_user_verification_success(
 
         from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
 
-        user = await verification_service.user_repo.get_by_id(user_id)
+        user, blogger_profile = await verification_service.get_notification_recipient(
+            user_id
+        )
         if user is None:
             logger.warning(
                 "User not found for verification notification",
@@ -142,26 +143,19 @@ async def _notify_user_verification_success(
             )
             return
 
-        telegram_user = await verification_service.user_repo.get_by_external(
-            external_id=user.external_id,
-            messenger_type=MessengerType.TELEGRAM,
-        )
-        if telegram_user is None:
+        if not user.external_id.isdigit():
             logger.warning(
-                "Telegram user not found for verification notification",
+                "User external_id is not a Telegram chat id",
                 extra={"user_id": user_id, "external_id": user.external_id},
             )
             return
 
-        blogger_profile = await verification_service.blogger_repo.get_by_user_id(
-            user_id
-        )
         confirmed = blogger_profile.confirmed if blogger_profile else False
 
         bot = Bot(token=config.bot.bot_token)
         try:
             await bot.send_message(
-                chat_id=int(telegram_user.external_id),
+                chat_id=int(user.external_id),
                 text="✅ Instagram подтверждён. Теперь вы можете получать офферы.",
                 reply_markup=blogger_menu_keyboard(confirmed=confirmed),
             )

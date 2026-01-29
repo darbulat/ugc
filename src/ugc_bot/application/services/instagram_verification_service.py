@@ -5,7 +5,7 @@ import secrets
 import string
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncContextManager, Protocol
+from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
@@ -15,7 +15,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import InstagramVerificationCode
+from ugc_bot.domain.entities import BloggerProfile, InstagramVerificationCode, User
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,25 @@ class InstagramVerificationService:
     verification_repo: InstagramVerificationRepository
     instagram_api_client: InstagramGraphApiClient | None = None
     transaction_manager: TransactionManager | None = None
+
+    async def get_notification_recipient(
+        self, user_id: UUID
+    ) -> tuple[Optional[User], Optional[BloggerProfile]]:
+        """Fetch user and blogger profile for notification within a transaction."""
+
+        if self.transaction_manager is None:
+            user = await self.user_repo.get_by_id(user_id, session=None)
+            if user is None:
+                return (None, None)
+            profile = await self.blogger_repo.get_by_user_id(user_id, session=None)
+            return (user, profile)
+
+        async with self.transaction_manager.transaction() as session:
+            user = await self.user_repo.get_by_id(user_id, session=session)
+            if user is None:
+                return (None, None)
+            profile = await self.blogger_repo.get_by_user_id(user_id, session=session)
+            return (user, profile)
 
     async def generate_code(self, user_id: UUID) -> InstagramVerificationCode:
         """Generate and store a new verification code."""

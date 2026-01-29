@@ -113,7 +113,7 @@ async def pay_order(
         await message.answer("Неверный формат order_id.")
         return
 
-    order = await payment_service.order_repo.get_by_id(order_id)
+    order = await payment_service.get_order(order_id)
     if order is None:
         await message.answer("Заказ не найден.")
         return

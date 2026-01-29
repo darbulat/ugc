@@ -75,7 +75,7 @@ async def select_complaint_target(
         await callback.answer("Неверный формат идентификатора.")
         return
 
-    order = await order_service.order_repo.get_by_id(order_id)
+    order = await order_service.get_order(order_id)
     if order is None:
         await callback.answer("Заказ не найден.")
         return
@@ -83,7 +83,7 @@ async def select_complaint_target(
     # Verify user has access to this order
     if order.advertiser_id == user.user_id:
         # Advertiser: show list of bloggers who responded
-        responses = await offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.list_by_order(order_id)
         if not responses:
             await callback.answer("Нет блогеров для жалобы.")
             return
@@ -111,14 +111,14 @@ async def select_complaint_target(
         )
     else:
         # Blogger: complain about advertiser
-        responses = await offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.list_by_order(order_id)
         if not any(response.blogger_id == user.user_id for response in responses):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
 
         # Blogger: complain about advertiser
         # Verify access
-        responses = await offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.list_by_order(order_id)
         if not any(response.blogger_id == user.user_id for response in responses):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
@@ -187,7 +187,7 @@ async def start_complaint(
         await callback.answer("Неверный формат идентификатора.")
         return
 
-    order = await order_service.order_repo.get_by_id(order_id)
+    order = await order_service.get_order(order_id)
     if order is None:
         await callback.answer("Заказ не найден.")
         return
@@ -195,14 +195,14 @@ async def start_complaint(
     # Verify user has access to this order
     if order.advertiser_id != user.user_id:
         # Check if user is a blogger who responded to this order
-        responses = await offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.list_by_order(order_id)
         if not any(response.blogger_id == user.user_id for response in responses):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
 
     # Verify reported_id is valid (either advertiser or blogger from this order)
     if reported_id != order.advertiser_id:
-        responses = await offer_response_service.response_repo.list_by_order(order_id)
+        responses = await offer_response_service.list_by_order(order_id)
         if not any(response.blogger_id == reported_id for response in responses):
             await callback.answer("Неверный идентификатор пользователя.")
             return

@@ -139,7 +139,9 @@ class TestOutboxPublisher:
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as processing
-        outbox_repo.mark_as_processing.assert_called_once_with(event.event_id)
+        outbox_repo.mark_as_processing.assert_called_once_with(
+            event.event_id, session=None
+        )
 
         # Verify event was published to Kafka
         kafka_publisher.publish.assert_called_once()
@@ -205,7 +207,9 @@ class TestOutboxPublisher:
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as processing
-        outbox_repo.mark_as_processing.assert_called_once_with(event.event_id)
+        outbox_repo.mark_as_processing.assert_called_once_with(
+            event.event_id, session=None
+        )
 
         # Verify event was published to Kafka
         kafka_publisher.publish.assert_called_once()
@@ -326,13 +330,16 @@ class TestOutboxPublisher:
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as processing
-        outbox_repo.mark_as_processing.assert_called_once_with(event.event_id)
+        outbox_repo.mark_as_processing.assert_called_once_with(
+            event.event_id, session=None
+        )
 
         # Verify event was marked as failed with retry
         outbox_repo.mark_as_failed.assert_called_once_with(
             event.event_id,
             "Kafka temporarily unavailable",
             2,  # retry_count + 1
+            session=None,
         )
 
         # Verify event was NOT marked as published

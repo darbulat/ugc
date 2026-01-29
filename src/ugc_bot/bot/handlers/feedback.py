@@ -59,9 +59,7 @@ async def handle_feedback(
         return
 
     try:
-        interaction = await interaction_service.interaction_repo.get_by_id(
-            interaction_id
-        )
+        interaction = await interaction_service.get_interaction(interaction_id)
         if interaction is None:
             await callback.answer("Взаимодействие не найдено.")
             return

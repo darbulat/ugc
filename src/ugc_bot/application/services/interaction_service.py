@@ -40,6 +40,11 @@ class InteractionService:
         async with self.transaction_manager.transaction() as session:
             await self.interaction_repo.save(interaction, session=session)
 
+    async def get_interaction(self, interaction_id: UUID) -> Interaction | None:
+        """Fetch interaction by id within a transaction boundary."""
+
+        return await self._get_by_id(interaction_id)
+
     async def _get_by_id(self, interaction_id: UUID) -> Interaction | None:
         """Fetch interaction by id using an optional transaction boundary."""
 

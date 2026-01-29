@@ -61,6 +61,14 @@ class OrderService:
                 await self.order_repo.list_by_advertiser(advertiser_id, session=session)
             )
 
+    async def get_order(self, order_id: UUID) -> Order | None:
+        """Fetch order by id within a transaction boundary."""
+
+        if self.transaction_manager is None:
+            return await self.order_repo.get_by_id(order_id)
+        async with self.transaction_manager.transaction() as session:
+            return await self.order_repo.get_by_id(order_id, session=session)
+
     async def create_order(
         self,
         advertiser_id: UUID,

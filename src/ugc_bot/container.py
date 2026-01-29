@@ -152,7 +152,9 @@ class Container:
         """OutboxPublisher and optional KafkaOrderActivationPublisher for outbox processor."""
         repos = self.build_repos()
         outbox_publisher = OutboxPublisher(
-            outbox_repo=repos["outbox_repo"], order_repo=repos["order_repo"]
+            outbox_repo=repos["outbox_repo"],
+            order_repo=repos["order_repo"],
+            transaction_manager=self._transaction_manager,
         )
         kafka_publisher: KafkaOrderActivationPublisher | None = None
         if self._config.kafka.kafka_enabled:

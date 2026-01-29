@@ -42,13 +42,12 @@ async def _send_offers(
     retries: int,
     retry_delay_seconds: float,
 ) -> None:
-    order = await offer_dispatch_service.order_repo.get_by_id(order_id)
+    order, advertiser = await offer_dispatch_service.get_order_and_advertiser(order_id)
     if order is None:
         logger.warning(
             "Order not found for activation event", extra={"order_id": order_id}
         )
         return
-    advertiser = await offer_dispatch_service.user_repo.get_by_id(order.advertiser_id)
     if advertiser is None:
         logger.warning(
             "Advertiser not found for activation event", extra={"order_id": order_id}

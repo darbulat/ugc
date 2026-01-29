@@ -44,6 +44,16 @@ class OfferResponseService:
         result = await self.respond_and_finalize(order_id, blogger_id)
         return result.response
 
+    async def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
+        """List responses for an order within a transaction boundary."""
+
+        if self.transaction_manager is None:
+            return list(await self.response_repo.list_by_order(order_id))
+        async with self.transaction_manager.transaction() as session:
+            return list(
+                await self.response_repo.list_by_order(order_id, session=session)
+            )
+
     async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID
     ) -> OfferResponseResult:

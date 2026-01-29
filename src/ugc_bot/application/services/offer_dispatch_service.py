@@ -30,6 +30,29 @@ class OfferDispatchService:
     order_repo: OrderRepository
     transaction_manager: TransactionManager | None = None
 
+    async def get_order_and_advertiser(
+        self, order_id: UUID
+    ) -> tuple[Order | None, User | None]:
+        """Fetch order and its advertiser in one transaction."""
+
+        if self.transaction_manager is None:
+            order = await self.order_repo.get_by_id(order_id, session=None)
+            if order is None:
+                return (None, None)
+            advertiser = await self.user_repo.get_by_id(
+                order.advertiser_id, session=None
+            )
+            return (order, advertiser)
+
+        async with self.transaction_manager.transaction() as session:
+            order = await self.order_repo.get_by_id(order_id, session=session)
+            if order is None:
+                return (None, None)
+            advertiser = await self.user_repo.get_by_id(
+                order.advertiser_id, session=session
+            )
+            return (order, advertiser)
+
     async def dispatch(self, order_id: UUID) -> list[User]:
         """Return eligible bloggers for an active order."""
 
