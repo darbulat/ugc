@@ -273,9 +273,6 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://bot.usemycontent.ru/grafana/}
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-      GF_SECURITY_COOKIE_SECURE: "true"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/monitoring/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
