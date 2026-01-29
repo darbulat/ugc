@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -102,7 +103,7 @@ async def test_update_status_not_found() -> None:
     repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=repo)
 
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(UserNotFoundError, match="not found"):
         await service.update_status(
             UUID("00000000-0000-0000-0000-000000000999"), UserStatus.BLOCKED
         )

@@ -10,6 +10,12 @@ services:
       kafka:
         condition: service_started
     command: ["python", "-m", "ugc_bot.app"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'ugc_bot.app' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   migrate:

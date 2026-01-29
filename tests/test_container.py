@@ -35,21 +35,22 @@ def test_container_requires_database_url_for_db_dependent_methods() -> None:
         container.build_repos()
 
     with pytest.raises(
-        ValueError, match="DATABASE_URL is required for offer dispatch\\."
+        ValueError, match="DATABASE_URL is required for repositories\\."
     ):
         container.build_offer_dispatch_service()
 
     with pytest.raises(
-        ValueError, match="DATABASE_URL is required for admin services\\."
+        ValueError, match="DATABASE_URL is required for repositories\\."
     ):
         container.build_admin_services()
 
-    with pytest.raises(ValueError, match="DATABASE_URL is required for outbox\\."):
+    with pytest.raises(
+        ValueError, match="DATABASE_URL is required for repositories\\."
+    ):
         container.build_outbox_deps()
 
     with pytest.raises(
-        ValueError,
-        match="DATABASE_URL is required for Instagram verification\\.",
+        ValueError, match="DATABASE_URL is required for repositories\\."
     ):
         container.build_instagram_verification_service()
 

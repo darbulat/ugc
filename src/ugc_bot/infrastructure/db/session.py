@@ -1,6 +1,9 @@
 """Database session factory and transaction helpers."""
 
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any, Protocol, TypeVar
+
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL, make_url
@@ -82,6 +85,39 @@ def create_session_factory(
         pool_timeout=pool_timeout,
     )
     return async_sessionmaker(bind=engine, expire_on_commit=False)
+
+
+T = TypeVar("T")
+
+
+class TransactionManagerProtocol(Protocol):
+    """Protocol for transaction manager with .transaction() context manager."""
+
+    def transaction(self) -> Any:
+        """Return async context manager yielding session."""
+
+
+async def with_optional_tx(
+    transaction_manager: TransactionManagerProtocol | None,
+    fn: Callable[[object | None], Awaitable[T]],
+) -> T:
+    """Run an async function with optional transaction/session.
+
+    If transaction_manager is not None, opens a transaction and calls fn(session).
+    Otherwise calls fn(None). Use this to avoid duplicating "if tm is None / else
+    async with tm.transaction()" branches in services.
+
+    Args:
+        transaction_manager: SessionTransactionManager or None.
+        fn: Async callable that accepts session (or None) and returns a result.
+
+    Returns:
+        The result of fn(session) or fn(None).
+    """
+    if transaction_manager is None:
+        return await fn(None)
+    async with transaction_manager.transaction() as session:
+        return await fn(session)
 
 
 class SessionTransactionManager:

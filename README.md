@@ -23,13 +23,25 @@ Set `DATABASE_URL` in `.env`, then run:
 
 ## Project structure
 
-- `src/ugc_bot/app.py` - app entrypoint
-- `src/ugc_bot/bot/` - Telegram bot handlers
-- `src/ugc_bot/services/` - business services (stubs)
-- `src/ugc_bot/storage/` - storage layer (stubs)
-- `src/ugc_bot/scheduler/` - scheduler (stub)
+The codebase is layered: domain → application (ports, services) → infrastructure; the bot and web apps consume application services.
+
+- `src/ugc_bot/app.py` - main bot entrypoint (polling)
+- `src/ugc_bot/config.py` - configuration loading (env)
+- `src/ugc_bot/container.py` - DI container (repos, services)
+- `src/ugc_bot/application/` - ports (repository interfaces), errors, services
+- `src/ugc_bot/domain/` - entities and enums
+- `src/ugc_bot/infrastructure/db/` - SQLAlchemy models, repositories, migrations, session
+- `src/ugc_bot/infrastructure/kafka/` - Kafka publisher
+- `src/ugc_bot/infrastructure/instagram/` - Instagram Graph API client
+- `src/ugc_bot/bot/handlers/` - Telegram command and message handlers
+- `src/ugc_bot/bot/middleware/` - error handling middleware
+- `src/ugc_bot/admin/` - SQLAdmin FastAPI app
+- `src/ugc_bot/scheduler/` - feedback scheduler
+- `src/ugc_bot/metrics/` - metrics collector
+- `src/ugc_bot/instagram_webhook_app.py` - Instagram webhook FastAPI app
+- `src/ugc_bot/payment_webhook_app.py` - payment webhook (if present)
+- `src/ugc_bot/feedback_scheduler.py`, `kafka_consumer.py`, `outbox_processor.py` - worker entrypoints
 
 ## Notes
 
-This is the first milestone: initialization, config templates, logging, and a
-working `/start` command. Data storage and full flows will be added next.
+For production, set `ADMIN_PASSWORD` and `ADMIN_SECRET` in `.env`; the admin app requires them to start.

@@ -2,6 +2,10 @@
 
 This middleware centralizes error handling for application errors,
 providing consistent logging, metrics, and user-facing messages.
+
+When using JSON log format in production, ensure that the data passed
+in ``extra`` (and thus in log output) never contains sensitive data
+such as tokens, passwords, or full message payloads.
 """
 
 import logging
@@ -13,6 +17,10 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     BloggerRegistrationError,
+    ComplaintAlreadyExistsError,
+    ComplaintNotFoundError,
+    InteractionError,
+    InteractionNotFoundError,
     OrderCreationError,
     UserNotFoundError,
 )
@@ -40,6 +48,23 @@ ERROR_MESSAGES = {
         "Order is not in NEW status.": "Заказ не в статусе NEW.",
         "Order does not belong to advertiser.": "Заказ не принадлежит рекламодателю.",
         "default": "Ошибка создания заказа.",
+    },
+    InteractionNotFoundError: {
+        "default": "Взаимодействие не найдено.",
+    },
+    InteractionError: {
+        "Interaction not found.": "Взаимодействие не найдено.",
+        "Interaction is not in ISSUE status.": "Взаимодействие не в статусе ISSUE.",
+        "Final status must be OK or NO_DEAL for manual resolution.": "Некорректный статус для ручного разрешения.",
+        "default": "Ошибка взаимодействия.",
+    },
+    ComplaintAlreadyExistsError: {
+        "Вы уже подали жалобу по этому заказу.": "Вы уже подали жалобу по этому заказу.",
+        "default": "Вы уже подали жалобу по этому заказу.",
+    },
+    ComplaintNotFoundError: {
+        "Complaint not found.": "Жалоба не найдена.",
+        "default": "Жалоба не найдена.",
     },
 }
 
@@ -110,6 +135,10 @@ class ErrorHandlerMiddleware(BaseMiddleware):
             BloggerRegistrationError,
             AdvertiserRegistrationError,
             OrderCreationError,
+            InteractionNotFoundError,
+            InteractionError,
+            ComplaintAlreadyExistsError,
+            ComplaintNotFoundError,
         ) as exc:
             # Application error - log, record metric, send user message
             user_id = _get_user_id(event)

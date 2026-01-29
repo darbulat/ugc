@@ -127,45 +127,32 @@ class Container:
 
     def build_offer_dispatch_service(self) -> OfferDispatchService:
         """OfferDispatchService for Kafka consumer."""
-        if not self._session_factory:
-            raise ValueError("DATABASE_URL is required for offer dispatch.")
+        repos = self.build_repos()
         return OfferDispatchService(
-            user_repo=SqlAlchemyUserRepository(session_factory=self._session_factory),
-            blogger_repo=SqlAlchemyBloggerProfileRepository(
-                session_factory=self._session_factory
-            ),
-            order_repo=SqlAlchemyOrderRepository(session_factory=self._session_factory),
+            user_repo=repos["user_repo"],
+            blogger_repo=repos["blogger_repo"],
+            order_repo=repos["order_repo"],
+            transaction_manager=self._transaction_manager,
         )
 
     def build_admin_services(
         self,
     ) -> tuple[UserRoleService, ComplaintService, InteractionService]:
         """UserRoleService, ComplaintService, InteractionService for admin."""
-        if not self._session_factory:
-            raise ValueError("DATABASE_URL is required for admin services.")
-        user_repo = SqlAlchemyUserRepository(session_factory=self._session_factory)
-        complaint_repo = SqlAlchemyComplaintRepository(
-            session_factory=self._session_factory
-        )
-        interaction_repo = SqlAlchemyInteractionRepository(
-            session_factory=self._session_factory
-        )
+        repos = self.build_repos()
         return (
-            UserRoleService(user_repo=user_repo),
-            ComplaintService(complaint_repo=complaint_repo),
-            InteractionService(interaction_repo=interaction_repo),
+            UserRoleService(user_repo=repos["user_repo"]),
+            ComplaintService(complaint_repo=repos["complaint_repo"]),
+            InteractionService(interaction_repo=repos["interaction_repo"]),
         )
 
     def build_outbox_deps(
         self,
     ) -> tuple[OutboxPublisher, KafkaOrderActivationPublisher | None]:
         """OutboxPublisher and optional KafkaOrderActivationPublisher for outbox processor."""
-        if not self._session_factory:
-            raise ValueError("DATABASE_URL is required for outbox.")
-        order_repo = SqlAlchemyOrderRepository(session_factory=self._session_factory)
-        outbox_repo = SqlAlchemyOutboxRepository(session_factory=self._session_factory)
+        repos = self.build_repos()
         outbox_publisher = OutboxPublisher(
-            outbox_repo=outbox_repo, order_repo=order_repo
+            outbox_repo=repos["outbox_repo"], order_repo=repos["order_repo"]
         )
         kafka_publisher: KafkaOrderActivationPublisher | None = None
         if self._config.kafka.kafka_enabled:
@@ -177,20 +164,12 @@ class Container:
 
     def build_instagram_verification_service(self) -> InstagramVerificationService:
         """InstagramVerificationService for webhook."""
-        if not self._session_factory:
-            raise ValueError("DATABASE_URL is required for Instagram verification.")
-        user_repo = SqlAlchemyUserRepository(session_factory=self._session_factory)
-        blogger_repo = SqlAlchemyBloggerProfileRepository(
-            session_factory=self._session_factory
-        )
-        verification_repo = SqlAlchemyInstagramVerificationRepository(
-            session_factory=self._session_factory
-        )
+        repos = self.build_repos()
         instagram_api_client = self.build_instagram_api_client()
         return InstagramVerificationService(
-            user_repo=user_repo,
-            blogger_repo=blogger_repo,
-            verification_repo=verification_repo,
+            user_repo=repos["user_repo"],
+            blogger_repo=repos["blogger_repo"],
+            verification_repo=repos["instagram_repo"],
             instagram_api_client=instagram_api_client,
         )
 

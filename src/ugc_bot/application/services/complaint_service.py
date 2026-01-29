@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
+from ugc_bot.application.errors import (
+    ComplaintAlreadyExistsError,
+    ComplaintNotFoundError,
+)
 from ugc_bot.application.ports import ComplaintRepository
 from ugc_bot.domain.entities import Complaint
 from ugc_bot.domain.enums import ComplaintStatus
@@ -39,13 +43,17 @@ class ComplaintService:
 
         if self.transaction_manager is None:
             if await self.complaint_repo.exists(order_id, reporter_id):
-                raise ValueError("Вы уже подали жалобу по этому заказу.")
+                raise ComplaintAlreadyExistsError(
+                    "Вы уже подали жалобу по этому заказу."
+                )
         else:
             async with self.transaction_manager.transaction() as session:
                 if await self.complaint_repo.exists(
                     order_id, reporter_id, session=session
                 ):
-                    raise ValueError("Вы уже подали жалобу по этому заказу.")
+                    raise ComplaintAlreadyExistsError(
+                        "Вы уже подали жалобу по этому заказу."
+                    )
 
         complaint = Complaint(
             complaint_id=uuid4(),
@@ -135,7 +143,7 @@ class ComplaintService:
                     complaint_id, session=session
                 )
         if complaint is None:
-            raise ValueError("Complaint not found.")
+            raise ComplaintNotFoundError("Complaint not found.")
 
         dismissed = Complaint(
             complaint_id=complaint.complaint_id,
@@ -184,7 +192,7 @@ class ComplaintService:
                     complaint_id, session=session
                 )
         if complaint is None:
-            raise ValueError("Complaint not found.")
+            raise ComplaintNotFoundError("Complaint not found.")
 
         resolved = Complaint(
             complaint_id=complaint.complaint_id,

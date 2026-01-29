@@ -5,48 +5,31 @@ import sys
 import threading
 import traceback
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import logging
 
 import pytest
 
-# Import fixtures from helpers to make them available globally
-# Note: Using absolute imports here as conftest.py is loaded directly by pytest
-try:
-    from tests.helpers.repositories import (  # noqa: F401
-        advertiser_repo,
-        blogger_repo,
-        complaint_repo,
-        instagram_verification_repo,
-        interaction_repo,
-        order_repo,
-        order_response_repo,
-        outbox_repo,
-        payment_repo,
-        pricing_repo,
-        repos,
-        user_repo,
-    )
-except ImportError:
-    # Fallback for when tests are run directly
-    import sys
-    from pathlib import Path
+# Ensure project root is on path so "tests.helpers" resolves when run from any cwd
+_root = Path(__file__).resolve().parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
 
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from tests.helpers.repositories import (  # noqa: F401
-        advertiser_repo,
-        blogger_repo,
-        complaint_repo,
-        instagram_verification_repo,
-        interaction_repo,
-        order_repo,
-        order_response_repo,
-        outbox_repo,
-        payment_repo,
-        pricing_repo,
-        repos,
-        user_repo,
-    )
+from tests.helpers.repositories import (  # noqa: E402, F401
+    advertiser_repo,
+    blogger_repo,
+    complaint_repo,
+    instagram_verification_repo,
+    interaction_repo,
+    order_repo,
+    order_response_repo,
+    outbox_repo,
+    payment_repo,
+    pricing_repo,
+    repos,
+    user_repo,
+)
 
 
 def fake_transaction_manager():

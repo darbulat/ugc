@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncContextManager, Optional, Protocol
 from uuid import UUID, uuid4
 
+from ugc_bot.application.errors import InteractionError, InteractionNotFoundError
 from ugc_bot.application.ports import InteractionRepository
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
@@ -259,7 +260,7 @@ class InteractionService:
     async def _require(self, interaction_id: UUID) -> Interaction:
         interaction = await self._get_by_id(interaction_id)
         if interaction is None:
-            raise ValueError("Interaction not found.")
+            raise InteractionNotFoundError("Interaction not found.")
         return interaction
 
     @staticmethod
@@ -335,13 +336,13 @@ class InteractionService:
         """Manually resolve ISSUE interaction with final status."""
 
         if final_status not in (InteractionStatus.OK, InteractionStatus.NO_DEAL):
-            raise ValueError(
+            raise InteractionError(
                 "Final status must be OK or NO_DEAL for manual resolution."
             )
 
         interaction = await self._require(interaction_id)
         if interaction.status != InteractionStatus.ISSUE:
-            raise ValueError("Interaction is not in ISSUE status.")
+            raise InteractionError("Interaction is not in ISSUE status.")
 
         resolved = Interaction(
             interaction_id=interaction.interaction_id,

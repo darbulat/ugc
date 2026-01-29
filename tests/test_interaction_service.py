@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from ugc_bot.application.errors import InteractionError, InteractionNotFoundError
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
@@ -410,7 +411,7 @@ async def test_manually_resolve_issue_not_issue_status() -> None:
     )
     await repo.save(interaction)
 
-    with pytest.raises(ValueError, match="not in ISSUE status"):
+    with pytest.raises(InteractionError, match="not in ISSUE status"):
         await service.manually_resolve_issue(
             interaction.interaction_id, InteractionStatus.NO_DEAL
         )
@@ -438,7 +439,7 @@ async def test_manually_resolve_issue_invalid_status() -> None:
     )
     await repo.save(interaction)
 
-    with pytest.raises(ValueError, match="must be OK or NO_DEAL"):
+    with pytest.raises(InteractionError, match="must be OK or NO_DEAL"):
         await service.manually_resolve_issue(
             interaction.interaction_id, InteractionStatus.PENDING
         )
@@ -451,7 +452,7 @@ async def test_manually_resolve_issue_not_found() -> None:
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
 
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(InteractionNotFoundError, match="not found"):
         await service.manually_resolve_issue(
             UUID("00000000-0000-0000-0000-000000000999"), InteractionStatus.OK
         )

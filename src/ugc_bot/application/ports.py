@@ -2,7 +2,14 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import TYPE_CHECKING, Iterable, List, Optional, Protocol
+from typing import (
+    TYPE_CHECKING,
+    AsyncContextManager,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+)
 from uuid import UUID
 
 from ugc_bot.domain.entities import (
@@ -377,10 +384,28 @@ class ComplaintRepository(ABC):
         """List complaints by status."""
 
 
-class UnitOfWork(Protocol):
-    """A unit of work representing a single transactional boundary.
+class TransactionManager(Protocol):
+    """Protocol for transaction handling used by application services.
 
-    Application services should use UoW to ensure operations are atomic.
+    Services receive a TransactionManager that provides a session via
+    async with tm.transaction() as session. The implementation (e.g.
+    SessionTransactionManager in infrastructure) commits on success and
+    rolls back on exception. This is the primary contract used by the
+    application layer; UnitOfWork below is an alternative style.
+    """
+
+    def transaction(self) -> AsyncContextManager[object]:
+        """Return an async context manager yielding a session.
+
+        Use: async with tm.transaction() as session: ...
+        """
+
+
+class UnitOfWork(Protocol):
+    """Alternative unit-of-work contract (session, commit, rollback).
+
+    Not used by current services; they use TransactionManager with
+    transaction() context manager instead.
     """
 
     session: object

@@ -4,6 +4,10 @@ from uuid import UUID
 
 import pytest
 
+from ugc_bot.application.errors import (
+    ComplaintAlreadyExistsError,
+    ComplaintNotFoundError,
+)
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.domain.enums import ComplaintStatus
 from ugc_bot.infrastructure.memory_repositories import InMemoryComplaintRepository
@@ -46,7 +50,7 @@ async def test_create_complaint_duplicate() -> None:
         reason="Мошенничество",
     )
 
-    with pytest.raises(ValueError, match="уже подали жалобу"):
+    with pytest.raises(ComplaintAlreadyExistsError, match="уже подали жалобу"):
         await service.create_complaint(
             reporter_id=reporter_id,
             reported_id=UUID("00000000-0000-0000-0000-000000000914"),
@@ -196,7 +200,7 @@ async def test_dismiss_complaint_not_found() -> None:
     repo = InMemoryComplaintRepository()
     service = ComplaintService(complaint_repo=repo)
 
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(ComplaintNotFoundError, match="not found"):
         await service.dismiss_complaint(UUID("00000000-0000-0000-0000-000000000999"))
 
 
@@ -229,7 +233,7 @@ async def test_resolve_complaint_with_action_not_found() -> None:
     repo = InMemoryComplaintRepository()
     service = ComplaintService(complaint_repo=repo)
 
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(ComplaintNotFoundError, match="not found"):
         await service.resolve_complaint_with_action(
             UUID("00000000-0000-0000-0000-000000000999")
         )
