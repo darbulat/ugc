@@ -18,7 +18,11 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyInteractionRepository,
     SqlAlchemyUserRepository,
 )
-from ugc_bot.infrastructure.db.session import create_session_factory
+from ugc_bot.infrastructure.db.session import (
+    create_session_factory,
+    SessionTransactionManager,
+    with_optional_tx,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -63,11 +67,16 @@ def _feedback_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
 
 
 async def _iter_due_interactions(
-    interaction_repo, cutoff: datetime
+    interaction_repo,
+    cutoff: datetime,
+    transaction_manager,
 ) -> Iterable[Interaction]:
-    """List interactions due for feedback."""
+    """List interactions due for feedback within a transaction."""
 
-    return await interaction_repo.list_due_for_feedback(cutoff)
+    async def _run(session: object | None):
+        return await interaction_repo.list_due_for_feedback(cutoff, session=session)
+
+    return await with_optional_tx(transaction_manager, _run)
 
 
 async def _send_feedback_requests(
@@ -132,10 +141,13 @@ async def run_once(
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
     cutoff: datetime,
+    transaction_manager,
 ) -> None:
     """Run a single feedback dispatch cycle."""
 
-    for interaction in await _iter_due_interactions(interaction_repo, cutoff):
+    for interaction in await _iter_due_interactions(
+        interaction_repo, cutoff, transaction_manager
+    ):
         try:
             await _send_feedback_requests(
                 bot,
@@ -159,6 +171,7 @@ async def run_loop(
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
     interval_seconds: int,
+    transaction_manager,
     max_iterations: int | None = None,
 ) -> None:
     """Run periodic feedback dispatch."""
@@ -173,6 +186,7 @@ async def run_loop(
                 interaction_service,
                 user_role_service,
                 cutoff,
+                transaction_manager,
             )
             iterations += 1
             if max_iterations is not None and iterations >= max_iterations:
@@ -203,11 +217,17 @@ def main() -> None:
         max_overflow=config.db.max_overflow,
         pool_timeout=config.db.pool_timeout,
     )
+    transaction_manager = SessionTransactionManager(session_factory)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
     interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
 
-    user_role_service = UserRoleService(user_repo=user_repo)
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    user_role_service = UserRoleService(
+        user_repo=user_repo, transaction_manager=transaction_manager
+    )
+    interaction_service = InteractionService(
+        interaction_repo=interaction_repo,
+        transaction_manager=transaction_manager,
+    )
 
     bot = Bot(token=config.bot.bot_token)
     asyncio.run(
@@ -217,6 +237,7 @@ def main() -> None:
             interaction_service,
             user_role_service,
             interval_seconds=config.feedback.feedback_poll_interval_seconds,
+            transaction_manager=transaction_manager,
         )
     )
 

@@ -135,6 +135,7 @@ async def test_run_once_sends_feedback_requests() -> None:
         interaction_service,
         user_service,
         cutoff=datetime.now(timezone.utc),
+        transaction_manager=None,
     )
     assert len(bot.messages) == 2
 
@@ -172,6 +173,7 @@ async def test_run_once_skips_active_orders() -> None:
         interaction_service,
         user_service,
         cutoff=datetime.now(timezone.utc),
+        transaction_manager=None,
     )
     assert not bot.messages
 
@@ -193,6 +195,7 @@ async def test_run_once_skips_orders_without_responses() -> None:
         interaction_service,
         user_service,
         cutoff=datetime.now(timezone.utc),
+        transaction_manager=None,
     )
     assert not bot.messages
 
@@ -274,6 +277,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
         interaction_service,
         user_service,
         cutoff=datetime.now(timezone.utc),
+        transaction_manager=None,
     )
     assert not bot.messages
 
@@ -294,6 +298,7 @@ async def test_run_loop_closes_session() -> None:
         interaction_service,
         user_service,
         interval_seconds=0,
+        transaction_manager=None,
         max_iterations=1,
     )
     assert bot.session.closed is True
@@ -322,6 +327,7 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
         interaction_service,
         user_service,
         interval_seconds=1,
+        transaction_manager=None,
         max_iterations=2,
     )
     assert slept["called"] is True
