@@ -1,9 +1,15 @@
 """Tests for application setup."""
 
+import asyncio
+
 import pytest
 from aiogram import Router
 
-from ugc_bot.app import build_dispatcher, run_bot
+from ugc_bot.app import (
+    _handle_health_connection,
+    build_dispatcher,
+    run_bot,
+)
 from ugc_bot.config import AppConfig
 
 
@@ -138,3 +144,19 @@ def test_main_invokes_asyncio(monkeypatch: pytest.MonkeyPatch) -> None:
 
     main()
     assert called["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_health_server_responds_ok() -> None:
+    """Health server responds with 200 and status ok for GET /health."""
+    server = await asyncio.start_server(_handle_health_connection, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    async with server:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        await writer.drain()
+        data = await reader.read(512)
+        writer.close()
+        await writer.wait_closed()
+    assert b"200 OK" in data
+    assert b'{"status":"ok"}' in data

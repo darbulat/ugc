@@ -30,6 +30,13 @@ from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
+# Port for lightweight /health HTTP server (for orchestrator healthchecks).
+BOT_HEALTH_PORT = 9999
+HEALTH_RESPONSE = (
+    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+    b'Content-Length: 15\r\nConnection: close\r\n\r\n{"status":"ok"}'
+)
+
 
 def _json_dumps(obj: dict) -> str:
     """Custom JSON dumps that handles UUID and other non-serializable types."""
@@ -127,6 +134,41 @@ def build_dispatcher(
     return dispatcher
 
 
+async def _handle_health_connection(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+) -> None:
+    """Handle a single connection to the health server; respond to GET /health."""
+    try:
+        data = await asyncio.wait_for(reader.read(1024), timeout=2.0)
+        if data.startswith(b"GET /health") or data.startswith(b"GET /health "):
+            writer.write(HEALTH_RESPONSE)
+        else:
+            writer.write(
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+    except asyncio.TimeoutError:
+        writer.write(
+            b"HTTP/1.1 408 Request Timeout\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+    finally:
+        await writer.drain()
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except OSError:
+            pass
+
+
+async def _run_health_server() -> None:
+    """Run a minimal HTTP server on BOT_HEALTH_PORT that responds to GET /health."""
+    server = await asyncio.start_server(
+        _handle_health_connection, "0.0.0.0", BOT_HEALTH_PORT
+    )
+    async with server:
+        await server.serve_forever()
+
+
 async def run_bot() -> None:
     """Run the Telegram bot."""
 
@@ -142,9 +184,15 @@ async def run_bot() -> None:
     storage = await create_storage(config)
     dispatcher = build_dispatcher(config, storage=storage)
     bot = Bot(token=config.bot.bot_token)
+    health_task = asyncio.create_task(_run_health_server())
     try:
         await dispatcher.start_polling(bot)
     finally:
+        health_task.cancel()
+        try:
+            await health_task
+        except asyncio.CancelledError:
+            pass
         if hasattr(storage, "close"):
             await storage.close()
 
