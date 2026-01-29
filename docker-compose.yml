@@ -218,8 +218,6 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--web.external-url=${PROMETHEUS_EXTERNAL_URL:-https://bot.usemycontent.ru/prometheus/}"
-      - "--web.route-prefix=/"
     ports:
       - "9090:9090"
     depends_on:
@@ -259,8 +257,6 @@ services:
       - alertmanager_config:/etc/alertmanager
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--web.external-url=${ALERTMANAGER_EXTERNAL_URL:-https://bot.usemycontent.ru/alertmanager/}"
-      - "--web.route-prefix=/"
     depends_on:
       alertmanager_renderer:
         condition: service_completed_successfully
@@ -275,7 +271,6 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://bot.usemycontent.ru/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - grafana_data:/var/lib/grafana
