@@ -27,6 +27,18 @@ class BloggerRegistrationService:
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
+    async def get_profile_by_instagram_url(
+        self, instagram_url: str
+    ) -> BloggerProfile | None:
+        """Fetch blogger profile by Instagram URL within a transaction boundary."""
+
+        if self.transaction_manager is None:
+            return await self.blogger_repo.get_by_instagram_url(instagram_url)
+        async with self.transaction_manager.transaction() as session:
+            return await self.blogger_repo.get_by_instagram_url(
+                instagram_url, session=session
+            )
+
     async def register_blogger(
         self,
         user_id: UUID,

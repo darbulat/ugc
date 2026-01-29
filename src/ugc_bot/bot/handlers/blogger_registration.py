@@ -116,10 +116,8 @@ async def handle_instagram(
         return
 
     # Check if Instagram URL is already taken
-    existing_profile = (
-        await blogger_registration_service.blogger_repo.get_by_instagram_url(
-            instagram_url
-        )
+    existing_profile = await blogger_registration_service.get_profile_by_instagram_url(
+        instagram_url
     )
     if existing_profile is not None:
         await message.answer(
