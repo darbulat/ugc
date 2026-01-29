@@ -275,7 +275,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://bot.usemycontent.ru/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-      GF_SERVER_PROTOCOL: "https"
       GF_SECURITY_COOKIE_SECURE: "true"
     volumes:
       - grafana_data:/var/lib/grafana
