@@ -9,6 +9,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CHANGE_ROLE_BUTTON_TEXT,
     SUPPORT_BUTTON_TEXT,
+    advertiser_start_keyboard,
     creator_start_keyboard,
     main_menu_keyboard,
 )
@@ -28,6 +29,11 @@ ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
 CREATOR_INTRO_TEXT = (
     "Ты — UGC‑креатор.\n"
     "После регистрации бренды смогут находить тебя и отправлять предложения."
+)
+
+ADVERTISER_INTRO_TEXT = (
+    "Вы выбрали роль «Мне нужны UGC‑креаторы».\n"
+    "Давайте создадим профиль, чтобы вы могли размещать заказы."
 )
 
 
@@ -91,8 +97,8 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
 
     if text == ADVERTISER_LABEL:
         await message.answer(
-            "Role saved. To register as an advertiser, send /register_advertiser.",
-            reply_markup=main_menu_keyboard(),
+            ADVERTISER_INTRO_TEXT,
+            reply_markup=advertiser_start_keyboard(),
         )
         return
 

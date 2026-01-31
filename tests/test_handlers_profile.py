@@ -57,7 +57,12 @@ class FakeProfileService:
     async def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
         if not self._has_advertiser:
             return None
-        return AdvertiserProfile(user_id=user_id, contact="contact")
+        return AdvertiserProfile(
+            user_id=user_id,
+            name="Test",
+            phone="contact",
+            brand="Brand",
+        )
 
 
 class FakeBloggerRegistrationService:

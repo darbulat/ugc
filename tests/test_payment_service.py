@@ -206,7 +206,12 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
     user_repo.get_by_id = AsyncMock(return_value=user)
     advertiser_repo = Mock()
     advertiser_repo.get_by_user_id = AsyncMock(
-        return_value=AdvertiserProfile(user_id=user_id, contact="contact")
+        return_value=AdvertiserProfile(
+            user_id=user_id,
+            name="Test",
+            phone="contact",
+            brand="Brand",
+        )
     )
     order_repo = Mock()
     order_repo.get_by_id = AsyncMock(return_value=order)

@@ -1,6 +1,10 @@
 """Tests for keyboard helpers."""
 
 from ugc_bot.bot.handlers.keyboards import (
+    ADVERTISER_START_BUTTON_TEXT,
+    CREATE_ORDER_BUTTON_TEXT,
+    advertiser_menu_keyboard,
+    advertiser_start_keyboard,
     blogger_menu_keyboard,
     main_menu_keyboard,
     support_keyboard,
@@ -71,3 +75,25 @@ def test_main_menu_keyboard_persistent() -> None:
     assert keyboard.keyboard[1][0].text == "Смена роли"
     assert keyboard.is_persistent is True
     assert keyboard.one_time_keyboard is False
+
+
+def test_advertiser_start_keyboard() -> None:
+    """Advertiser start keyboard has single Начать button."""
+    keyboard = advertiser_start_keyboard()
+
+    assert keyboard.keyboard is not None
+    assert len(keyboard.keyboard) == 1
+    assert keyboard.keyboard[0][0].text == ADVERTISER_START_BUTTON_TEXT
+    assert keyboard.keyboard[0][0].text == "Начать"
+
+
+def test_advertiser_menu_keyboard() -> None:
+    """Advertiser menu has Create order, My orders, My profile, Support."""
+    keyboard = advertiser_menu_keyboard()
+
+    assert keyboard.keyboard is not None
+    assert len(keyboard.keyboard) == 4
+    assert keyboard.keyboard[0][0].text == CREATE_ORDER_BUTTON_TEXT
+    assert keyboard.keyboard[1][0].text == "Мои заказы"
+    assert keyboard.keyboard[2][0].text == "Мой профиль"
+    assert keyboard.keyboard[3][0].text == "Поддержка"

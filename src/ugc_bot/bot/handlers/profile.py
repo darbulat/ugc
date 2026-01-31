@@ -127,7 +127,9 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
         parts.extend(
             [
                 "Рекламодатель:",
-                f"Контакт: {advertiser.contact}",
+                f"Имя: {advertiser.name}",
+                f"Телефон: {advertiser.phone}",
+                f"Бренд: {advertiser.brand}",
             ]
         )
 
@@ -234,9 +236,9 @@ async def edit_profile_choose_field(
             prompt,
             reply_markup=with_support_keyboard(
                 keyboard=[
-                    [KeyboardButton(text="В основном женщины")],
-                    [KeyboardButton(text="В основном мужчины")],
-                    [KeyboardButton(text="Примерно поровну")],
+                    [KeyboardButton(text="👩 В основном женщины")],
+                    [KeyboardButton(text="👨 В основном мужчины")],
+                    [KeyboardButton(text="👥 Примерно поровну")],
                 ],
             ),
         )
@@ -357,7 +359,7 @@ async def edit_profile_enter_value(
             user_id, topics={"selected": topics}
         )
     elif field_key == "audience_gender":
-        key = text.lower()
+        key = text[2:].lower()
         gender_map = {
             "в основном женщины": AudienceGender.FEMALE,
             "в основном мужчины": AudienceGender.MALE,

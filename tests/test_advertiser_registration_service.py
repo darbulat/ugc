@@ -48,9 +48,16 @@ async def test_register_advertiser_success() -> None:
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
 
-    profile = await service.register_advertiser(user_id=user_id, contact="@contact")
+    profile = await service.register_advertiser(
+        user_id=user_id,
+        name="Test Name",
+        phone="@contact",
+        brand="Test Brand",
+    )
     assert profile.user_id == user_id
-    assert profile.contact == "@contact"
+    assert profile.name == "Test Name"
+    assert profile.phone == "@contact"
+    assert profile.brand == "Test Brand"
 
 
 @pytest.mark.asyncio
@@ -65,13 +72,15 @@ async def test_register_advertiser_missing_user() -> None:
     with pytest.raises(UserNotFoundError):
         await service.register_advertiser(
             user_id=UUID("00000000-0000-0000-0000-000000000121"),
-            contact="@contact",
+            name="N",
+            phone="@contact",
+            brand="B",
         )
 
 
 @pytest.mark.asyncio
-async def test_register_advertiser_empty_contact() -> None:
-    """Fail when contact is empty."""
+async def test_register_advertiser_empty_name() -> None:
+    """Fail when name is empty."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
@@ -82,7 +91,45 @@ async def test_register_advertiser_empty_contact() -> None:
     )
 
     with pytest.raises(AdvertiserRegistrationError):
-        await service.register_advertiser(user_id=user_id, contact=" ")
+        await service.register_advertiser(
+            user_id=user_id, name=" ", phone="+7900", brand="B"
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_advertiser_empty_phone() -> None:
+    """Fail when phone is empty."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    with pytest.raises(AdvertiserRegistrationError):
+        await service.register_advertiser(
+            user_id=user_id, name="N", phone=" ", brand="B"
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_advertiser_empty_brand() -> None:
+    """Fail when brand is empty."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    with pytest.raises(AdvertiserRegistrationError):
+        await service.register_advertiser(
+            user_id=user_id, name="N", phone="+7900", brand=" "
+        )
 
 
 @pytest.mark.asyncio
@@ -102,7 +149,12 @@ async def test_register_advertiser_records_metrics_when_enabled() -> None:
         metrics_collector=metrics,
     )
 
-    await service.register_advertiser(user_id=user_id, contact="@contact")
+    await service.register_advertiser(
+        user_id=user_id,
+        name="N",
+        phone="@contact",
+        brand="B",
+    )
 
     metrics.record_advertiser_registration.assert_called_once_with(str(user_id))
 
@@ -119,7 +171,12 @@ async def test_get_profile_returns_saved_profile() -> None:
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
 
-    created = await service.register_advertiser(user_id=user_id, contact="@contact")
+    created = await service.register_advertiser(
+        user_id=user_id,
+        name="N",
+        phone="@contact",
+        brand="B",
+    )
     loaded = await service.get_profile(user_id)
 
     assert loaded == created
@@ -137,7 +194,12 @@ async def test_register_advertiser_with_transaction_manager(fake_tm: object) -> 
         advertiser_repo=advertiser_repo,
         transaction_manager=fake_tm,
     )
-    profile = await service.register_advertiser(user_id=user_id, contact="@tm_contact")
-    assert profile.contact == "@tm_contact"
+    profile = await service.register_advertiser(
+        user_id=user_id,
+        name="TM",
+        phone="@tm_contact",
+        brand="Brand",
+    )
+    assert profile.phone == "@tm_contact"
     loaded = await service.get_profile(user_id)
     assert loaded == profile

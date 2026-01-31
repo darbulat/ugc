@@ -101,7 +101,12 @@ async def test_get_advertiser_profile_with_transaction_manager(fake_tm) -> None:
     """ProfileService get_advertiser_profile with transaction_manager uses session."""
     user_id = UUID("00000000-0000-0000-0000-000000000004")
     advertiser_repo = InMemoryAdvertiserProfileRepository()
-    profile = AdvertiserProfile(user_id=user_id, contact="contact@test.com")
+    profile = AdvertiserProfile(
+        user_id=user_id,
+        name="Test",
+        phone="contact@test.com",
+        brand="Brand",
+    )
     await advertiser_repo.save(profile)
     service = ProfileService(
         user_repo=InMemoryUserRepository(),
@@ -111,4 +116,4 @@ async def test_get_advertiser_profile_with_transaction_manager(fake_tm) -> None:
     )
     result = await service.get_advertiser_profile(user_id)
     assert result is not None
-    assert result.contact == "contact@test.com"
+    assert result.phone == "contact@test.com"

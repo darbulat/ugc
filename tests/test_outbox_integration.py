@@ -69,7 +69,9 @@ class TestOutboxIntegration:
 
         profile = AdvertiserProfile(
             user_id=user.user_id,
-            contact="test@example.com",
+            name="Test",
+            phone="test@example.com",
+            brand="Brand",
         )
         await advertiser_repo.save(profile)
 
@@ -345,7 +347,9 @@ class TestOutboxIntegration:
 
         profile = AdvertiserProfile(
             user_id=user.user_id,
-            contact="test@example.com",
+            name="Test",
+            phone="test@example.com",
+            brand="Brand",
         )
         await advertiser_repo.save(profile)
 

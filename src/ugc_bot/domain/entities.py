@@ -58,7 +58,9 @@ class AdvertiserProfile:
     """Advertiser profile entity."""
 
     user_id: UUID
-    contact: str
+    name: str
+    phone: str
+    brand: str
 
 
 @dataclass(frozen=True)

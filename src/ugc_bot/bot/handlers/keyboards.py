@@ -5,6 +5,8 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 SUPPORT_BUTTON_TEXT = "Поддержка"
 CHANGE_ROLE_BUTTON_TEXT = "Смена роли"
 CREATE_PROFILE_BUTTON_TEXT = "Создать профиль"
+ADVERTISER_START_BUTTON_TEXT = "Начать"
+CREATE_ORDER_BUTTON_TEXT = "➕ Создать заказ"
 CONFIRM_INSTAGRAM_BUTTON_TEXT = "Подтвердить Instagram"
 CONFIRM_AGREEMENT_BUTTON_TEXT = "Подтвердить согласие"
 EDIT_PROFILE_BUTTON_TEXT = "Редактировать профиль"
@@ -69,15 +71,25 @@ def profile_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
     )
 
 
+def advertiser_start_keyboard() -> ReplyKeyboardMarkup:
+    """Keyboard after advertiser role selection: single Start button."""
+
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=ADVERTISER_START_BUTTON_TEXT)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 def advertiser_menu_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
     """Build a reply keyboard for advertiser actions."""
 
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="/register_advertiser")],
-            [KeyboardButton(text="/create_order")],
+            [KeyboardButton(text=CREATE_ORDER_BUTTON_TEXT)],
             [KeyboardButton(text="Мои заказы")],
             [KeyboardButton(text="Мой профиль")],
+            [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,

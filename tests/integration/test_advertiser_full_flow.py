@@ -31,7 +31,12 @@ async def test_advertiser_basic_flow(
     # Advertiser profile required for order creation
     advertiser_repo = dispatcher["advertiser_repo"]
     await advertiser_repo.save(
-        AdvertiserProfile(user_id=advertiser_user.user_id, contact="test_contact"),
+        AdvertiserProfile(
+            user_id=advertiser_user.user_id,
+            name="Adv",
+            phone="test_contact",
+            brand="Brand",
+        ),
         session=session,
     )
     await session.commit()

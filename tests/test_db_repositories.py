@@ -329,7 +329,9 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
     )
     profile = AdvertiserProfile(
         user_id=UUID("00000000-0000-0000-0000-000000000116"),
-        contact="@contact",
+        name="Test",
+        phone="@contact",
+        brand="Brand",
     )
     await repo.save(profile, session=session)
     assert session.merged is not None
@@ -339,7 +341,9 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
         session_factory=_session_factory(
             AdvertiserProfileModel(
                 user_id=profile.user_id,
-                contact=profile.contact,
+                contact=profile.phone,
+                name=profile.name,
+                brand=profile.brand,
             )
         )
     )
@@ -347,7 +351,9 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
         profile.user_id, session=_repo_session(repo_get)
     )
     assert fetched is not None
-    assert fetched.contact == "@contact"
+    assert fetched.phone == "@contact"
+    assert fetched.name == "Test"
+    assert fetched.brand == "Brand"
 
 
 @pytest.mark.asyncio

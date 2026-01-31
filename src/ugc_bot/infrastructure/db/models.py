@@ -134,7 +134,9 @@ class AdvertiserProfileModel(Base):
         ForeignKey("users.user_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    contact: Mapped[str] = mapped_column(String, nullable=False)
+    contact: Mapped[str] = mapped_column(String, nullable=False)  # phone for contact
+    name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    brand: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class OrderModel(Base):

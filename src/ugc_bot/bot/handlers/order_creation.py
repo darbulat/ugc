@@ -14,7 +14,11 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import support_keyboard, with_support_keyboard
+from ugc_bot.bot.handlers.keyboards import (
+    CREATE_ORDER_BUTTON_TEXT,
+    support_keyboard,
+    with_support_keyboard,
+)
 from ugc_bot.bot.handlers.payments import send_order_invoice
 from ugc_bot.bot.handlers.security_warnings import ADVERTISER_ORDER_WARNING
 from ugc_bot.config import AppConfig
@@ -38,6 +42,7 @@ class OrderCreationStates(StatesGroup):
 
 
 @router.message(Command("create_order"))
+@router.message(lambda msg: (msg.text or "").strip() == CREATE_ORDER_BUTTON_TEXT)
 async def start_order_creation(
     message: Message,
     state: FSMContext,

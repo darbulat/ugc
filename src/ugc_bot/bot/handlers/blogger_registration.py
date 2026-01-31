@@ -202,9 +202,9 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
         "Кто в основном смотрит ваш контент? По вашим наблюдениям или статистике",
         reply_markup=with_support_keyboard(
             keyboard=[
-                [KeyboardButton(text="В основном женщины")],
-                [KeyboardButton(text="В основном мужчины")],
-                [KeyboardButton(text="Примерно поровну")],
+                [KeyboardButton(text="👩 В основном женщины")],
+                [KeyboardButton(text="👨 В основном мужчины")],
+                [KeyboardButton(text="👥 Примерно поровну")],
             ],
         ),
     )
@@ -221,7 +221,7 @@ async def handle_gender(message: Message, state: FSMContext) -> None:
         "в основном мужчины": AudienceGender.MALE,
         "примерно поровну": AudienceGender.ALL,
     }
-    key = gender_text.lower()
+    key = gender_text[2:].lower()
     if key not in gender_map:
         await message.answer(
             "Выберите одну из кнопок: В основном женщины, В основном мужчины или Примерно поровну."

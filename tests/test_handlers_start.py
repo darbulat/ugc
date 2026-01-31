@@ -79,7 +79,8 @@ async def test_choose_role_advertiser_response(user_repo) -> None:
 
     await choose_role(message, service)
     assert message.answers
-    assert "register as an advertiser" in message.answers[-1][0]
+    assert "Вы выбрали роль" in message.answers[-1][0]
+    assert "Давайте создадим профиль" in message.answers[-1][0]
 
 
 @pytest.mark.asyncio

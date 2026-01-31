@@ -80,7 +80,12 @@ async def test_run_once_sends_feedback_requests() -> None:
     await user_repo.save(advertiser)
     await user_repo.save(blogger)
     await advertiser_repo.save(
-        AdvertiserProfile(user_id=advertiser.user_id, contact="c")
+        AdvertiserProfile(
+            user_id=advertiser.user_id,
+            name="N",
+            phone="c",
+            brand="B",
+        )
     )
 
     order = Order(

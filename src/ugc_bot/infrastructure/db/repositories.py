@@ -734,7 +734,12 @@ def _to_advertiser_profile_entity(
 ) -> AdvertiserProfile:
     """Map advertiser profile ORM model to domain entity."""
 
-    return AdvertiserProfile(user_id=model.user_id, contact=model.contact)
+    return AdvertiserProfile(
+        user_id=model.user_id,
+        name=model.name or "",
+        phone=model.contact,
+        brand=model.brand or "",
+    )
 
 
 def _to_advertiser_profile_model(
@@ -744,7 +749,9 @@ def _to_advertiser_profile_model(
 
     return AdvertiserProfileModel(
         user_id=profile.user_id,
-        contact=profile.contact,
+        contact=profile.phone,
+        name=profile.name or None,
+        brand=profile.brand or None,
     )
 
 

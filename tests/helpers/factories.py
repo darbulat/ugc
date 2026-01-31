@@ -76,7 +76,9 @@ async def create_test_advertiser(
     user_id: UUID | None = None,
     external_id: str = "888",
     status: UserStatus = UserStatus.ACTIVE,
-    contact: str = "contact",
+    name: str = "Test Advertiser",
+    phone: str = "+79001234567",
+    brand: str = "Test Brand",
 ) -> UUID:
     """Create and save advertiser user with profile.
 
@@ -86,7 +88,9 @@ async def create_test_advertiser(
         user_id: Optional user ID (generated if not provided)
         external_id: External user ID
         status: User status
-        contact: Contact information
+        name: Advertiser name
+        phone: Phone for contact
+        brand: Brand / company name
 
     Returns:
         User ID
@@ -98,7 +102,14 @@ async def create_test_advertiser(
         username="adv",
         status=status,
     )
-    await advertiser_repo.save(AdvertiserProfile(user_id=user.user_id, contact=contact))
+    await advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=user.user_id,
+            name=name,
+            phone=phone,
+            brand=brand,
+        )
+    )
     return user.user_id
 
 
@@ -158,19 +169,28 @@ async def create_test_blogger_profile(
 async def create_test_advertiser_profile(
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     user_id: UUID,
-    contact: str = "contact",
+    name: str = "Test Advertiser",
+    phone: str = "+79001234567",
+    brand: str = "Test Brand",
 ) -> AdvertiserProfile:
     """Create and save advertiser profile.
 
     Args:
         advertiser_repo: Advertiser profile repository
         user_id: User ID
-        contact: Contact information
+        name: Advertiser name
+        phone: Phone for contact
+        brand: Brand / company name
 
     Returns:
         Created advertiser profile
     """
-    profile = AdvertiserProfile(user_id=user_id, contact=contact)
+    profile = AdvertiserProfile(
+        user_id=user_id,
+        name=name,
+        phone=phone,
+        brand=brand,
+    )
     await advertiser_repo.save(profile)
     return profile
 
