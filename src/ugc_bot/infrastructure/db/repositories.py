@@ -42,6 +42,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OutboxEventStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -650,16 +651,22 @@ def _to_blogger_profile_entity(
 ) -> BloggerProfile:
     """Map blogger profile ORM model to domain entity."""
 
+    work_format = model.work_format
+    if isinstance(work_format, str):
+        work_format = WorkFormat(work_format)
     return BloggerProfile(
         user_id=model.user_id,
         instagram_url=model.instagram_url,
         confirmed=model.confirmed,
+        city=model.city,
         topics=model.topics,
         audience_gender=model.audience_gender,
         audience_age_min=model.audience_age_min,
         audience_age_max=model.audience_age_max,
         audience_geo=model.audience_geo,
         price=float(model.price),
+        barter=model.barter,
+        work_format=work_format,
         updated_at=model.updated_at,
     )
 
@@ -673,12 +680,15 @@ def _to_blogger_profile_model(
         user_id=profile.user_id,
         instagram_url=profile.instagram_url,
         confirmed=profile.confirmed,
+        city=profile.city,
         topics=profile.topics,
         audience_gender=profile.audience_gender,
         audience_age_min=profile.audience_age_min,
         audience_age_max=profile.audience_age_max,
         audience_geo=profile.audience_geo,
         price=profile.price,
+        barter=profile.barter,
+        work_format=profile.work_format,
         updated_at=profile.updated_at,
     )
 

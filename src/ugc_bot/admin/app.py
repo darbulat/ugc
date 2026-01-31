@@ -102,11 +102,14 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
         BloggerProfileModel.user_id,
         BloggerProfileModel.instagram_url,
         BloggerProfileModel.confirmed,
+        BloggerProfileModel.city,
         BloggerProfileModel.audience_gender,
         BloggerProfileModel.audience_age_min,
         BloggerProfileModel.audience_age_max,
         BloggerProfileModel.audience_geo,
         BloggerProfileModel.price,
+        BloggerProfileModel.barter,
+        BloggerProfileModel.work_format,
         BloggerProfileModel.updated_at,
     ]
 

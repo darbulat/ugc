@@ -10,7 +10,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.domain.entities import BloggerProfile, InstagramVerificationCode, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramGraphApiClient,
@@ -43,12 +43,15 @@ async def _seed_profile(repo: InMemoryBloggerProfileRepository, user_id: UUID) -
             user_id=user_id,
             instagram_url="https://instagram.com/test_user",
             confirmed=False,
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
     )
@@ -305,12 +308,15 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> N
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     await profile_repo.save(profile)
@@ -363,12 +369,15 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
             user_id=user_id,
             instagram_url=url_format,
             confirmed=False,
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
         await profile_repo.save(profile)
@@ -412,12 +421,15 @@ async def test_verify_code_by_instagram_sender_username_extraction_variants() ->
                 user_id=user_id,
                 instagram_url=url_format,
                 confirmed=False,
+                city="Moscow",
                 topics={"selected": ["fitness"]},
                 audience_gender=AudienceGender.ALL,
                 audience_age_min=18,
                 audience_age_max=35,
                 audience_geo="Moscow",
                 price=1000.0,
+                barter=False,
+                work_format=WorkFormat.UGC_ONLY,
                 updated_at=datetime.now(timezone.utc),
             )
         )
@@ -436,12 +448,15 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     await profile_repo.save(profile)
@@ -485,12 +500,15 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     await profile_repo.save(profile)
@@ -537,12 +555,15 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
         user_id=user_id,
         instagram_url="https://instagram.com",  # No username in URL
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     await profile_repo.save(profile)

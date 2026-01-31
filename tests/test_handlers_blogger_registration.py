@@ -7,6 +7,7 @@ from ugc_bot.application.services.blogger_registration_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.blogger_registration import (
+    _start_registration_flow,
     handle_agreements,
     handle_age,
     handle_gender,
@@ -15,9 +16,9 @@ from ugc_bot.bot.handlers.blogger_registration import (
     handle_name,
     handle_price,
     handle_topics,
-    start_registration,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.bot.handlers.keyboards import CONFIRM_AGREEMENT_BUTTON_TEXT
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
 from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
 from tests.helpers.factories import create_test_user
 
@@ -30,7 +31,7 @@ async def test_start_registration_requires_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await start_registration(message, state, service)
+    await _start_registration_flow(message, state, service)
 
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
@@ -49,7 +50,7 @@ async def test_start_registration_sets_state(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(7, "alice", "Alice"))
     state = FakeFSMContext()
 
-    await start_registration(message, state, service)
+    await _start_registration_flow(message, state, service)
 
     assert state._data["external_id"] == "7"
     assert state.state is not None
@@ -72,7 +73,7 @@ async def test_start_registration_blocked_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(8, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await start_registration(message, state, service)
+    await _start_registration_flow(message, state, service)
 
     assert message.answers
     assert "Заблокированные" in message.answers[0]
@@ -95,7 +96,7 @@ async def test_start_registration_paused_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(9, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await start_registration(message, state, service)
+    await _start_registration_flow(message, state, service)
 
     assert message.answers
     assert "паузе" in message.answers[0]
@@ -160,7 +161,7 @@ async def test_age_invalid() -> None:
     await handle_age(message, state)
 
     assert message.answers
-    assert "Введите диапазон" in message.answers[0]
+    assert "кнопок возраста" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -201,7 +202,7 @@ async def test_name_and_topics_invalid() -> None:
 
     topics_message = FakeMessage(text=" ", user=None)
     await handle_topics(topics_message, state)
-    assert "Введите хотя бы одну тему" in topics_message.answers[0]
+    assert "тематику" in topics_message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -210,14 +211,14 @@ async def test_gender_age_geo_price_flow() -> None:
 
     state = FakeFSMContext()
 
-    gender_message = FakeMessage(text="все", user=None)
+    gender_message = FakeMessage(text="Примерно поровну", user=None)
     await handle_gender(gender_message, state)
     assert state._data["audience_gender"] == AudienceGender.ALL
 
-    age_message = FakeMessage(text="18-30", user=None)
+    age_message = FakeMessage(text="18–24", user=None)
     await handle_age(age_message, state)
     assert state._data["audience_age_min"] == 18
-    assert state._data["audience_age_max"] == 30
+    assert state._data["audience_age_max"] == 24
 
     geo_message = FakeMessage(text="Moscow", user=None)
     await handle_geo(geo_message, state)
@@ -235,7 +236,7 @@ async def test_geo_empty_and_price_negative() -> None:
     state = FakeFSMContext()
     geo_message = FakeMessage(text=" ", user=None)
     await handle_geo(geo_message, state)
-    assert "География не может" in geo_message.answers[0]
+    assert "город" in geo_message.answers[0]
 
     price_message = FakeMessage(text="-5", user=None)
     await handle_price(price_message, state)
@@ -257,19 +258,24 @@ async def test_handle_agreements_creates_profile(user_repo, blogger_repo) -> Non
         username="bob",
     )
 
-    message = FakeMessage(text="Согласен", user=FakeUser(42, "bob", "Bob"))
+    message = FakeMessage(
+        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(42, "bob", "Bob")
+    )
     state = FakeFSMContext()
     await state.update_data(
         user_id=user.user_id,
         external_id="42",
         nickname="bob",
         instagram_url="https://instagram.com/test_user",
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
     )
 
     await handle_agreements(
@@ -305,7 +311,7 @@ async def test_handle_agreements_requires_consent(user_repo, blogger_repo) -> No
     )
 
     assert message.answers
-    assert "Нужно согласие" in message.answers[0]
+    assert "Подтвердить согласие" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -330,12 +336,15 @@ async def test_handle_instagram_duplicate_url(user_repo, blogger_repo) -> None:
         user_id=existing_user.user_id,
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     await blogger_repo.save(existing_profile)
@@ -368,19 +377,24 @@ async def test_handle_agreements_shows_verification_button(
         username="alice",
     )
 
-    message = FakeMessage(text="Согласен", user=FakeUser(43, "alice", "Alice"))
+    message = FakeMessage(
+        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(43, "alice", "Alice")
+    )
     state = FakeFSMContext()
     await state.update_data(
         user_id=user.user_id,
         external_id="43",
         nickname="alice",
         instagram_url="https://instagram.com/test_user",
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
     )
 
     await handle_agreements(
@@ -393,7 +407,7 @@ async def test_handle_agreements_shows_verification_button(
     assert message.reply_markups
     keyboard = message.reply_markups[0]
     assert keyboard.keyboard is not None
-    # Profile is not confirmed after registration, so verification button should be shown
+    # After registration: Confirm Instagram + My profile
     assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[0][0].text == "Пройти верификацию"
+    assert keyboard.keyboard[0][0].text == "Подтвердить Instagram"
     assert keyboard.keyboard[1][0].text == "Мой профиль"

@@ -21,6 +21,7 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
@@ -225,12 +226,15 @@ async def test_blogger_profile_repository_save() -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000113"),
         instagram_url="https://instagram.com/test",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
 
@@ -247,12 +251,15 @@ async def test_blogger_profile_repository_get_by_instagram_url() -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000200"),
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
 
@@ -286,12 +293,15 @@ async def test_blogger_profile_repository_get() -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000114"),
         instagram_url="https://instagram.com/test",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     repo = SqlAlchemyBloggerProfileRepository(session_factory=_session_factory(model))

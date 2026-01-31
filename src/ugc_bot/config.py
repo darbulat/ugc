@@ -48,6 +48,11 @@ _FLAT_KEYS = {
         "INSTAGRAM_ACCESS_TOKEN",
         "INSTAGRAM_API_BASE_URL",
     ],
+    "docs": [
+        "DOCS_OFFER_URL",
+        "DOCS_PRIVACY_URL",
+        "DOCS_CONSENT_URL",
+    ],
 }
 
 
@@ -173,11 +178,21 @@ class InstagramConfig(BaseSettings):
     )
 
 
+class DocsConfig(BaseSettings):
+    """URLs for legal documents (offer, privacy, consent)."""
+
+    model_config = _ENV
+
+    docs_offer_url: str = Field(default="", alias="DOCS_OFFER_URL")
+    docs_privacy_url: str = Field(default="", alias="DOCS_PRIVACY_URL")
+    docs_consent_url: str = Field(default="", alias="DOCS_CONSENT_URL")
+
+
 # --- Composite ---
 
 
 class AppConfig(BaseModel):
-    """Application configuration. Composes Bot, Log, Db, Admin, Kafka, Feedback, Redis, Instagram."""
+    """Application configuration. Composes Bot, Log, Db, Admin, Kafka, Feedback, Redis, Instagram, Docs."""
 
     model_config = {"extra": "forbid"}
 
@@ -190,6 +205,7 @@ class AppConfig(BaseModel):
     role_reminder: RoleReminderConfig
     redis: RedisConfig
     instagram: InstagramConfig
+    docs: DocsConfig
 
     @model_validator(mode="before")
     @classmethod
@@ -207,6 +223,7 @@ class AppConfig(BaseModel):
             "role_reminder": RoleReminderConfig.model_validate(nested["role_reminder"]),
             "redis": RedisConfig.model_validate(nested["redis"]),
             "instagram": InstagramConfig.model_validate(nested["instagram"]),
+            "docs": DocsConfig.model_validate(nested["docs"]),
         }
 
 

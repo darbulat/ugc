@@ -17,6 +17,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
@@ -139,12 +140,15 @@ async def create_test_blogger_profile(
         user_id=user_id,
         instagram_url=instagram_url,
         confirmed=confirmed,
+        city=kwargs.get("city", "Moscow"),
         topics=topics,
         audience_gender=audience_gender,
         audience_age_min=audience_age_min,
         audience_age_max=audience_age_max,
         audience_geo=audience_geo,
         price=price,
+        barter=kwargs.get("barter", False),
+        work_format=kwargs.get("work_format", WorkFormat.UGC_ONLY),
         updated_at=kwargs.get("updated_at", datetime.now(timezone.utc)),
     )
     await blogger_repo.save(profile)

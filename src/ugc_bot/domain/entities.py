@@ -15,6 +15,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     PaymentStatus,
     UserStatus,
+    WorkFormat,
 )
 
 
@@ -40,12 +41,15 @@ class BloggerProfile:
     user_id: UUID
     instagram_url: str
     confirmed: bool
+    city: str
     topics: dict
     audience_gender: AudienceGender
     audience_age_min: int
     audience_age_max: int
     audience_geo: str
     price: float
+    barter: bool
+    work_format: WorkFormat
     updated_at: datetime
 
 

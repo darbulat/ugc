@@ -16,6 +16,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
@@ -101,12 +102,15 @@ async def test_send_offers_sends_messages() -> None:
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=now,
         )
     )
@@ -379,12 +383,15 @@ async def test_send_offers_retries_then_succeeds() -> None:
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=now,
         )
     )
@@ -465,12 +472,15 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=now,
         )
     )

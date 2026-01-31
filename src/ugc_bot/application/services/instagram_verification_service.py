@@ -105,12 +105,15 @@ class InstagramVerificationService:
                 user_id=profile.user_id,
                 instagram_url=profile.instagram_url,
                 confirmed=True,
+                city=profile.city,
                 topics=profile.topics,
                 audience_gender=profile.audience_gender,
                 audience_age_min=profile.audience_age_min,
                 audience_age_max=profile.audience_age_max,
                 audience_geo=profile.audience_geo,
                 price=profile.price,
+                barter=profile.barter,
+                work_format=profile.work_format,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(confirmed_profile)
@@ -132,12 +135,15 @@ class InstagramVerificationService:
                 user_id=profile.user_id,
                 instagram_url=profile.instagram_url,
                 confirmed=True,
+                city=profile.city,
                 topics=profile.topics,
                 audience_gender=profile.audience_gender,
                 audience_age_min=profile.audience_age_min,
                 audience_age_max=profile.audience_age_max,
                 audience_geo=profile.audience_geo,
                 price=profile.price,
+                barter=profile.barter,
+                work_format=profile.work_format,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(confirmed_profile, session=session)
@@ -262,12 +268,15 @@ class InstagramVerificationService:
             user_id=profile.user_id,
             instagram_url=profile.instagram_url,
             confirmed=True,
+            city=profile.city,
             topics=profile.topics,
             audience_gender=profile.audience_gender,
             audience_age_min=profile.audience_age_min,
             audience_age_max=profile.audience_age_max,
             audience_geo=profile.audience_geo,
             price=profile.price,
+            barter=profile.barter,
+            work_format=profile.work_format,
             updated_at=datetime.now(timezone.utc),
         )
         if self.transaction_manager is None:

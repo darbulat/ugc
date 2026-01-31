@@ -9,6 +9,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CHANGE_ROLE_BUTTON_TEXT,
     SUPPORT_BUTTON_TEXT,
+    creator_start_keyboard,
     main_menu_keyboard,
 )
 from ugc_bot.domain.enums import MessengerType
@@ -23,6 +24,11 @@ SUPPORT_RESPONSE_TEXT = (
 
 CREATOR_LABEL = "Я креатор"
 ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
+
+CREATOR_INTRO_TEXT = (
+    "Ты — UGC‑креатор.\n"
+    "После регистрации бренды смогут находить тебя и отправлять предложения."
+)
 
 
 @router.message(CommandStart())
@@ -78,8 +84,8 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
 
     if text == CREATOR_LABEL:
         await message.answer(
-            "Role saved. To register as a blogger, send /register.",
-            reply_markup=main_menu_keyboard(),
+            CREATOR_INTRO_TEXT,
+            reply_markup=creator_start_keyboard(),
         )
         return
 

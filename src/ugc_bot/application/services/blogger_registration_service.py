@@ -8,7 +8,7 @@ from uuid import UUID
 from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
 from ugc_bot.application.ports import BloggerProfileRepository, UserRepository
 from ugc_bot.domain.entities import BloggerProfile
-from ugc_bot.domain.enums import AudienceGender
+from ugc_bot.domain.enums import AudienceGender, WorkFormat
 
 
 class TransactionManager(Protocol):
@@ -43,12 +43,15 @@ class BloggerRegistrationService:
         self,
         user_id: UUID,
         instagram_url: str,
+        city: str,
         topics: dict[str, Any],
         audience_gender: AudienceGender,
         audience_age_min: int,
         audience_age_max: int,
         audience_geo: str,
         price: float,
+        barter: bool,
+        work_format: WorkFormat,
     ) -> BloggerProfile:
         """Create a blogger profile after validating input."""
 
@@ -70,6 +73,10 @@ class BloggerRegistrationService:
                     "Пожалуйста, используйте другой аккаунт."
                 )
 
+            city = city.strip()
+            if not city:
+                raise BloggerRegistrationError("City is required.")
+
             audience_geo = audience_geo.strip()
             if not audience_geo:
                 raise BloggerRegistrationError("Audience geo is required.")
@@ -86,12 +93,15 @@ class BloggerRegistrationService:
                 user_id=user.user_id,
                 instagram_url=instagram_url,
                 confirmed=False,
+                city=city,
                 topics=topics,
                 audience_gender=audience_gender,
                 audience_age_min=audience_age_min,
                 audience_age_max=audience_age_max,
                 audience_geo=audience_geo,
                 price=price,
+                barter=barter,
+                work_format=work_format,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(profile)
@@ -119,6 +129,10 @@ class BloggerRegistrationService:
                     "Пожалуйста, используйте другой аккаунт."
                 )
 
+            city = city.strip()
+            if not city:
+                raise BloggerRegistrationError("City is required.")
+
             audience_geo = audience_geo.strip()
             if not audience_geo:
                 raise BloggerRegistrationError("Audience geo is required.")
@@ -135,12 +149,15 @@ class BloggerRegistrationService:
                 user_id=user.user_id,
                 instagram_url=instagram_url,
                 confirmed=False,
+                city=city,
                 topics=topics,
                 audience_gender=audience_gender,
                 audience_age_min=audience_age_min,
                 audience_age_max=audience_age_max,
                 audience_geo=audience_geo,
                 price=price,
+                barter=barter,
+                work_format=work_format,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(profile, session=session)
@@ -149,3 +166,65 @@ class BloggerRegistrationService:
                 self.metrics_collector.record_blogger_registration(str(user.user_id))
 
             return profile
+
+    async def update_blogger_profile(
+        self,
+        user_id: UUID,
+        *,
+        instagram_url: Optional[str] = None,
+        city: Optional[str] = None,
+        topics: Optional[dict[str, Any]] = None,
+        audience_gender: Optional[AudienceGender] = None,
+        audience_age_min: Optional[int] = None,
+        audience_age_max: Optional[int] = None,
+        audience_geo: Optional[str] = None,
+        price: Optional[float] = None,
+        barter: Optional[bool] = None,
+        work_format: Optional[WorkFormat] = None,
+    ) -> BloggerProfile | None:
+        """Update blogger profile with provided fields. Returns updated profile or None if not found."""
+
+        if self.transaction_manager is None:
+            profile = await self.blogger_repo.get_by_user_id(user_id)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                profile = await self.blogger_repo.get_by_user_id(
+                    user_id, session=session
+                )
+        if profile is None:
+            return None
+
+        updated = BloggerProfile(
+            user_id=profile.user_id,
+            instagram_url=instagram_url.strip()
+            if instagram_url is not None
+            else profile.instagram_url,
+            confirmed=profile.confirmed,
+            city=city.strip() if city is not None else profile.city,
+            topics=topics if topics is not None else profile.topics,
+            audience_gender=audience_gender
+            if audience_gender is not None
+            else profile.audience_gender,
+            audience_age_min=audience_age_min
+            if audience_age_min is not None
+            else profile.audience_age_min,
+            audience_age_max=audience_age_max
+            if audience_age_max is not None
+            else profile.audience_age_max,
+            audience_geo=(
+                audience_geo.strip()
+                if audience_geo is not None
+                else profile.audience_geo
+            ),
+            price=price if price is not None else profile.price,
+            barter=barter if barter is not None else profile.barter,
+            work_format=work_format if work_format is not None else profile.work_format,
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        if self.transaction_manager is None:
+            await self.blogger_repo.save(updated)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.blogger_repo.save(updated, session=session)
+        return updated

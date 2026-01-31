@@ -10,7 +10,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
@@ -46,12 +46,15 @@ async def test_register_blogger_success() -> None:
     profile = await service.register_blogger(
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
     )
 
     assert profile.user_id == user_id
@@ -83,12 +86,15 @@ async def test_register_blogger_duplicate_instagram_url() -> None:
         user_id=user1.user_id,
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     await blogger_repo.save(existing_profile)
@@ -110,12 +116,15 @@ async def test_register_blogger_duplicate_instagram_url() -> None:
         await service.register_blogger(
             user_id=user2.user_id,
             instagram_url="https://instagram.com/test_user",
+            city="SPB",
             topics={"selected": ["beauty"]},
             audience_gender=AudienceGender.FEMALE,
             audience_age_min=20,
             audience_age_max=30,
             audience_geo="SPB",
             price=2000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
         )
 
     assert "уже зарегистрирован" in str(exc_info.value)
@@ -135,12 +144,15 @@ async def test_register_blogger_empty_instagram() -> None:
         await service.register_blogger(
             user_id=user_id,
             instagram_url="",
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
         )
 
 
@@ -157,12 +169,15 @@ async def test_register_blogger_missing_user() -> None:
         await service.register_blogger(
             user_id=UUID("00000000-0000-0000-0000-000000000003"),
             instagram_url="https://instagram.com/test_user",
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
         )
 
 
@@ -180,12 +195,15 @@ async def test_register_blogger_invalid_age() -> None:
         await service.register_blogger(
             user_id=user_id,
             instagram_url="https://instagram.com/test_user",
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=40,
             audience_age_max=30,
             audience_geo="Moscow",
             price=1500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
         )
 
 
@@ -203,24 +221,30 @@ async def test_register_blogger_invalid_geo_and_price() -> None:
         await service.register_blogger(
             user_id=user_id,
             instagram_url="https://instagram.com/test_user",
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="",
             price=1500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
         )
 
     with pytest.raises(BloggerRegistrationError):
         await service.register_blogger(
             user_id=user_id,
             instagram_url="https://instagram.com/test_user",
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
         )
 
 
@@ -238,12 +262,15 @@ async def test_register_blogger_non_positive_age_is_rejected() -> None:
         await service.register_blogger(
             user_id=user_id,
             instagram_url="https://instagram.com/test_user",
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=0,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
         )
 
 
@@ -267,12 +294,15 @@ async def test_register_blogger_records_metrics_when_enabled() -> None:
     await service.register_blogger(
         user_id=user_id,
         instagram_url="https://instagram.com/test_user",
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
     )
 
     metrics.record_blogger_registration.assert_called_once_with(str(user_id))
@@ -293,12 +323,50 @@ async def test_register_blogger_with_transaction_manager(fake_tm: object) -> Non
     profile = await service.register_blogger(
         user_id=user_id,
         instagram_url="https://instagram.com/tm_user",
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
     )
     assert profile.user_id == user_id
     assert profile.confirmed is False
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_instagram_url_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """Cover transaction_manager path for get_profile_by_instagram_url."""
+    from ugc_bot.domain.entities import BloggerProfile
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = UUID("00000000-0000-0000-0000-000000000099")
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/with_tm",
+        confirmed=False,
+        city="Moscow",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    await blogger_repo.save(profile)
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=blogger_repo,
+        transaction_manager=fake_tm,
+    )
+    result = await service.get_profile_by_instagram_url("https://instagram.com/with_tm")
+    assert result is not None
+    assert result.instagram_url == "https://instagram.com/with_tm"

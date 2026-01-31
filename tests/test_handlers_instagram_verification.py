@@ -9,7 +9,7 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.instagram_verification import (
-    _verification_instruction,
+    _verification_instruction_text,
     start_verification,
 )
 from ugc_bot.config import AppConfig
@@ -86,7 +86,7 @@ async def test_start_verification_user_not_found(
     )
 
     assert message.answers
-    assert "Профиль блогера не заполнен" in message.answers[0]
+    assert "Профиль не заполнен" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -166,23 +166,16 @@ async def test_start_verification_paused_user(
 
 
 def test_verification_instruction_format() -> None:
-    """Verify instruction text matches TZ requirements."""
-    code = "ABC123XY"
+    """Verify instruction text matches TZ requirements (code sent in separate message)."""
     admin_username = "admin_ugc_bot"
 
-    instruction = _verification_instruction(code, admin_username)
+    instruction = _verification_instruction_text(admin_username)
 
-    assert "Чтобы подтвердить, что Instagram-аккаунт принадлежит вам" in instruction
-    assert "1️⃣ Скопируйте код ниже" in instruction
-    assert (
-        "2️⃣ Отправьте его в личные сообщения (Direct) Instagram-аккаунта администратора"
-        in instruction
-    )
-    assert "3️⃣ Дождитесь автоматического подтверждения" in instruction
-    assert f"Ваш код: {code}" in instruction
-    assert f"Admin Instagram: {admin_username}" in instruction
-    assert "Код действует 15 минут" in instruction
-    assert "запросить новый код" in instruction
+    assert "Чтобы подтвердить Instagram" in instruction
+    assert "Скопируйте код ниже" in instruction
+    assert "Отправьте его в личные сообщения" in instruction
+    assert "Instagram" in instruction
+    assert admin_username in instruction or "usemycontent" in instruction
 
 
 @pytest.mark.asyncio
@@ -192,8 +185,9 @@ async def test_start_verification_via_button(
     """Handle verification request via button click."""
     from datetime import datetime, timezone
     from uuid import UUID
+    from ugc_bot.bot.handlers.keyboards import CONFIRM_INSTAGRAM_BUTTON_TEXT
     from ugc_bot.domain.entities import BloggerProfile
-    from ugc_bot.domain.enums import AudienceGender
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
 
     user = await create_test_user(
         user_repo,
@@ -205,12 +199,15 @@ async def test_start_verification_via_button(
         user_id=user.user_id,
         instagram_url="https://instagram.com/test",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["tech"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
     await blogger_repo.save(blogger_profile)
@@ -223,7 +220,7 @@ async def test_start_verification_via_button(
     )
     profile_service = build_profile_service(user_repo, blogger_repo)
     message = FakeMessage(
-        text="Пройти верификацию", user=FakeUser(6, "blogger", "Blogger")
+        text=CONFIRM_INSTAGRAM_BUTTON_TEXT, user=FakeUser(6, "blogger", "Blogger")
     )
     state = FakeFSMContext()
 
@@ -237,5 +234,8 @@ async def test_start_verification_via_button(
     )
 
     assert message.answers
-    assert "Ваш код:" in message.answers[0]
-    assert "Admin Instagram:" in message.answers[0]
+    # First message: instruction (no code)
+    assert "Чтобы подтвердить Instagram" in message.answers[0]
+    # Second message: code only
+    assert len(message.answers) >= 2
+    assert len(message.answers[1]) <= 10  # code is short

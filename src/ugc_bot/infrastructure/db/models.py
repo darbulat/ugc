@@ -29,6 +29,7 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.db.base import Base
 
@@ -42,6 +43,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     ComplaintStatus: "complaint_status",
     OutboxEventStatus: "outbox_event_status",
     PaymentStatus: "payment_status",
+    WorkFormat: "work_format",
 }
 
 
@@ -102,6 +104,7 @@ class BloggerProfileModel(Base):
     confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    city: Mapped[str] = mapped_column(String, nullable=False, server_default=text("''"))
     topics: Mapped[dict] = mapped_column(JSONB, nullable=False)
     audience_gender: Mapped[AudienceGender] = mapped_column(
         _enum_column(AudienceGender), nullable=False
@@ -110,6 +113,12 @@ class BloggerProfileModel(Base):
     audience_age_max: Mapped[int] = mapped_column(Integer, nullable=False)
     audience_geo: Mapped[str] = mapped_column(String, nullable=False)
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    barter: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    work_format: Mapped[WorkFormat] = mapped_column(
+        _enum_column(WorkFormat), nullable=False, server_default=text("'ugc_only'")
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

@@ -16,11 +16,14 @@ from ugc_bot.application.services.blogger_registration_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
-    blogger_menu_keyboard,
+    CONFIRM_AGREEMENT_BUTTON_TEXT,
+    CREATE_PROFILE_BUTTON_TEXT,
+    blogger_after_registration_keyboard,
     support_keyboard,
     with_support_keyboard,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.config import AppConfig
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
 
 
 router = Router()
@@ -36,21 +39,23 @@ class BloggerRegistrationStates(StatesGroup):
 
     name = State()
     instagram = State()
+    city = State()
     topics = State()
     audience_gender = State()
     audience_age = State()
     audience_geo = State()
     price = State()
+    barter = State()
+    work_format = State()
     agreements = State()
 
 
-@router.message(Command("register"))
-async def start_registration(
+async def _start_registration_flow(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
 ) -> None:
-    """Start blogger registration flow."""
+    """Common logic to start blogger registration: checks and first step (name)."""
 
     if message.from_user is None:
         return
@@ -68,19 +73,35 @@ async def start_registration(
     if user.status == UserStatus.PAUSE:
         await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer("Заблокированные пользователи не могут регистрироваться.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут регистрироваться.")
-        return
 
     await state.update_data(user_id=user.user_id, external_id=str(message.from_user.id))
     await message.answer(
-        "Введите ваш ник / имя для профиля:",
+        "Введите имя или ник для профиля, который увидят бренды:",
         reply_markup=support_keyboard(),
     )
     await state.set_state(BloggerRegistrationStates.name)
+
+
+@router.message(Command("register"))
+async def start_registration_command(
+    message: Message,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+) -> None:
+    """Start blogger registration flow via /register command."""
+
+    await _start_registration_flow(message, state, user_role_service)
+
+
+@router.message(lambda msg: (msg.text or "").strip() == CREATE_PROFILE_BUTTON_TEXT)
+async def start_registration_button(
+    message: Message,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+) -> None:
+    """Start blogger registration flow via Create profile button."""
+
+    await _start_registration_flow(message, state, user_role_service)
 
 
 @router.message(BloggerRegistrationStates.name)
@@ -94,7 +115,8 @@ async def handle_name(message: Message, state: FSMContext) -> None:
 
     await state.update_data(nickname=nickname)
     await message.answer(
-        "Введите ссылку на Instagram:", reply_markup=support_keyboard()
+        "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
+        reply_markup=support_keyboard(),
     )
     await state.set_state(BloggerRegistrationStates.instagram)
 
@@ -110,6 +132,11 @@ async def handle_instagram(
     instagram_url = (message.text or "").strip()
     if not instagram_url:
         await message.answer("Ссылка не может быть пустой. Введите снова:")
+        return
+    if "instagram.com/" not in instagram_url.lower():
+        await message.answer(
+            "Неверный формат ссылки. Прикрепите ссылку в формате instagram.com/name"
+        )
         return
     if not _INSTAGRAM_URL_REGEX.match(instagram_url):
         await message.answer(
@@ -129,9 +156,28 @@ async def handle_instagram(
         return
 
     await state.update_data(instagram_url=instagram_url)
+    await message.answer(
+        "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
+        reply_markup=support_keyboard(),
+    )
+    await state.set_state(BloggerRegistrationStates.city)
+
+
+@router.message(BloggerRegistrationStates.city)
+async def handle_city(message: Message, state: FSMContext) -> None:
+    """Store creator city."""
+
+    city = (message.text or "").strip()
+    if not city:
+        await message.answer("Укажите город. Введите снова:")
+        return
+
+    await state.update_data(city=city)
     topics_text = (
-        "Выберите тематики через запятую:\n"
-        "fitness, beauty, travel, food, fashion, kids, tech, other"
+        "О чём ваш контент?\n"
+        "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, питание, "
+        "бьюти, уход за кожей, путешествия, еда, рестораны, мода, стиль, дети, семья, "
+        "технологии, гаджеты, лайфстайл, повседневная жизнь, другое"
     )
     await message.answer(topics_text, reply_markup=support_keyboard())
     await state.set_state(BloggerRegistrationStates.topics)
@@ -143,19 +189,22 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
 
     raw = (message.text or "").strip()
     if not raw:
-        await message.answer("Введите хотя бы одну тему:")
+        await message.answer("Введите хотя бы одну тематику:")
         return
 
     topics = [topic.strip().lower() for topic in raw.split(",") if topic.strip()]
+    if not topics:
+        await message.answer("Введите хотя бы одну тематику:")
+        return
     await state.update_data(topics={"selected": topics})
 
     await message.answer(
-        "Укажите пол ЦА:",
+        "Кто в основном смотрит ваш контент? По вашим наблюдениям или статистике",
         reply_markup=with_support_keyboard(
             keyboard=[
-                [KeyboardButton(text="м")],
-                [KeyboardButton(text="ж")],
-                [KeyboardButton(text="все")],
+                [KeyboardButton(text="В основном женщины")],
+                [KeyboardButton(text="В основном мужчины")],
+                [KeyboardButton(text="Примерно поровну")],
             ],
         ),
     )
@@ -166,38 +215,58 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
 async def handle_gender(message: Message, state: FSMContext) -> None:
     """Store audience gender."""
 
-    gender_text = (message.text or "").strip().lower()
+    gender_text = (message.text or "").strip()
     gender_map = {
-        "м": AudienceGender.MALE,
-        "ж": AudienceGender.FEMALE,
-        "все": AudienceGender.ALL,
+        "в основном женщины": AudienceGender.FEMALE,
+        "в основном мужчины": AudienceGender.MALE,
+        "примерно поровну": AudienceGender.ALL,
     }
-    if gender_text not in gender_map:
-        await message.answer("Выберите 'м', 'ж' или 'все'.")
+    key = gender_text.lower()
+    if key not in gender_map:
+        await message.answer(
+            "Выберите одну из кнопок: В основном женщины, В основном мужчины или Примерно поровну."
+        )
         return
 
-    await state.update_data(audience_gender=gender_map[gender_text])
+    await state.update_data(audience_gender=gender_map[key])
     await message.answer(
-        "Введите возрастной диапазон, например 18-35:",
-        reply_markup=support_keyboard(),
+        "Основной возраст вашей аудитории?",
+        reply_markup=with_support_keyboard(
+            keyboard=[
+                [KeyboardButton(text="до 18")],
+                [KeyboardButton(text="18–24")],
+                [KeyboardButton(text="25–34")],
+                [KeyboardButton(text="35–44")],
+                [KeyboardButton(text="45+")],
+            ],
+        ),
     )
     await state.set_state(BloggerRegistrationStates.audience_age)
 
 
+_AGE_BUTTONS: dict[str, tuple[int, int]] = {
+    "до 18": (0, 17),
+    "18–24": (18, 24),
+    "25–34": (25, 34),
+    "35–44": (35, 44),
+    "45+": (45, 99),
+}
+
+
 @router.message(BloggerRegistrationStates.audience_age)
 async def handle_age(message: Message, state: FSMContext) -> None:
-    """Store audience age range."""
+    """Store audience age from button choice."""
 
     raw = (message.text or "").strip()
-    try:
-        min_age, max_age = _parse_age_range(raw)
-    except ValueError:
-        await message.answer("Введите диапазон в формате 18-35.")
+    if raw not in _AGE_BUTTONS:
+        await message.answer("Выберите одну из кнопок возраста.")
         return
 
+    min_age, max_age = _AGE_BUTTONS[raw]
     await state.update_data(audience_age_min=min_age, audience_age_max=max_age)
     await message.answer(
-        "Введите географию ЦА (страна / город):",
+        "Где находится основная аудитория? Укажите до 3 городов через запятую: "
+        "Москва, Казань, Санкт‑Петербург",
         reply_markup=support_keyboard(),
     )
     await state.set_state(BloggerRegistrationStates.audience_geo)
@@ -205,16 +274,22 @@ async def handle_age(message: Message, state: FSMContext) -> None:
 
 @router.message(BloggerRegistrationStates.audience_geo)
 async def handle_geo(message: Message, state: FSMContext) -> None:
-    """Store audience geography."""
+    """Store audience geography (up to 3 cities)."""
 
     geo = (message.text or "").strip()
     if not geo:
-        await message.answer("География не может быть пустой. Введите снова:")
+        await message.answer("Укажите хотя бы один город. Введите снова:")
+        return
+
+    cities = [c.strip() for c in geo.split(",") if c.strip()]
+    if len(cities) > 3:
+        await message.answer("Укажите не более 3 городов через запятую.")
         return
 
     await state.update_data(audience_geo=geo)
     await message.answer(
-        "Введите цену за 1 UGC-видео:", reply_markup=support_keyboard()
+        "Сколько стоит 1 UGC‑видео? Укажите цену в рублях: 500, 1000, 2000",
+        reply_markup=support_keyboard(),
     )
     await state.set_state(BloggerRegistrationStates.price)
 
@@ -227,7 +302,7 @@ async def handle_price(message: Message, state: FSMContext) -> None:
     try:
         price = float(raw)
     except ValueError:
-        await message.answer("Введите число, например 1500.")
+        await message.answer("Введите число, например 500, 1000, 2000.")
         return
 
     if price <= 0:
@@ -236,8 +311,78 @@ async def handle_price(message: Message, state: FSMContext) -> None:
 
     await state.update_data(price=price)
     await message.answer(
-        "Подтвердите согласие с офертой и политиками: напишите 'Согласен'.",
-        reply_markup=support_keyboard(),
+        "Иногда вы готовы работать с брендами по бартеру?",
+        reply_markup=with_support_keyboard(
+            keyboard=[
+                [KeyboardButton(text="Да")],
+                [KeyboardButton(text="Нет")],
+            ],
+        ),
+    )
+    await state.set_state(BloggerRegistrationStates.barter)
+
+
+@router.message(BloggerRegistrationStates.barter)
+async def handle_barter(message: Message, state: FSMContext) -> None:
+    """Store barter preference."""
+
+    text = (message.text or "").strip().lower()
+    if text == "да":
+        barter = True
+    elif text == "нет":
+        barter = False
+    else:
+        await message.answer("Выберите Да или Нет.")
+        return
+
+    await state.update_data(barter=barter)
+    await message.answer(
+        "Помимо UGC, как ещё вы готовы работать с брендами?",
+        reply_markup=with_support_keyboard(
+            keyboard=[
+                [KeyboardButton(text="Размещать рекламу у себя в аккаунте")],
+                [KeyboardButton(text="Только UGC")],
+            ],
+        ),
+    )
+    await state.set_state(BloggerRegistrationStates.work_format)
+
+
+@router.message(BloggerRegistrationStates.work_format)
+async def handle_work_format(
+    message: Message,
+    state: FSMContext,
+    config: AppConfig,
+) -> None:
+    """Store work format and show agreements step."""
+
+    text = (message.text or "").strip()
+    if text == "Размещать рекламу у себя в аккаунте":
+        work_format = WorkFormat.ADS_IN_ACCOUNT
+    elif text == "Только UGC":
+        work_format = WorkFormat.UGC_ONLY
+    else:
+        await message.answer(
+            "Выберите одну из кнопок: Размещать рекламу у себя в аккаунте или Только UGC."
+        )
+        return
+
+    await state.update_data(work_format=work_format)
+
+    offer = config.docs.docs_offer_url or "(ссылка на оферту)"
+    privacy = config.docs.docs_privacy_url or "(ссылка на политику конфиденциальности)"
+    consent = config.docs.docs_consent_url or "(ссылка на согласие на обработку ПД)"
+    agreements_text = (
+        "Пожалуйста, ознакомьтесь с документами и подтвердите согласие.\n"
+        f"Оферта: {offer}\n"
+        f"Политика конфиденциальности: {privacy}\n"
+        f"Согласие на обработку персональных данных: {consent}"
+    )
+    await message.answer(
+        agreements_text,
+        reply_markup=with_support_keyboard(
+            keyboard=[[KeyboardButton(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+        ),
     )
     await state.set_state(BloggerRegistrationStates.agreements)
 
@@ -249,16 +394,14 @@ async def handle_agreements(
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
 ) -> None:
-    """Finalize registration after agreements."""
+    """Finalize registration after user confirms agreement via button."""
 
-    agreement = (message.text or "").strip().lower()
-    if agreement != "согласен":
-        await message.answer("Нужно согласие. Напишите 'Согласен'.")
+    if (message.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
+        await message.answer("Нажмите кнопку «Подтвердить согласие».")
         return
 
     data = await state.get_data()
     try:
-        # Convert user_id from string (Redis) back to UUID if needed
         user_id_raw = data["user_id"]
         user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
         await user_role_service.set_user(
@@ -266,18 +409,20 @@ async def handle_agreements(
             messenger_type=MessengerType.TELEGRAM,
             username=data["nickname"],
         )
-        profile = await blogger_registration_service.register_blogger(
+        await blogger_registration_service.register_blogger(
             user_id=user_id,
             instagram_url=data["instagram_url"],
+            city=data["city"],
             topics=data["topics"],
             audience_gender=data["audience_gender"],
             audience_age_min=data["audience_age_min"],
             audience_age_max=data["audience_age_max"],
             audience_geo=data["audience_geo"],
             price=data["price"],
+            barter=data["barter"],
+            work_format=data["work_format"],
         )
     except Exception as exc:
-        # Check for unique constraint violation (database-level error, not application error)
         error_str = str(exc)
         if "UniqueViolation" in error_str and "instagram_url" in error_str:
             logger.warning(
@@ -292,14 +437,20 @@ async def handle_agreements(
                 "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
             )
             return
-        # Re-raise so middleware can handle BloggerRegistrationError, UserNotFoundError, and other exceptions
         raise
 
     await state.clear()
+    profile_created_text = (
+        "Профиль создан\n"
+        "Остался последний шаг — подтвердить Instagram‑аккаунт.\n"
+        "Это нужно, чтобы:\n"
+        "— защитить бренды от фейков\n"
+        "— повысить доверие к вашему профилю\n"
+        "— быстрее получать заказы"
+    )
     await message.answer(
-        "Профиль создан. Статус подтверждения Instagram: НЕ ПОДТВЕРЖДЁН.\n"
-        f"Ваш Instagram: {profile.instagram_url}",
-        reply_markup=blogger_menu_keyboard(confirmed=profile.confirmed),
+        profile_created_text,
+        reply_markup=blogger_after_registration_keyboard(),
     )
 
 

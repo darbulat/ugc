@@ -315,7 +315,7 @@ def create_test_blogger_profile(session):
 
     def _create_profile(user_id, **kwargs):
         from ugc_bot.domain.entities import BloggerProfile
-        from ugc_bot.domain.enums import AudienceGender
+        from ugc_bot.domain.enums import AudienceGender, WorkFormat
         from datetime import datetime, timezone
 
         defaults = {
@@ -326,10 +326,14 @@ def create_test_blogger_profile(session):
             "audience_geo": "Russia",
             "confirmation_code": "ABC123",
             "confirmed": True,
+            "city": "Moscow",
+            "barter": False,
+            "work_format": WorkFormat.UGC_ONLY,
             "price": 5000.0,
             "updated_at": datetime.now(timezone.utc),
         }
         defaults.update(kwargs)
+        defaults.pop("confirmation_code", None)  # not a BloggerProfile field
 
         profile = BloggerProfile(user_id=user_id, **defaults)
         return profile

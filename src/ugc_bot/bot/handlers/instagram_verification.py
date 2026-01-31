@@ -1,5 +1,6 @@
 """Instagram verification flow handlers."""
 
+import html
 import logging
 
 from aiogram import Router
@@ -13,6 +14,10 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import (
+    CONFIRM_INSTAGRAM_BUTTON_TEXT,
+    blogger_verification_sent_keyboard,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
@@ -21,8 +26,27 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+def _verification_instruction_text(admin_instagram_username: str) -> str:
+    """Instruction text without code (code sent in separate message).
+
+    Uses HTML parse mode so the URL (which may contain underscores in username)
+    does not break Telegram entity parsing.
+    """
+    base = "https://www.instagram.com/"
+    username = (admin_instagram_username or "usemycontent").lstrip("@")
+    url = f"{base}{username}/"
+    url_escaped = html.escape(url, quote=True)
+    return (
+        "<b>Чтобы подтвердить Instagram‑аккаунт, сделайте 2 шага:</b>\n\n"
+        "1) Скопируйте код ниже\n"
+        "2) Отправьте его в личные сообщения Instagram‑аккаунту UMC\n\n"
+        "Дождитесь автоматического подтверждения.\n\n"
+        f'Instagram UMC: <a href="{url_escaped}">{url_escaped}</a>'
+    )
+
+
 @router.message(Command("verify_instagram"))
-@router.message(lambda msg: (msg.text or "").strip() == "Пройти верификацию")
+@router.message(lambda msg: (msg.text or "").strip() == CONFIRM_INSTAGRAM_BUTTON_TEXT)
 async def start_verification(
     message: Message,
     state: FSMContext,
@@ -31,7 +55,7 @@ async def start_verification(
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
 ) -> None:
-    """Start Instagram verification flow."""
+    """Start Instagram verification flow: instruction then code in separate message."""
 
     if message.from_user is None:
         return
@@ -53,29 +77,19 @@ async def start_verification(
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
-        await message.answer("Профиль блогера не заполнен. Команда: /register")
+        await message.answer(
+            "Профиль не заполнен. Нажмите «Создать профиль» или команда: /register"
+        )
         return
 
-    # Middleware handles BloggerRegistrationError, UserNotFoundError, and other exceptions
     verification = await instagram_verification_service.generate_code(user.user_id)
     await state.clear()
-    await message.answer(
-        _verification_instruction(
-            verification.code, config.instagram.admin_instagram_username
-        ),
+
+    instruction = _verification_instruction_text(
+        config.instagram.admin_instagram_username
     )
-
-
-def _verification_instruction(code: str, admin_instagram_username: str) -> str:
-    """Format instruction for Instagram verification."""
-
-    return (
-        "Чтобы подтвердить, что Instagram-аккаунт принадлежит вам:\n\n"
-        "1️⃣ Скопируйте код ниже\n"
-        "2️⃣ Отправьте его в личные сообщения (Direct) Instagram-аккаунта администратора\n"
-        "3️⃣ Дождитесь автоматического подтверждения\n\n"
-        f"Ваш код: {code}\n\n"
-        f"Admin Instagram: {admin_instagram_username}\n\n"
-        "⚠️ Код действует 15 минут. После истечения времени нужно будет "
-        "запросить новый код."
+    await message.answer(instruction, parse_mode="HTML")
+    await message.answer(
+        verification.code,
+        reply_markup=blogger_verification_sent_keyboard(),
     )

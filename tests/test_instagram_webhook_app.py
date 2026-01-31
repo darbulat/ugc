@@ -14,7 +14,7 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
 from ugc_bot.instagram_webhook_app import (
     _notify_user_verification_success,
     _verify_signature,
@@ -141,12 +141,15 @@ async def test_notify_user_verification_success(test_config: AppConfig) -> None:
             user_id=user.user_id,
             instagram_url="https://instagram.com/test_user",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=None,
         )
     )
@@ -270,12 +273,15 @@ async def test_webhook_event_processing_success(
             user_id=user.user_id,
             instagram_url="https://instagram.com/test_user",
             confirmed=False,
+            city="Moscow",
             topics={"selected": ["fitness"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=None,
         )
     )

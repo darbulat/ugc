@@ -14,7 +14,7 @@ def test_blogger_menu_keyboard_not_confirmed() -> None:
 
     assert keyboard.keyboard is not None
     assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[0][0].text == "Пройти верификацию"
+    assert keyboard.keyboard[0][0].text == "Подтвердить Instagram"
     assert keyboard.keyboard[1][0].text == "Мой профиль"
 
 

@@ -13,6 +13,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
@@ -65,12 +66,15 @@ async def test_dispatch_selects_confirmed_bloggers() -> None:
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
     )
@@ -121,12 +125,15 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
             user_id=blogger.user_id,
             instagram_url="https://instagram.com/blogger_tm",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
     )
@@ -201,12 +208,15 @@ async def test_dispatch_skips_ineligible_bloggers() -> None:
             user_id=UUID("00000000-0000-0000-0000-000000000622"),
             instagram_url="https://instagram.com/ghost",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
     )
@@ -227,12 +237,15 @@ async def test_dispatch_skips_ineligible_bloggers() -> None:
             user_id=UUID("00000000-0000-0000-0000-000000000623"),
             instagram_url="https://instagram.com/advertiser",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
     )
@@ -319,12 +332,15 @@ async def test_dispatch_excludes_order_author() -> None:
             user_id=advertiser_id,
             instagram_url="https://instagram.com/advertiser",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
     )
@@ -345,12 +361,15 @@ async def test_dispatch_excludes_order_author() -> None:
             user_id=other_blogger.user_id,
             instagram_url="https://instagram.com/other",
             confirmed=True,
+            city="Moscow",
             topics={"selected": ["tech"]},
             audience_gender=AudienceGender.ALL,
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
             price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
         )
     )

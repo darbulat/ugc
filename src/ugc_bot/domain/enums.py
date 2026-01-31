@@ -28,6 +28,13 @@ class AudienceGender(StrEnum):
     ALL = "all"
 
 
+class WorkFormat(StrEnum):
+    """Creator work format with brands."""
+
+    ADS_IN_ACCOUNT = "ads_in_account"
+    UGC_ONLY = "ugc_only"
+
+
 class OrderStatus(StrEnum):
     """Order lifecycle status."""
 

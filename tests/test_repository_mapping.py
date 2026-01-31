@@ -9,6 +9,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.db.repositories import (
     _to_blogger_profile_entity,
@@ -48,12 +49,15 @@ def test_blogger_profile_mapping_roundtrip() -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000011"),
         instagram_url="https://instagram.com/test_user",
         confirmed=False,
+        city="Moscow",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
         audience_age_max=35,
         audience_geo="Moscow",
         price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
     )
 
