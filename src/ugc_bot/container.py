@@ -173,6 +173,7 @@ class Container:
             blogger_repo=repos["blogger_repo"],
             verification_repo=repos["instagram_repo"],
             instagram_api_client=instagram_api_client,
+            transaction_manager=self._transaction_manager,
         )
 
     def build_metrics_collector(self) -> MetricsCollector:
