@@ -2,43 +2,63 @@
 
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard
+from ugc_bot.bot.handlers.keyboards import (
+    CHANGE_ROLE_BUTTON_TEXT,
+    SUPPORT_BUTTON_TEXT,
+    main_menu_keyboard,
+)
 from ugc_bot.domain.enums import MessengerType
-
 
 router = Router()
 
+START_TEXT = "UMC — сервис для UGC.\n" "Бизнесу — подбор креаторов, креаторам — заказы."
+
+SUPPORT_RESPONSE_TEXT = (
+    "Служба поддержки: @usemycontent\n" "Обращайтесь по любым вопросам!"
+)
+
+CREATOR_LABEL = "Я креатор"
+ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
+
 
 @router.message(CommandStart())
-async def start_command(message: Message) -> None:
+async def start_command(message: Message, user_role_service: UserRoleService) -> None:
     """Handle the /start command."""
 
-    response_text = (
-        "🎉 Добро пожаловать в UMC!\n\n"
-        "Мы помогаем рекламодателям быстро находить подходящих блогеров, "
-        "а блогерам — получать релевантные рекламные предложения.\n\n"
-        "Выберите подходящий вариант ниже:"
+    if message.from_user is None:
+        return
+
+    external_id = str(message.from_user.id)
+    username = message.from_user.username or message.from_user.first_name or "user"
+
+    await user_role_service.set_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username=username,
+        role_chosen=False,
     )
-    await message.answer(response_text, reply_markup=_role_keyboard())
+    await message.answer(START_TEXT, reply_markup=_role_keyboard())
 
 
 @router.message(Command("role"))
 async def role_command(message: Message) -> None:
     """Handle the /role command for role switching."""
 
-    response_text = (
-        "🎉 Добро пожаловать в UMC!\n\n"
-        "Мы помогаем рекламодателям быстро находить подходящих блогеров, "
-        "а блогерам — получать релевантные рекламные предложения.\n\n"
-        "Выберите подходящий вариант ниже:"
-    )
-    await message.answer(response_text, reply_markup=_role_keyboard())
+    await message.answer(START_TEXT, reply_markup=_role_keyboard())
 
 
-@router.message(lambda msg: msg.text in {"Я блогер", "Хочу заказать рекламу"})
+@router.message(lambda msg: msg.text == CHANGE_ROLE_BUTTON_TEXT)
+async def change_role_button(message: Message) -> None:
+    """Handle 'Смена роли' button — show start screen again."""
+
+    await message.answer(START_TEXT, reply_markup=_role_keyboard())
+
+
+@router.message(lambda msg: msg.text in {CREATOR_LABEL, ADVERTISER_LABEL})
 async def choose_role(message: Message, user_role_service: UserRoleService) -> None:
     """Persist selected role and guide the user."""
 
@@ -53,27 +73,50 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
         external_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
         username=username,
+        role_chosen=True,
     )
 
-    if text == "Я блогер":
+    if text == CREATOR_LABEL:
         await message.answer(
             "Role saved. To register as a blogger, send /register.",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=[
-                    [KeyboardButton(text="/register")],
-                    [KeyboardButton(text="Мой профиль")],
-                ],
-                resize_keyboard=True,
-            ),
+            reply_markup=main_menu_keyboard(),
         )
         return
 
-    if text == "Хочу заказать рекламу":
+    if text == ADVERTISER_LABEL:
         await message.answer(
             "Role saved. To register as an advertiser, send /register_advertiser.",
-            reply_markup=advertiser_menu_keyboard(),
+            reply_markup=main_menu_keyboard(),
         )
         return
+
+
+@router.message(lambda msg: (msg.text or "").strip() == SUPPORT_BUTTON_TEXT)
+async def support_button(
+    message: Message,
+    user_role_service: UserRoleService,
+    state: FSMContext,
+) -> None:
+    """Handle Support button: clear FSM if needed, send support text, mark role chosen."""
+
+    if message.from_user is None:
+        return
+
+    await state.clear()
+
+    external_id = str(message.from_user.id)
+    username = message.from_user.username or message.from_user.first_name or "user"
+
+    await user_role_service.set_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username=username,
+        role_chosen=True,
+    )
+    await message.answer(
+        SUPPORT_RESPONSE_TEXT,
+        reply_markup=main_menu_keyboard(),
+    )
 
 
 def _role_keyboard() -> ReplyKeyboardMarkup:
@@ -81,8 +124,9 @@ def _role_keyboard() -> ReplyKeyboardMarkup:
 
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Я блогер")],
-            [KeyboardButton(text="Хочу заказать рекламу")],
+            [KeyboardButton(text=CREATOR_LABEL)],
+            [KeyboardButton(text=ADVERTISER_LABEL)],
+            [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,

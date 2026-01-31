@@ -2,29 +2,46 @@
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
+SUPPORT_BUTTON_TEXT = "Поддержка"
+CHANGE_ROLE_BUTTON_TEXT = "Смена роли"
 
-def cancel_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
-    """Build a reply keyboard with a cancel button."""
+
+def support_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
+    """Build a reply keyboard with a support button."""
 
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Отменить")]],
+        keyboard=[[KeyboardButton(text=SUPPORT_BUTTON_TEXT)]],
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,
     )
 
 
-def with_cancel_keyboard(
+def with_support_keyboard(
     keyboard: list[list[KeyboardButton]],
     one_time_keyboard: bool = True,
 ) -> ReplyKeyboardMarkup:
-    """Build a reply keyboard with a cancel button appended."""
+    """Build a reply keyboard with a support button appended."""
 
     combined = list(keyboard)
-    combined.append([KeyboardButton(text="Отменить")])
+    combined.append([KeyboardButton(text=SUPPORT_BUTTON_TEXT)])
     return ReplyKeyboardMarkup(
         keyboard=combined,
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,
+    )
+
+
+def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Build a persistent main menu keyboard (Support, Change role)."""
+
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
+            [KeyboardButton(text=CHANGE_ROLE_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        one_time_keyboard=False,
     )
 
 

@@ -34,6 +34,12 @@ _FLAT_KEYS = {
         "FEEDBACK_POLL_INTERVAL_SECONDS",
         "FEEDBACK_ENABLED",
     ],
+    "role_reminder": [
+        "ROLE_REMINDER_ENABLED",
+        "ROLE_REMINDER_HOUR",
+        "ROLE_REMINDER_MINUTE",
+        "ROLE_REMINDER_TIMEZONE",
+    ],
     "redis": ["REDIS_URL", "USE_REDIS_STORAGE"],
     "instagram": [
         "INSTAGRAM_WEBHOOK_VERIFY_TOKEN",
@@ -133,6 +139,17 @@ class FeedbackConfig(BaseSettings):
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
 
 
+class RoleReminderConfig(BaseSettings):
+    model_config = _ENV
+
+    role_reminder_enabled: bool = Field(default=True, alias="ROLE_REMINDER_ENABLED")
+    role_reminder_hour: int = Field(default=10, alias="ROLE_REMINDER_HOUR")
+    role_reminder_minute: int = Field(default=0, alias="ROLE_REMINDER_MINUTE")
+    role_reminder_timezone: str = Field(
+        default="Europe/Moscow", alias="ROLE_REMINDER_TIMEZONE"
+    )
+
+
 class RedisConfig(BaseSettings):
     model_config = _ENV
 
@@ -170,6 +187,7 @@ class AppConfig(BaseModel):
     admin: AdminConfig
     kafka: KafkaConfig
     feedback: FeedbackConfig
+    role_reminder: RoleReminderConfig
     redis: RedisConfig
     instagram: InstagramConfig
 
@@ -186,6 +204,7 @@ class AppConfig(BaseModel):
             "admin": AdminConfig.model_validate(nested["admin"]),
             "kafka": KafkaConfig.model_validate(nested["kafka"]),
             "feedback": FeedbackConfig.model_validate(nested["feedback"]),
+            "role_reminder": RoleReminderConfig.model_validate(nested["role_reminder"]),
             "redis": RedisConfig.model_validate(nested["redis"]),
             "instagram": InstagramConfig.model_validate(nested["instagram"]),
         }

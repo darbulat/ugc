@@ -169,3 +169,64 @@ async def test_update_status_with_transaction_manager(fake_tm: object) -> None:
     )
     updated = await service.update_status(user.user_id, UserStatus.BLOCKED)
     assert updated.status == UserStatus.BLOCKED
+
+
+@pytest.mark.asyncio
+async def test_set_user_role_chosen_sets_role_chosen_at() -> None:
+    """set_user with role_chosen=True sets role_chosen_at."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+
+    user = await service.set_user(
+        external_id="rc-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        role_chosen=True,
+    )
+    assert user.role_chosen_at is not None
+
+
+@pytest.mark.asyncio
+async def test_list_pending_role_reminders_returns_users_without_role_chosen(
+    fake_tm: object,
+) -> None:
+    """list_pending_role_reminders returns users with role_chosen_at None."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    await service.set_user(
+        external_id="p1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u1",
+        role_chosen=False,
+    )
+    await service.set_user(
+        external_id="p2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u2",
+        role_chosen=True,
+    )
+    cutoff = datetime.now(timezone.utc)
+    pending = await service.list_pending_role_reminders(cutoff)
+    external_ids = {u.external_id for u in pending}
+    assert "p1" in external_ids
+    assert "p2" not in external_ids
+
+
+@pytest.mark.asyncio
+async def test_update_last_role_reminder_at(fake_tm: object) -> None:
+    """update_last_role_reminder_at sets last_role_reminder_at."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    user = await service.set_user(
+        external_id="rem-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        role_chosen=False,
+    )
+    await service.update_last_role_reminder_at(user.user_id)
+    updated = await service.get_user_by_id(user.user_id)
+    assert updated is not None
+    assert updated.last_role_reminder_at is not None

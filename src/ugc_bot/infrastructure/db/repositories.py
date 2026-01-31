@@ -131,6 +131,22 @@ class SqlAlchemyUserRepository(UserRepository):
         model = _to_user_model(user)
         await db_session.merge(model)
 
+    async def list_pending_role_reminders(
+        self, reminder_cutoff: datetime, session: object | None = None
+    ) -> Iterable[User]:
+        """List users who have not chosen a role and are due for a reminder."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(UserModel).where(
+                UserModel.role_chosen_at.is_(None),
+                (UserModel.last_role_reminder_at.is_(None))
+                | (UserModel.last_role_reminder_at < reminder_cutoff),
+            )
+        )
+        results = exec_result.scalars().all()
+        return [_to_user_entity(row) for row in results]
+
 
 @dataclass(slots=True)
 class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
@@ -608,6 +624,8 @@ def _to_user_entity(model: UserModel) -> User:
         status=model.status,
         issue_count=model.issue_count,
         created_at=model.created_at,
+        role_chosen_at=model.role_chosen_at,
+        last_role_reminder_at=model.last_role_reminder_at,
     )
 
 
@@ -622,6 +640,8 @@ def _to_user_model(user: User) -> UserModel:
         status=user.status,
         issue_count=user.issue_count,
         created_at=user.created_at,
+        role_chosen_at=user.role_chosen_at,
+        last_role_reminder_at=user.last_role_reminder_at,
     )
 
 

@@ -75,6 +75,21 @@ class InMemoryUserRepository(UserRepository):
         self.users[user.user_id] = user
         self.external_index[(user.external_id, user.messenger_type)] = user.user_id
 
+    async def list_pending_role_reminders(
+        self, reminder_cutoff: datetime, session: object | None = None
+    ) -> Iterable[User]:
+        """List users who have not chosen a role and are due for a reminder."""
+
+        return [
+            u
+            for u in self.users.values()
+            if u.role_chosen_at is None
+            and (
+                u.last_role_reminder_at is None
+                or u.last_role_reminder_at < reminder_cutoff
+            )
+        ]
+
     async def iter_all(self) -> Iterable[User]:
         """Iterate all users."""
 

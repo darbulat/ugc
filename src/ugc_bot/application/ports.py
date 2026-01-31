@@ -53,6 +53,12 @@ class UserRepository(ABC):
     async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user."""
 
+    @abstractmethod
+    async def list_pending_role_reminders(
+        self, reminder_cutoff: datetime, session: object | None = None
+    ) -> Iterable[User]:
+        """List users who have not chosen a role and are due for a reminder."""
+
     async def iter_all(self) -> Iterable[User]:
         """Iterate all users (optional)."""
 

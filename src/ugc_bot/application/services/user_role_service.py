@@ -35,15 +35,29 @@ class UserRoleService:
         external_id: str,
         messenger_type: MessengerType,
         username: str,
+        role_chosen: bool = False,
     ) -> User:
-        """Create or update a user."""
+        """Create or update a user.
+
+        Args:
+            external_id: External messenger id.
+            messenger_type: Messenger type.
+            username: Display username.
+            role_chosen: If True, set role_chosen_at to now when still unset.
+        """
 
         async def _run(session: object | None) -> User:
             existing = await self.user_repo.get_by_external(
                 external_id, messenger_type, session=session
             )
+            now = datetime.now(timezone.utc)
             if existing:
                 status = existing.status
+                role_chosen_at = (
+                    now
+                    if role_chosen and existing.role_chosen_at is None
+                    else existing.role_chosen_at
+                )
                 updated = User(
                     user_id=existing.user_id,
                     external_id=existing.external_id,
@@ -52,11 +66,14 @@ class UserRoleService:
                     status=status,
                     issue_count=existing.issue_count,
                     created_at=existing.created_at,
+                    role_chosen_at=role_chosen_at,
+                    last_role_reminder_at=existing.last_role_reminder_at,
                 )
                 await self.user_repo.save(updated, session=session)
                 return updated
 
             status = UserStatus.ACTIVE
+            role_chosen_at = now if role_chosen else None
             new_user = User(
                 user_id=uuid4(),
                 external_id=external_id,
@@ -64,7 +81,9 @@ class UserRoleService:
                 username=username,
                 status=status,
                 issue_count=0,
-                created_at=datetime.now(timezone.utc),
+                created_at=now,
+                role_chosen_at=role_chosen_at,
+                last_role_reminder_at=None,
             )
             await self.user_repo.save(new_user, session=session)
             return new_user
@@ -120,6 +139,8 @@ class UserRoleService:
                 status=status,
                 issue_count=user.issue_count,
                 created_at=user.created_at,
+                role_chosen_at=user.role_chosen_at,
+                last_role_reminder_at=user.last_role_reminder_at,
             )
             await self.user_repo.save(updated, session=session)
             return (updated, user)
@@ -166,6 +187,8 @@ class UserRoleService:
             status=status,
             issue_count=0,
             created_at=datetime.now(timezone.utc),
+            role_chosen_at=None,
+            last_role_reminder_at=None,
         )
 
         async def _run(session: object | None) -> User:
@@ -173,3 +196,40 @@ class UserRoleService:
             return new_user
 
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def list_pending_role_reminders(
+        self, reminder_cutoff: datetime
+    ) -> list[User]:
+        """List users who have not chosen a role and are due for a reminder."""
+
+        async def _run(session: object | None) -> list[User]:
+            return list(
+                await self.user_repo.list_pending_role_reminders(
+                    reminder_cutoff, session=session
+                )
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def update_last_role_reminder_at(self, user_id: UUID) -> None:
+        """Set last_role_reminder_at to now for the user."""
+
+        async def _run(session: object | None) -> None:
+            user = await self.user_repo.get_by_id(user_id, session=session)
+            if user is None:
+                return
+            now = datetime.now(timezone.utc)
+            updated = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=user.username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                role_chosen_at=user.role_chosen_at,
+                last_role_reminder_at=now,
+            )
+            await self.user_repo.save(updated, session=session)
+
+        await with_optional_tx(self.transaction_manager, _run)

@@ -14,7 +14,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard, cancel_keyboard
+from ugc_bot.bot.handlers.keyboards import advertiser_menu_keyboard, support_keyboard
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
@@ -56,7 +56,7 @@ async def start_advertiser_registration(
     await state.update_data(user_id=user.user_id)
     await message.answer(
         "Введите контактные данные для связи:",
-        reply_markup=cancel_keyboard(),
+        reply_markup=support_keyboard(),
     )
     await state.set_state(AdvertiserRegistrationStates.contact)
 
@@ -73,7 +73,7 @@ async def handle_contact(
     if not contact:
         await message.answer(
             "Контакт не может быть пустым. Введите снова:",
-            reply_markup=cancel_keyboard(),
+            reply_markup=support_keyboard(),
         )
         return
 

@@ -1,31 +1,47 @@
-"""Tests for cancel handler."""
+"""Tests for Support button (replaces former cancel handler)."""
 
 import pytest
 
-from ugc_bot.bot.handlers.cancel import cancel_button, cancel_command
-from tests.helpers.fakes import FakeFSMContext, FakeMessage
+from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.start import support_button
+from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
 
 
 @pytest.mark.asyncio
-async def test_cancel_command_clears_state() -> None:
-    """Cancel command clears state."""
+async def test_support_button_sends_support_text_and_menu(user_repo) -> None:
+    """Support button sends support text and main menu keyboard."""
 
-    message = FakeMessage(text="/cancel")
-    state = FakeFSMContext(state="some")
-    await cancel_command(message, state)
+    service = UserRoleService(user_repo=user_repo)
+    message = FakeMessage(text="Поддержка", user=FakeUser(1, "u", "User"))
+    state = FakeFSMContext(state=None)
+
+    await support_button(message, user_role_service=service, state=state)
+
+    assert message.answers
+    text = (
+        message.answers[0][0]
+        if isinstance(message.answers[0], tuple)
+        else message.answers[0]
+    )
+    assert "Служба поддержки" in text
+    assert "@usemycontent" in text
+    assert "Обращайтесь по любым вопросам" in text
+
+
+@pytest.mark.asyncio
+async def test_support_button_clears_state_when_in_fsm(user_repo) -> None:
+    """Support button clears FSM state and shows support."""
+
+    service = UserRoleService(user_repo=user_repo)
+    message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
+    state = FakeFSMContext(state="OrderCreationStates:product_link")
+
+    await support_button(message, user_role_service=service, state=state)
 
     assert state.cleared is True
-    ans = message.answers[0]
-    assert "Ввод отменен" in (ans if isinstance(ans, str) else ans[0])
-
-
-@pytest.mark.asyncio
-async def test_cancel_button_no_state() -> None:
-    """Cancel button notifies when nothing to cancel."""
-
-    message = FakeMessage(text="Отменить")
-    state = FakeFSMContext(state=None)
-    await cancel_button(message, state)
-
-    ans = message.answers[0]
-    assert "Нечего отменять" in (ans if isinstance(ans, str) else ans[0])
+    text = (
+        message.answers[0][0]
+        if isinstance(message.answers[0], tuple)
+        else message.answers[0]
+    )
+    assert "Служба поддержки" in text

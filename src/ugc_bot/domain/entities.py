@@ -29,6 +29,8 @@ class User:
     status: UserStatus
     issue_count: int
     created_at: datetime
+    role_chosen_at: Optional[datetime] = None
+    last_role_reminder_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

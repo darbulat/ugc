@@ -8,7 +8,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 
 # Services are built via Container.build_bot_services()
-from ugc_bot.bot.handlers.cancel import router as cancel_router
 from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.handlers.advertiser_registration import (
     router as advertiser_router,
@@ -119,7 +118,6 @@ def build_dispatcher(
     for key, service in services.items():
         dispatcher[key] = service
     if include_routers:
-        dispatcher.include_router(cancel_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(blogger_router)
         dispatcher.include_router(advertiser_router)
