@@ -14,6 +14,7 @@ from ugc_bot.application.ports import (
     BloggerProfileRepository,
     ComplaintRepository,
     ContactPricingRepository,
+    FsmDraftRepository,
     InstagramVerificationRepository,
     InteractionRepository,
     OfferBroadcaster,
@@ -28,6 +29,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    FsmDraft,
     InstagramVerificationCode,
     Interaction,
     Order,
@@ -49,6 +51,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
     ContactPricingModel,
+    FsmDraftModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     OrderModel,
@@ -56,6 +59,10 @@ from ugc_bot.infrastructure.db.models import (
     OutboxEventModel,
     PaymentModel,
     UserModel,
+)
+from ugc_bot.infrastructure.fsm_draft_serializer import (
+    deserialize_fsm_data,
+    serialize_fsm_data,
 )
 
 
@@ -1112,4 +1119,81 @@ def _to_complaint_model(complaint: Complaint) -> ComplaintModel:
         status=complaint.status,
         created_at=complaint.created_at,
         reviewed_at=complaint.reviewed_at,
+    )
+
+
+@dataclass(slots=True)
+class SqlAlchemyFsmDraftRepository(FsmDraftRepository):
+    """SQLAlchemy-backed FSM draft repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def save(
+        self,
+        user_id: UUID,
+        flow_type: str,
+        state_key: str,
+        data: dict,
+        session: object | None = None,
+    ) -> None:
+        """Save or overwrite draft for user and flow type."""
+
+        db_session = _get_async_session(session)
+        serialized = serialize_fsm_data(data)
+        model = FsmDraftModel(
+            user_id=user_id,
+            flow_type=flow_type,
+            state_key=state_key,
+            data=serialized,
+        )
+        await db_session.merge(model)
+
+    async def get(
+        self,
+        user_id: UUID,
+        flow_type: str,
+        session: object | None = None,
+    ) -> Optional[FsmDraft]:
+        """Get draft for user and flow type, or None."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(FsmDraftModel).where(
+                FsmDraftModel.user_id == user_id,
+                FsmDraftModel.flow_type == flow_type,
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_fsm_draft_entity(result, flow_type) if result else None
+
+    async def delete(
+        self,
+        user_id: UUID,
+        flow_type: str,
+        session: object | None = None,
+    ) -> None:
+        """Delete draft for user and flow type."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(FsmDraftModel).where(
+                FsmDraftModel.user_id == user_id,
+                FsmDraftModel.flow_type == flow_type,
+            )
+        )
+        model = exec_result.scalar_one_or_none()
+        if model is not None:
+            await db_session.delete(model)
+
+
+def _to_fsm_draft_entity(model: FsmDraftModel, flow_type: str) -> FsmDraft:
+    """Map FSM draft ORM model to domain entity with deserialized data."""
+
+    data = deserialize_fsm_data(dict(model.data), flow_type)
+    return FsmDraft(
+        user_id=model.user_id,
+        flow_type=model.flow_type,
+        state_key=model.state_key,
+        data=data,
+        updated_at=model.updated_at,
     )

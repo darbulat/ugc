@@ -10,6 +10,24 @@ CREATE_ORDER_BUTTON_TEXT = "➕ Создать заказ"
 CONFIRM_INSTAGRAM_BUTTON_TEXT = "Подтвердить Instagram"
 CONFIRM_AGREEMENT_BUTTON_TEXT = "Подтвердить согласие"
 EDIT_PROFILE_BUTTON_TEXT = "Редактировать профиль"
+RESUME_DRAFT_BUTTON_TEXT = "Продолжить"
+START_OVER_BUTTON_TEXT = "Начать заново"
+
+DRAFT_QUESTION_TEXT = "У вас есть черновик. Продолжить?"
+DRAFT_RESTORED_TEXT = "Черновик восстановлен."
+
+
+def draft_choice_keyboard() -> ReplyKeyboardMarkup:
+    """Keyboard for draft restore: Continue or Start over."""
+
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=RESUME_DRAFT_BUTTON_TEXT)],
+            [KeyboardButton(text=START_OVER_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
 
 
 def support_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:

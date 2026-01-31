@@ -349,6 +349,24 @@ class PaymentModel(Base):
     )
 
 
+class FsmDraftModel(Base):
+    """FSM draft ORM model for saving partial form data when user clicks Support."""
+
+    __tablename__ = "fsm_drafts"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    flow_type: Mapped[str] = mapped_column(String(64), primary_key=True)
+    state_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class OutboxEventModel(Base):
     """Outbox event ORM model for reliable event publishing."""
 

@@ -17,6 +17,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    FsmDraft,
     InstagramVerificationCode,
     Interaction,
     Order,
@@ -388,6 +389,39 @@ class ComplaintRepository(ABC):
         self, status: "ComplaintStatus", session: object | None = None
     ) -> Iterable[Complaint]:
         """List complaints by status."""
+
+
+class FsmDraftRepository(ABC):
+    """Port for FSM draft persistence (partial form data saved on Support)."""
+
+    @abstractmethod
+    async def save(
+        self,
+        user_id: UUID,
+        flow_type: str,
+        state_key: str,
+        data: dict,
+        session: object | None = None,
+    ) -> None:
+        """Save or overwrite draft for user and flow type."""
+
+    @abstractmethod
+    async def get(
+        self,
+        user_id: UUID,
+        flow_type: str,
+        session: object | None = None,
+    ) -> Optional[FsmDraft]:
+        """Get draft for user and flow type, or None."""
+
+    @abstractmethod
+    async def delete(
+        self,
+        user_id: UUID,
+        flow_type: str,
+        session: object | None = None,
+    ) -> None:
+        """Delete draft for user and flow type."""
 
 
 class TransactionManager(Protocol):

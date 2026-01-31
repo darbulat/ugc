@@ -13,12 +13,19 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
 from ugc_bot.bot.handlers.keyboards import (
     EDIT_PROFILE_BUTTON_TEXT,
+    DRAFT_QUESTION_TEXT,
+    DRAFT_RESTORED_TEXT,
+    RESUME_DRAFT_BUTTON_TEXT,
+    START_OVER_BUTTON_TEXT,
     advertiser_menu_keyboard,
     blogger_profile_view_keyboard,
+    draft_choice_keyboard,
     support_keyboard,
     with_support_keyboard,
 )
@@ -56,9 +63,13 @@ _AGE_BUTTONS: dict[str, tuple[int, int]] = {
 }
 
 
+EDIT_PROFILE_FLOW_TYPE = "edit_profile"
+
+
 class EditProfileStates(StatesGroup):
     """States for editing blogger profile."""
 
+    choosing_draft_restore = State()
     choosing_field = State()
     entering_value = State()
 
@@ -165,8 +176,9 @@ async def edit_profile_start(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
-    """Show field selection for profile edit."""
+    """Show field selection for profile edit, or draft restore choice."""
 
     if message.from_user is None:
         return
@@ -187,11 +199,69 @@ async def edit_profile_start(
     await state.update_data(
         edit_user_id=user.user_id, edit_external_id=str(message.from_user.id)
     )
+    draft = await fsm_draft_service.get_draft(user.user_id, EDIT_PROFILE_FLOW_TYPE)
+    if draft is not None:
+        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await state.set_state(EditProfileStates.choosing_draft_restore)
+        return
     await message.answer(
         "Выберите раздел для редактирования:",
         reply_markup=_edit_field_keyboard(),
     )
     await state.set_state(EditProfileStates.choosing_field)
+
+
+@router.message(EditProfileStates.choosing_draft_restore)
+async def edit_profile_draft_choice(
+    message: Message,
+    state: FSMContext,
+    profile_service: ProfileService,
+    fsm_draft_service: FsmDraftService,
+) -> None:
+    """Handle Continue or Start over when edit profile draft exists."""
+
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    user_id_raw = data.get("edit_user_id")
+    if user_id_raw is None:
+        await state.clear()
+        await message.answer("Сессия истекла. Откройте «Мой профиль» снова.")
+        return
+    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+
+    if text == RESUME_DRAFT_BUTTON_TEXT:
+        draft = await fsm_draft_service.get_draft(user_id, EDIT_PROFILE_FLOW_TYPE)
+        if draft is None:
+            await message.answer("Черновик уже использован. Выберите раздел.")
+            await message.answer(
+                "Выберите раздел для редактирования:",
+                reply_markup=_edit_field_keyboard(),
+            )
+            await state.set_state(EditProfileStates.choosing_field)
+            return
+        await fsm_draft_service.delete_draft(user_id, EDIT_PROFILE_FLOW_TYPE)
+        await state.update_data(**draft.data)
+        await state.set_state(draft.state_key)
+        prompt = get_draft_prompt(draft.state_key, draft.data)
+        await message.answer(
+            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
+            reply_markup=support_keyboard(),
+        )
+        return
+
+    if text == START_OVER_BUTTON_TEXT:
+        await fsm_draft_service.delete_draft(user_id, EDIT_PROFILE_FLOW_TYPE)
+        await message.answer(
+            "Выберите раздел для редактирования:",
+            reply_markup=_edit_field_keyboard(),
+        )
+        await state.set_state(EditProfileStates.choosing_field)
+        return
+
+    await message.answer(
+        "Выберите «Продолжить» или «Начать заново».",
+        reply_markup=draft_choice_keyboard(),
+    )
 
 
 @router.message(EditProfileStates.choosing_field)

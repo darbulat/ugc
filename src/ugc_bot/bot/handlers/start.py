@@ -5,6 +5,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
+from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CHANGE_ROLE_BUTTON_TEXT,
@@ -103,16 +104,49 @@ async def choose_role(message: Message, user_role_service: UserRoleService) -> N
         return
 
 
+_STATE_TO_FLOW: dict[str, str] = {
+    "BloggerRegistrationStates": "blogger_registration",
+    "AdvertiserRegistrationStates": "advertiser_registration",
+    "OrderCreationStates": "order_creation",
+    "EditProfileStates": "edit_profile",
+}
+
+
+def _flow_type_from_state(state_key: str | None) -> str | None:
+    """Return flow_type if state_key belongs to a draftable flow, else None."""
+    if not state_key or ":" not in state_key:
+        return None
+    prefix = state_key.split(":")[0]
+    return _STATE_TO_FLOW.get(prefix)
+
+
 @router.message(lambda msg: (msg.text or "").strip() == SUPPORT_BUTTON_TEXT)
 async def support_button(
     message: Message,
     user_role_service: UserRoleService,
     state: FSMContext,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
-    """Handle Support button: clear FSM if needed, send support text, mark role chosen."""
+    """Handle Support button: save draft if in a flow, clear FSM, send support text."""
 
     if message.from_user is None:
         return
+
+    state_key = await state.get_state()
+    data = await state.get_data()
+    flow_type = _flow_type_from_state(state_key)
+    if flow_type and data:
+        user = await user_role_service.get_user(
+            external_id=str(message.from_user.id),
+            messenger_type=MessengerType.TELEGRAM,
+        )
+        if user is not None:
+            await fsm_draft_service.save_draft(
+                user_id=user.user_id,
+                flow_type=flow_type,
+                state_key=state_key or "",
+                data=data,
+            )
 
     await state.clear()
 

@@ -17,7 +17,13 @@ from ugc_bot.bot.handlers.order_creation import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
-from tests.helpers.fakes import FakeBot, FakeFSMContext, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeBot,
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakeUser,
+)
 from tests.helpers.factories import create_test_advertiser_profile
 from tests.helpers.services import (
     build_contact_pricing_service,
@@ -39,7 +45,12 @@ async def test_start_order_creation_requires_role(
     state = FakeFSMContext()
 
     await start_order_creation(
-        message, state, user_service, profile_service, order_service
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        FakeFsmDraftService(),
     )
     assert "Пользователь не найден" in message.answers[0]
 
@@ -63,7 +74,12 @@ async def test_order_creation_flow_new_advertiser(
     message = FakeMessage(text=None, user=FakeUser(5, "adv", "Adv"))
     state = FakeFSMContext()
     await start_order_creation(
-        message, state, user_service, profile_service, order_service
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        FakeFsmDraftService(),
     )
     assert state._data["is_new"] is True
 
@@ -123,7 +139,12 @@ async def test_order_creation_flow_with_barter(
     message = FakeMessage(text=None, user=FakeUser(6, "adv", "Adv"))
     state = FakeFSMContext()
     await start_order_creation(
-        message, state, user_service, profile_service, order_service
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        FakeFsmDraftService(),
     )
 
     await handle_product_link(FakeMessage(text="https://example.com", user=None), state)
@@ -176,7 +197,12 @@ async def test_start_order_creation_blocked_user(
     state = FakeFSMContext()
 
     await start_order_creation(
-        message, state, user_service, profile_service, order_service
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        FakeFsmDraftService(),
     )
 
     assert "Заблокированные" in message.answers[0]

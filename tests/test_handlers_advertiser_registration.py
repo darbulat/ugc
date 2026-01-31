@@ -15,7 +15,12 @@ from ugc_bot.bot.handlers.advertiser_registration import (
 )
 from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.domain.enums import MessengerType, UserStatus
-from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakeUser,
+)
 from tests.helpers.factories import create_test_user
 from tests.helpers.services import build_profile_service
 
@@ -28,7 +33,9 @@ async def test_start_advertiser_registration_requires_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -48,7 +55,9 @@ async def test_start_advertiser_registration_sets_state(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
 
     assert state._data["user_id"] is not None
     assert state.state is not None
@@ -76,7 +85,9 @@ async def test_start_advertiser_registration_blocked_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(11, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -100,7 +111,9 @@ async def test_start_advertiser_registration_paused_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(12, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(message, state, service)
+    await start_advertiser_registration(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -164,7 +177,9 @@ async def test_handle_advertiser_start_user_not_found(
     message = FakeMessage(text="Начать", user=FakeUser(999, "x", "X"))
     state = FakeFSMContext()
 
-    await handle_advertiser_start(message, state, user_service, profile_service)
+    await handle_advertiser_start(
+        message, state, user_service, profile_service, FakeFsmDraftService()
+    )
 
     assert message.answers
     first_ans = message.answers[0]
@@ -197,7 +212,9 @@ async def test_handle_advertiser_start_shows_menu_when_profile_exists(
     message = FakeMessage(text="Начать", user=FakeUser(30, "adv", "Adv"))
     state = FakeFSMContext()
 
-    await handle_advertiser_start(message, state, user_service, profile_service)
+    await handle_advertiser_start(
+        message, state, user_service, profile_service, FakeFsmDraftService()
+    )
 
     assert message.answers
     first_ans = message.answers[0]

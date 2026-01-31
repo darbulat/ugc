@@ -10,12 +10,19 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import KeyboardButton, Message
 
 # Application errors are handled by ErrorHandlerMiddleware
-from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
+from ugc_bot.application.services.fsm_draft_service import FsmDraftService
+from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
 from ugc_bot.bot.handlers.keyboards import (
     CREATE_ORDER_BUTTON_TEXT,
+    DRAFT_QUESTION_TEXT,
+    DRAFT_RESTORED_TEXT,
+    RESUME_DRAFT_BUTTON_TEXT,
+    START_OVER_BUTTON_TEXT,
+    draft_choice_keyboard,
     support_keyboard,
     with_support_keyboard,
 )
@@ -28,10 +35,13 @@ from ugc_bot.domain.enums import MessengerType, UserStatus
 router = Router()
 logger = logging.getLogger(__name__)
 
+ORDER_FLOW_TYPE = "order_creation"
+
 
 class OrderCreationStates(StatesGroup):
     """States for order creation."""
 
+    choosing_draft_restore = State()
     product_link = State()
     offer_text = State()
     ugc_requirements = State()
@@ -49,6 +59,7 @@ async def start_order_creation(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     order_service: OrderService,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
     """Start order creation flow."""
 
@@ -78,8 +89,65 @@ async def start_order_creation(
 
     is_new = await order_service.is_new_advertiser(user.user_id)
     await state.update_data(user_id=user.user_id, is_new=is_new)
+    draft = await fsm_draft_service.get_draft(user.user_id, ORDER_FLOW_TYPE)
+    if draft is not None:
+        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await state.set_state(OrderCreationStates.choosing_draft_restore)
+        return
     await message.answer("Введите ссылку на продукт:", reply_markup=support_keyboard())
     await state.set_state(OrderCreationStates.product_link)
+
+
+@router.message(OrderCreationStates.choosing_draft_restore)
+async def order_draft_choice(
+    message: Message,
+    state: FSMContext,
+    fsm_draft_service: FsmDraftService,
+) -> None:
+    """Handle Continue or Start over when draft exists."""
+
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    user_id_raw = data.get("user_id")
+    if user_id_raw is None:
+        await state.clear()
+        await message.answer("Сессия истекла. Начните снова с «Создать заказ».")
+        return
+    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+
+    if text == RESUME_DRAFT_BUTTON_TEXT:
+        draft = await fsm_draft_service.get_draft(user_id, ORDER_FLOW_TYPE)
+        if draft is None:
+            await message.answer("Черновик уже использован. Начинаем с начала.")
+            await message.answer(
+                "Введите ссылку на продукт:",
+                reply_markup=support_keyboard(),
+            )
+            await state.set_state(OrderCreationStates.product_link)
+            return
+        await fsm_draft_service.delete_draft(user_id, ORDER_FLOW_TYPE)
+        await state.update_data(**draft.data)
+        await state.set_state(draft.state_key)
+        prompt = get_draft_prompt(draft.state_key, draft.data)
+        await message.answer(
+            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
+            reply_markup=support_keyboard(),
+        )
+        return
+
+    if text == START_OVER_BUTTON_TEXT:
+        await fsm_draft_service.delete_draft(user_id, ORDER_FLOW_TYPE)
+        await message.answer(
+            "Введите ссылку на продукт:",
+            reply_markup=support_keyboard(),
+        )
+        await state.set_state(OrderCreationStates.product_link)
+        return
+
+    await message.answer(
+        "Выберите «Продолжить» или «Начать заново».",
+        reply_markup=draft_choice_keyboard(),
+    )
 
 
 @router.message(OrderCreationStates.product_link)

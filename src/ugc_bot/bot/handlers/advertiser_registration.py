@@ -13,11 +13,18 @@ from aiogram.types import Message
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
+    DRAFT_QUESTION_TEXT,
+    DRAFT_RESTORED_TEXT,
+    RESUME_DRAFT_BUTTON_TEXT,
+    START_OVER_BUTTON_TEXT,
     advertiser_menu_keyboard,
+    draft_choice_keyboard,
     support_keyboard,
 )
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -27,9 +34,13 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+ADVERTISER_FLOW_TYPE = "advertiser_registration"
+
+
 class AdvertiserRegistrationStates(StatesGroup):
     """States for advertiser registration."""
 
+    choosing_draft_restore = State()
     name = State()
     phone = State()
     brand = State()
@@ -50,6 +61,7 @@ async def handle_advertiser_start(
     state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
     """Handle 'Начать' after advertiser role: show menu if profile exists, else start registration."""
 
@@ -79,6 +91,11 @@ async def handle_advertiser_start(
         return
 
     await state.update_data(user_id=user.user_id)
+    draft = await fsm_draft_service.get_draft(user.user_id, ADVERTISER_FLOW_TYPE)
+    if draft is not None:
+        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await state.set_state(AdvertiserRegistrationStates.choosing_draft_restore)
+        return
     await _ask_name(message, state)
 
 
@@ -87,6 +104,7 @@ async def start_advertiser_registration(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
     """Start advertiser registration flow."""
 
@@ -108,7 +126,56 @@ async def start_advertiser_registration(
         return
 
     await state.update_data(user_id=user.user_id)
+    draft = await fsm_draft_service.get_draft(user.user_id, ADVERTISER_FLOW_TYPE)
+    if draft is not None:
+        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await state.set_state(AdvertiserRegistrationStates.choosing_draft_restore)
+        return
     await _ask_name(message, state)
+
+
+@router.message(AdvertiserRegistrationStates.choosing_draft_restore)
+async def advertiser_draft_choice(
+    message: Message,
+    state: FSMContext,
+    fsm_draft_service: FsmDraftService,
+) -> None:
+    """Handle Continue or Start over when draft exists."""
+
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    user_id_raw = data.get("user_id")
+    if user_id_raw is None:
+        await state.clear()
+        await message.answer("Сессия истекла. Начните снова.")
+        return
+    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+
+    if text == RESUME_DRAFT_BUTTON_TEXT:
+        draft = await fsm_draft_service.get_draft(user_id, ADVERTISER_FLOW_TYPE)
+        if draft is None:
+            await message.answer("Черновик уже использован. Начинаем с начала.")
+            await _ask_name(message, state)
+            return
+        await fsm_draft_service.delete_draft(user_id, ADVERTISER_FLOW_TYPE)
+        await state.update_data(**draft.data)
+        await state.set_state(draft.state_key)
+        prompt = get_draft_prompt(draft.state_key, draft.data)
+        await message.answer(
+            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
+            reply_markup=support_keyboard(),
+        )
+        return
+
+    if text == START_OVER_BUTTON_TEXT:
+        await fsm_draft_service.delete_draft(user_id, ADVERTISER_FLOW_TYPE)
+        await _ask_name(message, state)
+        return
+
+    await message.answer(
+        "Выберите «Продолжить» или «Начать заново».",
+        reply_markup=draft_choice_keyboard(),
+    )
 
 
 @router.message(AdvertiserRegistrationStates.name)

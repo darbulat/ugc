@@ -12,7 +12,13 @@ from ugc_bot.bot.handlers.start import (
     support_button,
 )
 from ugc_bot.domain.enums import MessengerType
-from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakeUser,
+    RecordingFsmDraftService,
+)
 
 
 @pytest.mark.asyncio
@@ -90,8 +96,14 @@ async def test_support_button_sends_support_text(user_repo) -> None:
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Поддержка", user=FakeUser(1, "u", "User"))
     state = FakeFSMContext(state=None)
+    draft_service = FakeFsmDraftService()
 
-    await support_button(message, user_role_service=service, state=state)
+    await support_button(
+        message,
+        user_role_service=service,
+        state=state,
+        fsm_draft_service=draft_service,
+    )
 
     assert message.answers
     assert "Служба поддержки" in message.answers[0][0]
@@ -106,8 +118,45 @@ async def test_support_button_clears_fsm_state(user_repo) -> None:
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
     state = FakeFSMContext(state="BloggerRegistrationStates:instagram")
+    draft_service = FakeFsmDraftService()
 
-    await support_button(message, user_role_service=service, state=state)
+    await support_button(
+        message,
+        user_role_service=service,
+        state=state,
+        fsm_draft_service=draft_service,
+    )
 
     assert state.cleared is True
     assert "Служба поддержки" in message.answers[0][0]
+
+
+@pytest.mark.asyncio
+async def test_support_button_saves_draft_when_in_flow(user_repo) -> None:
+    """Support button saves draft when user is in a draftable flow and has data."""
+
+    service = UserRoleService(user_repo=user_repo)
+    user = await service.set_user(
+        external_id="2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+    )
+    message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
+    state = FakeFSMContext(state="BloggerRegistrationStates:instagram")
+    state._data = {"user_id": user.user_id, "external_id": "2"}
+    draft_service = RecordingFsmDraftService()
+
+    await support_button(
+        message,
+        user_role_service=service,
+        state=state,
+        fsm_draft_service=draft_service,
+    )
+
+    assert state.cleared is True
+    assert len(draft_service.save_calls) == 1
+    saved_user_id, flow_type, state_key, data = draft_service.save_calls[0]
+    assert saved_user_id == user.user_id
+    assert flow_type == "blogger_registration"
+    assert state_key == "BloggerRegistrationStates:instagram"
+    assert data.get("user_id") == user.user_id

@@ -13,7 +13,12 @@ from ugc_bot.bot.handlers.profile import (
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
-from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakeUser,
+)
 from tests.helpers.factories import create_test_user
 
 
@@ -292,7 +297,9 @@ async def test_edit_profile_start_user_missing(user_repo) -> None:
     message = FakeMessage(text="Редактировать профиль", user=FakeUser(1))
     state = FakeFSMContext()
     service = _FakeProfileServiceUserMissing()
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
 
@@ -309,7 +316,9 @@ async def test_edit_profile_start_blogger_missing(user_repo) -> None:
     message = FakeMessage(text="Редактировать профиль", user=FakeUser(6))
     state = FakeFSMContext()
     service = FakeProfileService(user=user, has_blogger=False, has_advertiser=False)
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
     assert message.answers
     assert "Профиль блогера не заполнен" in message.answers[0]
 
@@ -326,7 +335,9 @@ async def test_edit_profile_start_success(user_repo) -> None:
     message = FakeMessage(text="Редактировать профиль", user=FakeUser(7))
     state = FakeFSMContext()
     service = FakeProfileService(user=user, has_blogger=True, has_advertiser=False)
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
     assert message.answers
     assert "Выберите раздел" in message.answers[0][0]
     assert state.state is not None
@@ -656,7 +667,7 @@ async def test_edit_profile_enter_value_audience_gender_success(user_repo) -> No
         external_id="18",
         username="user",
     )
-    message = FakeMessage(text="Примерно поровну", user=FakeUser(18))
+    message = FakeMessage(text="👥 Примерно поровну", user=FakeUser(18))
     state = FakeFSMContext()
     state._data = {
         "editing_field": "audience_gender",

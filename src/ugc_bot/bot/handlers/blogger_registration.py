@@ -14,11 +14,18 @@ from aiogram.types import KeyboardButton, Message
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     CREATE_PROFILE_BUTTON_TEXT,
+    DRAFT_QUESTION_TEXT,
+    DRAFT_RESTORED_TEXT,
+    RESUME_DRAFT_BUTTON_TEXT,
+    START_OVER_BUTTON_TEXT,
     blogger_after_registration_keyboard,
+    draft_choice_keyboard,
     support_keyboard,
     with_support_keyboard,
 )
@@ -37,6 +44,7 @@ _INSTAGRAM_URL_REGEX = re.compile(
 class BloggerRegistrationStates(StatesGroup):
     """States for blogger registration."""
 
+    choosing_draft_restore = State()
     name = State()
     instagram = State()
     city = State()
@@ -50,12 +58,16 @@ class BloggerRegistrationStates(StatesGroup):
     agreements = State()
 
 
+BLOGGER_FLOW_TYPE = "blogger_registration"
+
+
 async def _start_registration_flow(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
-    """Common logic to start blogger registration: checks and first step (name)."""
+    """Common logic to start blogger registration: check draft, then first step (name)."""
 
     if message.from_user is None:
         return
@@ -75,6 +87,12 @@ async def _start_registration_flow(
         return
 
     await state.update_data(user_id=user.user_id, external_id=str(message.from_user.id))
+    draft = await fsm_draft_service.get_draft(user.user_id, BLOGGER_FLOW_TYPE)
+    if draft is not None:
+        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await state.set_state(BloggerRegistrationStates.choosing_draft_restore)
+        return
+
     await message.answer(
         "Введите имя или ник для профиля, который увидят бренды:",
         reply_markup=support_keyboard(),
@@ -87,10 +105,11 @@ async def start_registration_command(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
     """Start blogger registration flow via /register command."""
 
-    await _start_registration_flow(message, state, user_role_service)
+    await _start_registration_flow(message, state, user_role_service, fsm_draft_service)
 
 
 @router.message(lambda msg: (msg.text or "").strip() == CREATE_PROFILE_BUTTON_TEXT)
@@ -98,10 +117,64 @@ async def start_registration_button(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
+    fsm_draft_service: FsmDraftService,
 ) -> None:
     """Start blogger registration flow via Create profile button."""
 
-    await _start_registration_flow(message, state, user_role_service)
+    await _start_registration_flow(message, state, user_role_service, fsm_draft_service)
+
+
+@router.message(BloggerRegistrationStates.choosing_draft_restore)
+async def blogger_draft_choice(
+    message: Message,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    fsm_draft_service: FsmDraftService,
+) -> None:
+    """Handle Continue or Start over when draft exists."""
+
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    user_id_raw = data.get("user_id")
+    if user_id_raw is None:
+        await state.clear()
+        await message.answer("Сессия истекла. Начните снова с «Создать профиль».")
+        return
+    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+
+    if text == RESUME_DRAFT_BUTTON_TEXT:
+        draft = await fsm_draft_service.get_draft(user_id, BLOGGER_FLOW_TYPE)
+        if draft is None:
+            await message.answer("Черновик уже использован. Начинаем с начала.")
+            await state.set_state(BloggerRegistrationStates.name)
+            await message.answer(
+                "Введите имя или ник для профиля, который увидят бренды:",
+                reply_markup=support_keyboard(),
+            )
+            return
+        await fsm_draft_service.delete_draft(user_id, BLOGGER_FLOW_TYPE)
+        await state.update_data(**draft.data)
+        await state.set_state(draft.state_key)
+        prompt = get_draft_prompt(draft.state_key, draft.data)
+        await message.answer(
+            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
+            reply_markup=support_keyboard(),
+        )
+        return
+
+    if text == START_OVER_BUTTON_TEXT:
+        await fsm_draft_service.delete_draft(user_id, BLOGGER_FLOW_TYPE)
+        await message.answer(
+            "Введите имя или ник для профиля, который увидят бренды:",
+            reply_markup=support_keyboard(),
+        )
+        await state.set_state(BloggerRegistrationStates.name)
+        return
+
+    await message.answer(
+        "Выберите «Продолжить» или «Начать заново».",
+        reply_markup=draft_choice_keyboard(),
+    )
 
 
 @router.message(BloggerRegistrationStates.name)

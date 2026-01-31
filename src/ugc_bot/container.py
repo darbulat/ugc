@@ -5,6 +5,7 @@ from sqlalchemy.engine import Engine
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -29,6 +30,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
+    SqlAlchemyFsmDraftRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyOrderRepository,
@@ -121,6 +123,9 @@ class Container:
                 session_factory=self._session_factory
             ),
             "outbox_repo": SqlAlchemyOutboxRepository(
+                session_factory=self._session_factory
+            ),
+            "draft_repo": SqlAlchemyFsmDraftRepository(
                 session_factory=self._session_factory
             ),
         }
@@ -280,6 +285,10 @@ class Container:
             "complaint_service": ComplaintService(
                 complaint_repo=repos["complaint_repo"],
                 metrics_collector=metrics_collector,
+                transaction_manager=self._transaction_manager,
+            ),
+            "fsm_draft_service": FsmDraftService(
+                draft_repo=repos["draft_repo"],
                 transaction_manager=self._transaction_manager,
             ),
         }

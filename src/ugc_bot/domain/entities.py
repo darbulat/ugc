@@ -149,6 +149,17 @@ class Payment:
 
 
 @dataclass(frozen=True)
+class FsmDraft:
+    """FSM draft entity for partial form data saved when user clicks Support."""
+
+    user_id: UUID
+    flow_type: str
+    state_key: str
+    data: dict
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class ContactPricing:
     """Contact pricing entity."""
 
