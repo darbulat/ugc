@@ -164,6 +164,21 @@ async def test_middleware_handles_callback_query() -> None:
 
 
 @pytest.mark.asyncio
+async def test_middleware_handles_unknown_error_type() -> None:
+    """Middleware returns generic message for error type not in ERROR_MESSAGES."""
+    middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
+    message = FakeMessage(user=FakeUser(123))
+
+    async def handler(event, data):
+        raise RuntimeError("Something went wrong")
+
+    await middleware(handler, message, {})
+
+    assert len(message.answers) == 1
+    assert "неожиданная ошибка" in _answer_text(message.answers).lower()
+
+
+@pytest.mark.asyncio
 async def test_middleware_error_message_mapping() -> None:
     """Middleware uses correct error message mappings."""
 

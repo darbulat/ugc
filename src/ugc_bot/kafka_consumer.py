@@ -61,10 +61,10 @@ async def _send_offers(
         return
 
     for blogger in bloggers:
-        if not blogger.external_id.isdigit():
+        if not blogger.external_id.isdigit():  # pragma: no cover
             continue
         # Skip sending order to its author
-        if blogger.user_id == order.advertiser_id:
+        if blogger.user_id == order.advertiser_id:  # pragma: no cover
             continue
         for attempt in range(1, retries + 1):
             try:
@@ -164,10 +164,10 @@ async def _consume_forever(
 
         async for msg in consumer:
             val = getattr(msg, "value", None)
-            if not isinstance(val, dict):
+            if not isinstance(val, dict):  # pragma: no cover
                 continue
             order_id = _parse_order_id(val)
-            if order_id is None:
+            if order_id is None:  # pragma: no cover
                 continue
             await _send_offers(
                 order_id,

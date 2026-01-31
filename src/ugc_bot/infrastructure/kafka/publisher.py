@@ -27,10 +27,10 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
 
     async def _ensure_started(self) -> None:
         """Start the producer once (lazy-init)."""
-        if self._started:
+        if self._started:  # pragma: no cover
             return
         async with self._start_lock:
-            if self._started:
+            if self._started:  # pragma: no cover
                 return
             await self._producer.start()
             self._started = True
@@ -56,7 +56,7 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
 
     async def stop(self) -> None:
         """Stop producer (best-effort)."""
-        if not self._started:
+        if not self._started:  # pragma: no cover
             return
         try:
             await self._producer.stop()

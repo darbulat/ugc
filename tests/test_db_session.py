@@ -39,6 +39,27 @@ def test_create_db_engine() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_session_factory_preserves_aiosqlite_url() -> None:
+    """create_session_factory leaves sqlite+aiosqlite URL unchanged."""
+    factory = create_session_factory("sqlite+aiosqlite:///:memory:")
+    try:
+        async with factory() as session:
+            assert session is not None
+    finally:
+        await factory.kw["bind"].dispose()  # type: ignore[no-any-return]
+
+
+@pytest.mark.asyncio
+async def test_create_session_factory_rewrites_postgresql_url() -> None:
+    """create_session_factory rewrites postgresql to postgresql+psycopg."""
+    factory = create_session_factory("postgresql://user:pass@localhost/db")
+    try:
+        assert factory.kw["bind"].url.drivername == "postgresql+psycopg"
+    finally:
+        await factory.kw["bind"].dispose()  # type: ignore[no-any-return]
+
+
+@pytest.mark.asyncio
 async def test_create_session_factory(session_factory) -> None:
     """Create session factory."""
 

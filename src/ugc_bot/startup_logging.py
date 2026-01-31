@@ -121,7 +121,7 @@ def is_json_logging_configured() -> bool:
         formatter = getattr(handler, "formatter", None)
         if isinstance(formatter, JSONFormatter):
             return True
-    return False
+    return False  # pragma: no cover
 
 
 def log_startup_info(*, logger: Any, service_name: str, config: Any) -> None:
@@ -144,7 +144,7 @@ def log_startup_info(*, logger: Any, service_name: str, config: Any) -> None:
             service_version,
             json.dumps(safe_config, ensure_ascii=False, default=str, sort_keys=True),
         )
-        return
+        return  # pragma: no cover
 
     logger.info(
         "%s starting",

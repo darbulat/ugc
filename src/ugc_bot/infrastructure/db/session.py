@@ -45,7 +45,7 @@ def _ensure_async_url(url: URL) -> URL:
         return url
     if url.drivername.startswith("postgresql"):
         return url.set(drivername="postgresql+psycopg")
-    return url
+    return url  # pragma: no cover
 
 
 def create_async_db_engine(

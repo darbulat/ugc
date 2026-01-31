@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import UUID
 
 import pytest
@@ -135,6 +135,128 @@ async def test_send_offers_sends_messages() -> None:
         retry_delay_seconds=0.0,
     )
     assert bot.sent
+
+
+@pytest.mark.asyncio
+async def test_send_offers_returns_when_order_not_found() -> None:
+    """_send_offers returns early when order is not found."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    offer_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000999")
+    bot = Mock(spec=["send_message"])
+    bot.sent = []
+    await _send_offers(
+        order_id,
+        bot,
+        offer_service,
+        dlq_producer=None,
+        dlq_topic="dlq",
+        retries=1,
+        retry_delay_seconds=0.0,
+    )
+    assert len(bot.sent) == 0
+
+
+@pytest.mark.asyncio
+async def test_send_offers_returns_when_advertiser_not_found() -> None:
+    """_send_offers returns early when advertiser is not found."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    now = datetime.now(timezone.utc)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000901"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000900"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        contacts_sent_at=None,
+    )
+    await order_repo.save(order)
+    offer_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+    )
+    bot = Mock(spec=["send_message"])
+    bot.sent = []
+    await _send_offers(
+        order.order_id,
+        bot,
+        offer_service,
+        dlq_producer=None,
+        dlq_topic="dlq",
+        retries=1,
+        retry_delay_seconds=0.0,
+    )
+    assert len(bot.sent) == 0
+
+
+@pytest.mark.asyncio
+async def test_send_offers_returns_when_no_verified_bloggers() -> None:
+    """_send_offers returns early when dispatch returns no bloggers."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000900"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(advertiser)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000901"),
+        advertiser_id=advertiser.user_id,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        contacts_sent_at=None,
+    )
+    await order_repo.save(order)
+    offer_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+    )
+    with patch.object(
+        OfferDispatchService, "dispatch", new_callable=AsyncMock, return_value=[]
+    ):
+        bot = Mock(spec=["send_message"])
+        bot.sent = []
+        await _send_offers(
+            order.order_id,
+            bot,
+            offer_service,
+            dlq_producer=None,
+            dlq_topic="dlq",
+            retries=1,
+            retry_delay_seconds=0.0,
+        )
+        assert len(bot.sent) == 0
 
 
 def test_main_disabled(monkeypatch: pytest.MonkeyPatch) -> None:

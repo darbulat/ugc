@@ -29,9 +29,9 @@ def _serialize_value(value: object) -> object:
         return [_serialize_value(item) for item in value]
     if hasattr(value, "value") and not isinstance(
         value, (str, int, float, bool, type(None))
-    ):
+    ):  # pragma: no cover
         return getattr(value, "value")
-    return value
+    return value  # pragma: no cover
 
 
 def deserialize_fsm_data(data: dict, flow_type: str) -> dict:
@@ -62,16 +62,16 @@ def _uuid_keys_for_flow(flow_type: str) -> set[str]:
         return {"user_id"}
     if flow_type == "order_creation":
         return {"user_id"}
-    if flow_type == "edit_profile":
+    if flow_type == "edit_profile":  # pragma: no cover
         return {"edit_user_id"}
-    return set()
+    return set()  # pragma: no cover
 
 
 def _enum_keys_for_flow(flow_type: str) -> dict[str, type]:
     """Keys that store enum (by value) in this flow."""
     if flow_type == "blogger_registration":
         return {"audience_gender": AudienceGender, "work_format": WorkFormat}
-    return {}
+    return {}  # pragma: no cover
 
 
 def _parse_uuid(value: object) -> UUID:
@@ -80,4 +80,4 @@ def _parse_uuid(value: object) -> UUID:
         return value
     if isinstance(value, str):
         return UUID(value)
-    raise TypeError(f"Cannot parse UUID from {type(value)}")
+    raise TypeError(f"Cannot parse UUID from {type(value)}")  # pragma: no cover

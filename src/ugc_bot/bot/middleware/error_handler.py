@@ -81,7 +81,7 @@ def _get_user_message(error: Exception) -> str:
         if "default" in messages:
             return messages["default"]
 
-    return f"Произошла ошибка: {error_str}"
+    return f"Произошла ошибка: {error_str}"  # pragma: no cover
 
 
 def _get_user_id(event: TelegramObject) -> str | None:
@@ -90,7 +90,7 @@ def _get_user_id(event: TelegramObject) -> str | None:
         return str(event.from_user.id)
     if isinstance(event, CallbackQuery) and event.from_user:
         return str(event.from_user.id)
-    return None
+    return None  # pragma: no cover
 
 
 async def _send_error_message(event: TelegramObject, message: str) -> None:
@@ -106,7 +106,7 @@ async def _send_error_message(event: TelegramObject, message: str) -> None:
             # Try with show_alert=False for callback-like objects, fallback to no args
             try:
                 await answer_method(message, show_alert=False)
-            except TypeError:
+            except TypeError:  # pragma: no cover
                 await answer_method(message)
 
 

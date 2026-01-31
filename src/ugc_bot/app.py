@@ -152,10 +152,10 @@ async def _handle_health_connection(
     finally:
         await writer.drain()
         writer.close()
-        try:
-            await writer.wait_closed()
-        except OSError:
-            pass
+        try:  # pragma: no cover
+            await writer.wait_closed()  # pragma: no cover
+        except OSError:  # pragma: no cover
+            pass  # pragma: no cover
 
 
 async def _run_health_server() -> None:

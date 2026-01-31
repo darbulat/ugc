@@ -58,3 +58,48 @@ async def test_uow_rollback(session_factory) -> None:
     async with session_factory() as session:
         result = await session.execute(text("SELECT count(*) FROM items"))
         assert result.scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_uow_commit_method(session_factory) -> None:
+    """UoW.commit() commits the active session."""
+    uow = AsyncSqlAlchemyUnitOfWork(session_factory=session_factory)
+    async with uow:
+        await uow.active_session.execute(
+            text("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)")
+        )
+        await uow.active_session.execute(text("INSERT INTO items (value) VALUES ('b')"))
+        await uow.commit()
+
+    async with session_factory() as session:
+        result = await session.execute(text("SELECT count(*) FROM items"))
+        assert result.scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_uow_rollback_method(session_factory) -> None:
+    """UoW.rollback() rolls back the active session."""
+    async with session_factory() as session:
+        await session.execute(
+            text("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)")
+        )
+        await session.commit()
+
+    uow = AsyncSqlAlchemyUnitOfWork(session_factory=session_factory)
+    async with uow:
+        await uow.active_session.execute(text("INSERT INTO items (value) VALUES ('c')"))
+        await uow.rollback()
+
+    async with session_factory() as session:
+        result = await session.execute(text("SELECT count(*) FROM items"))
+        assert result.scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_uow_active_session_raises_when_not_entered() -> None:
+    """active_session raises when used before entering context."""
+    factory = create_session_factory("sqlite:///:memory:")
+    uow = AsyncSqlAlchemyUnitOfWork(session_factory=factory)
+    with pytest.raises(RuntimeError, match="not initialized"):
+        _ = uow.active_session
+    await factory.kw["bind"].dispose()  # type: ignore[no-any-return]

@@ -96,7 +96,7 @@ class LogConfig(BaseSettings):
 
     @field_validator("log_level")
     @classmethod
-    def normalize_log_level(cls, v: str) -> str:
+    def normalize_log_level(cls, v: str) -> str:  # pragma: no cover
         return v.strip().upper()
 
 

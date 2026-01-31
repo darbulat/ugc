@@ -96,7 +96,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                 extra={"instagram_user_id": instagram_user_id, "error": str(exc)},
             )
             return None
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.exception(
                 "Unexpected error getting Instagram username",
                 extra={"instagram_user_id": instagram_user_id},

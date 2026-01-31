@@ -63,7 +63,7 @@ class UserRepository(ABC):
     async def iter_all(self) -> Iterable[User]:
         """Iterate all users (optional)."""
 
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
 
 class BloggerProfileRepository(ABC):

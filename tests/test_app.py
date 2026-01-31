@@ -1,13 +1,17 @@
 """Tests for application setup."""
 
 import asyncio
+from datetime import datetime, timezone
+from uuid import UUID
 
 import pytest
 from aiogram import Router
 
 from ugc_bot.app import (
     _handle_health_connection,
+    _json_dumps,
     build_dispatcher,
+    create_storage,
     run_bot,
 )
 from ugc_bot.config import AppConfig
@@ -146,6 +150,96 @@ def test_main_invokes_asyncio(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called["value"] is True
 
 
+def test_json_dumps_serializes_uuid_and_datetime() -> None:
+    """_json_dumps handles UUID and datetime in dict."""
+    uid = UUID("00000000-0000-0000-0000-000000000001")
+    dt = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    result = _json_dumps({"id": uid, "at": dt})
+    assert '"00000000-0000-0000-0000-000000000001"' in result
+    assert "2025-01-15" in result
+
+
+def test_json_dumps_default_raises_for_other_types() -> None:
+    """_json_dumps default() calls super().default for non-UUID/datetime."""
+    with pytest.raises(TypeError):
+        _json_dumps({"bad": object()})
+
+
+@pytest.mark.asyncio
+async def test_create_storage_returns_redis_storage_when_redis_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_storage returns RedisStorage when use_redis_storage is True and redis available."""
+    import importlib.util
+
+    if importlib.util.find_spec("redis") is None:
+        pytest.skip("redis not installed")
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///x",
+            "USE_REDIS_STORAGE": "true",
+            "REDIS_URL": "redis://localhost:6379/0",
+        }
+    )
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(
+        "redis.asyncio.Redis.from_url",
+        lambda *args, **kwargs: MagicMock(),
+    )
+    storage = await create_storage(config)
+    from aiogram.fsm.storage.redis import RedisStorage
+
+    assert isinstance(storage, RedisStorage)
+
+
+@pytest.mark.asyncio
+async def test_create_storage_returns_memory_when_redis_disabled() -> None:
+    """create_storage returns MemoryStorage when use_redis_storage is False."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///x",
+            "USE_REDIS_STORAGE": "false",
+        }
+    )
+    storage = await create_storage(config)
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    assert isinstance(storage, MemoryStorage)
+
+
+@pytest.mark.asyncio
+async def test_create_storage_falls_back_to_memory_on_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_storage falls back to MemoryStorage when redis is not installed."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///x",
+            "USE_REDIS_STORAGE": "true",
+            "REDIS_URL": "redis://localhost/0",
+        }
+    )
+
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        if name == "redis" or name == "redis.asyncio":
+            raise ImportError("no redis")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    storage = await create_storage(config)
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    assert isinstance(storage, MemoryStorage)
+
+
 @pytest.mark.asyncio
 async def test_health_server_responds_ok() -> None:
     """Health server responds with 200 and status ok for GET /health."""
@@ -160,3 +254,97 @@ async def test_health_server_responds_ok() -> None:
         await writer.wait_closed()
     assert b"200 OK" in data
     assert b'{"status":"ok"}' in data
+
+
+@pytest.mark.asyncio
+async def test_health_server_responds_404_for_other_paths() -> None:
+    """Health server responds 404 for non GET /health requests."""
+    server = await asyncio.start_server(_handle_health_connection, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    async with server:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /other HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        await writer.drain()
+        data = await reader.read(512)
+        writer.close()
+        await writer.wait_closed()
+    assert b"404 Not Found" in data
+
+
+@pytest.mark.asyncio
+async def test_health_server_responds_408_on_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Health server responds 408 when read times out."""
+
+    async def timeout_wait_for(coro: object, timeout: object = None):  # type: ignore[no-untyped-def]
+        await coro  # let read complete so handler enters try block
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr("ugc_bot.app.asyncio.wait_for", timeout_wait_for)
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"GET /x HTTP/1.1\r\n\r\n")
+    writer = type("Writer", (), {})()
+    written: list[bytes] = []
+
+    async def drain() -> None:
+        pass
+
+    def write(data: bytes) -> None:
+        written.append(data)
+
+    writer.write = write  # type: ignore[attr-defined]
+    writer.drain = drain  # type: ignore[attr-defined]
+    writer.close = lambda: None  # type: ignore[attr-defined]
+    closed_waited: list[bool] = []
+
+    async def wait_closed() -> None:
+        closed_waited.append(True)
+
+    writer.wait_closed = wait_closed  # type: ignore[attr-defined]
+    await _handle_health_connection(reader, writer)  # type: ignore[arg-type]
+    assert any(b"408" in d for d in written)
+    assert closed_waited
+
+
+@pytest.mark.asyncio
+async def test_health_server_handles_oserror_on_wait_closed() -> None:
+    """Health server handles OSError when writer.wait_closed() is called."""
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"GET /x HTTP/1.1\r\n\r\n")
+    writer = type("Writer", (), {})()
+    written: list[bytes] = []
+
+    async def drain() -> None:
+        pass
+
+    def write(data: bytes) -> None:
+        written.append(data)
+
+    writer.write = write  # type: ignore[attr-defined]
+    writer.drain = drain  # type: ignore[attr-defined]
+    writer.close = lambda: None  # type: ignore[attr-defined]
+
+    async def wait_closed_raise() -> None:
+        raise OSError("closed")
+
+    writer.wait_closed = wait_closed_raise  # type: ignore[attr-defined]
+    await _handle_health_connection(reader, writer)  # type: ignore[arg-type]
+    assert any(b"404" in d for d in written)
+
+
+@pytest.mark.asyncio
+async def test_health_server_handles_oserror_when_client_closes_early() -> None:
+    """Health server handles OSError/ConnectionReset when client closes before read."""
+    server = await asyncio.start_server(_handle_health_connection, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    async with server:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /health HTTP/1.1\r\n\r\n")
+        await writer.drain()
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except OSError:
+            pass
+    # Handler may hit OSError in finally when client already closed

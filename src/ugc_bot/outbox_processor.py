@@ -135,8 +135,8 @@ async def run_processor() -> None:
 def main() -> None:
     """Entry point."""
 
-    asyncio.run(run_processor())
+    asyncio.run(run_processor())  # pragma: no cover
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

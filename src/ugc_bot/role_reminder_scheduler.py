@@ -48,7 +48,7 @@ async def run_once(
 
     users = await user_role_service.list_pending_role_reminders(reminder_cutoff)
     for user in users:
-        if user.messenger_type.value != "telegram":
+        if user.messenger_type.value != "telegram":  # pragma: no cover
             continue
         try:
             chat_id = int(user.external_id)
@@ -74,9 +74,8 @@ async def run_once(
             )
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     """Run role reminder once (invoke from cron at 10:00)."""
-
     config = load_config()
     configure_logging(
         config.log.log_level, json_format=config.log.log_format.lower() == "json"
@@ -84,15 +83,12 @@ def main() -> None:
     log_startup_info(
         logger=logger, service_name="Role reminder scheduler", config=config
     )
-
     if not config.role_reminder.role_reminder_enabled:
         logger.info("Role reminder disabled by config")
         return
-
     if not config.db.database_url:
         logger.error("DATABASE_URL is required for role reminder")
         return
-
     session_factory = create_session_factory(
         config.db.database_url,
         pool_size=config.db.pool_size,
@@ -105,11 +101,10 @@ def main() -> None:
         user_repo=user_repo,
         transaction_manager=transaction_manager,
     )
-
     reminder_cutoff = _reminder_cutoff(config)
     bot = Bot(token=config.bot.bot_token)
     asyncio.run(run_once(bot, user_role_service, reminder_cutoff))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

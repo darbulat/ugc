@@ -110,3 +110,53 @@ def test_main_disabled_exits_early() -> None:
 
                 main()
                 mock_load.assert_called_once()
+
+
+def test_main_exits_when_no_database_url() -> None:
+    """main() exits when DATABASE_URL is not set."""
+
+    with patch("ugc_bot.role_reminder_scheduler.load_config") as mock_load:
+        config = MagicMock()
+        config.role_reminder.role_reminder_enabled = True
+        config.db.database_url = ""
+        mock_load.return_value = config
+        with patch("ugc_bot.role_reminder_scheduler.configure_logging"):
+            with patch("ugc_bot.role_reminder_scheduler.log_startup_info"):
+                from ugc_bot.role_reminder_scheduler import main
+
+                main()
+                mock_load.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_once_handles_send_failure(fake_tm) -> None:
+    """run_once logs warning and does not update when send_with_retry raises."""
+
+    repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        external_id="123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        role_chosen_at=None,
+        last_role_reminder_at=None,
+    )
+    await repo.save(user)
+
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    cutoff = datetime.now(timezone.utc)
+    bot = MagicMock()
+
+    with patch(
+        "ugc_bot.role_reminder_scheduler.send_with_retry",
+        new_callable=AsyncMock,
+        side_effect=Exception("send failed"),
+    ):
+        await run_once(bot, service, cutoff)
+
+    updated = await service.get_user_by_id(user.user_id)
+    assert updated is not None
+    assert updated.last_role_reminder_at is None
