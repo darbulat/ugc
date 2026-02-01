@@ -1,24 +1,17 @@
 """Service for dispatching offers to bloggers."""
 
 from dataclasses import dataclass
-from typing import Any, AsyncContextManager, Protocol
 from uuid import UUID
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     OrderRepository,
+    TransactionManager,
     UserRepository,
 )
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import OrderStatus, UserStatus
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

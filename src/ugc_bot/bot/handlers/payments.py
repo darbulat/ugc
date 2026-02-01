@@ -13,9 +13,10 @@ from ugc_bot.application.services.contact_pricing_service import ContactPricingS
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
 from ugc_bot.bot.handlers.security_warnings import ADVERTISER_PAYMENT_WARNING
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.domain.enums import OrderStatus
 
 
 router = Router()
@@ -78,21 +79,14 @@ async def pay_order(
 ) -> None:
     """Send Telegram invoice for an order."""
 
-    if message.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed(
+        message,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
+        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
+        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
     )
     if user is None:
-        await message.answer("Пользователь не найден. Выберите роль через /role.")
-        return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer("Заблокированные пользователи не могут оплачивать заказы.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут оплачивать заказы.")
         return
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
@@ -163,15 +157,17 @@ async def successful_payment_handler(
 ) -> None:
     """Handle successful Telegram payment."""
 
-    if message.from_user is None or message.successful_payment is None:
+    if message.successful_payment is None:
         return
 
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed(
+        message,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
+        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
+        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
     )
     if user is None:
-        await message.answer("Пользователь не найден. Выберите роль через /role.")
         return
 
     payload = message.successful_payment.invoice_payload

@@ -7,7 +7,7 @@ from aiogram.types import CallbackQuery
 
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed_callback
 
 
 router = Router()
@@ -30,7 +30,7 @@ async def handle_feedback(
 ) -> None:
     """Handle feedback callbacks from advertiser or blogger."""
 
-    if callback.from_user is None or not callback.data:
+    if not callback.data:
         return
 
     parts = callback.data.split(":")
@@ -50,12 +50,14 @@ async def handle_feedback(
         await callback.answer("Неверный идентификатор.")
         return
 
-    user = await user_role_service.get_user(
-        external_id=str(callback.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed_callback(
+        callback,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные пользователи не могут оставлять отзыв.",
+        pause_msg="Пользователи на паузе не могут оставлять отзыв.",
     )
     if user is None:
-        await callback.answer("Пользователь не найден.")
         return
 
     try:

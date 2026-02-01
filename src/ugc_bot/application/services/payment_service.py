@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncContextManager, Optional, Protocol
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
@@ -12,6 +12,7 @@ from ugc_bot.application.ports import (
     OfferBroadcaster,
     OrderRepository,
     PaymentRepository,
+    TransactionManager,
     UserRepository,
 )
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
@@ -19,13 +20,6 @@ from ugc_bot.domain.entities import Order, Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 
 logger = logging.getLogger(__name__)
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

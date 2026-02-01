@@ -486,7 +486,7 @@ async def test_blogger_draft_choice_continue_restores(user_repo) -> None:
     state._data = {"user_id": user.user_id}
     state.state = BloggerRegistrationStates.choosing_draft_restore
 
-    await blogger_draft_choice(message, state, service, draft_service)
+    await blogger_draft_choice(message, state, draft_service)
 
     assert state.state == "BloggerRegistrationStates:city"
     assert state._data.get("nickname") == "bob"
@@ -518,7 +518,7 @@ async def test_blogger_draft_choice_start_over_deletes_and_starts(user_repo) -> 
     state._data = {"user_id": user.user_id}
     state.state = BloggerRegistrationStates.choosing_draft_restore
 
-    await blogger_draft_choice(message, state, service, draft_service)
+    await blogger_draft_choice(message, state, draft_service)
 
     assert state.state == BloggerRegistrationStates.name
     assert len(draft_service.delete_calls) == 1

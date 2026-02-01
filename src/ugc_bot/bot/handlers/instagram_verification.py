@@ -14,12 +14,12 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     blogger_verification_sent_keyboard,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 router = Router()
@@ -57,23 +57,14 @@ async def start_verification(
 ) -> None:
     """Start Instagram verification flow: instruction then code in separate message."""
 
-    if message.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed(
+        message,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Начните с /start.",
+        blocked_msg="Заблокированные пользователи не могут подтверждать аккаунт.",
+        pause_msg="Пользователи на паузе не могут подтверждать аккаунт.",
     )
     if user is None:
-        await message.answer("Пользователь не найден. Начните с /start.")
-        return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer(
-            "Заблокированные пользователи не могут подтверждать аккаунт."
-        )
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут подтверждать аккаунт.")
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:

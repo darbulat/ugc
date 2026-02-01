@@ -3,23 +3,16 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncContextManager, Optional, Protocol
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import UserNotFoundError
-from ugc_bot.application.ports import UserRepository
+from ugc_bot.application.ports import TransactionManager, UserRepository
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

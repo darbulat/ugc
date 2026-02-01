@@ -2,20 +2,17 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncContextManager, Optional, Protocol
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError
-from ugc_bot.application.ports import OrderRepository, OrderResponseRepository
+from ugc_bot.application.ports import (
+    OrderRepository,
+    OrderResponseRepository,
+    TransactionManager,
+)
 from ugc_bot.domain.entities import Order, OrderResponse
 from ugc_bot.domain.enums import OrderStatus
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

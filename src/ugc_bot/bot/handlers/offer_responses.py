@@ -14,9 +14,12 @@ from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_CONTACTS_WARNING,
     BLOGGER_RESPONSE_WARNING,
 )
-from ugc_bot.bot.handlers.utils import RateLimiter, send_with_retry
+from ugc_bot.bot.handlers.utils import (
+    RateLimiter,
+    get_user_and_ensure_allowed_callback,
+    send_with_retry,
+)
 from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 router = Router()
@@ -38,21 +41,14 @@ async def handle_offer_response(
 ) -> None:
     """Handle blogger response to offer."""
 
-    if callback.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(callback.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed_callback(
+        callback,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные пользователи не могут откликаться.",
+        pause_msg="Пользователи на паузе не могут откликаться.",
     )
     if user is None:
-        await callback.answer("Пользователь не найден.")
-        return
-    if user.status == UserStatus.BLOCKED:
-        await callback.answer("Заблокированные пользователи не могут откликаться.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await callback.answer("Пользователи на паузе не могут откликаться.")
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:

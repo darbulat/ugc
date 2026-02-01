@@ -1,7 +1,6 @@
 """Advertiser registration flow handlers."""
 
 import logging
-from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -16,18 +15,18 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
+from ugc_bot.bot.handlers.utils import (
+    get_user_and_ensure_allowed,
+    handle_draft_choice,
+    parse_user_id_from_state,
+)
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
-    DRAFT_RESTORED_TEXT,
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
     advertiser_menu_keyboard,
     draft_choice_keyboard,
     support_keyboard,
 )
-from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
 router = Router()
@@ -65,21 +64,14 @@ async def handle_advertiser_start(
 ) -> None:
     """Handle 'Начать' after advertiser role: show menu if profile exists, else start registration."""
 
-    if message.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed(
+        message,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Начните с /start.",
+        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
+        pause_msg="Пользователи на паузе не могут регистрироваться.",
     )
     if user is None:
-        await message.answer("Пользователь не найден. Начните с /start.")
-        return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer("Заблокированные пользователи не могут регистрироваться.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
@@ -108,21 +100,14 @@ async def start_advertiser_registration(
 ) -> None:
     """Start advertiser registration flow."""
 
-    if message.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed(
+        message,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Начните с /start.",
+        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
+        pause_msg="Пользователи на паузе не могут регистрироваться.",
     )
     if user is None:
-        await message.answer("Пользователь не найден. Начните с /start.")
-        return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer("Заблокированные пользователи не могут регистрироваться.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
     await state.update_data(user_id=user.user_id)
@@ -141,40 +126,16 @@ async def advertiser_draft_choice(
     fsm_draft_service: FsmDraftService,
 ) -> None:
     """Handle Continue or Start over when draft exists."""
-
-    text = (message.text or "").strip()
-    data = await state.get_data()
-    user_id_raw = data.get("user_id")
-    if user_id_raw is None:
-        await state.clear()
-        await message.answer("Сессия истекла. Начните снова.")
-        return
-    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-
-    if text == RESUME_DRAFT_BUTTON_TEXT:
-        draft = await fsm_draft_service.get_draft(user_id, ADVERTISER_FLOW_TYPE)
-        if draft is None:
-            await message.answer("Черновик уже использован. Начинаем с начала.")
-            await _ask_name(message, state)
-            return
-        await fsm_draft_service.delete_draft(user_id, ADVERTISER_FLOW_TYPE)
-        await state.update_data(**draft.data)
-        await state.set_state(draft.state_key)
-        prompt = get_draft_prompt(draft.state_key, draft.data)
-        await message.answer(
-            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
-            reply_markup=support_keyboard(),
-        )
-        return
-
-    if text == START_OVER_BUTTON_TEXT:
-        await fsm_draft_service.delete_draft(user_id, ADVERTISER_FLOW_TYPE)
-        await _ask_name(message, state)
-        return
-
-    await message.answer(
-        "Выберите «Продолжить» или «Начать заново».",
-        reply_markup=draft_choice_keyboard(),
+    await handle_draft_choice(
+        message,
+        state,
+        fsm_draft_service,
+        flow_type=ADVERTISER_FLOW_TYPE,
+        user_id_key="user_id",
+        first_state=AdvertiserRegistrationStates.name,
+        first_prompt="Как вас зовут?",
+        first_keyboard=support_keyboard(),
+        session_expired_msg="Сессия истекла. Начните снова.",
     )
 
 
@@ -235,8 +196,10 @@ async def handle_brand(
         return
 
     data = await state.get_data()
-    user_id_raw = data["user_id"]
-    user_id: UUID = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+    user_id = parse_user_id_from_state(data, key="user_id")
+    if user_id is None:
+        await message.answer("Сессия истекла. Начните заново.")
+        return
     name = data["name"]
     phone = data["phone"]
 

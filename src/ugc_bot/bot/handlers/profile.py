@@ -2,7 +2,6 @@
 
 import logging
 import re
-from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -16,13 +15,10 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
+from ugc_bot.bot.handlers.utils import handle_draft_choice, parse_user_id_from_state
 from ugc_bot.bot.handlers.keyboards import (
     EDIT_PROFILE_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
-    DRAFT_RESTORED_TEXT,
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
     advertiser_menu_keyboard,
     blogger_profile_view_keyboard,
     draft_choice_keyboard,
@@ -215,52 +211,20 @@ async def edit_profile_start(
 async def edit_profile_draft_choice(
     message: Message,
     state: FSMContext,
-    profile_service: ProfileService,
     fsm_draft_service: FsmDraftService,
 ) -> None:
     """Handle Continue or Start over when edit profile draft exists."""
-
-    text = (message.text or "").strip()
-    data = await state.get_data()
-    user_id_raw = data.get("edit_user_id")
-    if user_id_raw is None:
-        await state.clear()
-        await message.answer("Сессия истекла. Откройте «Мой профиль» снова.")
-        return
-    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-
-    if text == RESUME_DRAFT_BUTTON_TEXT:
-        draft = await fsm_draft_service.get_draft(user_id, EDIT_PROFILE_FLOW_TYPE)
-        if draft is None:
-            await message.answer("Черновик уже использован. Выберите раздел.")
-            await message.answer(
-                "Выберите раздел для редактирования:",
-                reply_markup=_edit_field_keyboard(),
-            )
-            await state.set_state(EditProfileStates.choosing_field)
-            return
-        await fsm_draft_service.delete_draft(user_id, EDIT_PROFILE_FLOW_TYPE)
-        await state.update_data(**draft.data)
-        await state.set_state(draft.state_key)
-        prompt = get_draft_prompt(draft.state_key, draft.data)
-        await message.answer(
-            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
-            reply_markup=support_keyboard(),
-        )
-        return
-
-    if text == START_OVER_BUTTON_TEXT:
-        await fsm_draft_service.delete_draft(user_id, EDIT_PROFILE_FLOW_TYPE)
-        await message.answer(
-            "Выберите раздел для редактирования:",
-            reply_markup=_edit_field_keyboard(),
-        )
-        await state.set_state(EditProfileStates.choosing_field)
-        return
-
-    await message.answer(
-        "Выберите «Продолжить» или «Начать заново».",
-        reply_markup=draft_choice_keyboard(),
+    await handle_draft_choice(
+        message,
+        state,
+        fsm_draft_service,
+        flow_type=EDIT_PROFILE_FLOW_TYPE,
+        user_id_key="edit_user_id",
+        first_state=EditProfileStates.choosing_field,
+        first_prompt="Выберите раздел для редактирования:",
+        first_keyboard=_edit_field_keyboard(),
+        session_expired_msg="Сессия истекла. Откройте «Мой профиль» снова.",
+        draft_used_msg="Черновик уже использован. Выберите раздел.",
     )
 
 
@@ -363,15 +327,14 @@ async def edit_profile_enter_value(
 
     data = await state.get_data()
     field_key = data.get("editing_field")
-    user_id_raw = data.get("edit_user_id")
+    user_id = parse_user_id_from_state(data, key="edit_user_id")
     external_id_raw = data.get("edit_external_id")
-    if not field_key or not user_id_raw or not external_id_raw:
+    if not field_key or user_id is None or not external_id_raw:
         await state.clear()
         await message.answer("Сессия истекла. Откройте «Мой профиль» снова.")
         return
     external_id = str(external_id_raw)
 
-    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
     blogger = await profile_service.get_blogger_profile(user_id)
     if blogger is None:
         await state.clear()

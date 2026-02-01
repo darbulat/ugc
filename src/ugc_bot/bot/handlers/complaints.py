@@ -17,7 +17,7 @@ from ugc_bot.application.services.offer_response_service import OfferResponseSer
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed_callback
 
 
 router = Router()
@@ -51,15 +51,17 @@ async def select_complaint_target(
 ) -> None:
     """Show list of users to complain about for an order."""
 
-    if callback.from_user is None or not callback.data:
+    if not callback.data:
         return
 
-    user = await user_role_service.get_user(
-        external_id=str(callback.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed_callback(
+        callback,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные пользователи не могут подавать жалобы.",
+        pause_msg="Пользователи на паузе не могут подавать жалобы.",
     )
     if user is None:
-        await callback.answer("Пользователь не найден.")
         return
 
     parts = callback.data.split(":")
@@ -162,15 +164,17 @@ async def start_complaint(
 ) -> None:
     """Start complaint creation process."""
 
-    if callback.from_user is None or not callback.data:
+    if not callback.data:
         return
 
-    user = await user_role_service.get_user(
-        external_id=str(callback.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed_callback(
+        callback,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные пользователи не могут подавать жалобы.",
+        pause_msg="Пользователи на паузе не могут подавать жалобы.",
     )
     if user is None:
-        await callback.answer("Пользователь не найден.")
         return
 
     parts = callback.data.split(":")

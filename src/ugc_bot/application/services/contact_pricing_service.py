@@ -1,16 +1,8 @@
 """Service for contact pricing."""
 
 from dataclasses import dataclass
-from typing import Any, AsyncContextManager, Protocol
 
-from ugc_bot.application.ports import ContactPricingRepository
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
+from ugc_bot.application.ports import ContactPricingRepository, TransactionManager
 
 
 @dataclass(slots=True)

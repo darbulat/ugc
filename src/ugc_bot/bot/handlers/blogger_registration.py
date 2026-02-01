@@ -2,7 +2,6 @@
 
 import logging
 import re
-from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -16,21 +15,22 @@ from ugc_bot.application.services.blogger_registration_service import (
 )
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
+from ugc_bot.bot.handlers.utils import (
+    get_user_and_ensure_allowed,
+    handle_draft_choice,
+    parse_user_id_from_state,
+)
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     CREATE_PROFILE_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
-    DRAFT_RESTORED_TEXT,
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
     blogger_after_registration_keyboard,
     draft_choice_keyboard,
     support_keyboard,
     with_support_keyboard,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
+from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
 
 
 router = Router()
@@ -69,24 +69,17 @@ async def _start_registration_flow(
 ) -> None:
     """Common logic to start blogger registration: check draft, then first step (name)."""
 
-    if message.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed(
+        message,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Начните с /start.",
+        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
+        pause_msg="Пользователи на паузе не могут регистрироваться.",
     )
     if user is None:
-        await message.answer("Пользователь не найден. Начните с /start.")
-        return
-    if user.status == UserStatus.BLOCKED:
-        await message.answer("Заблокированные пользователи не могут регистрироваться.")
-        return
-    if user.status == UserStatus.PAUSE:
-        await message.answer("Пользователи на паузе не могут регистрироваться.")
         return
 
-    await state.update_data(user_id=user.user_id, external_id=str(message.from_user.id))
+    await state.update_data(user_id=user.user_id, external_id=user.external_id)
     draft = await fsm_draft_service.get_draft(user.user_id, BLOGGER_FLOW_TYPE)
     if draft is not None:
         await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
@@ -128,52 +121,19 @@ async def start_registration_button(
 async def blogger_draft_choice(
     message: Message,
     state: FSMContext,
-    user_role_service: UserRoleService,
     fsm_draft_service: FsmDraftService,
 ) -> None:
     """Handle Continue or Start over when draft exists."""
-
-    text = (message.text or "").strip()
-    data = await state.get_data()
-    user_id_raw = data.get("user_id")
-    if user_id_raw is None:
-        await state.clear()
-        await message.answer("Сессия истекла. Начните снова с «Создать профиль».")
-        return
-    user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-
-    if text == RESUME_DRAFT_BUTTON_TEXT:
-        draft = await fsm_draft_service.get_draft(user_id, BLOGGER_FLOW_TYPE)
-        if draft is None:
-            await message.answer("Черновик уже использован. Начинаем с начала.")
-            await state.set_state(BloggerRegistrationStates.name)
-            await message.answer(
-                "Введите имя или ник для профиля, который увидят бренды:",
-                reply_markup=support_keyboard(),
-            )
-            return
-        await fsm_draft_service.delete_draft(user_id, BLOGGER_FLOW_TYPE)
-        await state.update_data(**draft.data)
-        await state.set_state(draft.state_key)
-        prompt = get_draft_prompt(draft.state_key, draft.data)
-        await message.answer(
-            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
-            reply_markup=support_keyboard(),
-        )
-        return
-
-    if text == START_OVER_BUTTON_TEXT:
-        await fsm_draft_service.delete_draft(user_id, BLOGGER_FLOW_TYPE)
-        await message.answer(
-            "Введите имя или ник для профиля, который увидят бренды:",
-            reply_markup=support_keyboard(),
-        )
-        await state.set_state(BloggerRegistrationStates.name)
-        return
-
-    await message.answer(
-        "Выберите «Продолжить» или «Начать заново».",
-        reply_markup=draft_choice_keyboard(),
+    await handle_draft_choice(
+        message,
+        state,
+        fsm_draft_service,
+        flow_type=BLOGGER_FLOW_TYPE,
+        user_id_key="user_id",
+        first_state=BloggerRegistrationStates.name,
+        first_prompt="Введите имя или ник для профиля, который увидят бренды:",
+        first_keyboard=support_keyboard(),
+        session_expired_msg="Сессия истекла. Начните снова с «Создать профиль».",
     )
 
 
@@ -474,9 +434,11 @@ async def handle_agreements(
         return
 
     data = await state.get_data()
+    user_id = parse_user_id_from_state(data, key="user_id")
+    if user_id is None:
+        await message.answer("Сессия истекла. Начните заново.")
+        return
     try:
-        user_id_raw = data["user_id"]
-        user_id = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
         await user_role_service.set_user(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,

@@ -1,24 +1,16 @@
 """Service for building user profile summaries."""
 
 from dataclasses import dataclass
-from typing import Any, AsyncContextManager, Protocol
+from uuid import UUID
 
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    TransactionManager,
     UserRepository,
 )
-from uuid import UUID
-
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import MessengerType
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

@@ -2,20 +2,17 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncContextManager, Optional, Protocol
+from typing import Any, Optional
 from uuid import UUID
 
 from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
-from ugc_bot.application.ports import BloggerProfileRepository, UserRepository
+from ugc_bot.application.ports import (
+    BloggerProfileRepository,
+    TransactionManager,
+    UserRepository,
+)
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import AudienceGender, WorkFormat
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

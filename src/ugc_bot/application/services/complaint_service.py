@@ -3,25 +3,18 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, AsyncContextManager, Optional, Protocol
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import (
     ComplaintAlreadyExistsError,
     ComplaintNotFoundError,
 )
-from ugc_bot.application.ports import ComplaintRepository
+from ugc_bot.application.ports import ComplaintRepository, TransactionManager
 from ugc_bot.domain.entities import Complaint
 from ugc_bot.domain.enums import ComplaintStatus
 
 logger = logging.getLogger(__name__)
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

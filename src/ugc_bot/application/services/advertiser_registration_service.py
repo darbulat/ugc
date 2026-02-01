@@ -1,22 +1,19 @@
 """Service for advertiser registration."""
 
 from dataclasses import dataclass
-from typing import Any, AsyncContextManager, Optional, Protocol
+from typing import Any, Optional
 from uuid import UUID
 
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     UserNotFoundError,
 )
-from ugc_bot.application.ports import AdvertiserProfileRepository, UserRepository
+from ugc_bot.application.ports import (
+    AdvertiserProfileRepository,
+    TransactionManager,
+    UserRepository,
+)
 from ugc_bot.domain.entities import AdvertiserProfile
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 @dataclass(slots=True)

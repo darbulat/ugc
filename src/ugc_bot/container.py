@@ -67,6 +67,7 @@ class Container:
             if self._session_factory
             else None
         )
+        self._repos: dict | None = None
 
     @property
     def session_factory(self):
@@ -88,10 +89,12 @@ class Container:
         )
 
     def build_repos(self) -> dict:
-        """All repos for the main bot dispatcher."""
+        """All repos for the main bot dispatcher. Cached after first call."""
         if not self._session_factory:
             raise ValueError("DATABASE_URL is required for repositories.")
-        return {
+        if self._repos is not None:
+            return self._repos
+        self._repos = {
             "user_repo": SqlAlchemyUserRepository(
                 session_factory=self._session_factory
             ),
@@ -129,6 +132,7 @@ class Container:
                 session_factory=self._session_factory
             ),
         }
+        return self._repos
 
     def build_offer_dispatch_service(self) -> OfferDispatchService:
         """OfferDispatchService for Kafka consumer."""

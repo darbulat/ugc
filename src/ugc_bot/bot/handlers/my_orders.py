@@ -15,7 +15,10 @@ from ugc_bot.application.services.offer_response_service import OfferResponseSer
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.bot.handlers.utils import (
+    get_user_and_ensure_allowed,
+    get_user_and_ensure_allowed_callback,
+)
 
 
 router = Router()
@@ -33,15 +36,14 @@ async def show_my_orders(
 ) -> None:
     """Show orders for the current advertiser."""
 
-    if message.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed(
+        message,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
+        blocked_msg="Заблокированные пользователи не могут просматривать заказы.",
+        pause_msg="Пользователи на паузе не могут просматривать заказы.",
     )
     if user is None:
-        await message.answer("Пользователь не найден. Выберите роль через /role.")
         return
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
@@ -78,15 +80,14 @@ async def paginate_orders(
 ) -> None:
     """Handle pagination for orders list."""
 
-    if callback.from_user is None:
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(callback.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
+    user = await get_user_and_ensure_allowed_callback(
+        callback,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные пользователи не могут просматривать заказы.",
+        pause_msg="Пользователи на паузе не могут просматривать заказы.",
     )
     if user is None:
-        await callback.answer("Пользователь не найден.")
         return
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)

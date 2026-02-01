@@ -1,18 +1,10 @@
 """Service for saving and restoring FSM drafts when user clicks Support."""
 
-from typing import Any, AsyncContextManager, Protocol
 from uuid import UUID
 
-from ugc_bot.application.ports import FsmDraftRepository
+from ugc_bot.application.ports import FsmDraftRepository, TransactionManager
 from ugc_bot.domain.entities import FsmDraft
 from ugc_bot.infrastructure.db.session import with_optional_tx
-
-
-class TransactionManager(Protocol):
-    """Protocol for database transaction handling."""
-
-    def transaction(self) -> AsyncContextManager[Any]:
-        """Return a context manager for a transaction."""
 
 
 class FsmDraftService:
