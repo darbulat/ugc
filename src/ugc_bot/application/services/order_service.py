@@ -14,12 +14,12 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import OrderStatus, UserStatus
+from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
 
 logger = logging.getLogger(__name__)
 
 
-_ALLOWED_BLOGGER_COUNTS = {3, 10, 20, 30, 50}
+_ALLOWED_BLOGGER_COUNTS = {3, 5, 10}
 
 
 @dataclass(slots=True)
@@ -66,6 +66,7 @@ class OrderService:
     async def create_order(
         self,
         advertiser_id: UUID,
+        order_type: OrderType,
         product_link: str,
         offer_text: str,
         ugc_requirements: Optional[str],
@@ -110,13 +111,15 @@ class OrderService:
         if not offer_text:
             raise OrderCreationError("Offer text is required.")
 
-        if price <= 0:
-            raise OrderCreationError("Price must be positive.")
+        barter_description = (barter_description or "").strip() or None
+        if price < 0:
+            raise OrderCreationError("Price cannot be negative.")
+        if price <= 0 and not barter_description:
+            raise OrderCreationError("Price must be positive when no barter.")
 
         if bloggers_needed not in _ALLOWED_BLOGGER_COUNTS:
             raise OrderCreationError("Invalid bloggers count.")
 
-        barter_description = (barter_description or "").strip() or None
         is_new = await self.is_new_advertiser(advertiser_id)
         if is_new and barter_description:
             raise OrderCreationError("Barter is not available for NEW advertisers.")
@@ -126,6 +129,7 @@ class OrderService:
         order = Order(
             order_id=uuid4(),
             advertiser_id=advertiser_id,
+            order_type=order_type,
             product_link=product_link,
             offer_text=offer_text,
             ugc_requirements=(ugc_requirements or "").strip() or None,

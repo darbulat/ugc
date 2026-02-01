@@ -11,7 +11,13 @@ from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.domain.entities import AdvertiserProfile, Order, Payment, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, PaymentStatus, UserStatus
+from ugc_bot.domain.enums import (
+    MessengerType,
+    OrderStatus,
+    OrderType,
+    PaymentStatus,
+    UserStatus,
+)
 from ugc_bot.infrastructure.memory_repositories import NoopOfferBroadcaster
 from tests.helpers.factories import create_test_advertiser, create_test_order
 from tests.helpers.services import build_payment_service
@@ -189,6 +195,7 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
     order = Order(
         order_id=order_id,
         advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

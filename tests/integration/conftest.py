@@ -228,6 +228,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
             activated = Order(
                 order_id=order.order_id,
                 advertiser_id=order.advertiser_id,
+                order_type=order.order_type,
                 product_link=order.product_link,
                 offer_text=order.offer_text,
                 ugc_requirements=order.ugc_requirements,
@@ -347,13 +348,14 @@ def create_test_order(session):
 
     def _create_order(advertiser_id, **kwargs):
         from ugc_bot.domain.entities import Order
-        from ugc_bot.domain.enums import OrderStatus
+        from ugc_bot.domain.enums import OrderStatus, OrderType
         from datetime import datetime, timezone
         from uuid import uuid4
 
         defaults = {
             "order_id": uuid4(),
             "advertiser_id": advertiser_id,
+            "order_type": OrderType.UGC_ONLY,
             "product_link": "https://example.com/product",
             "offer_text": "Test offer",
             "ugc_requirements": None,

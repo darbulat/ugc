@@ -14,7 +14,12 @@ from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
-from ugc_bot.bot.handlers.security_warnings import ADVERTISER_PAYMENT_WARNING
+from ugc_bot.bot.handlers.keyboards import advertiser_after_payment_keyboard
+from ugc_bot.bot.handlers.security_warnings import (
+    ADVERTISER_AFTER_PAYMENT_IMPORTANT,
+    ADVERTISER_AFTER_PAYMENT_SUCCESS,
+    ADVERTISER_AFTER_PAYMENT_WHAT_NEXT,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderStatus
 
@@ -198,6 +203,10 @@ async def successful_payment_handler(
         # Re-raise so middleware can handle it
         raise
 
-    await message.answer("Оплата подтверждена. Заказ активирован и отправлен блогерам.")
-    # Send security warning
-    await message.answer(ADVERTISER_PAYMENT_WARNING)
+    await message.answer(ADVERTISER_AFTER_PAYMENT_SUCCESS)
+    await message.answer(ADVERTISER_AFTER_PAYMENT_WHAT_NEXT, parse_mode="Markdown")
+    await message.answer(ADVERTISER_AFTER_PAYMENT_IMPORTANT, parse_mode="Markdown")
+    await message.answer(
+        "Выберите действие:",
+        reply_markup=advertiser_after_payment_keyboard(),
+    )

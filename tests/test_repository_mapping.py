@@ -8,6 +8,7 @@ from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
     OrderStatus,
+    OrderType,
     UserStatus,
     WorkFormat,
 )
@@ -75,6 +76,7 @@ def test_order_mapping_roundtrip() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000210"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000211"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

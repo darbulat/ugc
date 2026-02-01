@@ -6,7 +6,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -22,11 +22,13 @@ from ugc_bot.bot.handlers.utils import (
 )
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
+    CONFIRM_AGREEMENT_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
     advertiser_menu_keyboard,
     draft_choice_keyboard,
     support_keyboard,
 )
+from ugc_bot.config import AppConfig
 
 
 router = Router()
@@ -43,6 +45,8 @@ class AdvertiserRegistrationStates(StatesGroup):
     name = State()
     phone = State()
     brand = State()
+    site_link = State()
+    agreements = State()
 
 
 async def _ask_name(message: Message, state: FSMContext) -> None:
@@ -153,7 +157,8 @@ async def handle_name(message: Message, state: FSMContext) -> None:
 
     await state.update_data(name=name)
     await message.answer(
-        "Номер телефона для связи по заказу (пример: +7 900 000-00-00):",
+        "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
+        "Пример: +7 900 000-00-00",
         reply_markup=support_keyboard(),
     )
     await state.set_state(AdvertiserRegistrationStates.phone)
@@ -180,12 +185,8 @@ async def handle_phone(message: Message, state: FSMContext) -> None:
 
 
 @router.message(AdvertiserRegistrationStates.brand)
-async def handle_brand(
-    message: Message,
-    state: FSMContext,
-    advertiser_registration_service: AdvertiserRegistrationService,
-) -> None:
-    """Store brand and create advertiser profile."""
+async def handle_brand(message: Message, state: FSMContext) -> None:
+    """Store brand and ask for site link."""
 
     brand = (message.text or "").strip()
     if not brand:
@@ -195,23 +196,101 @@ async def handle_brand(
         )
         return
 
+    await state.update_data(brand=brand)
+    await message.answer(
+        "Ссылка на сайт, продукт или соцсети бренда:",
+        reply_markup=support_keyboard(),
+    )
+    await state.set_state(AdvertiserRegistrationStates.site_link)
+
+
+def _agreements_keyboard() -> ReplyKeyboardMarkup:
+    """Keyboard with single 'Confirm agreement' button."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def _format_agreements_message(config: AppConfig) -> str:
+    """Build agreements text with clickable document links (HTML)."""
+    parts = [
+        "Профиль создан. Остался последний шаг — ознакомьтесь с документами "
+        "и подтвердите согласие.",
+        "",
+    ]
+    if config.docs.docs_offer_url:
+        parts.append(f'<a href="{config.docs.docs_offer_url}">Оферта</a>')
+    if config.docs.docs_privacy_url:
+        parts.append(
+            f'<a href="{config.docs.docs_privacy_url}">Политика конфиденциальности</a>'
+        )
+    if config.docs.docs_consent_url:
+        parts.append(
+            f'<a href="{config.docs.docs_consent_url}">Согласие на обработку ПД</a>'
+        )
+    if len(parts) == 2:
+        parts.append("Подтвердите согласие с документами платформы.")
+    return "\n".join(parts)
+
+
+@router.message(AdvertiserRegistrationStates.site_link)
+async def handle_site_link(
+    message: Message,
+    state: FSMContext,
+    config: AppConfig,
+) -> None:
+    """Store site_link and show agreements step."""
+
+    site_link = (message.text or "").strip() or None
+    await state.update_data(site_link=site_link)
+
+    text = _format_agreements_message(config)
+    await message.answer(
+        text,
+        reply_markup=_agreements_keyboard(),
+        parse_mode="HTML",
+    )
+    await state.set_state(AdvertiserRegistrationStates.agreements)
+
+
+@router.message(AdvertiserRegistrationStates.agreements)
+async def handle_agreements_confirm(
+    message: Message,
+    state: FSMContext,
+    advertiser_registration_service: AdvertiserRegistrationService,
+) -> None:
+    """On 'Confirm agreement' create profile and show success."""
+
+    if (message.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
+        await message.answer(
+            "Нажмите кнопку «Подтвердить согласие», чтобы завершить регистрацию.",
+            reply_markup=_agreements_keyboard(),
+        )
+        return
+
     data = await state.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
         await message.answer("Сессия истекла. Начните заново.")
+        await state.clear()
         return
     name = data["name"]
     phone = data["phone"]
+    brand = data["brand"]
+    site_link = data.get("site_link")
 
     await advertiser_registration_service.register_advertiser(
         user_id=user_id,
         name=name,
         phone=phone,
         brand=brand,
+        site_link=site_link,
     )
 
     await state.clear()
     await message.answer(
-        "Профиль рекламодателя создан.",
+        "Теперь вы можете разместить заказ и найти UGC-креаторов под вашу задачу.",
         reply_markup=advertiser_menu_keyboard(),
     )

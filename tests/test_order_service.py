@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
-from ugc_bot.domain.enums import UserStatus
+from ugc_bot.domain.enums import OrderType, UserStatus
 from tests.helpers.factories import create_test_advertiser
 from tests.helpers.services import build_order_service
 
@@ -21,6 +21,7 @@ async def test_create_order_success(user_repo, advertiser_repo, order_repo) -> N
     service = build_order_service(user_repo, advertiser_repo, order_repo)
     order = await service.create_order(
         advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -43,6 +44,7 @@ async def test_create_order_invalid_user(
     with pytest.raises(UserNotFoundError):
         await service.create_order(
             advertiser_id=UUID("00000000-0000-0000-0000-000000000301"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,
@@ -67,23 +69,13 @@ async def test_create_order_new_advertiser_restrictions(
     with pytest.raises(OrderCreationError):
         await service.create_order(
             advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,
             barter_description="Barter",
             price=1000.0,
             bloggers_needed=3,
-        )
-
-    with pytest.raises(OrderCreationError):
-        await service.create_order(
-            advertiser_id=user_id,
-            product_link="https://example.com",
-            offer_text="Offer",
-            ugc_requirements=None,
-            barter_description=None,
-            price=1000.0,
-            bloggers_needed=20,
         )
 
 
@@ -102,6 +94,7 @@ async def test_create_order_validation_errors(
     with pytest.raises(OrderCreationError):
         await service.create_order(
             advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="",
             offer_text="Offer",
             ugc_requirements=None,
@@ -113,6 +106,7 @@ async def test_create_order_validation_errors(
     with pytest.raises(OrderCreationError):
         await service.create_order(
             advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="",
             ugc_requirements=None,
@@ -124,6 +118,7 @@ async def test_create_order_validation_errors(
     with pytest.raises(OrderCreationError):
         await service.create_order(
             advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,
@@ -135,6 +130,7 @@ async def test_create_order_validation_errors(
     with pytest.raises(OrderCreationError):
         await service.create_order(
             advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,
@@ -159,6 +155,7 @@ async def test_create_order_requires_advertiser_profile(
     with pytest.raises(OrderCreationError):
         await service.create_order(
             advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,
@@ -182,6 +179,7 @@ async def test_create_order_and_list_with_transaction_manager(
     )
     order = await service.create_order(
         advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

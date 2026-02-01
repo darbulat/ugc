@@ -4,8 +4,10 @@ import pytest
 
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.start import (
+    CHANGE_ROLE_BUTTON_TEXT,
     START_TEXT,
     _role_keyboard,
+    change_role_button,
     choose_role,
     role_command,
     start_command,
@@ -38,6 +40,16 @@ async def test_start_command_sends_role_keyboard(user_repo) -> None:
 
 
 @pytest.mark.asyncio
+async def test_start_command_without_from_user_returns_early(user_repo) -> None:
+    """Start with no from_user does not send message."""
+
+    service = UserRoleService(user_repo=user_repo)
+    message = FakeMessage(text=None, user=None)
+    await start_command(message, user_role_service=service)
+    assert not message.answers
+
+
+@pytest.mark.asyncio
 async def test_role_command_shows_keyboard() -> None:
     """Ensure /role returns role keyboard."""
 
@@ -49,6 +61,19 @@ async def test_role_command_shows_keyboard() -> None:
     keyboard = message.answers[0][1]
     assert keyboard is not None
     assert keyboard.keyboard == _role_keyboard().keyboard
+
+
+@pytest.mark.asyncio
+async def test_change_role_button_shows_start_screen() -> None:
+    """Change role button shows start text and role keyboard."""
+
+    message = FakeMessage(text=CHANGE_ROLE_BUTTON_TEXT, user=FakeUser(1, "u", "User"))
+    await change_role_button(message)
+
+    assert message.answers
+    assert START_TEXT in message.answers[0][0]
+    assert message.answers[0][1] is not None
+    assert message.answers[0][1].keyboard == _role_keyboard().keyboard
 
 
 @pytest.mark.asyncio
@@ -109,6 +134,24 @@ async def test_support_button_sends_support_text(user_repo) -> None:
     assert "Служба поддержки" in message.answers[0][0]
     assert "@usemycontent" in message.answers[0][0]
     assert message.answers[0][1] is not None
+
+
+@pytest.mark.asyncio
+async def test_support_button_without_from_user_returns_early(user_repo) -> None:
+    """Support button with no from_user does not send message."""
+
+    service = UserRoleService(user_repo=user_repo)
+    message = FakeMessage(text="Поддержка", user=None)
+    state = FakeFSMContext(state=None)
+    draft_service = FakeFsmDraftService()
+
+    await support_button(
+        message,
+        user_role_service=service,
+        state=state,
+        fsm_draft_service=draft_service,
+    )
+    assert not message.answers
 
 
 @pytest.mark.asyncio

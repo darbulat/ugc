@@ -9,7 +9,7 @@ from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundErr
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
-from ugc_bot.domain.entities import User
+from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
@@ -370,3 +370,41 @@ async def test_get_profile_by_instagram_url_with_transaction_manager(
     result = await service.get_profile_by_instagram_url("https://instagram.com/with_tm")
     assert result is not None
     assert result.instagram_url == "https://instagram.com/with_tm"
+
+
+@pytest.mark.asyncio
+async def test_increment_wanted_to_change_terms_count() -> None:
+    """Increment wanted_to_change_terms_count for a blogger."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    profile = await blogger_repo.get_by_user_id(user_id)
+    assert profile is None
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/test",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    await service.increment_wanted_to_change_terms_count(user_id)
+    updated = await blogger_repo.get_by_user_id(user_id)
+    assert updated is not None
+    assert updated.wanted_to_change_terms_count == 1
+    await service.increment_wanted_to_change_terms_count(user_id)
+    updated2 = await blogger_repo.get_by_user_id(user_id)
+    assert updated2 is not None
+    assert updated2.wanted_to_change_terms_count == 2

@@ -26,6 +26,7 @@ from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    OrderType,
     OutboxEventStatus,
     PaymentStatus,
     UserStatus,
@@ -39,6 +40,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     UserStatus: "user_status",
     AudienceGender: "audience_gender",
     OrderStatus: "order_status",
+    OrderType: "order_type",
     InteractionStatus: "interaction_status",
     ComplaintStatus: "complaint_status",
     OutboxEventStatus: "outbox_event_status",
@@ -119,6 +121,9 @@ class BloggerProfileModel(Base):
     work_format: Mapped[WorkFormat] = mapped_column(
         _enum_column(WorkFormat), nullable=False, server_default=text("'ugc_only'")
     )
+    wanted_to_change_terms_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -137,6 +142,7 @@ class AdvertiserProfileModel(Base):
     contact: Mapped[str] = mapped_column(String, nullable=False)  # phone for contact
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     brand: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    site_link: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class OrderModel(Base):
@@ -153,6 +159,11 @@ class OrderModel(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
         nullable=False,
+    )
+    order_type: Mapped[OrderType] = mapped_column(
+        _enum_column(OrderType),
+        nullable=False,
+        server_default=text("'ugc_only'"),
     )
     product_link: Mapped[str] = mapped_column(String, nullable=False)
     offer_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -363,6 +374,28 @@ class FsmDraftModel(Base):
     state_key: Mapped[str] = mapped_column(String(128), nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class NpsResponseModel(Base):
+    """NPS response ORM model (advertiser rating after ok feedback)."""
+
+    __tablename__ = "nps_responses"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    interaction_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("interactions.interaction_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
 

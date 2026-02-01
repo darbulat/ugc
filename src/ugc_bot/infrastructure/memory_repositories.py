@@ -14,6 +14,7 @@ from ugc_bot.application.ports import (
     InteractionRepository,
     InstagramGraphApiClient,
     InstagramVerificationRepository,
+    NpsRepository,
     OfferBroadcaster,
     OrderRepository,
     OrderResponseRepository,
@@ -398,6 +399,49 @@ class InMemoryInteractionRepository(InteractionRepository):
         """Persist interaction in memory."""
 
         self.interactions[interaction.interaction_id] = interaction
+
+    async def update_next_check_at(
+        self,
+        interaction_id: UUID,
+        next_check_at: datetime,
+        session: object | None = None,
+    ) -> None:
+        """Update next_check_at for an interaction."""
+
+        interaction = self.interactions.get(interaction_id)
+        if interaction is not None:
+            updated = Interaction(
+                interaction_id=interaction.interaction_id,
+                order_id=interaction.order_id,
+                blogger_id=interaction.blogger_id,
+                advertiser_id=interaction.advertiser_id,
+                status=interaction.status,
+                from_advertiser=interaction.from_advertiser,
+                from_blogger=interaction.from_blogger,
+                postpone_count=interaction.postpone_count,
+                next_check_at=next_check_at,
+                created_at=interaction.created_at,
+                updated_at=interaction.updated_at,
+            )
+            self.interactions[interaction_id] = updated
+
+
+@dataclass
+class InMemoryNpsRepository(NpsRepository):
+    """In-memory NPS repository for tests."""
+
+    scores: Dict[UUID, List[int]] = field(default_factory=lambda: {})
+
+    async def save(
+        self,
+        interaction_id: UUID,
+        score: int,
+        session: object | None = None,
+    ) -> None:
+        """Save NPS score in memory."""
+        if interaction_id not in self.scores:
+            self.scores[interaction_id] = []
+        self.scores[interaction_id].append(score)
 
 
 @dataclass

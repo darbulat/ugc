@@ -8,7 +8,7 @@ import pytest
 
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.domain.entities import Order, OutboxEvent
-from ugc_bot.domain.enums import OrderStatus, OutboxEventStatus
+from ugc_bot.domain.enums import OrderStatus, OrderType, OutboxEventStatus
 
 
 class TestOutboxPublisher:
@@ -26,6 +26,7 @@ class TestOutboxPublisher:
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -67,6 +68,7 @@ class TestOutboxPublisher:
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000010"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000020"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -119,6 +121,7 @@ class TestOutboxPublisher:
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -187,6 +190,7 @@ class TestOutboxPublisher:
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -304,6 +308,7 @@ class TestOutboxPublisher:
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -468,6 +473,7 @@ class TestOutboxPublisher:
         test_order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,

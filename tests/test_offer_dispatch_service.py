@@ -12,6 +12,7 @@ from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
     OrderStatus,
+    OrderType,
     UserStatus,
     WorkFormat,
 )
@@ -39,6 +40,7 @@ async def test_dispatch_selects_confirmed_bloggers() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000600"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000601"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -99,6 +101,7 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000650"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000651"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -158,6 +161,7 @@ async def test_dispatch_requires_active_order() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000610"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000611"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -172,6 +176,101 @@ async def test_dispatch_requires_active_order() -> None:
 
     with pytest.raises(OrderCreationError):
         await service.dispatch(order.order_id)
+
+
+@pytest.mark.asyncio
+async def test_get_order_and_advertiser_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """get_order_and_advertiser uses transaction when transaction_manager is set."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        transaction_manager=fake_tm,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000612"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000613"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    await order_repo.save(order)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000613"),
+        external_id="adv",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(advertiser)
+
+    got_order, got_advertiser = await service.get_order_and_advertiser(order.order_id)
+    assert got_order is not None and got_order.order_id == order.order_id
+    assert got_advertiser is not None and got_advertiser.user_id == advertiser.user_id
+
+
+@pytest.mark.asyncio
+async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
+    fake_tm: object,
+) -> None:
+    """get_order_and_advertiser with transaction_manager returns (None, None) when order missing."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        transaction_manager=fake_tm,
+    )
+    missing_order_id = UUID("00000000-0000-0000-0000-000000000616")
+    got_order, got_advertiser = await service.get_order_and_advertiser(missing_order_id)
+    assert got_order is None
+    assert got_advertiser is None
+
+
+def test_format_offer_ugc_plus_placement() -> None:
+    """format_offer uses UGC + размещение label for ugc_plus_placement order type."""
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000614"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000615"),
+        order_type=OrderType.UGC_PLUS_PLACEMENT,
+        product_link="https://example.com",
+        offer_text="Task",
+        ugc_requirements=None,
+        barter_description=None,
+        price=500.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=None,
+    )
+    text = service.format_offer(order, "Advertiser")
+    assert "UGC + размещение" in text
+    assert "Task" in text
+    assert "500" in text
 
 
 @pytest.mark.asyncio
@@ -191,6 +290,7 @@ async def test_dispatch_skips_ineligible_bloggers() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000620"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000621"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -270,6 +370,7 @@ async def test_dispatch_no_profiles_returns_empty() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000640"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000641"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -304,6 +405,7 @@ async def test_dispatch_excludes_order_author() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000651"),
         advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

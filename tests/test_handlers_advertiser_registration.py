@@ -2,9 +2,6 @@
 
 import pytest
 
-from ugc_bot.application.services.advertiser_registration_service import (
-    AdvertiserRegistrationService,
-)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
     handle_advertiser_start,
@@ -135,14 +132,10 @@ async def test_handle_name_requires_value(user_repo, advertiser_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_brand_success(user_repo, advertiser_repo) -> None:
-    """Store brand and create profile."""
+async def test_handle_brand_success(user_repo) -> None:
+    """Store brand and ask for site_link."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    advertiser_service = AdvertiserRegistrationService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-    )
     user = await user_service.set_user(
         external_id="20",
         messenger_type=MessengerType.TELEGRAM,
@@ -154,16 +147,12 @@ async def test_handle_brand_success(user_repo, advertiser_repo) -> None:
     state.state = "AdvertiserRegistrationStates:brand"
     await state.update_data(user_id=user.user_id, name="Test Name", phone="+7900")
 
-    await handle_brand(message, state, advertiser_service)
+    await handle_brand(message, state)
 
     assert message.answers
     ans = message.answers[0]
-    assert "Профиль рекламодателя создан" in (ans if isinstance(ans, str) else ans[0])
-    profile = await advertiser_repo.get_by_user_id(user.user_id)
-    assert profile is not None
-    assert profile.name == "Test Name"
-    assert profile.phone == "+7900"
-    assert profile.brand == "My Brand"
+    assert "Ссылка на сайт" in (ans if isinstance(ans, str) else ans[0])
+    assert state._data.get("brand") == "My Brand"
 
 
 @pytest.mark.asyncio
@@ -235,9 +224,7 @@ async def test_handle_name_success_asks_phone(user_repo) -> None:
 
     assert message.answers
     first_ans = message.answers[0]
-    assert "Номер телефона" in (
-        first_ans if isinstance(first_ans, str) else first_ans[0]
-    )
+    assert "телефона" in (first_ans if isinstance(first_ans, str) else first_ans[0])
     assert state._data.get("name") == "Иван"
 
 
@@ -276,7 +263,7 @@ async def test_handle_phone_requires_value(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_brand_requires_value(user_repo, advertiser_repo) -> None:
+async def test_handle_brand_requires_value(user_repo) -> None:
     """Require non-empty brand."""
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -285,16 +272,12 @@ async def test_handle_brand_requires_value(user_repo, advertiser_repo) -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    advertiser_service = AdvertiserRegistrationService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-    )
     message = FakeMessage(text=" ", user=FakeUser(40, "adv", "Adv"))
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:brand"
     await state.update_data(user_id=user.user_id, name="N", phone="+7900")
 
-    await handle_brand(message, state, advertiser_service)
+    await handle_brand(message, state)
 
     assert message.answers
     ans = message.answers[0]

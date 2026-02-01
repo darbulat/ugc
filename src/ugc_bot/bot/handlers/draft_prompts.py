@@ -36,21 +36,34 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     # AdvertiserRegistrationStates
     "AdvertiserRegistrationStates:name": "Как вас зовут?",
     "AdvertiserRegistrationStates:phone": (
-        "Номер телефона для связи по заказу (пример: +7 900 000-00-00):"
+        "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
+        "Пример: +7 900 000-00-00"
     ),
     "AdvertiserRegistrationStates:brand": (
         "Название вашего бренда / компании / бизнеса:"
     ),
-    # OrderCreationStates
-    "OrderCreationStates:product_link": "Введите ссылку на продукт:",
-    "OrderCreationStates:offer_text": "Введите краткий offer для блогеров:",
-    "OrderCreationStates:ugc_requirements": (
-        "Введите требования к UGC или напишите 'пропустить':"
+    "AdvertiserRegistrationStates:site_link": (
+        "Ссылка на сайт, продукт или соцсети бренда:"
     ),
-    "OrderCreationStates:barter_choice": "Есть бартер? Выберите:",
-    "OrderCreationStates:barter_description": "Опишите бартерную продукцию:",
-    "OrderCreationStates:price": "Введите цену за 1 UGC-видео:",
-    "OrderCreationStates:bloggers_needed": "Выберите количество блогеров:",
+    "AdvertiserRegistrationStates:agreements": (
+        "Профиль создан. Остался последний шаг — ознакомьтесь с документами "
+        "и подтвердите согласие."
+    ),
+    # OrderCreationStates
+    "OrderCreationStates:order_type": "Что вам нужно?",
+    "OrderCreationStates:offer_text": (
+        "Кратко опишите задачу для креаторов.\n"
+        "Пример: нужны короткие видео для соцсетей с демонстрацией продукта."
+    ),
+    "OrderCreationStates:cooperation_format": "Какой формат сотрудничества?",
+    "OrderCreationStates:price": "Бюджет за 1 UGC-видео? Укажите цену в рублях:",
+    "OrderCreationStates:barter_description": (
+        "Что вы предлагаете по бартеру?\nПример: продукт + доставка"
+    ),
+    "OrderCreationStates:bloggers_needed": "Сколько креаторов вам нужно?",
+    "OrderCreationStates:product_link": (
+        "Введите ссылку на продукт (для откликнувшихся креаторов):"
+    ),
     # EditProfileStates
     "EditProfileStates:choosing_field": "Выберите раздел для редактирования:",
     "EditProfileStates:entering_value": "",  # Filled from editing_field below
@@ -67,6 +80,11 @@ EDIT_FIELD_PROMPTS: dict[str, str] = {
     "price": "Укажите цену за 1 UGC‑видео в рублях:",
     "barter": "Готовы работать по бартеру?",
     "work_format": "Как готовы работать с брендами?",
+    # Advertiser profile fields
+    "name": "Введите имя:",
+    "phone": "Укажите номер телефона, по которому с вами можно связаться по заказу. Пример: +7 900 000-00-00",
+    "brand": "Название вашего бренда / компании / бизнеса:",
+    "site_link": "Ссылка на сайт, продукт или соцсети бренда:",
 }
 
 

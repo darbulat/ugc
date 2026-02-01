@@ -26,13 +26,19 @@ class AdvertiserRegistrationService:
     transaction_manager: TransactionManager | None = None
 
     async def register_advertiser(
-        self, user_id: UUID, name: str, phone: str, brand: str
+        self,
+        user_id: UUID,
+        name: str,
+        phone: str,
+        brand: str,
+        site_link: Optional[str] = None,
     ) -> AdvertiserProfile:
         """Create an advertiser profile after validating input."""
 
         name = name.strip()
         phone = phone.strip()
         brand = brand.strip()
+        site_link = (site_link or "").strip() or None
         if not name:
             raise AdvertiserRegistrationError("Name is required.")
         if not phone:
@@ -50,6 +56,7 @@ class AdvertiserRegistrationService:
                 name=name,
                 phone=phone,
                 brand=brand,
+                site_link=site_link,
             )
             await self.advertiser_repo.save(profile)
         else:
@@ -65,6 +72,7 @@ class AdvertiserRegistrationService:
                     name=name,
                     phone=phone,
                     brand=brand,
+                    site_link=site_link,
                 )
                 await self.advertiser_repo.save(profile, session=session)
 
@@ -80,3 +88,40 @@ class AdvertiserRegistrationService:
             return await self.advertiser_repo.get_by_user_id(user_id)
         async with self.transaction_manager.transaction() as session:
             return await self.advertiser_repo.get_by_user_id(user_id, session=session)
+
+    async def update_advertiser_profile(
+        self,
+        user_id: UUID,
+        *,
+        name: Optional[str] = None,
+        phone: Optional[str] = None,
+        brand: Optional[str] = None,
+        site_link: Optional[str] = None,
+    ) -> Optional[AdvertiserProfile]:
+        """Update advertiser profile fields. Returns updated profile or None if not found."""
+
+        if self.transaction_manager is None:
+            profile = await self.advertiser_repo.get_by_user_id(user_id)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                profile = await self.advertiser_repo.get_by_user_id(
+                    user_id, session=session
+                )
+        if profile is None:
+            return None
+
+        updated = AdvertiserProfile(
+            user_id=profile.user_id,
+            name=name.strip() if name is not None else profile.name,
+            phone=phone.strip() if phone is not None else profile.phone,
+            brand=brand.strip() if brand is not None else profile.brand,
+            site_link=(site_link or "").strip() or None
+            if site_link is not None
+            else profile.site_link,
+        )
+        if self.transaction_manager is None:
+            await self.advertiser_repo.save(updated)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.advertiser_repo.save(updated, session=session)
+        return updated

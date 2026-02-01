@@ -13,6 +13,7 @@ from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    OrderType,
     PaymentStatus,
     UserStatus,
     WorkFormat,
@@ -51,6 +52,7 @@ class BloggerProfile:
     barter: bool
     work_format: WorkFormat
     updated_at: datetime
+    wanted_to_change_terms_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,7 @@ class AdvertiserProfile:
     name: str
     phone: str
     brand: str
+    site_link: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,7 @@ class Order:
 
     order_id: UUID
     advertiser_id: UUID
+    order_type: OrderType
     product_link: str
     offer_text: str
     ugc_requirements: Optional[str]

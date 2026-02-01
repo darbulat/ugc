@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.infrastructure.kafka.publisher import (
     KafkaOrderActivationPublisher,
     NoopOrderActivationPublisher,
@@ -17,6 +17,7 @@ def _order() -> Order:
     return Order(
         order_id=UUID("00000000-0000-0000-0000-000000000950"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000951"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

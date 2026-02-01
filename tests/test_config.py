@@ -60,3 +60,11 @@ def test_log_config_normalizes_log_level() -> None:
         }
     )
     assert config.log.log_level == "WARN"
+
+
+def test_bot_config_empty_token_raises() -> None:
+    """BotConfig raises ValueError when BOT_TOKEN is empty or whitespace."""
+    from ugc_bot.config import BotConfig
+
+    with pytest.raises(ValueError, match="BOT_TOKEN is required"):
+        BotConfig.model_validate({"BOT_TOKEN": "   "})

@@ -216,6 +216,7 @@ class BloggerRegistrationService:
             price=price if price is not None else profile.price,
             barter=barter if barter is not None else profile.barter,
             work_format=work_format if work_format is not None else profile.work_format,
+            wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
             updated_at=datetime.now(timezone.utc),
         )
 
@@ -225,3 +226,37 @@ class BloggerRegistrationService:
             async with self.transaction_manager.transaction() as session:
                 await self.blogger_repo.save(updated, session=session)
         return updated
+
+    async def increment_wanted_to_change_terms_count(self, user_id: UUID) -> None:
+        """Increment wanted_to_change_terms_count for a blogger (when advertiser selects that reason)."""
+
+        if self.transaction_manager is None:
+            profile = await self.blogger_repo.get_by_user_id(user_id)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                profile = await self.blogger_repo.get_by_user_id(
+                    user_id, session=session
+                )
+        if profile is None:
+            return
+        updated = BloggerProfile(
+            user_id=profile.user_id,
+            instagram_url=profile.instagram_url,
+            confirmed=profile.confirmed,
+            city=profile.city,
+            topics=profile.topics,
+            audience_gender=profile.audience_gender,
+            audience_age_min=profile.audience_age_min,
+            audience_age_max=profile.audience_age_max,
+            audience_geo=profile.audience_geo,
+            price=profile.price,
+            barter=profile.barter,
+            work_format=profile.work_format,
+            wanted_to_change_terms_count=profile.wanted_to_change_terms_count + 1,
+            updated_at=datetime.now(timezone.utc),
+        )
+        if self.transaction_manager is None:
+            await self.blogger_repo.save(updated)
+        else:
+            async with self.transaction_manager.transaction() as session:
+                await self.blogger_repo.save(updated, session=session)

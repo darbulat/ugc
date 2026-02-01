@@ -6,13 +6,13 @@ import pytest
 
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.order_creation import (
-    handle_barter_choice,
     handle_barter_description,
     handle_bloggers_needed,
+    handle_cooperation_format,
     handle_offer_text,
+    handle_order_type,
     handle_price,
     handle_product_link,
-    handle_ugc_requirements,
     start_order_creation,
 )
 from ugc_bot.config import AppConfig
@@ -59,7 +59,7 @@ async def test_start_order_creation_requires_role(
 async def test_order_creation_flow_new_advertiser(
     user_repo, advertiser_repo, order_repo, pricing_repo
 ) -> None:
-    """New advertisers skip barter step."""
+    """Full flow: order_type -> offer_text -> cooperation (Оплата) -> price -> bloggers -> product_link."""
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
@@ -81,12 +81,14 @@ async def test_order_creation_flow_new_advertiser(
         order_service,
         FakeFsmDraftService(),
     )
-    assert state._data["is_new"] is True
+    assert "Что вам нужно?" in message.answers[0]
 
-    await handle_product_link(FakeMessage(text="https://example.com", user=None), state)
+    await handle_order_type(FakeMessage(text="UGC-видео для бренда", user=None), state)
     await handle_offer_text(FakeMessage(text="Offer", user=None), state)
-    await handle_ugc_requirements(FakeMessage(text="пропустить", user=None), state)
+    await handle_cooperation_format(FakeMessage(text="Оплата", user=None), state)
     await handle_price(FakeMessage(text="1000", user=None), state)
+    await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
+
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "token",
@@ -96,15 +98,16 @@ async def test_order_creation_flow_new_advertiser(
     )
     bot = FakeBot()
     pricing_service = await build_contact_pricing_service({3: 1500.0}, pricing_repo)
-    await handle_bloggers_needed(
-        FakeMessage(text="3", user=FakeUser(5, "adv", "Adv"), bot=bot),
+    await handle_product_link(
+        FakeMessage(
+            text="https://example.com", user=FakeUser(5, "adv", "Adv"), bot=bot
+        ),
         state,
         order_service,
         config,
         pricing_service,
     )
     assert bot.invoices
-
     assert len(order_repo.orders) == 1
 
 
@@ -112,7 +115,7 @@ async def test_order_creation_flow_new_advertiser(
 async def test_order_creation_flow_with_barter(
     user_repo, advertiser_repo, order_repo, pricing_repo
 ) -> None:
-    """Handle barter flow for existing advertisers."""
+    """Flow with barter: order_type -> offer_text -> cooperation (Бартер) -> barter -> bloggers -> product_link."""
 
     from tests.helpers.factories import create_test_order
 
@@ -147,12 +150,12 @@ async def test_order_creation_flow_with_barter(
         FakeFsmDraftService(),
     )
 
-    await handle_product_link(FakeMessage(text="https://example.com", user=None), state)
+    await handle_order_type(FakeMessage(text="UGC-видео для бренда", user=None), state)
     await handle_offer_text(FakeMessage(text="Offer", user=None), state)
-    await handle_ugc_requirements(FakeMessage(text="пропустить", user=None), state)
-    await handle_barter_choice(FakeMessage(text="Да", user=None), state)
+    await handle_cooperation_format(FakeMessage(text="Бартер", user=None), state)
     await handle_barter_description(FakeMessage(text="Barter", user=None), state)
-    await handle_price(FakeMessage(text="1500", user=None), state)
+    await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
+
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "token",
@@ -161,16 +164,17 @@ async def test_order_creation_flow_with_barter(
         }
     )
     bot = FakeBot()
-    pricing_service = await build_contact_pricing_service({20: 5000.0}, pricing_repo)
-    await handle_bloggers_needed(
-        FakeMessage(text="20", user=FakeUser(6, "adv", "Adv"), bot=bot),
+    pricing_service = await build_contact_pricing_service({5: 2500.0}, pricing_repo)
+    await handle_product_link(
+        FakeMessage(
+            text="https://example.com", user=FakeUser(6, "adv", "Adv"), bot=bot
+        ),
         state,
         order_service,
         config,
         pricing_service,
     )
     assert bot.invoices
-
     assert len(order_repo.orders) == 2
 
 
@@ -209,24 +213,14 @@ async def test_start_order_creation_blocked_user(
 
 
 @pytest.mark.asyncio
-async def test_bloggers_needed_limit_for_new_advertiser(
-    user_repo, advertiser_repo, order_repo, pricing_repo
-) -> None:
-    """Reject invalid bloggers count for NEW advertisers."""
+async def test_bloggers_needed_only_3_5_10() -> None:
+    """Reject invalid bloggers count (only 3, 5, 10 allowed)."""
 
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo)
     state = FakeFSMContext()
-    await state.update_data(is_new=True)
-
     message = FakeMessage(text="20", user=None)
-    config = AppConfig.model_validate(
-        {
-            "BOT_TOKEN": "token",
-            "DATABASE_URL": "postgresql://test",
-            "TELEGRAM_PROVIDER_TOKEN": "provider",
-        }
-    )
-    pricing_service = await build_contact_pricing_service({20: 5000.0}, pricing_repo)
-    await handle_bloggers_needed(message, state, order_service, config, pricing_service)
+    await handle_bloggers_needed(message, state)
 
-    assert "NEW рекламодатели" in message.answers[0]
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "3, 5 или 10" in text

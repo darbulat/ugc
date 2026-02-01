@@ -107,6 +107,20 @@ class FakeUserRoleService:
         self.set_user_calls.append((external_id, messenger_type.value, username))
 
 
+class FakeAdvertiserRegistrationService:
+    """Stub for advertiser registration service in edit flow."""
+
+    def __init__(self, update_returns: AdvertiserProfile | None = None) -> None:
+        self.update_returns = update_returns
+        self.update_calls: list[tuple[UUID, dict]] = []
+
+    async def update_advertiser_profile(
+        self, user_id: UUID, **kwargs: object
+    ) -> AdvertiserProfile | None:
+        self.update_calls.append((user_id, dict(kwargs)))
+        return self.update_returns
+
+
 class _FakeProfileServiceUserMissing:
     """Profile service that returns no user."""
 
@@ -320,7 +334,7 @@ async def test_edit_profile_start_blogger_missing(user_repo) -> None:
         message, state, service, fsm_draft_service=FakeFsmDraftService()
     )
     assert message.answers
-    assert "Профиль блогера не заполнен" in message.answers[0]
+    assert "Профиль не заполнен" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -460,7 +474,12 @@ async def test_edit_profile_enter_value_missing_state(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Сессия истекла" in message.answers[0]
@@ -485,7 +504,14 @@ async def test_edit_profile_enter_value_blogger_missing(user_repo) -> None:
     service = FakeProfileService(user=user, has_blogger=False, has_advertiser=False)
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
-    await edit_profile_enter_value(message, state, service, reg_service, role_service)
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
+    )
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
 
@@ -513,7 +539,12 @@ async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Город не может быть пустым" in message.answers[0]
@@ -542,7 +573,12 @@ async def test_edit_profile_enter_value_city_success(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert state.cleared is True
     assert message.answers
@@ -575,7 +611,12 @@ async def test_edit_profile_enter_value_nickname_success(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert state.cleared is True
     assert role_service.set_user_calls
@@ -620,7 +661,12 @@ async def test_edit_profile_enter_value_instagram_duplicate(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(get_by_instagram=existing)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "уже зарегистрирован" in message.answers[0]
@@ -649,7 +695,12 @@ async def test_edit_profile_enter_value_instagram_success(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert state.cleared is True
     assert (
@@ -681,7 +732,12 @@ async def test_edit_profile_enter_value_audience_gender_success(user_repo) -> No
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert reg_service.update_calls[0][1].get("audience_gender") == AudienceGender.ALL
 
@@ -709,7 +765,12 @@ async def test_edit_profile_enter_value_audience_age_success(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert reg_service.update_calls[0][1].get("audience_age_min") == 25
     assert reg_service.update_calls[0][1].get("audience_age_max") == 34
@@ -738,7 +799,12 @@ async def test_edit_profile_enter_value_barter_success(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert reg_service.update_calls[0][1].get("barter") is True
 
@@ -766,7 +832,12 @@ async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert (
         reg_service.update_calls[0][1].get("work_format") == WorkFormat.ADS_IN_ACCOUNT
@@ -795,7 +866,12 @@ async def test_edit_profile_enter_value_nickname_empty(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Имя не может быть пустым" in message.answers[0]
@@ -823,7 +899,12 @@ async def test_edit_profile_enter_value_instagram_bad_format(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Неверный формат ссылки" in message.answers[0]
@@ -851,7 +932,12 @@ async def test_edit_profile_enter_value_instagram_regex_fail(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Неверный формат ссылки Instagram" in message.answers[0]
@@ -879,7 +965,12 @@ async def test_edit_profile_enter_value_topics_empty(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "хотя бы одну тематику" in message.answers[0]
@@ -907,7 +998,12 @@ async def test_edit_profile_enter_value_audience_gender_invalid(user_repo) -> No
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Выберите одну из кнопок" in message.answers[0]
@@ -935,7 +1031,12 @@ async def test_edit_profile_enter_value_audience_age_invalid(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "кнопок возраста" in message.answers[0]
@@ -963,7 +1064,12 @@ async def test_edit_profile_enter_value_audience_geo_empty(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "хотя бы один город" in message.answers[0]
@@ -991,7 +1097,12 @@ async def test_edit_profile_enter_value_audience_geo_too_many(user_repo) -> None
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "не более 3 городов" in message.answers[0]
@@ -1019,7 +1130,12 @@ async def test_edit_profile_enter_value_price_invalid(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Введите число" in message.answers[0]
@@ -1047,7 +1163,12 @@ async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Цена должна быть больше 0" in message.answers[0]
@@ -1075,7 +1196,12 @@ async def test_edit_profile_enter_value_barter_invalid(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Выберите Да или Нет" in message.answers[0]
@@ -1103,7 +1229,12 @@ async def test_edit_profile_enter_value_work_format_invalid(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     assert "Выберите одну из кнопок" in message.answers[0]
@@ -1132,7 +1263,12 @@ async def test_edit_profile_enter_value_topics_success(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=updated)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert reg_service.update_calls[0][1].get("topics") == {
         "selected": ["beauty", "fitness"]
@@ -1161,7 +1297,12 @@ async def test_edit_profile_enter_value_unknown_field(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert state.cleared is True
     assert message.answers
@@ -1190,7 +1331,12 @@ async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService(update_returns=None)
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
     )
     assert message.answers
     first = message.answers[0]

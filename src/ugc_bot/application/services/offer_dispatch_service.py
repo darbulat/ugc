@@ -79,13 +79,38 @@ class OfferDispatchService:
         return users
 
     def format_offer(self, order: Order, advertiser_status: str) -> str:
-        """Format offer text for a blogger."""
+        """Format offer text for a blogger (without product_link per TZ)."""
 
-        return (
-            "Новый оффер:\n"
-            f"Ссылка на продукт: {order.product_link}\n"
-            f"Описание: {order.offer_text}\n"
-            f"Цена за 1 UGC: {order.price}\n"
-            f"Нужно блогеров: {order.bloggers_needed}\n"
-            f"Рекламодатель: {advertiser_status}"
+        format_label = (
+            "UGC + размещение"
+            if order.order_type.value == "ugc_plus_placement"
+            else "UGC-видео для бренда"
         )
+        parts = [
+            "Новый заказ UGC",
+            "",
+            "📋 Детали заказа:",
+            f"Формат: {format_label}",
+            f"Задача: {order.offer_text}",
+        ]
+        if order.price > 0:
+            parts.append(f"Бюджет: {order.price} ₽ за 1 UGC-видео")
+        if order.barter_description:
+            parts.append(f"Бартер: {order.barter_description}")
+        parts.append(f"Нужно креаторов: {order.bloggers_needed}")
+        parts.append("")
+        parts.append(
+            "⚠️ Важно: прочитайте оффер перед откликом. "
+            "Риск блокировки при необоснованном отказе."
+        )
+        parts.append("")
+        parts.append(
+            "📋 Как это работает: отклик = готовность на условиях; "
+            "после отклика заказчик получит ваш профиль, вы — детали и ссылку на продукт."
+        )
+        parts.append("")
+        parts.append(
+            "🔒 Безопасность сделки: превью с водяным знаком, "
+            "оплата до финального контента, платформа не участвует в сделке."
+        )
+        return "\n".join(parts)

@@ -11,10 +11,11 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
     _send_contact_immediately,
     handle_offer_response,
+    handle_offer_skip,
 )
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.domain.entities import Order, OrderResponse, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInteractionRepository,
@@ -100,9 +101,9 @@ async def test_contact_sent_immediately(
         bot=bot,
     )
 
-    # Check contact was sent
-    assert any("Новый отклик по заказу" in answer for answer in bot.answers)
-    assert any("blogger" in answer for answer in bot.answers)
+    # Check contact was sent (TZ format: "Новый отклик по вашему заказу", Креатор, Instagram)
+    assert any("Новый отклик" in answer for answer in bot.answers)
+    assert any("blogger" in answer or "Креатор" in answer for answer in bot.answers)
     assert any("Instagram:" in answer for answer in bot.answers)
 
     # Check interaction was created
@@ -114,6 +115,23 @@ async def test_contact_sent_immediately(
     assert interaction is not None
     assert interaction.blogger_id == blogger.user_id
     assert interaction.advertiser_id == advertiser.user_id
+
+
+@pytest.mark.asyncio
+async def test_offer_skip_handler() -> None:
+    """Blogger pressing 'Пропустить' on offer answers without recording response."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000000748")
+    callback = FakeCallback(
+        data=f"offer_skip:{order_id}",
+        user=FakeUser(1),
+    )
+    await handle_offer_skip(callback)
+    assert callback.answers
+    assert (
+        "пропущено" in callback.answers[0].lower()
+        or "ок" in callback.answers[0].lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -281,6 +299,7 @@ async def test_offer_response_handler_order_not_active(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000712"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000713"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -398,6 +417,7 @@ async def test_offer_response_handler_already_responded(fake_tm: object) -> None
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000716"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000717"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -475,6 +495,7 @@ async def test_offer_response_handler_limit_reached(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000720"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000721"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -756,6 +777,7 @@ async def test_offer_response_handler_exception(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000735"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000736"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -812,6 +834,7 @@ async def test_send_contact_order_not_found(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000999"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000001001"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -863,6 +886,7 @@ async def test_send_contact_order_not_active(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000800"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000801"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -913,6 +937,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(fake_tm: object) -> N
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000811"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

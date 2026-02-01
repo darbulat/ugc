@@ -131,6 +131,7 @@ class PaymentService:
         activated = Order(
             order_id=order.order_id,
             advertiser_id=order.advertiser_id,
+            order_type=order.order_type,
             product_link=order.product_link,
             offer_text=order.offer_text,
             ugc_requirements=order.ugc_requirements,

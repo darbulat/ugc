@@ -16,6 +16,7 @@ from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    OrderType,
     UserStatus,
     WorkFormat,
 )
@@ -108,6 +109,7 @@ async def create_test_advertiser(
             name=name,
             phone=phone,
             brand=brand,
+            site_link=None,
         )
     )
     return user.user_id
@@ -172,6 +174,7 @@ async def create_test_advertiser_profile(
     name: str = "Test Advertiser",
     phone: str = "+79001234567",
     brand: str = "Test Brand",
+    site_link: str | None = None,
 ) -> AdvertiserProfile:
     """Create and save advertiser profile.
 
@@ -181,6 +184,7 @@ async def create_test_advertiser_profile(
         name: Advertiser name
         phone: Phone for contact
         brand: Brand / company name
+        site_link: Optional site link
 
     Returns:
         Created advertiser profile
@@ -190,6 +194,7 @@ async def create_test_advertiser_profile(
         name=name,
         phone=phone,
         brand=brand,
+        site_link=site_link,
     )
     await advertiser_repo.save(profile)
     return profile
@@ -199,6 +204,7 @@ async def create_test_order(
     order_repo: InMemoryOrderRepository,
     advertiser_id: UUID,
     order_id: UUID | None = None,
+    order_type: OrderType = OrderType.UGC_ONLY,
     product_link: str = "https://example.com",
     offer_text: str = "Offer",
     ugc_requirements: str | None = None,
@@ -215,6 +221,7 @@ async def create_test_order(
         order_repo: Order repository
         advertiser_id: Advertiser user ID
         order_id: Optional order ID (generated if not provided)
+        order_type: Order type (UGC only or UGC + placement)
         product_link: Product link
         offer_text: Offer text
         ugc_requirements: UGC requirements
@@ -237,6 +244,7 @@ async def create_test_order(
     order = Order(
         order_id=order_id,
         advertiser_id=advertiser_id,
+        order_type=order_type,
         product_link=product_link,
         offer_text=offer_text,
         ugc_requirements=ugc_requirements,

@@ -33,6 +33,9 @@ _FLAT_KEYS = {
         "FEEDBACK_DELAY_HOURS",
         "FEEDBACK_POLL_INTERVAL_SECONDS",
         "FEEDBACK_ENABLED",
+        "FEEDBACK_REMINDER_HOUR",
+        "FEEDBACK_REMINDER_MINUTE",
+        "FEEDBACK_REMINDER_TIMEZONE",
     ],
     "role_reminder": [
         "ROLE_REMINDER_ENABLED",
@@ -142,6 +145,11 @@ class FeedbackConfig(BaseSettings):
         default=300, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
     )
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
+    feedback_reminder_hour: int = Field(default=10, alias="FEEDBACK_REMINDER_HOUR")
+    feedback_reminder_minute: int = Field(default=0, alias="FEEDBACK_REMINDER_MINUTE")
+    feedback_reminder_timezone: str = Field(
+        default="Europe/Moscow", alias="FEEDBACK_REMINDER_TIMEZONE"
+    )
 
 
 class RoleReminderConfig(BaseSettings):
@@ -170,7 +178,7 @@ class InstagramConfig(BaseSettings):
     )
     instagram_app_secret: str = Field(default="", alias="INSTAGRAM_APP_SECRET")
     admin_instagram_username: str = Field(
-        default="admin_ugc_bot", alias="ADMIN_INSTAGRAM_USERNAME"
+        default="usemycontent", alias="ADMIN_INSTAGRAM_USERNAME"
     )
     instagram_access_token: str = Field(default="", alias="INSTAGRAM_ACCESS_TOKEN")
     instagram_api_base_url: str = Field(

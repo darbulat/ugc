@@ -374,7 +374,7 @@ async def handle_barter(message: Message, state: FSMContext) -> None:
         reply_markup=with_support_keyboard(
             keyboard=[
                 [KeyboardButton(text="Размещать рекламу у себя в аккаунте")],
-                [KeyboardButton(text="Только UGC")],
+                [KeyboardButton(text="Только UGC (без размещения)")],
             ],
         ),
     )
@@ -392,27 +392,33 @@ async def handle_work_format(
     text = (message.text or "").strip()
     if text == "Размещать рекламу у себя в аккаунте":
         work_format = WorkFormat.ADS_IN_ACCOUNT
-    elif text == "Только UGC":
+    elif text == "Только UGC (без размещения)":
         work_format = WorkFormat.UGC_ONLY
     else:
         await message.answer(
-            "Выберите одну из кнопок: Размещать рекламу у себя в аккаунте или Только UGC."
+            "Выберите одну из кнопок: Размещать рекламу у себя в аккаунте или Только UGC (без размещения)."
         )
         return
 
     await state.update_data(work_format=work_format)
 
-    offer = config.docs.docs_offer_url or "(ссылка на оферту)"
-    privacy = config.docs.docs_privacy_url or "(ссылка на политику конфиденциальности)"
-    consent = config.docs.docs_consent_url or "(ссылка на согласие на обработку ПД)"
-    agreements_text = (
-        "Пожалуйста, ознакомьтесь с документами и подтвердите согласие.\n"
-        f"Оферта: {offer}\n"
-        f"Политика конфиденциальности: {privacy}\n"
-        f"Согласие на обработку персональных данных: {consent}"
-    )
+    parts = ["Пожалуйста, ознакомьтесь с документами и подтвердите согласие.", ""]
+    if config.docs.docs_offer_url:
+        parts.append(f'<a href="{config.docs.docs_offer_url}">Оферта</a>')
+    if config.docs.docs_privacy_url:
+        parts.append(
+            f'<a href="{config.docs.docs_privacy_url}">Политика конфиденциальности</a>'
+        )
+    if config.docs.docs_consent_url:
+        parts.append(
+            f'<a href="{config.docs.docs_consent_url}">Согласие на обработку ПД</a>'
+        )
+    if len(parts) == 2:
+        parts.append("Подтвердите согласие с документами платформы.")
+    agreements_text = "\n".join(parts)
     await message.answer(
         agreements_text,
+        parse_mode="HTML",
         reply_markup=with_support_keyboard(
             keyboard=[[KeyboardButton(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
         ),

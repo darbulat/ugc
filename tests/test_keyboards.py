@@ -7,6 +7,7 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_start_keyboard,
     blogger_menu_keyboard,
     main_menu_keyboard,
+    profile_keyboard,
     support_keyboard,
     with_support_keyboard,
 )
@@ -88,12 +89,32 @@ def test_advertiser_start_keyboard() -> None:
 
 
 def test_advertiser_menu_keyboard() -> None:
-    """Advertiser menu has Create order, My orders, My profile, Support."""
+    """Advertiser menu has Create order, My orders, My profile, Edit profile, Support."""
+    from ugc_bot.bot.handlers.keyboards import EDIT_PROFILE_BUTTON_TEXT
+
     keyboard = advertiser_menu_keyboard()
 
     assert keyboard.keyboard is not None
-    assert len(keyboard.keyboard) == 4
+    assert len(keyboard.keyboard) == 5
     assert keyboard.keyboard[0][0].text == CREATE_ORDER_BUTTON_TEXT
     assert keyboard.keyboard[1][0].text == "Мои заказы"
     assert keyboard.keyboard[2][0].text == "Мой профиль"
-    assert keyboard.keyboard[3][0].text == "Поддержка"
+    assert keyboard.keyboard[3][0].text == EDIT_PROFILE_BUTTON_TEXT
+    assert keyboard.keyboard[4][0].text == "Поддержка"
+
+
+def test_profile_keyboard() -> None:
+    """Profile keyboard has single My profile button."""
+    keyboard = profile_keyboard()
+
+    assert keyboard.keyboard is not None
+    assert len(keyboard.keyboard) == 1
+    assert keyboard.keyboard[0][0].text == "Мой профиль"
+    assert keyboard.one_time_keyboard is True
+
+
+def test_profile_keyboard_one_time_false() -> None:
+    """Profile keyboard respects one_time_keyboard=False."""
+    keyboard = profile_keyboard(one_time_keyboard=False)
+
+    assert keyboard.one_time_keyboard is False

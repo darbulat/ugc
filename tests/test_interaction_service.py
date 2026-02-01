@@ -141,6 +141,37 @@ async def test_record_feedback_missing_interaction() -> None:
         )
 
 
+@pytest.mark.asyncio
+async def test_schedule_next_reminder_when_interaction_not_found() -> None:
+    """schedule_next_reminder returns without error when interaction does not exist."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+    next_at = datetime(2025, 2, 2, 10, 0, tzinfo=timezone.utc)
+    await service.schedule_next_reminder(
+        UUID("00000000-0000-0000-0000-000000000941"), next_at
+    )
+    assert await repo.get_by_id(UUID("00000000-0000-0000-0000-000000000941")) is None
+
+
+@pytest.mark.asyncio
+async def test_schedule_next_reminder_updates_next_check_at() -> None:
+    """schedule_next_reminder sets next_check_at for existing interaction."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+    interaction = await service.create_for_contacts_sent(
+        order_id=UUID("00000000-0000-0000-0000-000000000942"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000943"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000944"),
+    )
+    next_at = datetime(2025, 2, 2, 10, 0, tzinfo=timezone.utc)
+    await service.schedule_next_reminder(interaction.interaction_id, next_at)
+    updated = await repo.get_by_id(interaction.interaction_id)
+    assert updated is not None
+    assert updated.next_check_at == next_at
+
+
 def test_aggregate_defaults_to_pending() -> None:
     """Default aggregation when no input is provided."""
 

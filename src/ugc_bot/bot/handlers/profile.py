@@ -9,6 +9,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
+from ugc_bot.application.services.advertiser_registration_service import (
+    AdvertiserRegistrationService,
+)
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -50,6 +53,15 @@ _EDIT_FIELDS = [
 EDIT_FIELD_LABELS = [label for label, _ in _EDIT_FIELDS]
 EDIT_FIELD_KEYS = {label: key for label, key in _EDIT_FIELDS}
 
+_EDIT_FIELDS_ADVERTISER = [
+    ("Имя", "name"),
+    ("Телефон", "phone"),
+    ("Бренд", "brand"),
+    ("Ссылка на сайт", "site_link"),
+]
+EDIT_FIELD_LABELS_ADVERTISER = [label for label, _ in _EDIT_FIELDS_ADVERTISER]
+EDIT_FIELD_KEYS_ADVERTISER = {label: key for label, key in _EDIT_FIELDS_ADVERTISER}
+
 _AGE_BUTTONS: dict[str, tuple[int, int]] = {
     "до 18": (0, 17),
     "18–24": (18, 24),
@@ -63,9 +75,10 @@ EDIT_PROFILE_FLOW_TYPE = "edit_profile"
 
 
 class EditProfileStates(StatesGroup):
-    """States for editing blogger profile."""
+    """States for editing blogger or advertiser profile."""
 
     choosing_draft_restore = State()
+    choosing_profile_type = State()
     choosing_field = State()
     entering_value = State()
 
@@ -131,14 +144,15 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
     if advertiser is None:
         parts.append("Профиль рекламодателя не заполнен. Команда: /register_advertiser")
     else:
-        parts.extend(
-            [
-                "Рекламодатель:",
-                f"Имя: {advertiser.name}",
-                f"Телефон: {advertiser.phone}",
-                f"Бренд: {advertiser.brand}",
-            ]
-        )
+        adv_parts = [
+            "Рекламодатель:",
+            f"Имя: {advertiser.name}",
+            f"Телефон: {advertiser.phone}",
+            f"Бренд: {advertiser.brand}",
+        ]
+        if advertiser.site_link:
+            adv_parts.append(f"Ссылка на сайт: {advertiser.site_link}")
+        parts.extend(adv_parts)
 
     # Show appropriate keyboard based on role
     reply_markup = None
@@ -150,18 +164,36 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
     await message.answer("\n".join(parts), reply_markup=reply_markup)
 
 
-def _edit_field_keyboard() -> ReplyKeyboardMarkup:
+def _edit_field_keyboard(profile_type: str = "blogger") -> ReplyKeyboardMarkup:
     """Keyboard with profile field names for editing (two per row to save space)."""
 
+    labels = (
+        EDIT_FIELD_LABELS_ADVERTISER
+        if profile_type == "advertiser"
+        else EDIT_FIELD_LABELS
+    )
     rows = []
-    for i in range(0, len(EDIT_FIELD_LABELS), 2):
-        row = [KeyboardButton(text=EDIT_FIELD_LABELS[i])]
-        if i + 1 < len(EDIT_FIELD_LABELS):
-            row.append(KeyboardButton(text=EDIT_FIELD_LABELS[i + 1]))
+    for i in range(0, len(labels), 2):
+        row = [KeyboardButton(text=labels[i])]
+        if i + 1 < len(labels):
+            row.append(KeyboardButton(text=labels[i + 1]))
         rows.append(row)
     rows.append([KeyboardButton(text="Мой профиль")])
     return ReplyKeyboardMarkup(
         keyboard=rows,
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
+def _edit_profile_type_keyboard() -> ReplyKeyboardMarkup:
+    """Keyboard to choose blogger or advertiser profile to edit."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Редактировать профиль блогера")],
+            [KeyboardButton(text="Редактировать профиль рекламодателя")],
+            [KeyboardButton(text="Мой профиль")],
+        ],
         resize_keyboard=True,
         one_time_keyboard=False,
     )
@@ -188,8 +220,9 @@ async def edit_profile_start(
         return
 
     blogger = await profile_service.get_blogger_profile(user.user_id)
-    if blogger is None:
-        await message.answer("Профиль блогера не заполнен.")
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    if blogger is None and advertiser is None:
+        await message.answer("Профиль не заполнен.")
         return
 
     await state.update_data(
@@ -200,9 +233,25 @@ async def edit_profile_start(
         await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
         await state.set_state(EditProfileStates.choosing_draft_restore)
         return
+    if blogger is not None and advertiser is not None:
+        await message.answer(
+            "Выберите профиль для редактирования:",
+            reply_markup=_edit_profile_type_keyboard(),
+        )
+        await state.set_state(EditProfileStates.choosing_profile_type)
+        return
+    if blogger is not None:
+        await state.update_data(edit_profile_type="blogger")
+        await message.answer(
+            "Выберите раздел для редактирования:",
+            reply_markup=_edit_field_keyboard("blogger"),
+        )
+        await state.set_state(EditProfileStates.choosing_field)
+        return
+    await state.update_data(edit_profile_type="advertiser")
     await message.answer(
         "Выберите раздел для редактирования:",
-        reply_markup=_edit_field_keyboard(),
+        reply_markup=_edit_field_keyboard("advertiser"),
     )
     await state.set_state(EditProfileStates.choosing_field)
 
@@ -222,9 +271,44 @@ async def edit_profile_draft_choice(
         user_id_key="edit_user_id",
         first_state=EditProfileStates.choosing_field,
         first_prompt="Выберите раздел для редактирования:",
-        first_keyboard=_edit_field_keyboard(),
+        first_keyboard=_edit_field_keyboard("blogger"),
         session_expired_msg="Сессия истекла. Откройте «Мой профиль» снова.",
         draft_used_msg="Черновик уже использован. Выберите раздел.",
+    )
+
+
+@router.message(EditProfileStates.choosing_profile_type)
+async def edit_profile_choose_type(
+    message: Message,
+    state: FSMContext,
+    profile_service: ProfileService,
+) -> None:
+    """Handle choice of blogger or advertiser profile to edit."""
+
+    text = (message.text or "").strip()
+    if text == "Мой профиль":
+        await state.clear()
+        await show_profile(message, profile_service)
+        return
+    if text == "Редактировать профиль блогера":
+        await state.update_data(edit_profile_type="blogger")
+        await message.answer(
+            "Выберите раздел для редактирования:",
+            reply_markup=_edit_field_keyboard("blogger"),
+        )
+        await state.set_state(EditProfileStates.choosing_field)
+        return
+    if text == "Редактировать профиль рекламодателя":
+        await state.update_data(edit_profile_type="advertiser")
+        await message.answer(
+            "Выберите раздел для редактирования:",
+            reply_markup=_edit_field_keyboard("advertiser"),
+        )
+        await state.set_state(EditProfileStates.choosing_field)
+        return
+    await message.answer(
+        "Выберите один из вариантов на клавиатуре.",
+        reply_markup=_edit_profile_type_keyboard(),
     )
 
 
@@ -244,14 +328,19 @@ async def edit_profile_choose_field(
         await show_profile(message, profile_service)
         return
 
-    if text not in EDIT_FIELD_KEYS:
+    data = await state.get_data()
+    profile_type = data.get("edit_profile_type", "blogger")
+    field_keys = (
+        EDIT_FIELD_KEYS_ADVERTISER if profile_type == "advertiser" else EDIT_FIELD_KEYS
+    )
+    if text not in field_keys:
         await message.answer("Выберите один из разделов на клавиатуре.")
         return
 
-    field_key = EDIT_FIELD_KEYS[text]
+    field_key = field_keys[text]
     await state.update_data(editing_field=field_key)
 
-    prompts = {
+    prompts_blogger = {
         "nickname": "Введите новое имя или ник:",
         "instagram_url": "Прикрепите новую ссылку в формате instagram.com/name:",
         "city": "Из какого вы города?",
@@ -263,6 +352,13 @@ async def edit_profile_choose_field(
         "barter": "Готовы работать по бартеру?",
         "work_format": "Как готовы работать с брендами?",
     }
+    prompts_advertiser = {
+        "name": "Введите имя:",
+        "phone": "Укажите номер телефона, по которому с вами можно связаться по заказу. Пример: +7 900 000-00-00",
+        "brand": "Название вашего бренда / компании / бизнеса:",
+        "site_link": "Ссылка на сайт, продукт или соцсети бренда:",
+    }
+    prompts = prompts_advertiser if profile_type == "advertiser" else prompts_blogger
     prompt = prompts.get(field_key, "Введите новое значение:")
 
     if field_key == "audience_gender":
@@ -305,7 +401,7 @@ async def edit_profile_choose_field(
             reply_markup=with_support_keyboard(
                 keyboard=[
                     [KeyboardButton(text="Размещать рекламу у себя в аккаунте")],
-                    [KeyboardButton(text="Только UGC")],
+                    [KeyboardButton(text="Только UGC (без размещения)")],
                 ],
             ),
         )
@@ -321,6 +417,7 @@ async def edit_profile_enter_value(
     state: FSMContext,
     profile_service: ProfileService,
     blogger_registration_service: BloggerRegistrationService,
+    advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
 ) -> None:
     """Validate and save new field value, then show profile."""
@@ -329,11 +426,60 @@ async def edit_profile_enter_value(
     field_key = data.get("editing_field")
     user_id = parse_user_id_from_state(data, key="edit_user_id")
     external_id_raw = data.get("edit_external_id")
+    profile_type = data.get("edit_profile_type", "blogger")
     if not field_key or user_id is None or not external_id_raw:
         await state.clear()
         await message.answer("Сессия истекла. Откройте «Мой профиль» снова.")
         return
     external_id = str(external_id_raw)
+
+    if profile_type == "advertiser":
+        advertiser = await profile_service.get_advertiser_profile(user_id)
+        if advertiser is None:
+            await state.clear()
+            await message.answer("Профиль рекламодателя не найден.")
+            return
+        text = (message.text or "").strip()
+        if field_key == "name":
+            if not text:
+                await message.answer("Имя не может быть пустым.")
+                return
+            updated = await advertiser_registration_service.update_advertiser_profile(
+                user_id, name=text
+            )
+        elif field_key == "phone":
+            if not text:
+                await message.answer("Номер телефона не может быть пустым.")
+                return
+            updated = await advertiser_registration_service.update_advertiser_profile(
+                user_id, phone=text
+            )
+        elif field_key == "brand":
+            if not text:
+                await message.answer("Название бренда не может быть пустым.")
+                return
+            updated = await advertiser_registration_service.update_advertiser_profile(
+                user_id, brand=text
+            )
+        elif field_key == "site_link":
+            updated = await advertiser_registration_service.update_advertiser_profile(
+                user_id, site_link=text or None
+            )
+        else:
+            await state.clear()
+            await message.answer("Неизвестное поле.")
+            return
+        if updated is None:
+            await state.clear()
+            await message.answer("Не удалось обновить профиль.")
+            return
+        await state.clear()
+        await message.answer(
+            "Профиль обновлён.",
+            reply_markup=advertiser_menu_keyboard(),
+        )
+        await show_profile(message, profile_service)
+        return
 
     blogger = await profile_service.get_blogger_profile(user_id)
     if blogger is None:
@@ -370,14 +516,14 @@ async def edit_profile_enter_value(
                 "Этот Instagram аккаунт уже зарегистрирован. Используйте другой."
             )
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, instagram_url=text
         )
     elif field_key == "city":
         if not text:
             await message.answer("Город не может быть пустым.")
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, city=text
         )
     elif field_key == "topics":
@@ -388,7 +534,7 @@ async def edit_profile_enter_value(
         if not topics:
             await message.answer("Введите хотя бы одну тематику.")
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, topics={"selected": topics}
         )
     elif field_key == "audience_gender":
@@ -401,7 +547,7 @@ async def edit_profile_enter_value(
         if key not in gender_map:
             await message.answer("Выберите одну из кнопок.")
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, audience_gender=gender_map[key]
         )
     elif field_key == "audience_age":
@@ -409,7 +555,7 @@ async def edit_profile_enter_value(
             await message.answer("Выберите одну из кнопок возраста.")
             return
         min_age, max_age = _AGE_BUTTONS[text]
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, audience_age_min=min_age, audience_age_max=max_age
         )
     elif field_key == "audience_geo":
@@ -420,7 +566,7 @@ async def edit_profile_enter_value(
         if len(cities) > 3:
             await message.answer("Укажите не более 3 городов.")
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, audience_geo=text
         )
     elif field_key == "price":
@@ -432,7 +578,7 @@ async def edit_profile_enter_value(
         if price <= 0:
             await message.answer("Цена должна быть больше 0.")
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, price=price
         )
     elif field_key == "barter":
@@ -443,18 +589,18 @@ async def edit_profile_enter_value(
         else:
             await message.answer("Выберите Да или Нет.")
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, barter=barter
         )
     elif field_key == "work_format":
         if text == "Размещать рекламу у себя в аккаунте":
             wf = WorkFormat.ADS_IN_ACCOUNT
-        elif text == "Только UGC":
+        elif text == "Только UGC (без размещения)":
             wf = WorkFormat.UGC_ONLY
         else:
             await message.answer("Выберите одну из кнопок.")
             return
-        updated = await blogger_registration_service.update_blogger_profile(
+        updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, work_format=wf
         )
     else:
@@ -462,7 +608,7 @@ async def edit_profile_enter_value(
         await message.answer("Неизвестное поле.")
         return
 
-    if updated is None:
+    if updated_blogger is None:
         await state.clear()
         await message.answer("Не удалось обновить профиль.")
         return
@@ -470,6 +616,6 @@ async def edit_profile_enter_value(
     await state.clear()
     await message.answer(
         "Профиль обновлён.",
-        reply_markup=blogger_profile_view_keyboard(updated.confirmed),
+        reply_markup=blogger_profile_view_keyboard(updated_blogger.confirmed),
     )
     await show_profile(message, profile_service)

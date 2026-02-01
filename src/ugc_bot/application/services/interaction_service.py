@@ -89,6 +89,29 @@ class InteractionService:
         await self._save(interaction)
         return interaction
 
+    async def schedule_next_reminder(
+        self, interaction_id: UUID, next_check_at: datetime
+    ) -> None:
+        """Set next_check_at for an interaction (e.g. next 10:00 after sending feedback request)."""
+
+        interaction = await self._get_by_id(interaction_id)
+        if interaction is None:
+            return
+        updated = Interaction(
+            interaction_id=interaction.interaction_id,
+            order_id=interaction.order_id,
+            blogger_id=interaction.blogger_id,
+            advertiser_id=interaction.advertiser_id,
+            status=interaction.status,
+            from_advertiser=interaction.from_advertiser,
+            from_blogger=interaction.from_blogger,
+            postpone_count=interaction.postpone_count,
+            next_check_at=next_check_at,
+            created_at=interaction.created_at,
+            updated_at=datetime.now(timezone.utc),
+        )
+        await self._save(updated)
+
     async def get_or_create(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Interaction:

@@ -35,6 +35,13 @@ class WorkFormat(StrEnum):
     UGC_ONLY = "ugc_only"
 
 
+class OrderType(StrEnum):
+    """Order type: UGC only or UGC + placement."""
+
+    UGC_ONLY = "ugc_only"
+    UGC_PLUS_PLACEMENT = "ugc_plus_placement"
+
+
 class OrderStatus(StrEnum):
     """Order lifecycle status."""
 

@@ -4,7 +4,7 @@ import logging
 from uuid import UUID
 
 from aiogram import Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
@@ -12,6 +12,7 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_CONTACTS_WARNING,
+    ADVERTISER_NEW_RESPONSE_WHAT_NEXT,
     BLOGGER_RESPONSE_WARNING,
 )
 from ugc_bot.bot.handlers.utils import (
@@ -27,6 +28,14 @@ logger = logging.getLogger(__name__)
 _rate_limiter = RateLimiter(limit=5, window_seconds=10.0)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+
+
+@router.callback_query(
+    lambda callback: callback.data and callback.data.startswith("offer_skip:")
+)
+async def handle_offer_skip(callback: CallbackQuery) -> None:
+    """Handle blogger pressing 'Пропустить' on offer (no response recorded)."""
+    await callback.answer("Ок, пропущено.")
 
 
 @router.callback_query(
@@ -73,11 +82,12 @@ async def handle_offer_response(
     result = await offer_response_service.respond_and_finalize(order_id, user.user_id)
 
     await callback.answer("Отклик принят! Ожидайте связи от рекламодателя.")
-    if callback.message:
+    if callback.message and callback.message.bot:
         await callback.message.answer(
-            "Ваш отклик сохранен. Рекламодатель свяжется с вами."
+            "Отклик отправлен. Заказчик получил ссылку на ваш профиль и сможет написать вам."
         )
-        # Send security warning
+        if result.order.product_link:
+            await callback.message.answer("О продукте:\n" + result.order.product_link)
         await callback.message.answer(BLOGGER_RESPONSE_WARNING)
 
     # Send contact immediately after each response
@@ -92,6 +102,13 @@ async def handle_offer_response(
     )
 
 
+def _format_ugc_type(order: Order) -> str:
+    """Return human-readable order/format type for advertiser message."""
+    if order.order_type.value == "ugc_plus_placement":
+        return "UGC + размещение"
+    return "UGC-видео для бренда"
+
+
 async def _send_contact_immediately(
     order: Order,
     blogger_id: UUID,
@@ -101,9 +118,8 @@ async def _send_contact_immediately(
     interaction_service: InteractionService | None,
     bot,
 ) -> None:
-    """Send contact to advertiser immediately after each response."""
+    """Send contact to advertiser immediately after each response (TZ format)."""
 
-    # Get blogger info
     user = await user_role_service.get_user_by_id(blogger_id)
     profile = await profile_service.get_blogger_profile(blogger_id)
     if user is None or profile is None:
@@ -113,30 +129,42 @@ async def _send_contact_immediately(
         )
         return
 
-    # Format contact info
-    handle = f"@{user.username}" if user.username else user.external_id
+    creator_name = f"@{user.username}" if user.username else user.external_id
+    ugc_format = _format_ugc_type(order)
     contact_text = (
-        f"Новый отклик по заказу #{order.order_id}:\n"
-        f"Ник: {handle}\n"
-        f"Telegram: {user.external_id}\n"
-        f"Instagram: {profile.instagram_url}\n"
-        f"Цена: {profile.price}\n"
-        f"Статус: {'Подтверждён' if profile.confirmed else 'Не подтверждён'}"
+        "Новый отклик по вашему заказу\n\n"
+        f"Креатор: {creator_name}\n"
+        f"Город: {profile.city or '—'}\n"
+        f"Формат UGC: {ugc_format}\n"
+        "Готов работать на условиях оффера\n"
+        f"Instagram: {profile.instagram_url}\n\n" + ADVERTISER_NEW_RESPONSE_WHAT_NEXT
     )
 
-    # Send to advertiser
+    profile_url = profile.instagram_url.strip()
+    if profile_url and not profile_url.startswith("http"):
+        profile_url = "https://" + profile_url
+    open_profile_kb = (
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Открыть профиль", url=profile_url)]
+            ]
+        )
+        if profile_url.startswith("http")
+        else None
+    )
+
     advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
     if advertiser and bot and advertiser.external_id.isdigit():
         await send_with_retry(
             bot,
             chat_id=int(advertiser.external_id),
             text=contact_text,
+            reply_markup=open_profile_kb,
             retries=_send_retries,
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
             extra={"order_id": str(order.order_id)},
         )
-        # Send security warning only on first contact
         if response_count == 1:
             await send_with_retry(
                 bot,

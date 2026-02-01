@@ -46,6 +46,7 @@ async def test_advertiser_basic_flow(
     order_service = dispatcher["order_service"]
     order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
+        order_type=order_template.order_type,
         product_link=order_template.product_link,
         offer_text=order_template.offer_text,
         ugc_requirements=order_template.ugc_requirements,

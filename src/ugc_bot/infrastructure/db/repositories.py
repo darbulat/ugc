@@ -17,6 +17,7 @@ from ugc_bot.application.ports import (
     FsmDraftRepository,
     InstagramVerificationRepository,
     InteractionRepository,
+    NpsRepository,
     OfferBroadcaster,
     OrderRepository,
     OrderResponseRepository,
@@ -43,6 +44,7 @@ from ugc_bot.domain.enums import (
     InteractionStatus,
     MessengerType,
     OrderStatus,
+    OrderType,
     OutboxEventStatus,
     WorkFormat,
 )
@@ -54,6 +56,7 @@ from ugc_bot.infrastructure.db.models import (
     FsmDraftModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    NpsResponseModel,
     OrderModel,
     OrderResponseModel,
     OutboxEventModel,
@@ -610,6 +613,43 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
         model = _to_interaction_model(interaction)
         await db_session.merge(model)
 
+    async def update_next_check_at(
+        self,
+        interaction_id: UUID,
+        next_check_at: datetime,
+        session: object | None = None,
+    ) -> None:
+        """Update next_check_at for an interaction."""
+
+        db_session = _get_async_session(session)
+        await db_session.execute(
+            update(InteractionModel)
+            .where(InteractionModel.interaction_id == interaction_id)
+            .values(next_check_at=next_check_at)
+        )
+
+
+@dataclass(slots=True)
+class SqlAlchemyNpsRepository(NpsRepository):
+    """SQLAlchemy-backed NPS repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def save(
+        self,
+        interaction_id: UUID,
+        score: int,
+        session: object | None = None,
+    ) -> None:
+        """Save NPS score for an interaction."""
+
+        db_session = _get_async_session(session)
+        model = NpsResponseModel(
+            interaction_id=interaction_id,
+            score=score,
+        )
+        db_session.add(model)
+
 
 @dataclass(slots=True)
 class NoopOfferBroadcaster(OfferBroadcaster):
@@ -674,6 +714,7 @@ def _to_blogger_profile_entity(
         price=float(model.price),
         barter=model.barter,
         work_format=work_format,
+        wanted_to_change_terms_count=getattr(model, "wanted_to_change_terms_count", 0),
         updated_at=model.updated_at,
     )
 
@@ -696,6 +737,7 @@ def _to_blogger_profile_model(
         price=profile.price,
         barter=profile.barter,
         work_format=profile.work_format,
+        wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
         updated_at=profile.updated_at,
     )
 
@@ -746,6 +788,7 @@ def _to_advertiser_profile_entity(
         name=model.name or "",
         phone=model.contact,
         brand=model.brand or "",
+        site_link=getattr(model, "site_link", None),
     )
 
 
@@ -759,6 +802,7 @@ def _to_advertiser_profile_model(
         contact=profile.phone,
         name=profile.name or None,
         brand=profile.brand or None,
+        site_link=profile.site_link,
     )
 
 
@@ -798,6 +842,7 @@ def _to_order_entity(model: OrderModel) -> Order:
     return Order(
         order_id=model.order_id,
         advertiser_id=model.advertiser_id,
+        order_type=getattr(model, "order_type", None) or OrderType.UGC_ONLY,
         product_link=model.product_link,
         offer_text=model.offer_text,
         ugc_requirements=model.ugc_requirements,
@@ -829,6 +874,7 @@ def _to_order_model(order: Order) -> OrderModel:
     return OrderModel(
         order_id=order.order_id,
         advertiser_id=order.advertiser_id,
+        order_type=order.order_type,
         product_link=order.product_link,
         offer_text=order.offer_text,
         ugc_requirements=order.ugc_requirements,

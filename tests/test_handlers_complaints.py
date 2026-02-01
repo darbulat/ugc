@@ -16,7 +16,7 @@ from ugc_bot.bot.handlers.complaints import (
     start_complaint,
 )
 from ugc_bot.domain.entities import Order, OrderResponse, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType, UserStatus
 from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 from tests.helpers.factories import create_test_order, create_test_user
 from tests.helpers.services import build_order_service
@@ -189,6 +189,7 @@ async def test_handle_complaint_reason_success(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000973"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -267,6 +268,7 @@ async def test_select_complaint_target_advertiser(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000983"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -406,6 +408,7 @@ async def test_select_complaint_target_blogger(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000987"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -486,6 +489,7 @@ async def test_select_complaint_target_no_bloggers(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000990"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -560,6 +564,7 @@ async def test_handle_complaint_reason_text(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000993"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -632,6 +637,7 @@ async def test_handle_complaint_reason_other(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000996"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -754,6 +760,7 @@ async def test_handle_complaint_reason_duplicate(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000001000"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000001001"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -954,6 +961,7 @@ async def test_start_complaint_invalid_reported_id(
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000001022"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

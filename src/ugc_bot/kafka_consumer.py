@@ -11,7 +11,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # type: ignore[import-untyped]
 
 from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
-from ugc_bot.bot.handlers.security_warnings import BLOGGER_OFFER_WARNING
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
@@ -68,9 +67,12 @@ async def _send_offers(
             continue
         for attempt in range(1, retries + 1):
             try:
+                offer_text = offer_dispatch_service.format_offer(
+                    order, advertisers_status
+                )
                 await bot.send_message(
                     chat_id=int(blogger.external_id),
-                    text=offer_dispatch_service.format_offer(order, advertisers_status),
+                    text=offer_text,
                     reply_markup=InlineKeyboardMarkup(
                         inline_keyboard=[
                             [
@@ -78,14 +80,15 @@ async def _send_offers(
                                     text="Готов снять UGC",
                                     callback_data=f"offer:{order.order_id}",
                                 )
-                            ]
+                            ],
+                            [
+                                InlineKeyboardButton(
+                                    text="Пропустить",
+                                    callback_data=f"offer_skip:{order.order_id}",
+                                )
+                            ],
                         ]
                     ),
-                )
-                # Send security warning
-                await bot.send_message(
-                    chat_id=int(blogger.external_id),
-                    text=BLOGGER_OFFER_WARNING,
                 )
                 break
             except Exception as exc:

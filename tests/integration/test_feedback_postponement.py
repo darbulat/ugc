@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from ugc_bot.domain.enums import InteractionStatus, OrderStatus
+from ugc_bot.domain.enums import InteractionStatus, OrderStatus, OrderType
 from ugc_bot.domain.entities import AdvertiserProfile
 
 
@@ -49,6 +49,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
     order_service = dispatcher["order_service"]
     order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com/product",
         offer_text="Test offer",
         ugc_requirements=None,
@@ -63,6 +64,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
     updated_order = Order(
         order_id=order.order_id,
         advertiser_id=order.advertiser_id,
+        order_type=order.order_type,
         product_link=order.product_link,
         offer_text=order.offer_text,
         ugc_requirements=order.ugc_requirements,
@@ -171,6 +173,7 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
     order_service = dispatcher["order_service"]
     order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com/product",
         offer_text="Test offer",
         ugc_requirements=None,
@@ -183,6 +186,7 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
     updated_order = Order(
         order_id=order.order_id,
         advertiser_id=order.advertiser_id,
+        order_type=order.order_type,
         product_link=order.product_link,
         offer_text=order.offer_text,
         ugc_requirements=order.ugc_requirements,
@@ -259,6 +263,7 @@ async def test_feedback_mixed_responses_aggregation(
     order_service = dispatcher["order_service"]
     order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com/product",
         offer_text="Test offer",
         ugc_requirements=None,
@@ -271,6 +276,7 @@ async def test_feedback_mixed_responses_aggregation(
     updated_order = Order(
         order_id=order.order_id,
         advertiser_id=order.advertiser_id,
+        order_type=order.order_type,
         product_link=order.product_link,
         offer_text=order.offer_text,
         ugc_requirements=order.ugc_requirements,
@@ -352,6 +358,7 @@ async def test_feedback_issue_status_blocks_user(
     order_service = dispatcher["order_service"]
     order = await order_service.create_order(
         advertiser_id=advertiser_user.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com/product",
         offer_text="Test offer",
         ugc_requirements=None,
@@ -364,6 +371,7 @@ async def test_feedback_issue_status_blocks_user(
     updated_order = Order(
         order_id=order.order_id,
         advertiser_id=order.advertiser_id,
+        order_type=order.order_type,
         product_link=order.product_link,
         offer_text=order.offer_text,
         ugc_requirements=order.ugc_requirements,

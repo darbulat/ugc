@@ -15,6 +15,7 @@ from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
     OrderStatus,
+    OrderType,
     UserStatus,
     WorkFormat,
 )
@@ -75,6 +76,7 @@ async def test_send_offers_sends_messages() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -175,6 +177,7 @@ async def test_send_offers_returns_when_advertiser_not_found() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000900"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -226,6 +229,7 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -479,6 +483,7 @@ async def test_send_offers_retries_then_succeeds() -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000911"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -537,9 +542,9 @@ async def test_send_offers_retries_then_succeeds() -> None:
         retries=2,
         retry_delay_seconds=0.0,
     )
-    # Each offer sends 2 messages: offer + security warning
-    # First attempt fails (1 call), retry succeeds (1 call), warning (1 call) = 3 total
-    assert bot.calls == 3
+    # Each offer sends 1 message (offer text includes blocks; no separate warning per TZ)
+    # First attempt fails (1 call), retry succeeds (1 call) = 2 total
+    assert bot.calls == 2
 
 
 @pytest.mark.asyncio
@@ -568,6 +573,7 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000921"),
         advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,

@@ -107,10 +107,24 @@ def advertiser_menu_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMar
             [KeyboardButton(text=CREATE_ORDER_BUTTON_TEXT)],
             [KeyboardButton(text="Мои заказы")],
             [KeyboardButton(text="Мой профиль")],
+            [KeyboardButton(text=EDIT_PROFILE_BUTTON_TEXT)],
             [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,
+    )
+
+
+def advertiser_after_payment_keyboard() -> ReplyKeyboardMarkup:
+    """Keyboard after successful payment: My orders and Support only."""
+
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Мои заказы")],
+            [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
     )
 
 

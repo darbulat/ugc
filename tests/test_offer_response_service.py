@@ -9,7 +9,7 @@ import pytest
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOrderRepository,
     InMemoryOrderResponseRepository,
@@ -46,6 +46,7 @@ async def test_offer_response_success(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000800"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000801"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -80,6 +81,7 @@ async def test_offer_response_limit(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000810"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000811"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -136,6 +138,7 @@ async def test_offer_response_requires_active_order(fake_tm: object) -> None:
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000830"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000831"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,
@@ -169,6 +172,7 @@ async def test_offer_response_finalize_closes_order(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000840"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000841"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -207,6 +211,7 @@ async def test_offer_response_transaction_manager(fake_tm: object) -> None:
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000850"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000851"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -245,6 +250,7 @@ async def test_offer_response_records_metrics_when_enabled(fake_tm: object) -> N
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000860"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000861"),
+        order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
         ugc_requirements=None,
@@ -299,6 +305,7 @@ async def test_offer_response_tx_requires_active_order(fake_tm: object) -> None:
         Order(
             order_id=UUID("00000000-0000-0000-0000-000000000880"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000881"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,
@@ -338,6 +345,7 @@ async def test_offer_response_tx_duplicate_response_is_rejected(
         Order(
             order_id=order_id,
             advertiser_id=UUID("00000000-0000-0000-0000-000000000891"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Offer",
             ugc_requirements=None,

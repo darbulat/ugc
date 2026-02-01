@@ -33,6 +33,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyFsmDraftRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
+    SqlAlchemyNpsRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyOrderResponseRepository,
     SqlAlchemyOutboxRepository,
@@ -131,6 +132,7 @@ class Container:
             "draft_repo": SqlAlchemyFsmDraftRepository(
                 session_factory=self._session_factory
             ),
+            "nps_repo": SqlAlchemyNpsRepository(session_factory=self._session_factory),
         }
         return self._repos
 
@@ -295,4 +297,5 @@ class Container:
                 draft_repo=repos["draft_repo"],
                 transaction_manager=self._transaction_manager,
             ),
+            "nps_repo": repos["nps_repo"],
         }

@@ -27,8 +27,12 @@ from ugc_bot.bot.handlers.keyboards import (
     with_support_keyboard,
 )
 from ugc_bot.bot.handlers.payments import send_order_invoice
-from ugc_bot.bot.handlers.security_warnings import ADVERTISER_ORDER_WARNING
+from ugc_bot.bot.handlers.security_warnings import (
+    ORDER_CREATED_IMPORTANT,
+    ORDER_CREATED_WHAT_NEXT,
+)
 from ugc_bot.config import AppConfig
+from ugc_bot.domain.enums import OrderType
 
 
 router = Router()
@@ -36,18 +40,49 @@ logger = logging.getLogger(__name__)
 
 ORDER_FLOW_TYPE = "order_creation"
 
+# Cooperation format: barter only, payment only, or both
+COOP_BARTER = "Бартер"
+COOP_PAYMENT = "Оплата"
+COOP_BOTH = "Бартер + оплата"
+
 
 class OrderCreationStates(StatesGroup):
     """States for order creation."""
 
     choosing_draft_restore = State()
-    product_link = State()
+    order_type = State()
     offer_text = State()
-    ugc_requirements = State()
-    barter_choice = State()
-    barter_description = State()
+    cooperation_format = State()
     price = State()
+    barter_description = State()
     bloggers_needed = State()
+    product_link = State()
+
+
+def _order_type_keyboard() -> list[list[KeyboardButton]]:
+    """Keyboard for order type: UGC only or UGC + placement."""
+    return [
+        [KeyboardButton(text="UGC-видео для бренда")],
+        [KeyboardButton(text="UGC + размещение у креатора")],
+    ]
+
+
+def _cooperation_format_keyboard() -> list[list[KeyboardButton]]:
+    """Keyboard for cooperation format."""
+    return [
+        [KeyboardButton(text=COOP_BARTER)],
+        [KeyboardButton(text=COOP_PAYMENT)],
+        [KeyboardButton(text=COOP_BOTH)],
+    ]
+
+
+def _bloggers_needed_keyboard() -> list[list[KeyboardButton]]:
+    """Keyboard for bloggers needed: only 3, 5, 10."""
+    return [
+        [KeyboardButton(text="3")],
+        [KeyboardButton(text="5")],
+        [KeyboardButton(text="10")],
+    ]
 
 
 @router.message(Command("create_order"))
@@ -79,15 +114,17 @@ async def start_order_creation(
         )
         return
 
-    is_new = await order_service.is_new_advertiser(user.user_id)
-    await state.update_data(user_id=user.user_id, is_new=is_new)
+    await state.update_data(user_id=user.user_id)
     draft = await fsm_draft_service.get_draft(user.user_id, ORDER_FLOW_TYPE)
     if draft is not None:
         await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
         await state.set_state(OrderCreationStates.choosing_draft_restore)
         return
-    await message.answer("Введите ссылку на продукт:", reply_markup=support_keyboard())
-    await state.set_state(OrderCreationStates.product_link)
+    await message.answer(
+        "Что вам нужно?",
+        reply_markup=with_support_keyboard(keyboard=_order_type_keyboard()),
+    )
+    await state.set_state(OrderCreationStates.order_type)
 
 
 @router.message(OrderCreationStates.choosing_draft_restore)
@@ -103,25 +140,33 @@ async def order_draft_choice(
         fsm_draft_service,
         flow_type=ORDER_FLOW_TYPE,
         user_id_key="user_id",
-        first_state=OrderCreationStates.product_link,
-        first_prompt="Введите ссылку на продукт:",
-        first_keyboard=support_keyboard(),
+        first_state=OrderCreationStates.order_type,
+        first_prompt="Что вам нужно?",
+        first_keyboard=with_support_keyboard(keyboard=_order_type_keyboard()),
         session_expired_msg="Сессия истекла. Начните снова с «Создать заказ».",
     )
 
 
-@router.message(OrderCreationStates.product_link)
-async def handle_product_link(message: Message, state: FSMContext) -> None:
-    """Handle product link input."""
+@router.message(OrderCreationStates.order_type)
+async def handle_order_type(message: Message, state: FSMContext) -> None:
+    """Store order type and ask for offer text."""
 
-    product_link = (message.text or "").strip()
-    if not product_link:
-        await message.answer("Ссылка не может быть пустой. Введите снова:")
+    text = (message.text or "").strip()
+    if text == "UGC-видео для бренда":
+        order_type = OrderType.UGC_ONLY
+    elif text == "UGC + размещение у креатора":
+        order_type = OrderType.UGC_PLUS_PLACEMENT
+    else:
+        await message.answer(
+            "Выберите один из вариантов на клавиатуре.",
+            reply_markup=with_support_keyboard(keyboard=_order_type_keyboard()),
+        )
         return
 
-    await state.update_data(product_link=product_link)
+    await state.update_data(order_type=order_type.value)
     await message.answer(
-        "Введите краткий offer для блогеров:",
+        "Кратко опишите задачу для креаторов.\n"
+        "Пример: нужны короткие видео для соцсетей с демонстрацией продукта.",
         reply_markup=support_keyboard(),
     )
     await state.set_state(OrderCreationStates.offer_text)
@@ -129,7 +174,7 @@ async def handle_product_link(message: Message, state: FSMContext) -> None:
 
 @router.message(OrderCreationStates.offer_text)
 async def handle_offer_text(message: Message, state: FSMContext) -> None:
-    """Handle offer text input."""
+    """Handle offer text and ask cooperation format."""
 
     offer_text = (message.text or "").strip()
     if not offer_text:
@@ -138,76 +183,46 @@ async def handle_offer_text(message: Message, state: FSMContext) -> None:
 
     await state.update_data(offer_text=offer_text)
     await message.answer(
-        "Введите требования к UGC или напишите 'пропустить':",
-        reply_markup=support_keyboard(),
+        "Какой формат сотрудничества?",
+        reply_markup=with_support_keyboard(
+            keyboard=_cooperation_format_keyboard(),
+        ),
     )
-    await state.set_state(OrderCreationStates.ugc_requirements)
+    await state.set_state(OrderCreationStates.cooperation_format)
 
 
-@router.message(OrderCreationStates.ugc_requirements)
-async def handle_ugc_requirements(message: Message, state: FSMContext) -> None:
-    """Handle UGC requirements input."""
+@router.message(OrderCreationStates.cooperation_format)
+async def handle_cooperation_format(message: Message, state: FSMContext) -> None:
+    """Store format and ask price and/or barter description."""
 
-    raw = (message.text or "").strip()
-    ugc_requirements = None if raw.lower() == "пропустить" else raw
-    await state.update_data(ugc_requirements=ugc_requirements)
-
-    data = await state.get_data()
-    if data.get("is_new"):
-        await state.update_data(barter_description=None)
+    text = (message.text or "").strip()
+    if text not in (COOP_BARTER, COOP_PAYMENT, COOP_BOTH):
         await message.answer(
-            "Введите цену за 1 UGC-видео:",
+            "Выберите один из вариантов на клавиатуре.",
+            reply_markup=with_support_keyboard(
+                keyboard=_cooperation_format_keyboard(),
+            ),
+        )
+        return
+
+    await state.update_data(cooperation_format=text)
+    if text == COOP_PAYMENT:
+        await message.answer(
+            "Бюджет за 1 UGC-видео? Укажите цену в рублях:",
             reply_markup=support_keyboard(),
         )
         await state.set_state(OrderCreationStates.price)
         return
-
-    await message.answer(
-        "Есть бартер? Выберите:",
-        reply_markup=with_support_keyboard(
-            keyboard=[
-                [KeyboardButton(text="Да")],
-                [KeyboardButton(text="Нет")],
-            ],
-        ),
-    )
-    await state.set_state(OrderCreationStates.barter_choice)
-
-
-@router.message(OrderCreationStates.barter_choice)
-async def handle_barter_choice(message: Message, state: FSMContext) -> None:
-    """Handle barter choice input."""
-
-    choice = (message.text or "").strip().lower()
-    if choice not in {"да", "нет"}:
-        await message.answer("Выберите 'Да' или 'Нет'.")
+    if text == COOP_BARTER:
+        await message.answer(
+            "Что вы предлагаете по бартеру?\n" "Пример: продукт + доставка",
+            reply_markup=support_keyboard(),
+        )
+        await state.set_state(OrderCreationStates.barter_description)
         return
-
-    if choice == "нет":
-        await state.update_data(barter_description=None)
-        await message.answer("Введите цену за 1 UGC-видео:")
-        await state.set_state(OrderCreationStates.price)
-        return
-
+    # Бартер + оплата
     await message.answer(
-        "Опишите бартерную продукцию:",
-        reply_markup=support_keyboard(),
-    )
-    await state.set_state(OrderCreationStates.barter_description)
-
-
-@router.message(OrderCreationStates.barter_description)
-async def handle_barter_description(message: Message, state: FSMContext) -> None:
-    """Handle barter description input."""
-
-    barter_description = (message.text or "").strip()
-    if not barter_description:
-        await message.answer("Описание не может быть пустым. Введите снова:")
-        return
-
-    await state.update_data(barter_description=barter_description)
-    await message.answer(
-        "Введите цену за 1 UGC-видео:",
+        "Бюджет за 1 UGC-видео? Укажите цену в рублях:",
         reply_markup=support_keyboard(),
     )
     await state.set_state(OrderCreationStates.price)
@@ -215,7 +230,7 @@ async def handle_barter_description(message: Message, state: FSMContext) -> None
 
 @router.message(OrderCreationStates.price)
 async def handle_price(message: Message, state: FSMContext) -> None:
-    """Handle price input."""
+    """Handle price and optionally ask barter description."""
 
     raw = (message.text or "").replace(",", ".").strip()
     try:
@@ -224,74 +239,119 @@ async def handle_price(message: Message, state: FSMContext) -> None:
         await message.answer("Введите число, например 1500.")
         return
 
-    if price <= 0:
-        await message.answer("Цена должна быть больше 0.")
+    if price < 0:
+        await message.answer("Цена не может быть отрицательной.")
         return
 
     await state.update_data(price=price)
     data = await state.get_data()
-    if data.get("is_new"):
-        bloggers_keyboard = [[KeyboardButton(text="3")], [KeyboardButton(text="10")]]
-    else:
-        bloggers_keyboard = [
-            [KeyboardButton(text="3")],
-            [KeyboardButton(text="10")],
-            [KeyboardButton(text="20")],
-            [KeyboardButton(text="30")],
-            [KeyboardButton(text="50")],
-        ]
+    if data.get("cooperation_format") == COOP_BOTH:
+        await message.answer(
+            "Что вы предлагаете по бартеру?\n" "Пример: продукт + доставка",
+            reply_markup=support_keyboard(),
+        )
+        await state.set_state(OrderCreationStates.barter_description)
+        return
     await message.answer(
-        "Выберите количество блогеров:",
-        reply_markup=with_support_keyboard(
-            keyboard=bloggers_keyboard,
-        ),
+        "Сколько креаторов вам нужно?",
+        reply_markup=with_support_keyboard(keyboard=_bloggers_needed_keyboard()),
+    )
+    await state.set_state(OrderCreationStates.bloggers_needed)
+
+
+@router.message(OrderCreationStates.barter_description)
+async def handle_barter_description(message: Message, state: FSMContext) -> None:
+    """Handle barter description and ask bloggers needed."""
+
+    barter_description = (message.text or "").strip()
+    coop = (await state.get_data()).get("cooperation_format")
+    if coop == COOP_BOTH and not barter_description:
+        await message.answer("Опишите бартерное предложение:")
+        return
+    await state.update_data(barter_description=barter_description or None)
+    await message.answer(
+        "Сколько креаторов вам нужно?",
+        reply_markup=with_support_keyboard(keyboard=_bloggers_needed_keyboard()),
     )
     await state.set_state(OrderCreationStates.bloggers_needed)
 
 
 @router.message(OrderCreationStates.bloggers_needed)
-async def handle_bloggers_needed(
+async def handle_bloggers_needed(message: Message, state: FSMContext) -> None:
+    """Store bloggers needed (3, 5 or 10) and ask product link."""
+
+    raw = (message.text or "").strip()
+    if raw not in ("3", "5", "10"):
+        await message.answer(
+            "Выберите одно из значений: 3, 5 или 10.",
+            reply_markup=with_support_keyboard(keyboard=_bloggers_needed_keyboard()),
+        )
+        return
+
+    bloggers_needed = int(raw)
+    await state.update_data(bloggers_needed=bloggers_needed)
+    await message.answer(
+        "Введите ссылку на продукт (для откликнувшихся креаторов):",
+        reply_markup=support_keyboard(),
+    )
+    await state.set_state(OrderCreationStates.product_link)
+
+
+@router.message(OrderCreationStates.product_link)
+async def handle_product_link(
     message: Message,
     state: FSMContext,
     order_service: OrderService,
     config: AppConfig,
     contact_pricing_service: ContactPricingService,
 ) -> None:
-    """Finalize order creation."""
+    """Handle product link and create order."""
 
-    raw = (message.text or "").strip()
-    if not raw.isdigit():
-        await message.answer("Выберите одно из значений: 3/10/20/30/50.")
+    product_link = (message.text or "").strip()
+    if not product_link:
+        await message.answer("Ссылка не может быть пустой. Введите снова:")
         return
 
-    bloggers_needed = int(raw)
     data = await state.get_data()
-    if bloggers_needed not in {3, 10, 20, 30, 50}:
-        await message.answer("Выберите одно из значений: 3/10/20/30/50.")
-        return
-    if data.get("is_new") and bloggers_needed > 10:
-        await message.answer("NEW рекламодатели могут выбрать только 3 или 10.")
-        return
-
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
         await message.answer("Сессия истекла. Начните заново с «Создать заказ».")
+        await state.clear()
         return
-    # Middleware handles OrderCreationError, UserNotFoundError, and other exceptions
+
+    order_type_val = data.get("order_type", OrderType.UGC_ONLY.value)
+    try:
+        order_type = OrderType(order_type_val)
+    except ValueError:
+        order_type = OrderType.UGC_ONLY
+
+    offer_text = data["offer_text"]
+    cooperation_format = data.get("cooperation_format", COOP_PAYMENT)
+    price = data.get("price", 0.0)
+    barter_description = data.get("barter_description")
+    bloggers_needed = data["bloggers_needed"]
+
+    if cooperation_format == COOP_BARTER:
+        price = 0.0
+
     order = await order_service.create_order(
         advertiser_id=user_id,
-        product_link=data["product_link"],
-        offer_text=data["offer_text"],
-        ugc_requirements=data.get("ugc_requirements"),
-        barter_description=data.get("barter_description"),
-        price=data["price"],
+        order_type=order_type,
+        product_link=product_link,
+        offer_text=offer_text,
+        ugc_requirements=None,
+        barter_description=barter_description,
+        price=price,
         bloggers_needed=bloggers_needed,
     )
 
     await state.clear()
-    await message.answer(f"Заказ создан со статусом NEW. Номер: {order.order_id}")
-    # Send security warning
-    await message.answer(ADVERTISER_ORDER_WARNING)
+    await message.answer(
+        "Заказ создан. Мы отправили ваше предложение подходящим UGC-креаторам."
+    )
+    await message.answer(ORDER_CREATED_WHAT_NEXT, parse_mode="Markdown")
+    await message.answer(ORDER_CREATED_IMPORTANT, parse_mode="Markdown")
+
     contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
         await message.answer(

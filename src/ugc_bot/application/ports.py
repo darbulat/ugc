@@ -223,6 +223,25 @@ class InteractionRepository(ABC):
     ) -> None:
         """Persist interaction."""
 
+    @abstractmethod
+    async def update_next_check_at(
+        self,
+        interaction_id: UUID,
+        next_check_at: datetime,
+        session: object | None = None,
+    ) -> None:
+        """Update next_check_at for an interaction (e.g. after sending feedback request)."""
+
+
+class NpsRepository(ABC):
+    """Port for NPS response persistence."""
+
+    @abstractmethod
+    async def save(
+        self, interaction_id: UUID, score: int, session: object | None = None
+    ) -> None:
+        """Save NPS score for an interaction."""
+
 
 class InstagramVerificationRepository(ABC):
     """Port for Instagram verification code persistence."""

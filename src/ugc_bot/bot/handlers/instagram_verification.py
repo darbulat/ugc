@@ -81,6 +81,6 @@ async def start_verification(
     )
     await message.answer(instruction, parse_mode="HTML")
     await message.answer(
-        verification.code,
+        "Ваш код (код действует 15 минут)\n\n" + verification.code,
         reply_markup=blogger_verification_sent_keyboard(),
     )

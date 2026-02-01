@@ -11,6 +11,7 @@ from ugc_bot.domain.entities import AdvertiserProfile, Order, OutboxEvent, User
 from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
+    OrderType,
     OutboxEventStatus,
     UserStatus,
 )
@@ -79,6 +80,7 @@ class TestOutboxIntegration:
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000002"),
             advertiser_id=user.user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -164,6 +166,7 @@ class TestOutboxIntegration:
         test_order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -221,6 +224,7 @@ class TestOutboxIntegration:
         test_order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -272,6 +276,7 @@ class TestOutboxIntegration:
         test_order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
             advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
@@ -357,6 +362,7 @@ class TestOutboxIntegration:
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000002"),
             advertiser_id=user.user_id,
+            order_type=OrderType.UGC_ONLY,
             product_link="https://example.com",
             offer_text="Test offer",
             ugc_requirements=None,
