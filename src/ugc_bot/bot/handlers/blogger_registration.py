@@ -278,7 +278,7 @@ async def handle_gender(message: Message, state: FSMContext) -> None:
 
 
 _AGE_BUTTONS: dict[str, tuple[int, int]] = {
-    "до 18": (0, 17),
+    "до 18": (1, 17),
     "18–24": (18, 24),
     "25–34": (25, 34),
     "35–44": (35, 44),
