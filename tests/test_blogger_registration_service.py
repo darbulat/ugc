@@ -408,3 +408,71 @@ async def test_increment_wanted_to_change_terms_count() -> None:
     updated2 = await blogger_repo.get_by_user_id(user_id)
     assert updated2 is not None
     assert updated2.wanted_to_change_terms_count == 2
+
+
+@pytest.mark.asyncio
+async def test_update_blogger_profile_instagram_url_sets_confirmed_false() -> None:
+    """When instagram_url is updated, confirmed must be set to False."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/old_user",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    updated = await service.update_blogger_profile(
+        user_id, instagram_url="https://instagram.com/new_user"
+    )
+    assert updated is not None
+    assert updated.instagram_url == "https://instagram.com/new_user"
+    assert updated.confirmed is False
+
+
+@pytest.mark.asyncio
+async def test_update_blogger_profile_same_instagram_url_keeps_confirmed() -> None:
+    """When instagram_url is unchanged, confirmed stays as is."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/same_user",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    updated = await service.update_blogger_profile(
+        user_id, instagram_url="https://instagram.com/same_user"
+    )
+    assert updated is not None
+    assert updated.instagram_url == "https://instagram.com/same_user"
+    assert updated.confirmed is True

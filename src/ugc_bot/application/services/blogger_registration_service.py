@@ -191,12 +191,18 @@ class BloggerRegistrationService:
         if profile is None:
             return None
 
+        new_instagram_url = (
+            instagram_url.strip()
+            if instagram_url is not None
+            else profile.instagram_url
+        )
+        instagram_changed = (
+            instagram_url is not None and new_instagram_url != profile.instagram_url
+        )
         updated = BloggerProfile(
             user_id=profile.user_id,
-            instagram_url=instagram_url.strip()
-            if instagram_url is not None
-            else profile.instagram_url,
-            confirmed=profile.confirmed,
+            instagram_url=new_instagram_url,
+            confirmed=False if instagram_changed else profile.confirmed,
             city=city.strip() if city is not None else profile.city,
             topics=topics if topics is not None else profile.topics,
             audience_gender=audience_gender
