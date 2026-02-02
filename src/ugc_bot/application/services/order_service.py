@@ -121,8 +121,7 @@ class OrderService:
             raise OrderCreationError("Invalid bloggers count.")
 
         is_new = await self.is_new_advertiser(advertiser_id)
-        if is_new and barter_description:
-            raise OrderCreationError("Barter is not available for NEW advertisers.")
+
         if is_new and bloggers_needed > 10:
             raise OrderCreationError("NEW advertisers can request up to 10 bloggers.")
 
