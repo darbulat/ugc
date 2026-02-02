@@ -6,6 +6,9 @@ import pytest
 
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.order_creation import (
+    COOP_BARTER,
+    COOP_PAYMENT,
+    ORDER_TYPE_UGC_ONLY,
     handle_barter_description,
     handle_bloggers_needed,
     handle_cooperation_format,
@@ -83,9 +86,9 @@ async def test_order_creation_flow_new_advertiser(
     )
     assert "Что вам нужно?" in message.answers[0]
 
-    await handle_order_type(FakeMessage(text="UGC-видео для бренда", user=None), state)
+    await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
     await handle_offer_text(FakeMessage(text="Offer", user=None), state)
-    await handle_cooperation_format(FakeMessage(text="Оплата", user=None), state)
+    await handle_cooperation_format(FakeMessage(text=COOP_PAYMENT, user=None), state)
     await handle_price(FakeMessage(text="1000", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
 
@@ -150,9 +153,9 @@ async def test_order_creation_flow_with_barter(
         FakeFsmDraftService(),
     )
 
-    await handle_order_type(FakeMessage(text="UGC-видео для бренда", user=None), state)
+    await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
     await handle_offer_text(FakeMessage(text="Offer", user=None), state)
-    await handle_cooperation_format(FakeMessage(text="Бартер", user=None), state)
+    await handle_cooperation_format(FakeMessage(text=COOP_BARTER, user=None), state)
     await handle_barter_description(FakeMessage(text="Barter", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
 

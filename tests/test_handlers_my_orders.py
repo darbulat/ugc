@@ -5,6 +5,7 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.my_orders import paginate_orders, show_my_orders
 from ugc_bot.domain.enums import MessengerType, OrderStatus
@@ -96,7 +97,7 @@ async def test_my_orders_no_advertiser_profile(
         username="adv",
     )
 
-    message = FakeMessage(text="Мои заказы", user=FakeUser(1))
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
         message, user_service, profile_service, order_service, offer_response_service
     )
@@ -179,7 +180,7 @@ async def test_my_orders_list(
         status=OrderStatus.NEW,
     )
 
-    message = FakeMessage(text="Мои заказы", user=FakeUser(1))
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
         message, user_service, profile_service, order_service, offer_response_service
     )
@@ -273,7 +274,7 @@ async def test_paginate_orders_no_advertiser_profile(
         external_id="1",
         username="adv",
     )
-    message = FakeMessage(text="Мои заказы", user=FakeUser(1))
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     callback = FakeCallback(data="my_orders:1", user=FakeUser(1), message=message)
     await paginate_orders(
         callback, user_service, profile_service, order_service, offer_response_service
@@ -345,7 +346,7 @@ async def test_paginate_orders_invalid_page_uses_one(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    message = FakeMessage(text="Мои заказы", user=FakeUser(1))
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     callback = FakeCallback(
         data="my_orders:not_a_number", user=FakeUser(1), message=message
     )
@@ -391,7 +392,7 @@ async def test_my_orders_page_one_shows_forward_button(
             bloggers_needed=3,
             status=OrderStatus.NEW,
         )
-    message = FakeMessage(text="Мои заказы", user=FakeUser(1))
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     callback = FakeCallback(data="my_orders:1", user=FakeUser(1), message=message)
     await paginate_orders(
         callback, user_service, profile_service, order_service, offer_response_service
@@ -441,7 +442,7 @@ async def test_my_orders_pagination(
             status=OrderStatus.NEW,
         )
 
-    message = FakeMessage(text="Мои заказы", user=FakeUser(1))
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     callback = FakeCallback(data="my_orders:2", user=FakeUser(1), message=message)
     await paginate_orders(
         callback, user_service, profile_service, order_service, offer_response_service
@@ -514,7 +515,7 @@ async def test_my_orders_with_complaint_button(
         )
     )
 
-    message = FakeMessage(text="Мои заказы", user=FakeUser(1))
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
         message, user_service, profile_service, order_service, offer_response_service
     )

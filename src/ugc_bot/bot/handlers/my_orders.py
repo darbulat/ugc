@@ -15,6 +15,7 @@ from ugc_bot.application.services.offer_response_service import OfferResponseSer
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
@@ -26,7 +27,7 @@ _PAGE_SIZE = 5
 
 
 @router.message(Command("my_orders"))
-@router.message(lambda msg: (msg.text or "").strip() == "Мои заказы")
+@router.message(lambda msg: (msg.text or "").strip() == MY_ORDERS_BUTTON_TEXT)
 async def show_my_orders(
     message: Message,
     user_role_service: UserRoleService,

@@ -41,9 +41,13 @@ logger = logging.getLogger(__name__)
 ORDER_FLOW_TYPE = "order_creation"
 
 # Cooperation format: barter only, payment only, or both
-COOP_BARTER = "Бартер"
-COOP_PAYMENT = "Оплата"
-COOP_BOTH = "Бартер + оплата"
+COOP_BARTER = "🎁 Бартер"
+COOP_PAYMENT = "💰 Оплата"
+COOP_BOTH = "🔄 Бартер + оплата"
+
+# Order type button texts (for display and matching)
+ORDER_TYPE_UGC_ONLY = "🎥 UGC-видео для бренда"
+ORDER_TYPE_UGC_PLUS_PLACEMENT = "📢 UGC + размещение у креатора"
 
 
 class OrderCreationStates(StatesGroup):
@@ -62,8 +66,8 @@ class OrderCreationStates(StatesGroup):
 def _order_type_keyboard() -> list[list[KeyboardButton]]:
     """Keyboard for order type: UGC only or UGC + placement."""
     return [
-        [KeyboardButton(text="UGC-видео для бренда")],
-        [KeyboardButton(text="UGC + размещение у креатора")],
+        [KeyboardButton(text=ORDER_TYPE_UGC_ONLY)],
+        [KeyboardButton(text=ORDER_TYPE_UGC_PLUS_PLACEMENT)],
     ]
 
 
@@ -152,9 +156,9 @@ async def handle_order_type(message: Message, state: FSMContext) -> None:
     """Store order type and ask for offer text."""
 
     text = (message.text or "").strip()
-    if text == "UGC-видео для бренда":
+    if text == ORDER_TYPE_UGC_ONLY:
         order_type = OrderType.UGC_ONLY
-    elif text == "UGC + размещение у креатора":
+    elif text == ORDER_TYPE_UGC_PLUS_PLACEMENT:
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
         await message.answer(
@@ -166,7 +170,7 @@ async def handle_order_type(message: Message, state: FSMContext) -> None:
     await state.update_data(order_type=order_type.value)
     await message.answer(
         "Кратко опишите задачу для креаторов.\n"
-        "Пример: нужны короткие видео для соцсетей с демонстрацией продукта.",
+        "Что нужно снять и в каком формате. Пример: Видео с распаковкой продукта и личным отзывом.",
         reply_markup=support_keyboard(),
     )
     await state.set_state(OrderCreationStates.offer_text)
@@ -183,7 +187,7 @@ async def handle_offer_text(message: Message, state: FSMContext) -> None:
 
     await state.update_data(offer_text=offer_text)
     await message.answer(
-        "Какой формат сотрудничества?",
+        "Какой формат сотрудничества вам подходит?",
         reply_markup=with_support_keyboard(
             keyboard=_cooperation_format_keyboard(),
         ),
@@ -208,21 +212,22 @@ async def handle_cooperation_format(message: Message, state: FSMContext) -> None
     await state.update_data(cooperation_format=text)
     if text == COOP_PAYMENT:
         await message.answer(
-            "Бюджет за 1 UGC-видео? Укажите цену в рублях:",
+            "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
             reply_markup=support_keyboard(),
         )
         await state.set_state(OrderCreationStates.price)
         return
     if text == COOP_BARTER:
         await message.answer(
-            "Что вы предлагаете по бартеру?\n" "Пример: продукт + доставка",
+            "Что вы предлагаете по бартеру?\n"
+            "Продукт бренда (опишите коротко) + доставка",
             reply_markup=support_keyboard(),
         )
         await state.set_state(OrderCreationStates.barter_description)
         return
     # Бартер + оплата
     await message.answer(
-        "Бюджет за 1 UGC-видео? Укажите цену в рублях:",
+        "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
         reply_markup=support_keyboard(),
     )
     await state.set_state(OrderCreationStates.price)
@@ -247,7 +252,8 @@ async def handle_price(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     if data.get("cooperation_format") == COOP_BOTH:
         await message.answer(
-            "Что вы предлагаете по бартеру?\n" "Пример: продукт + доставка",
+            "Что вы предлагаете по бартеру?\n"
+            "Продукт бренда (опишите коротко) + доставка",
             reply_markup=support_keyboard(),
         )
         await state.set_state(OrderCreationStates.barter_description)
@@ -347,7 +353,7 @@ async def handle_product_link(
 
     await state.clear()
     await message.answer(
-        "Заказ создан. Мы отправим ваше предложение подходящим UGC-креаторам."
+        "Заказ создан ✅\n\n" "Мы отправим ваше предложение подходящим UGC-креаторам."
     )
     await message.answer(ORDER_CREATED_WHAT_NEXT, parse_mode="Markdown")
     await message.answer(ORDER_CREATED_IMPORTANT, parse_mode="Markdown")

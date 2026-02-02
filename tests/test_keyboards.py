@@ -4,7 +4,9 @@ from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     CREATE_ORDER_BUTTON_TEXT,
+    MY_ORDERS_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
+    SUPPORT_BUTTON_TEXT,
     advertiser_menu_keyboard,
     advertiser_start_keyboard,
     blogger_menu_keyboard,
@@ -54,7 +56,7 @@ def test_support_keyboard() -> None:
 
     assert keyboard.keyboard is not None
     assert len(keyboard.keyboard) == 1
-    assert keyboard.keyboard[0][0].text == "Поддержка"
+    assert keyboard.keyboard[0][0].text == SUPPORT_BUTTON_TEXT
 
 
 def test_with_support_keyboard_appends_support_row() -> None:
@@ -65,7 +67,7 @@ def test_with_support_keyboard_appends_support_row() -> None:
     keyboard = with_support_keyboard(base)
 
     assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[1][0].text == "Поддержка"
+    assert keyboard.keyboard[1][0].text == SUPPORT_BUTTON_TEXT
 
 
 def test_main_menu_keyboard_persistent() -> None:
@@ -74,7 +76,7 @@ def test_main_menu_keyboard_persistent() -> None:
 
     assert keyboard.keyboard is not None
     assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[0][0].text == "Поддержка"
+    assert keyboard.keyboard[0][0].text == SUPPORT_BUTTON_TEXT
     assert keyboard.keyboard[1][0].text == "Смена роли"
     assert keyboard.is_persistent is True
     assert keyboard.one_time_keyboard is False
@@ -99,10 +101,10 @@ def test_advertiser_menu_keyboard() -> None:
     assert keyboard.keyboard is not None
     assert len(keyboard.keyboard) == 5
     assert keyboard.keyboard[0][0].text == CREATE_ORDER_BUTTON_TEXT
-    assert keyboard.keyboard[1][0].text == "Мои заказы"
+    assert keyboard.keyboard[1][0].text == MY_ORDERS_BUTTON_TEXT
     assert keyboard.keyboard[2][0].text == MY_PROFILE_BUTTON_TEXT
     assert keyboard.keyboard[3][0].text == EDIT_PROFILE_BUTTON_TEXT
-    assert keyboard.keyboard[4][0].text == "Поддержка"
+    assert keyboard.keyboard[4][0].text == SUPPORT_BUTTON_TEXT
 
 
 def test_profile_keyboard() -> None:

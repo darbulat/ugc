@@ -53,12 +53,12 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     "OrderCreationStates:order_type": "Что вам нужно?",
     "OrderCreationStates:offer_text": (
         "Кратко опишите задачу для креаторов.\n"
-        "Пример: нужны короткие видео для соцсетей с демонстрацией продукта."
+        "Что нужно снять и в каком формате. Пример: Видео с распаковкой продукта и личным отзывом."
     ),
     "OrderCreationStates:cooperation_format": "Какой формат сотрудничества?",
-    "OrderCreationStates:price": "Бюджет за 1 UGC-видео? Укажите цену в рублях:",
+    "OrderCreationStates:price": "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
     "OrderCreationStates:barter_description": (
-        "Что вы предлагаете по бартеру?\nПример: продукт + доставка"
+        "Что вы предлагаете по бартеру?\nПродукт бренда (опишите коротко) + доставка"
     ),
     "OrderCreationStates:bloggers_needed": "Сколько креаторов вам нужно?",
     "OrderCreationStates:product_link": (

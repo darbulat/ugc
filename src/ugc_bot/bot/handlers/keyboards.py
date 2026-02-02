@@ -2,7 +2,8 @@
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-SUPPORT_BUTTON_TEXT = "Поддержка"
+SUPPORT_BUTTON_TEXT = "💬 Поддержка"
+MY_ORDERS_BUTTON_TEXT = "📂 Мои заказы"
 CHANGE_ROLE_BUTTON_TEXT = "Смена роли"
 CREATE_PROFILE_BUTTON_TEXT = "Создать профиль"
 ADVERTISER_START_BUTTON_TEXT = "Начать"
@@ -108,7 +109,7 @@ def advertiser_menu_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMar
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=CREATE_ORDER_BUTTON_TEXT)],
-            [KeyboardButton(text="Мои заказы")],
+            [KeyboardButton(text=MY_ORDERS_BUTTON_TEXT)],
             [KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)],
             [KeyboardButton(text=EDIT_PROFILE_BUTTON_TEXT)],
             [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
@@ -123,7 +124,7 @@ def advertiser_after_payment_keyboard() -> ReplyKeyboardMarkup:
 
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Мои заказы")],
+            [KeyboardButton(text=MY_ORDERS_BUTTON_TEXT)],
             [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
