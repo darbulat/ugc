@@ -2,7 +2,9 @@
 
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
+    CONFIRM_INSTAGRAM_BUTTON_TEXT,
     CREATE_ORDER_BUTTON_TEXT,
+    MY_PROFILE_BUTTON_TEXT,
     advertiser_menu_keyboard,
     advertiser_start_keyboard,
     blogger_menu_keyboard,
@@ -19,8 +21,8 @@ def test_blogger_menu_keyboard_not_confirmed() -> None:
 
     assert keyboard.keyboard is not None
     assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[0][0].text == "Подтвердить Instagram"
-    assert keyboard.keyboard[1][0].text == "Мой профиль"
+    assert keyboard.keyboard[0][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
+    assert keyboard.keyboard[1][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 def test_blogger_menu_keyboard_confirmed() -> None:
@@ -29,7 +31,7 @@ def test_blogger_menu_keyboard_confirmed() -> None:
 
     assert keyboard.keyboard is not None
     assert len(keyboard.keyboard) == 1
-    assert keyboard.keyboard[0][0].text == "Мой профиль"
+    assert keyboard.keyboard[0][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 def test_blogger_menu_keyboard_one_time() -> None:
@@ -98,7 +100,7 @@ def test_advertiser_menu_keyboard() -> None:
     assert len(keyboard.keyboard) == 5
     assert keyboard.keyboard[0][0].text == CREATE_ORDER_BUTTON_TEXT
     assert keyboard.keyboard[1][0].text == "Мои заказы"
-    assert keyboard.keyboard[2][0].text == "Мой профиль"
+    assert keyboard.keyboard[2][0].text == MY_PROFILE_BUTTON_TEXT
     assert keyboard.keyboard[3][0].text == EDIT_PROFILE_BUTTON_TEXT
     assert keyboard.keyboard[4][0].text == "Поддержка"
 
@@ -109,7 +111,7 @@ def test_profile_keyboard() -> None:
 
     assert keyboard.keyboard is not None
     assert len(keyboard.keyboard) == 1
-    assert keyboard.keyboard[0][0].text == "Мой профиль"
+    assert keyboard.keyboard[0][0].text == MY_PROFILE_BUTTON_TEXT
     assert keyboard.one_time_keyboard is True
 
 

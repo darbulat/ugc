@@ -24,6 +24,8 @@ from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     CREATE_PROFILE_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
+    WORK_FORMAT_ADS_BUTTON_TEXT,
+    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     blogger_after_registration_keyboard,
     draft_choice_keyboard,
     support_keyboard,
@@ -373,8 +375,8 @@ async def handle_barter(message: Message, state: FSMContext) -> None:
         "Помимо UGC, как ещё вы готовы работать с брендами?",
         reply_markup=with_support_keyboard(
             keyboard=[
-                [KeyboardButton(text="Размещать рекламу у себя в аккаунте")],
-                [KeyboardButton(text="Только UGC (без размещения)")],
+                [KeyboardButton(text=WORK_FORMAT_ADS_BUTTON_TEXT)],
+                [KeyboardButton(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT)],
             ],
         ),
     )
@@ -390,9 +392,9 @@ async def handle_work_format(
     """Store work format and show agreements step."""
 
     text = (message.text or "").strip()
-    if text == "Размещать рекламу у себя в аккаунте":
+    if text == WORK_FORMAT_ADS_BUTTON_TEXT:
         work_format = WorkFormat.ADS_IN_ACCOUNT
-    elif text == "Только UGC (без размещения)":
+    elif text == WORK_FORMAT_UGC_ONLY_BUTTON_TEXT:
         work_format = WorkFormat.UGC_ONLY
     else:
         await message.answer(
@@ -402,16 +404,19 @@ async def handle_work_format(
 
     await state.update_data(work_format=work_format)
 
-    parts = ["Пожалуйста, ознакомьтесь с документами и подтвердите согласие.", ""]
+    parts = [
+        "Пожалуйста, ознакомьтесь с документами и подтвердите согласие.",
+        "",
+    ]
     if config.docs.docs_offer_url:
-        parts.append(f'<a href="{config.docs.docs_offer_url}">Оферта</a>')
+        parts.append(f'<a href="{config.docs.docs_offer_url}">📄 Оферта</a>')
     if config.docs.docs_privacy_url:
         parts.append(
-            f'<a href="{config.docs.docs_privacy_url}">Политика конфиденциальности</a>'
+            f'<a href="{config.docs.docs_privacy_url}">🔒 Политика конфиденциальности</a>'
         )
     if config.docs.docs_consent_url:
         parts.append(
-            f'<a href="{config.docs.docs_consent_url}">Согласие на обработку ПД</a>'
+            f'<a href="{config.docs.docs_consent_url}">🧾 Согласие на обработку персональных данных</a>'
         )
     if len(parts) == 2:
         parts.append("Подтвердите согласие с документами платформы.")
@@ -482,7 +487,7 @@ async def handle_agreements(
 
     await state.clear()
     profile_created_text = (
-        "Профиль создан\n"
+        "Профиль создан 👍\n\n"
         "Остался последний шаг — подтвердить Instagram‑аккаунт.\n"
         "Это нужно, чтобы:\n"
         "— защитить бренды от фейков\n"

@@ -37,11 +37,12 @@ def _verification_instruction_text(admin_instagram_username: str) -> str:
     url = f"{base}{username}/"
     url_escaped = html.escape(url, quote=True)
     return (
-        "<b>Чтобы подтвердить Instagram‑аккаунт, сделайте 2 шага:</b>\n\n"
-        "1) Скопируйте код ниже\n"
-        "2) Отправьте его в личные сообщения Instagram‑аккаунту UMC\n\n"
-        "Дождитесь автоматического подтверждения.\n\n"
-        f'Instagram UMC: <a href="{url_escaped}">{url_escaped}</a>'
+        "<b>Чтобы подтвердить Instagram‑аккаунт, сделайте 3 шага:</b>\n\n"
+        "1. Скопируйте код ниже\n"
+        "2. Отправьте его в личные сообщения Instagram‑аккаунту UMC\n"
+        "3. Дождитесь автоматического подтверждения\n\n"
+        f'🔗 Instagram UMC: <a href="{url_escaped}">{url_escaped}</a>\n\n'
+        "🔐 Ваш код (код действует 15 минут) 👇"
     )
 
 
@@ -81,6 +82,6 @@ async def start_verification(
     )
     await message.answer(instruction, parse_mode="HTML")
     await message.answer(
-        "Ваш код (код действует 15 минут)\n\n" + verification.code,
+        verification.code,
         reply_markup=blogger_verification_sent_keyboard(),
     )

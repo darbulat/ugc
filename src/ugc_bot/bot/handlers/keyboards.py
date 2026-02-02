@@ -7,9 +7,12 @@ CHANGE_ROLE_BUTTON_TEXT = "Смена роли"
 CREATE_PROFILE_BUTTON_TEXT = "Создать профиль"
 ADVERTISER_START_BUTTON_TEXT = "Начать"
 CREATE_ORDER_BUTTON_TEXT = "➕ Создать заказ"
-CONFIRM_INSTAGRAM_BUTTON_TEXT = "Подтвердить Instagram"
-CONFIRM_AGREEMENT_BUTTON_TEXT = "Подтвердить согласие"
+CONFIRM_INSTAGRAM_BUTTON_TEXT = "✅ Подтвердить Instagram"
+CONFIRM_AGREEMENT_BUTTON_TEXT = "✅ Подтвердить согласие"
 EDIT_PROFILE_BUTTON_TEXT = "Редактировать профиль"
+MY_PROFILE_BUTTON_TEXT = "👤 Мой профиль"
+WORK_FORMAT_ADS_BUTTON_TEXT = "📢 Размещать рекламу у себя в аккаунте"
+WORK_FORMAT_UGC_ONLY_BUTTON_TEXT = "❌ Только UGC (без размещения)"
 RESUME_DRAFT_BUTTON_TEXT = "Продолжить"
 START_OVER_BUTTON_TEXT = "Начать заново"
 
@@ -83,7 +86,7 @@ def profile_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
     """Build a reply keyboard with a profile button."""
 
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Мой профиль")]],
+        keyboard=[[KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)]],
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,
     )
@@ -106,7 +109,7 @@ def advertiser_menu_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMar
         keyboard=[
             [KeyboardButton(text=CREATE_ORDER_BUTTON_TEXT)],
             [KeyboardButton(text="Мои заказы")],
-            [KeyboardButton(text="Мой профиль")],
+            [KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)],
             [KeyboardButton(text=EDIT_PROFILE_BUTTON_TEXT)],
             [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
         ],
@@ -145,7 +148,7 @@ def blogger_menu_keyboard(
     if not confirmed and not verification_started:
         keyboard.append([KeyboardButton(text=CONFIRM_INSTAGRAM_BUTTON_TEXT)])
 
-    keyboard.append([KeyboardButton(text="Мой профиль")])
+    keyboard.append([KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)])
 
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
@@ -160,7 +163,7 @@ def blogger_after_registration_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=CONFIRM_INSTAGRAM_BUTTON_TEXT)],
-            [KeyboardButton(text="Мой профиль")],
+            [KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
         one_time_keyboard=False,
@@ -171,7 +174,7 @@ def blogger_verification_sent_keyboard() -> ReplyKeyboardMarkup:
     """Keyboard after verification code sent: only My profile (no verification button)."""
 
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Мой профиль")]],
+        keyboard=[[KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)]],
         resize_keyboard=True,
         one_time_keyboard=False,
     )
@@ -183,7 +186,7 @@ def blogger_profile_view_keyboard(confirmed: bool) -> ReplyKeyboardMarkup:
     keyboard = [[KeyboardButton(text=EDIT_PROFILE_BUTTON_TEXT)]]
     if not confirmed:
         keyboard.append([KeyboardButton(text=CONFIRM_INSTAGRAM_BUTTON_TEXT)])
-    keyboard.append([KeyboardButton(text="Мой профиль")])
+    keyboard.append([KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)])
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True,

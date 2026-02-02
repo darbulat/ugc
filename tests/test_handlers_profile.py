@@ -5,6 +5,11 @@ from uuid import UUID
 
 import pytest
 
+from ugc_bot.bot.handlers.keyboards import (
+    CONFIRM_INSTAGRAM_BUTTON_TEXT,
+    MY_PROFILE_BUTTON_TEXT,
+    WORK_FORMAT_ADS_BUTTON_TEXT,
+)
 from ugc_bot.bot.handlers.profile import (
     edit_profile_choose_field,
     edit_profile_enter_value,
@@ -253,8 +258,8 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
     # blogger_profile_view_keyboard: Edit profile, Confirm Instagram, My profile
     assert len(keyboard.keyboard) == 3
     assert keyboard.keyboard[0][0].text == "Редактировать профиль"
-    assert keyboard.keyboard[1][0].text == "Подтвердить Instagram"
-    assert keyboard.keyboard[2][0].text == "Мой профиль"
+    assert keyboard.keyboard[1][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
+    assert keyboard.keyboard[2][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 @pytest.mark.asyncio
@@ -279,7 +284,7 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
     # blogger_profile_view_keyboard when confirmed: Edit profile, My profile
     assert len(keyboard.keyboard) == 2
     assert keyboard.keyboard[0][0].text == "Редактировать профиль"
-    assert keyboard.keyboard[1][0].text == "Мой профиль"
+    assert keyboard.keyboard[1][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 @pytest.mark.asyncio
@@ -299,7 +304,9 @@ async def test_show_profile_advertiser_keyboard(user_repo) -> None:
     assert message.reply_markups
     keyboard = message.reply_markups[0]
     assert keyboard.keyboard is not None
-    assert any(btn.text == "Мой профиль" for row in keyboard.keyboard for btn in row)
+    assert any(
+        btn.text == MY_PROFILE_BUTTON_TEXT for row in keyboard.keyboard for btn in row
+    )
 
 
 # --- Edit profile flow ---
@@ -366,7 +373,7 @@ async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
         external_id="8",
         username="user",
     )
-    message = FakeMessage(text="Мой профиль", user=FakeUser(8))
+    message = FakeMessage(text=MY_PROFILE_BUTTON_TEXT, user=FakeUser(8))
     state = FakeFSMContext()
     profile_service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
@@ -818,7 +825,7 @@ async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
         external_id="21",
         username="user",
     )
-    message = FakeMessage(text="Размещать рекламу у себя в аккаунте", user=FakeUser(21))
+    message = FakeMessage(text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(21))
     state = FakeFSMContext()
     state._data = {
         "editing_field": "work_format",

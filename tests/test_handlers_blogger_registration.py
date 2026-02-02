@@ -23,8 +23,10 @@ from ugc_bot.bot.handlers.blogger_registration import (
 )
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
+    CONFIRM_INSTAGRAM_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
     DRAFT_RESTORED_TEXT,
+    MY_PROFILE_BUTTON_TEXT,
     RESUME_DRAFT_BUTTON_TEXT,
     START_OVER_BUTTON_TEXT,
 )
@@ -426,8 +428,8 @@ async def test_handle_agreements_shows_verification_button(
     assert keyboard.keyboard is not None
     # After registration: Confirm Instagram + My profile
     assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[0][0].text == "Подтвердить Instagram"
-    assert keyboard.keyboard[1][0].text == "Мой профиль"
+    assert keyboard.keyboard[0][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
+    assert keyboard.keyboard[1][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 @pytest.mark.asyncio

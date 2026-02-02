@@ -22,6 +22,9 @@ from ugc_bot.bot.handlers.utils import handle_draft_choice, parse_user_id_from_s
 from ugc_bot.bot.handlers.keyboards import (
     EDIT_PROFILE_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
+    MY_PROFILE_BUTTON_TEXT,
+    WORK_FORMAT_ADS_BUTTON_TEXT,
+    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     advertiser_menu_keyboard,
     blogger_profile_view_keyboard,
     draft_choice_keyboard,
@@ -84,7 +87,7 @@ class EditProfileStates(StatesGroup):
 
 
 @router.message(Command("profile"))
-@router.message(lambda msg: (msg.text or "").strip() == "Мой профиль")
+@router.message(lambda msg: (msg.text or "").strip() == MY_PROFILE_BUTTON_TEXT)
 async def show_profile(message: Message, profile_service: ProfileService) -> None:
     """Show current user's profile."""
 
@@ -178,7 +181,7 @@ def _edit_field_keyboard(profile_type: str = "blogger") -> ReplyKeyboardMarkup:
         if i + 1 < len(labels):
             row.append(KeyboardButton(text=labels[i + 1]))
         rows.append(row)
-    rows.append([KeyboardButton(text="Мой профиль")])
+    rows.append([KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)])
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,
@@ -192,7 +195,7 @@ def _edit_profile_type_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="Редактировать профиль блогера")],
             [KeyboardButton(text="Редактировать профиль рекламодателя")],
-            [KeyboardButton(text="Мой профиль")],
+            [KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)],
         ],
         resize_keyboard=True,
         one_time_keyboard=False,
@@ -286,7 +289,7 @@ async def edit_profile_choose_type(
     """Handle choice of blogger or advertiser profile to edit."""
 
     text = (message.text or "").strip()
-    if text == "Мой профиль":
+    if text == MY_PROFILE_BUTTON_TEXT:
         await state.clear()
         await show_profile(message, profile_service)
         return
@@ -323,7 +326,7 @@ async def edit_profile_choose_field(
     """Handle field choice and ask for new value."""
 
     text = (message.text or "").strip()
-    if text == "Мой профиль":
+    if text == MY_PROFILE_BUTTON_TEXT:
         await state.clear()
         await show_profile(message, profile_service)
         return
@@ -400,8 +403,8 @@ async def edit_profile_choose_field(
             prompt,
             reply_markup=with_support_keyboard(
                 keyboard=[
-                    [KeyboardButton(text="Размещать рекламу у себя в аккаунте")],
-                    [KeyboardButton(text="Только UGC (без размещения)")],
+                    [KeyboardButton(text=WORK_FORMAT_ADS_BUTTON_TEXT)],
+                    [KeyboardButton(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT)],
                 ],
             ),
         )
@@ -593,9 +596,9 @@ async def edit_profile_enter_value(
             user_id, barter=barter
         )
     elif field_key == "work_format":
-        if text == "Размещать рекламу у себя в аккаунте":
+        if text == WORK_FORMAT_ADS_BUTTON_TEXT:
             wf = WorkFormat.ADS_IN_ACCOUNT
-        elif text == "Только UGC (без размещения)":
+        elif text == WORK_FORMAT_UGC_ONLY_BUTTON_TEXT:
             wf = WorkFormat.UGC_ONLY
         else:
             await message.answer("Выберите одну из кнопок.")
