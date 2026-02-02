@@ -132,12 +132,13 @@ async def _send_contact_immediately(
     creator_name = f"@{user.username}" if user.username else user.external_id
     ugc_format = _format_ugc_type(order)
     contact_text = (
-        "Новый отклик по вашему заказу\n\n"
-        f"Креатор: {creator_name}\n"
-        f"Город: {profile.city or '—'}\n"
-        f"Формат UGC: {ugc_format}\n"
-        "Готов работать на условиях оффера\n"
-        f"Instagram: {profile.instagram_url}\n\n" + ADVERTISER_NEW_RESPONSE_WHAT_NEXT
+        "Новый отклик по вашему заказу 🙌\n\n"
+        f"👤 Креатор: {creator_name}\n"
+        f"📍 Город: {profile.city or '—'}\n"
+        f"🎬 Формат: {ugc_format}\n"
+        "💼 Готов работать на условиях оффера\n"
+        f"🔗 Профиль креатора:\n{profile.instagram_url}\n\n"
+        + ADVERTISER_NEW_RESPONSE_WHAT_NEXT
     )
 
     profile_url = profile.instagram_url.strip()
@@ -146,7 +147,7 @@ async def _send_contact_immediately(
     open_profile_kb = (
         InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Открыть профиль", url=profile_url)]
+                [InlineKeyboardButton(text="🔗 Открыть профиль", url=profile_url)]
             ]
         )
         if profile_url.startswith("http")

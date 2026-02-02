@@ -101,10 +101,12 @@ async def test_contact_sent_immediately(
         bot=bot,
     )
 
-    # Check contact was sent (TZ format: "Новый отклик по вашему заказу", Креатор, Instagram)
+    # Check contact was sent (TZ format: "Новый отклик по вашему заказу", Креатор, Профиль креатора)
     assert any("Новый отклик" in answer for answer in bot.answers)
     assert any("blogger" in answer or "Креатор" in answer for answer in bot.answers)
-    assert any("Instagram:" in answer for answer in bot.answers)
+    assert any(
+        "Профиль креатора" in answer or "instagram" in answer for answer in bot.answers
+    )
 
     # Check interaction was created
     interaction = await interaction_repo.get_by_participants(
