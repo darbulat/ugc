@@ -347,7 +347,7 @@ async def handle_product_link(
 
     await state.clear()
     await message.answer(
-        "Заказ создан. Мы отправили ваше предложение подходящим UGC-креаторам."
+        "Заказ создан. Мы отправим ваше предложение подходящим UGC-креаторам."
     )
     await message.answer(ORDER_CREATED_WHAT_NEXT, parse_mode="Markdown")
     await message.answer(ORDER_CREATED_IMPORTANT, parse_mode="Markdown")
