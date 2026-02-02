@@ -1,4 +1,7 @@
-.PHONY: install-dev lint typecheck test coverage format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions
+.PHONY: install-dev lint typecheck test coverage format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements
+
+export-requirements:
+	uv export --no-dev --no-emit-project -o requirements.txt
 
 install-dev:
 	python3 -m pip install -e ".[dev]"

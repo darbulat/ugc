@@ -5,11 +5,15 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-COPY pyproject.toml /app/
-COPY alembic.ini /app/
+# 1. Слой зависимостей — кэшируется при изменении только кода
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+# 2. Код приложения — при правках пересобирается только этот слой
+COPY pyproject.toml alembic.ini /app/
 COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
-RUN pip install --upgrade pip && pip install -e .
+RUN pip install --no-cache-dir -e . --no-deps
 
 CMD ["python", "-m", "ugc_bot.app"]
