@@ -156,7 +156,7 @@ async def _notify_user_verification_success(
         try:
             await bot.send_message(
                 chat_id=int(user.external_id),
-                text="Instagram подтверждён. Теперь бренды могут отправлять вам предложения.",
+                text="Instagram подтверждён ✅. Теперь бренды могут отправлять вам предложения.",
                 reply_markup=blogger_menu_keyboard(confirmed=confirmed),
             )
         finally:
