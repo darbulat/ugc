@@ -209,7 +209,7 @@ async def test_my_orders_blogger_with_responses(
         else message.answers[0][0]
     )
     assert "откликнулись" in answer_text
-    assert str(order.order_id) in answer_text
+    assert "№ 1" in answer_text
 
 
 @pytest.mark.asyncio
@@ -297,7 +297,8 @@ async def test_my_orders_list(
         if isinstance(message.answers[0], str)
         else message.answers[0][0]
     )
-    assert str(order.order_id) in answer_text
+    assert "№ 1" in answer_text
+    assert order.status.value in answer_text
 
 
 @pytest.mark.asyncio
@@ -632,7 +633,7 @@ async def test_my_orders_with_complaint_button(
         if isinstance(message.answers[0], str)
         else message.answers[0][0]
     )
-    assert str(order.order_id) in answer_text
+    assert "№ 1" in answer_text
 
 
 @pytest.mark.asyncio
@@ -701,4 +702,4 @@ async def test_paginate_orders_blogger(
         answer_content if isinstance(answer_content, str) else answer_content[0]
     )
     assert "откликнулись" in answer_text
-    assert str(order.order_id) in answer_text
+    assert "№ 1" in answer_text

@@ -173,11 +173,13 @@ async def _render_page(
     lines = [f"Ваши заказы (страница {page}/{total_pages}):"]
     buttons_rows: list[list[InlineKeyboardButton]] = []
 
-    for order in slice_orders:
+    for idx, order in enumerate(slice_orders):
+        # Нумерация по дате создания: 1 = первый созданный (самый старый)
+        creation_number = len(orders) - start - idx
         lines.append(
             "\n".join(
                 [
-                    f"ID: {order.order_id}",
+                    f"№ {creation_number}",
                     f"Статус: {order.status.value}",
                     f"Ссылка: {order.product_link}",
                     f"Цена: {order.price}",
@@ -237,14 +239,24 @@ def _render_blogger_orders_page(
     end = start + _PAGE_SIZE
     slice_pairs = order_responses[start:end]
 
+    # Нумерация по дате создания заказа: 1 = первый созданный
+    orders_sorted_by_created = sorted(
+        order_responses, key=lambda pair: pair[0].created_at
+    )
+    order_id_to_number = {
+        order.order_id: idx + 1
+        for idx, (order, _) in enumerate(orders_sorted_by_created)
+    }
+
     lines = [f"Заказы, на которые вы откликнулись (страница {page}/{total_pages}):"]
     buttons_rows: list[list[InlineKeyboardButton]] = []
 
     for order, _response in slice_pairs:
+        creation_number = order_id_to_number.get(order.order_id, 0)
         lines.append(
             "\n".join(
                 [
-                    f"ID: {order.order_id}",
+                    f"№ {creation_number}",
                     f"Статус: {order.status.value}",
                     f"Ссылка: {order.product_link}",
                     f"Цена: {order.price}",
