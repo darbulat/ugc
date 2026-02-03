@@ -14,6 +14,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
@@ -27,16 +28,25 @@ from ugc_bot.bot.handlers.keyboards import (
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     blogger_after_registration_keyboard,
+    creator_filled_profile_keyboard,
+    creator_start_keyboard,
     draft_choice_keyboard,
     support_keyboard,
     with_support_keyboard,
 )
+from ugc_bot.bot.handlers.start import CREATOR_LABEL
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
 
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+CREATOR_CHOOSE_ACTION_TEXT = "Выберите действие:"
+CREATOR_INTRO_NOT_REGISTERED = (
+    "Ты — UGC‑креатор.\n"
+    "После регистрации бренды смогут находить тебя и отправлять предложения."
+)
 
 _INSTAGRAM_URL_REGEX = re.compile(
     r"^(https?://)?(www\.)?instagram\.com/[A-Za-z0-9._]+/?$"
@@ -61,6 +71,48 @@ class BloggerRegistrationStates(StatesGroup):
 
 
 BLOGGER_FLOW_TYPE = "blogger_registration"
+
+
+@router.message(Command("creator"))
+@router.message(lambda msg: (msg.text or "").strip() == CREATOR_LABEL)
+async def choose_creator_role(
+    message: Message,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    state: FSMContext,
+) -> None:
+    """Handle 'Я креатор': persist role and show menu or registration prompt."""
+
+    if message.from_user is None:
+        return
+    await state.clear()
+    external_id = str(message.from_user.id)
+    username = message.from_user.username or message.from_user.first_name or "user"
+
+    await user_role_service.set_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username=username,
+        role_chosen=True,
+    )
+
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    blogger_profile = (
+        await profile_service.get_blogger_profile(user.user_id) if user else None
+    )
+    if blogger_profile is not None:
+        await message.answer(
+            CREATOR_CHOOSE_ACTION_TEXT,
+            reply_markup=creator_filled_profile_keyboard(),
+        )
+    else:
+        await message.answer(
+            CREATOR_INTRO_NOT_REGISTERED,
+            reply_markup=creator_start_keyboard(),
+        )
 
 
 async def _start_registration_flow(
@@ -93,18 +145,6 @@ async def _start_registration_flow(
         reply_markup=support_keyboard(),
     )
     await state.set_state(BloggerRegistrationStates.name)
-
-
-@router.message(Command("register"))
-async def start_registration_command(
-    message: Message,
-    state: FSMContext,
-    user_role_service: UserRoleService,
-    fsm_draft_service: FsmDraftService,
-) -> None:
-    """Start blogger registration flow via /register command."""
-
-    await _start_registration_flow(message, state, user_role_service, fsm_draft_service)
 
 
 @router.message(lambda msg: (msg.text or "").strip() == CREATE_PROFILE_BUTTON_TEXT)

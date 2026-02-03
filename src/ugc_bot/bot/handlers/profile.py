@@ -66,7 +66,7 @@ EDIT_FIELD_LABELS_ADVERTISER = [label for label, _ in _EDIT_FIELDS_ADVERTISER]
 EDIT_FIELD_KEYS_ADVERTISER = {label: key for label, key in _EDIT_FIELDS_ADVERTISER}
 
 _AGE_BUTTONS: dict[str, tuple[int, int]] = {
-    "до 18": (0, 17),
+    "до 18": (1, 17),
     "18–24": (18, 24),
     "25–34": (25, 34),
     "35–44": (35, 44),
@@ -119,7 +119,7 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
     ]
 
     if blogger is None:
-        parts.append("Профиль блогера не заполнен. Команда: /register")
+        parts.append("Профиль блогера не заполнен.")
     else:
         topics = ", ".join(blogger.topics.get("selected", []))
         confirmed = "Да" if blogger.confirmed else "Нет"
@@ -145,7 +145,7 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
         )
 
     if advertiser is None:
-        parts.append("Профиль рекламодателя не заполнен. Команда: /register_advertiser")
+        parts.append("Профиль рекламодателя не заполнен.")
     else:
         adv_parts = [
             "Рекламодатель:",

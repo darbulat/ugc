@@ -25,10 +25,13 @@ from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
     advertiser_menu_keyboard,
+    advertiser_start_keyboard,
     draft_choice_keyboard,
     support_keyboard,
 )
+from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
 from ugc_bot.config import AppConfig
+from ugc_bot.domain.enums import MessengerType
 
 
 router = Router()
@@ -36,6 +39,53 @@ logger = logging.getLogger(__name__)
 
 
 ADVERTISER_FLOW_TYPE = "advertiser_registration"
+ADVERTISER_CHOOSE_ACTION_TEXT = "Выберите действие:"
+ADVERTISER_INTRO_TEXT = (
+    "Вы выбрали роль «Мне нужны UGC‑креаторы».\n"
+    "Давайте создадим профиль, чтобы вы могли размещать заказы."
+)
+
+
+@router.message(Command("advertiser"))
+@router.message(lambda msg: (msg.text or "").strip() == ADVERTISER_LABEL)
+async def choose_advertiser_role(
+    message: Message,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    state: FSMContext,
+) -> None:
+    """Handle 'Мне нужны UGC‑креаторы': persist role and show menu or registration prompt."""
+
+    if message.from_user is None:
+        return
+    await state.clear()
+    external_id = str(message.from_user.id)
+    username = message.from_user.username or message.from_user.first_name or "user"
+
+    await user_role_service.set_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username=username,
+        role_chosen=True,
+    )
+
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    advertiser_profile = (
+        await profile_service.get_advertiser_profile(user.user_id) if user else None
+    )
+    if advertiser_profile is not None:
+        await message.answer(
+            ADVERTISER_CHOOSE_ACTION_TEXT,
+            reply_markup=advertiser_menu_keyboard(),
+        )
+    else:
+        await message.answer(
+            ADVERTISER_INTRO_TEXT,
+            reply_markup=advertiser_start_keyboard(),
+        )
 
 
 class AdvertiserRegistrationStates(StatesGroup):
@@ -84,34 +134,6 @@ async def handle_advertiser_start(
             "Выберите действие:",
             reply_markup=advertiser_menu_keyboard(),
         )
-        return
-
-    await state.update_data(user_id=user.user_id)
-    draft = await fsm_draft_service.get_draft(user.user_id, ADVERTISER_FLOW_TYPE)
-    if draft is not None:
-        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
-        await state.set_state(AdvertiserRegistrationStates.choosing_draft_restore)
-        return
-    await _ask_name(message, state)
-
-
-@router.message(Command("register_advertiser"))
-async def start_advertiser_registration(
-    message: Message,
-    state: FSMContext,
-    user_role_service: UserRoleService,
-    fsm_draft_service: FsmDraftService,
-) -> None:
-    """Start advertiser registration flow."""
-
-    user = await get_user_and_ensure_allowed(
-        message,
-        user_role_service,
-        user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
-        pause_msg="Пользователи на паузе не могут регистрироваться.",
-    )
-    if user is None:
         return
 
     await state.update_data(user_id=user.user_id)

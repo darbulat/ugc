@@ -8,7 +8,6 @@ from ugc_bot.bot.handlers.advertiser_registration import (
     handle_brand,
     handle_name,
     handle_phone,
-    start_advertiser_registration,
 )
 from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -23,15 +22,22 @@ from tests.helpers.services import build_profile_service
 
 
 @pytest.mark.asyncio
-async def test_start_advertiser_registration_requires_user(user_repo) -> None:
+async def test_start_advertiser_registration_requires_user(
+    user_repo, advertiser_repo
+) -> None:
     """Require existing user before registration."""
 
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
 
-    await start_advertiser_registration(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    await handle_advertiser_start(
+        message,
+        state,
+        service,
+        profile_service=profile_service,
+        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert message.answers
@@ -40,7 +46,9 @@ async def test_start_advertiser_registration_requires_user(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_advertiser_registration_sets_state(user_repo) -> None:
+async def test_start_advertiser_registration_sets_state(
+    user_repo, advertiser_repo
+) -> None:
     """Start registration for advertiser role."""
 
     service = UserRoleService(user_repo=user_repo)
@@ -51,9 +59,14 @@ async def test_start_advertiser_registration_sets_state(user_repo) -> None:
     )
     message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
     state = FakeFSMContext()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
 
-    await start_advertiser_registration(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    await handle_advertiser_start(
+        message,
+        state,
+        service,
+        profile_service=profile_service,
+        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert state._data["user_id"] is not None
@@ -66,7 +79,9 @@ async def test_start_advertiser_registration_sets_state(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_advertiser_registration_blocked_user(user_repo) -> None:
+async def test_start_advertiser_registration_blocked_user(
+    user_repo, advertiser_repo
+) -> None:
     """Reject registration for blocked advertiser."""
 
     from uuid import UUID
@@ -82,8 +97,14 @@ async def test_start_advertiser_registration_blocked_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(11, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+
+    await handle_advertiser_start(
+        message,
+        state,
+        service,
+        profile_service=profile_service,
+        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert message.answers
@@ -92,7 +113,9 @@ async def test_start_advertiser_registration_blocked_user(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_advertiser_registration_paused_user(user_repo) -> None:
+async def test_start_advertiser_registration_paused_user(
+    user_repo, advertiser_repo
+) -> None:
     """Reject registration for paused advertiser."""
 
     from uuid import UUID
@@ -108,8 +131,14 @@ async def test_start_advertiser_registration_paused_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(12, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await start_advertiser_registration(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+
+    await handle_advertiser_start(
+        message,
+        state,
+        service,
+        profile_service=profile_service,
+        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert message.answers
