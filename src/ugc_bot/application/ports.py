@@ -168,6 +168,12 @@ class OrderResponseRepository(ABC):
         """List responses by order."""
 
     @abstractmethod
+    async def list_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> Iterable[OrderResponse]:
+        """List responses by blogger (orders the blogger responded to)."""
+
+    @abstractmethod
     async def exists(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
     ) -> bool:

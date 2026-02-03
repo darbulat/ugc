@@ -7,10 +7,12 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.bot.handlers.keyboards import (
     CHANGE_ROLE_BUTTON_TEXT,
     SUPPORT_BUTTON_TEXT,
     advertiser_start_keyboard,
+    creator_filled_profile_keyboard,
     creator_start_keyboard,
     main_menu_keyboard,
 )
@@ -27,7 +29,9 @@ SUPPORT_RESPONSE_TEXT = (
 CREATOR_LABEL = "Я креатор"
 ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
 
-CREATOR_INTRO_TEXT = (
+CREATOR_INTRO_TEXT = "Ты — UGC‑креатор."
+
+CREATOR_INTRO_TEXT_NOT_REGISTERED = (
     "Ты — UGC‑креатор.\n"
     "После регистрации бренды смогут находить тебя и отправлять предложения."
 )
@@ -75,6 +79,7 @@ async def change_role_button(message: Message, state: FSMContext) -> None:
 async def choose_role(
     message: Message,
     user_role_service: UserRoleService,
+    profile_service: ProfileService,
     state: FSMContext,
 ) -> None:
     """Persist selected role and guide the user."""
@@ -94,10 +99,23 @@ async def choose_role(
     )
 
     if text == CREATOR_LABEL:
-        await message.answer(
-            CREATOR_INTRO_TEXT,
-            reply_markup=creator_start_keyboard(),
+        user = await user_role_service.get_user(
+            external_id=external_id,
+            messenger_type=MessengerType.TELEGRAM,
         )
+        blogger_profile = (
+            await profile_service.get_blogger_profile(user.user_id) if user else None
+        )
+        if blogger_profile is not None:
+            await message.answer(
+                CREATOR_INTRO_TEXT,
+                reply_markup=creator_filled_profile_keyboard(),
+            )
+        else:
+            await message.answer(
+                CREATOR_INTRO_TEXT_NOT_REGISTERED,
+                reply_markup=creator_start_keyboard(),
+            )
         return
 
     if text == ADVERTISER_LABEL:

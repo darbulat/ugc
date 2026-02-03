@@ -1,6 +1,7 @@
 """Tests for my orders handler."""
 
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -8,10 +9,12 @@ from ugc_bot.application.services.offer_response_service import OfferResponseSer
 from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.my_orders import paginate_orders, show_my_orders
+from ugc_bot.domain.entities import OrderResponse
 from ugc_bot.domain.enums import MessengerType, OrderStatus
 from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 from tests.helpers.factories import (
     create_test_advertiser_profile,
+    create_test_blogger_profile,
     create_test_order,
     create_test_user,
 )
@@ -72,7 +75,7 @@ async def test_show_my_orders_user_not_found(
 
 
 @pytest.mark.asyncio
-async def test_my_orders_no_advertiser_profile(
+async def test_my_orders_no_advertiser_nor_blogger_profile(
     fake_tm: object,
     user_repo,
     advertiser_repo,
@@ -80,7 +83,7 @@ async def test_my_orders_no_advertiser_profile(
     blogger_repo,
     order_response_repo,
 ) -> None:
-    """Show hint when advertiser profile is missing."""
+    """Show hint when neither advertiser nor blogger profile exists."""
 
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
@@ -103,7 +106,110 @@ async def test_my_orders_no_advertiser_profile(
     )
 
     assert message.answers
-    assert "Профиль рекламодателя не заполнен" in message.answers[0]
+    assert "Заполните профиль" in message.answers[0]
+    assert "рекламодателя" in message.answers[0] or "блогера" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_my_orders_blogger_no_responses(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Blogger with no responses sees hint."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        external_id="5",
+        username="blogger",
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(5))
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    assert "не откликались" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_my_orders_blogger_with_responses(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Blogger sees orders they responded to."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    adv_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="adv1",
+        username="advertiser",
+    )
+    await create_test_advertiser_profile(advertiser_repo, adv_user.user_id)
+    order = await create_test_order(
+        order_repo,
+        adv_user.user_id,
+        order_id=uuid4(),
+        price=500.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+    )
+
+    blogger_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="6",
+        username="creator",
+    )
+    await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
+    response = OrderResponse(
+        response_id=uuid4(),
+        order_id=order.order_id,
+        blogger_id=blogger_user.user_id,
+        responded_at=datetime.now(timezone.utc),
+    )
+    await order_response_repo.save(response)
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(6))
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    answer_text = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "откликнулись" in answer_text
+    assert str(order.order_id) in answer_text
 
 
 @pytest.mark.asyncio
@@ -526,4 +632,73 @@ async def test_my_orders_with_complaint_button(
         if isinstance(message.answers[0], str)
         else message.answers[0][0]
     )
+    assert str(order.order_id) in answer_text
+
+
+@pytest.mark.asyncio
+async def test_paginate_orders_blogger(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Paginate blogger's responded orders (my_orders_blogger:page)."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    adv_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="10",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, adv_user.user_id)
+    order = await create_test_order(
+        order_repo,
+        adv_user.user_id,
+        order_id=uuid4(),
+        price=300.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+
+    blogger_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="11",
+        username="blogger",
+    )
+    await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order.order_id,
+            blogger_id=blogger_user.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(11))
+    callback = FakeCallback(
+        data="my_orders_blogger:1", user=FakeUser(11), message=message
+    )
+    await paginate_orders(
+        callback, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    answer_content = message.answers[-1]
+    answer_text = (
+        answer_content if isinstance(answer_content, str) else answer_content[0]
+    )
+    assert "откликнулись" in answer_text
     assert str(order.order_id) in answer_text

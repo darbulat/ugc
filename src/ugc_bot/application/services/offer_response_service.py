@@ -51,6 +51,16 @@ class OfferResponseService:
                 await self.response_repo.list_by_order(order_id, session=session)
             )
 
+    async def list_by_blogger(self, blogger_id: UUID) -> list[OrderResponse]:
+        """List responses by blogger (orders the blogger responded to)."""
+
+        if self.transaction_manager is None:
+            return list(await self.response_repo.list_by_blogger(blogger_id))
+        async with self.transaction_manager.transaction() as session:
+            return list(
+                await self.response_repo.list_by_blogger(blogger_id, session=session)
+            )
+
     async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID
     ) -> OfferResponseResult:

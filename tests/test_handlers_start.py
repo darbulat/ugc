@@ -5,6 +5,8 @@ import pytest
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.start import (
     CHANGE_ROLE_BUTTON_TEXT,
+    CREATOR_INTRO_TEXT,
+    CREATOR_INTRO_TEXT_NOT_REGISTERED,
     START_TEXT,
     _role_keyboard,
     change_role_button,
@@ -12,6 +14,10 @@ from ugc_bot.bot.handlers.start import (
     role_command,
     start_command,
     support_button,
+)
+from ugc_bot.bot.handlers.keyboards import (
+    creator_filled_profile_keyboard,
+    creator_start_keyboard,
 )
 from ugc_bot.domain.enums import MessengerType
 from tests.helpers.fakes import (
@@ -79,38 +85,101 @@ async def test_change_role_button_shows_start_screen() -> None:
 
 
 @pytest.mark.asyncio
-async def test_choose_role_creator_persists(user_repo) -> None:
-    """Ensure creator role selection is persisted."""
+async def test_choose_role_creator_persists(user_repo, blogger_repo) -> None:
+    """Ensure creator role selection is persisted; no profile shows create profile."""
+
+    from tests.helpers.services import build_profile_service
 
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
     message = FakeMessage(text="Я креатор", user=FakeUser(42, "bob", "Bob"))
     state = FakeFSMContext(state=None)
-    await choose_role(message, user_role_service=service, state=state)
+    await choose_role(
+        message,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+    )
 
     user = await service.get_user("42", MessengerType.TELEGRAM)
     assert user is not None
     assert user.username == "bob"
+    assert message.answers
+    assert CREATOR_INTRO_TEXT_NOT_REGISTERED in message.answers[-1][0]
+    assert message.answers[-1][1].keyboard == creator_start_keyboard().keyboard
 
 
 @pytest.mark.asyncio
-async def test_choose_role_without_user(user_repo) -> None:
-    """Ignore messages without sender."""
+async def test_choose_role_creator_with_filled_profile_shows_menu(
+    user_repo, blogger_repo
+) -> None:
+    """When creator has filled blogger profile, show Edit/My profile/My orders."""
+
+    from tests.helpers.factories import create_test_blogger_profile
+    from tests.helpers.services import build_profile_service
 
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
+    message = FakeMessage(text="Я креатор", user=FakeUser(42, "bob", "Bob"))
+    state = FakeFSMContext(state=None)
+
+    await service.set_user(
+        external_id="42",
+        messenger_type=MessengerType.TELEGRAM,
+        username="bob",
+        role_chosen=False,
+    )
+    user = await service.get_user("42", MessengerType.TELEGRAM)
+    assert user is not None
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+
+    await choose_role(
+        message,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+    )
+
+    assert message.answers
+    assert message.answers[-1][0] == CREATOR_INTRO_TEXT
+    assert message.answers[-1][1].keyboard == creator_filled_profile_keyboard().keyboard
+
+
+@pytest.mark.asyncio
+async def test_choose_role_without_user(user_repo, blogger_repo) -> None:
+    """Ignore messages without sender."""
+
+    from tests.helpers.services import build_profile_service
+
+    service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
     message = FakeMessage(text="Мне нужны UGC‑креаторы", user=None)
     state = FakeFSMContext(state=None)
-    await choose_role(message, user_role_service=service, state=state)
+    await choose_role(
+        message,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+    )
     assert await service.get_user("0", MessengerType.TELEGRAM) is None
 
 
 @pytest.mark.asyncio
-async def test_choose_role_advertiser_response(user_repo) -> None:
+async def test_choose_role_advertiser_response(user_repo, blogger_repo) -> None:
     """Advertiser role should respond accordingly."""
 
+    from tests.helpers.services import build_profile_service
+
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
     message = FakeMessage(text="Мне нужны UGC‑креаторы", user=FakeUser(99, None, "Ann"))
     state = FakeFSMContext(state=None)
-    await choose_role(message, user_role_service=service, state=state)
+    await choose_role(
+        message,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+    )
     assert message.answers
     assert "Вы выбрали роль" in message.answers[-1][0]
     assert "Давайте создадим профиль" in message.answers[-1][0]

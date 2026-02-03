@@ -69,6 +69,23 @@ def creator_start_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def creator_filled_profile_keyboard(
+    one_time_keyboard: bool = False,
+) -> ReplyKeyboardMarkup:
+    """Keyboard for creator with filled profile: Edit profile, My profile, My orders."""
+
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=EDIT_PROFILE_BUTTON_TEXT)],
+            [KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)],
+            [KeyboardButton(text=MY_ORDERS_BUTTON_TEXT)],
+            [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=one_time_keyboard,
+    )
+
+
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     """Build a persistent main menu keyboard (Support, Change role)."""
 

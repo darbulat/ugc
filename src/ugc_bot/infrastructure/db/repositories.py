@@ -493,6 +493,20 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
         results = exec_result.scalars()
         return [_to_order_response_entity(item) for item in results]
 
+    async def list_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> list[OrderResponse]:
+        """List responses by blogger (orders the blogger responded to)."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(OrderResponseModel).where(
+                OrderResponseModel.blogger_id == blogger_id
+            )
+        )
+        results = exec_result.scalars()
+        return [_to_order_response_entity(item) for item in results]
+
     async def exists(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
     ) -> bool:

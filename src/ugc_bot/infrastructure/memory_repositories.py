@@ -315,6 +315,13 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
 
         return [resp for resp in self.responses if resp.order_id == order_id]
 
+    async def list_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> list[OrderResponse]:
+        """List responses by blogger (orders the blogger responded to)."""
+
+        return [resp for resp in self.responses if resp.blogger_id == blogger_id]
+
     async def exists(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
     ) -> bool:
