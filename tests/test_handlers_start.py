@@ -16,6 +16,7 @@ from ugc_bot.bot.handlers.start import (
     support_button,
 )
 from ugc_bot.bot.handlers.keyboards import (
+    advertiser_menu_keyboard,
     creator_filled_profile_keyboard,
     creator_start_keyboard,
 )
@@ -143,6 +144,46 @@ async def test_choose_role_creator_with_filled_profile_shows_menu(
     assert message.answers
     assert message.answers[-1][0] == CREATOR_INTRO_TEXT
     assert message.answers[-1][1].keyboard == creator_filled_profile_keyboard().keyboard
+
+
+@pytest.mark.asyncio
+async def test_choose_role_advertiser_with_filled_profile_shows_menu(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """When advertiser has filled profile, show 'Выберите действие:' and menu."""
+
+    from tests.helpers.factories import create_test_advertiser_profile
+    from tests.helpers.services import build_profile_service
+
+    service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    message = FakeMessage(
+        text="Мне нужны UGC‑креаторы", user=FakeUser(99, "adv", "Advertiser")
+    )
+    state = FakeFSMContext(state=None)
+
+    await service.set_user(
+        external_id="99",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        role_chosen=False,
+    )
+    user = await service.get_user("99", MessengerType.TELEGRAM)
+    assert user is not None
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+
+    await choose_role(
+        message,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+    )
+
+    assert message.answers
+    assert message.answers[-1][0] == CREATOR_INTRO_TEXT
+    assert message.answers[-1][1].keyboard == advertiser_menu_keyboard().keyboard
 
 
 @pytest.mark.asyncio

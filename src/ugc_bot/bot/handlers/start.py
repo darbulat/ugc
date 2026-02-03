@@ -11,6 +11,7 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.bot.handlers.keyboards import (
     CHANGE_ROLE_BUTTON_TEXT,
     SUPPORT_BUTTON_TEXT,
+    advertiser_menu_keyboard,
     advertiser_start_keyboard,
     creator_filled_profile_keyboard,
     creator_start_keyboard,
@@ -29,7 +30,7 @@ SUPPORT_RESPONSE_TEXT = (
 CREATOR_LABEL = "Я креатор"
 ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
 
-CREATOR_INTRO_TEXT = "Ты — UGC‑креатор."
+CREATOR_INTRO_TEXT = "Выберите действие:"
 
 CREATOR_INTRO_TEXT_NOT_REGISTERED = (
     "Ты — UGC‑креатор.\n"
@@ -119,10 +120,23 @@ async def choose_role(
         return
 
     if text == ADVERTISER_LABEL:
-        await message.answer(
-            ADVERTISER_INTRO_TEXT,
-            reply_markup=advertiser_start_keyboard(),
+        user = await user_role_service.get_user(
+            external_id=external_id,
+            messenger_type=MessengerType.TELEGRAM,
         )
+        advertiser_profile = (
+            await profile_service.get_advertiser_profile(user.user_id) if user else None
+        )
+        if advertiser_profile is not None:
+            await message.answer(
+                CREATOR_INTRO_TEXT,
+                reply_markup=advertiser_menu_keyboard(),
+            )
+        else:
+            await message.answer(
+                ADVERTISER_INTRO_TEXT,
+                reply_markup=advertiser_start_keyboard(),
+            )
         return
 
 
