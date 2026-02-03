@@ -13,7 +13,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_CONTACTS_WARNING,
     ADVERTISER_NEW_RESPONSE_WHAT_NEXT,
-    BLOGGER_RESPONSE_WARNING,
+    BLOGGER_AFTER_RESPONSE_WHAT_NEXT,
 )
 from ugc_bot.bot.handlers.utils import (
     RateLimiter,
@@ -34,8 +34,18 @@ _send_retry_delay_seconds = 0.5
     lambda callback: callback.data and callback.data.startswith("offer_skip:")
 )
 async def handle_offer_skip(callback: CallbackQuery) -> None:
-    """Handle blogger pressing 'Пропустить' on offer (no response recorded)."""
+    """Handle blogger pressing 'Пропустить' on offer (no response recorded).
+
+    Removes inline keyboard so 'Готов снять UGC' can no longer be pressed.
+    """
     await callback.answer("Ок, пропущено.")
+    msg = callback.message
+    edit_reply_markup = getattr(msg, "edit_reply_markup", None) if msg else None
+    if msg and getattr(msg, "reply_markup", None) and callable(edit_reply_markup):
+        try:
+            await edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
 
 
 @router.callback_query(
@@ -83,12 +93,9 @@ async def handle_offer_response(
 
     await callback.answer("Отклик принят! Ожидайте связи от рекламодателя.")
     if callback.message and callback.message.bot:
-        await callback.message.answer(
-            "Отклик отправлен. Заказчик получил ссылку на ваш профиль и сможет написать вам."
-        )
         if result.order.product_link:
-            await callback.message.answer("О продукте:\n" + result.order.product_link)
-        await callback.message.answer(BLOGGER_RESPONSE_WARNING)
+            await callback.message.answer(result.order.product_link)
+        await callback.message.answer(BLOGGER_AFTER_RESPONSE_WHAT_NEXT)
 
     # Send contact immediately after each response
     await _send_contact_immediately(

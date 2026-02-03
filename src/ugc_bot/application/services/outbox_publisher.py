@@ -156,6 +156,9 @@ class OutboxPublisher:
             status=OrderStatus.ACTIVE,
             created_at=order.created_at,
             contacts_sent_at=order.contacts_sent_at,
+            content_usage=order.content_usage,
+            deadlines=order.deadlines,
+            geography=order.geography,
         )
         await self.order_repo.save(activated_order, session=session)
 

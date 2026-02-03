@@ -63,7 +63,12 @@ async def send_order_invoice(
             payload=str(order_id),
             provider_token=config.bot.telegram_provider_token,
             currency="RUB",
-            prices=[LabeledPrice(label="💳 Заплатить", amount=price)],
+            prices=[
+                LabeledPrice(
+                    label=f"💳 Заплатить {int(price_value)} ₽",
+                    amount=price,
+                )
+            ],
         )
     except Exception:
         logger.exception(

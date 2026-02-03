@@ -73,6 +73,9 @@ class OrderService:
         barter_description: Optional[str],
         price: float,
         bloggers_needed: int,
+        content_usage: Optional[str] = None,
+        deadlines: Optional[str] = None,
+        geography: Optional[str] = None,
     ) -> Order:
         """Create an order after validating input."""
 
@@ -138,6 +141,9 @@ class OrderService:
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
             contacts_sent_at=None,
+            content_usage=(content_usage or "").strip() or None,
+            deadlines=(deadlines or "").strip() or None,
+            geography=(geography or "").strip() or None,
         )
         if self.transaction_manager is None:
             await self.order_repo.save(order)

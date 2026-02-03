@@ -82,6 +82,9 @@ class Order:
     status: OrderStatus
     created_at: datetime
     contacts_sent_at: Optional[datetime]
+    content_usage: Optional[str] = None
+    deadlines: Optional[str] = None
+    geography: Optional[str] = None
 
 
 @dataclass(frozen=True)

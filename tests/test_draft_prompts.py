@@ -18,6 +18,28 @@ def test_get_draft_prompt_order_product_link() -> None:
     assert "ссылку на продукт" in prompt.lower()
 
 
+def test_get_draft_prompt_order_content_usage() -> None:
+    """Return prompt for order content_usage step."""
+    prompt = get_draft_prompt("OrderCreationStates:content_usage", {})
+    assert "ugc" in prompt.lower() and "использовать" in prompt.lower()
+
+
+def test_get_draft_prompt_order_deadlines() -> None:
+    """Return prompt for order deadlines step."""
+    prompt = get_draft_prompt("OrderCreationStates:deadlines", {})
+    assert "сроки" in prompt.lower() or "превью" in prompt.lower()
+
+
+def test_get_draft_prompt_order_geography() -> None:
+    """Return prompt for order geography step."""
+    prompt = get_draft_prompt("OrderCreationStates:geography", {})
+    assert (
+        "город" in prompt.lower()
+        or "регион" in prompt.lower()
+        or "рф" in prompt.lower()
+    )
+
+
 def test_get_draft_prompt_edit_profile_entering_value_uses_field() -> None:
     """EditProfileStates:entering_value uses editing_field for prompt."""
     prompt = get_draft_prompt(

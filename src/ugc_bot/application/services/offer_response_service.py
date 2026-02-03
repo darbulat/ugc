@@ -127,4 +127,7 @@ def _update_order_after_response(
         status=new_status,
         created_at=order.created_at,
         contacts_sent_at=now,
+        content_usage=order.content_usage,
+        deadlines=order.deadlines,
+        geography=order.geography,
     )

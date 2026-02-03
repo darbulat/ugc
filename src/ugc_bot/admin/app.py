@@ -135,6 +135,9 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.offer_text,
         OrderModel.price,
         OrderModel.bloggers_needed,
+        OrderModel.content_usage,
+        OrderModel.deadlines,
+        OrderModel.geography,
         OrderModel.status,
         OrderModel.created_at,
     ]

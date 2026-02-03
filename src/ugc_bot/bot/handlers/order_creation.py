@@ -27,10 +27,7 @@ from ugc_bot.bot.handlers.keyboards import (
     with_support_keyboard,
 )
 from ugc_bot.bot.handlers.payments import send_order_invoice
-from ugc_bot.bot.handlers.security_warnings import (
-    ORDER_CREATED_IMPORTANT,
-    ORDER_CREATED_WHAT_NEXT,
-)
+from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderType
 
@@ -61,6 +58,9 @@ class OrderCreationStates(StatesGroup):
     barter_description = State()
     bloggers_needed = State()
     product_link = State()
+    content_usage = State()
+    deadlines = State()
+    geography = State()
 
 
 def _order_type_keyboard() -> list[list[KeyboardButton]]:
@@ -86,6 +86,48 @@ def _bloggers_needed_keyboard() -> list[list[KeyboardButton]]:
         [KeyboardButton(text="3")],
         [KeyboardButton(text="5")],
         [KeyboardButton(text="10")],
+    ]
+
+
+# Content usage: where UGC video will be used (for offer display)
+CONTENT_USAGE_SOCIAL = "📱 В соцсетях бренда"
+CONTENT_USAGE_ADS = "📢 В рекламе (таргет, объявления)"
+CONTENT_USAGE_BOTH = "🔄 В соцсетях и рекламе"
+
+CONTENT_USAGE_TO_OFFER = {
+    CONTENT_USAGE_SOCIAL: "соцсети бренда",
+    CONTENT_USAGE_ADS: "реклама (таргет, объявления)",
+    CONTENT_USAGE_BOTH: "соцсети и реклама бренда",
+}
+
+
+def _content_usage_keyboard() -> list[list[KeyboardButton]]:
+    """Keyboard for content usage."""
+    return [
+        [KeyboardButton(text=CONTENT_USAGE_SOCIAL)],
+        [KeyboardButton(text=CONTENT_USAGE_ADS)],
+        [KeyboardButton(text=CONTENT_USAGE_BOTH)],
+    ]
+
+
+# Deadlines: preview expected within N days
+DEADLINES_3 = "⏱ До 3 дней"
+DEADLINES_7 = "⏱ До 7 дней"
+DEADLINES_14 = "⏱ До 14 дней"
+
+DEADLINES_TO_OFFER = {
+    DEADLINES_3: "превью в течение 3 дней после согласования",
+    DEADLINES_7: "превью в течение 7 дней после согласования",
+    DEADLINES_14: "превью в течение 14 дней после согласования",
+}
+
+
+def _deadlines_keyboard() -> list[list[KeyboardButton]]:
+    """Keyboard for deadlines."""
+    return [
+        [KeyboardButton(text=DEADLINES_3)],
+        [KeyboardButton(text=DEADLINES_7)],
+        [KeyboardButton(text=DEADLINES_14)],
     ]
 
 
@@ -304,18 +346,80 @@ async def handle_bloggers_needed(message: Message, state: FSMContext) -> None:
 
 
 @router.message(OrderCreationStates.product_link)
-async def handle_product_link(
+async def handle_product_link(message: Message, state: FSMContext) -> None:
+    """Store product link and ask content usage."""
+
+    product_link = (message.text or "").strip()
+    if not product_link:
+        await message.answer("Ссылка не может быть пустой. Введите снова:")
+        return
+
+    await state.update_data(product_link=product_link)
+    await message.answer(
+        "Где вы планируете использовать UGC-видео?",
+        reply_markup=with_support_keyboard(keyboard=_content_usage_keyboard()),
+    )
+    await state.set_state(OrderCreationStates.content_usage)
+
+
+@router.message(OrderCreationStates.content_usage)
+async def handle_content_usage(message: Message, state: FSMContext) -> None:
+    """Store content usage and ask deadlines."""
+
+    text = (message.text or "").strip()
+    if text not in (CONTENT_USAGE_SOCIAL, CONTENT_USAGE_ADS, CONTENT_USAGE_BOTH):
+        await message.answer(
+            "Выберите один из вариантов на клавиатуре.",
+            reply_markup=with_support_keyboard(keyboard=_content_usage_keyboard()),
+        )
+        return
+
+    content_usage_offer = CONTENT_USAGE_TO_OFFER.get(text, text)
+    await state.update_data(content_usage=content_usage_offer)
+    await message.answer(
+        "В какие сроки вам нужен контент? Укажите, через сколько дней после "
+        "согласования вы ожидаете превью.",
+        reply_markup=with_support_keyboard(keyboard=_deadlines_keyboard()),
+    )
+    await state.set_state(OrderCreationStates.deadlines)
+
+
+@router.message(OrderCreationStates.deadlines)
+async def handle_deadlines(message: Message, state: FSMContext) -> None:
+    """Store deadlines and ask geography."""
+
+    text = (message.text or "").strip()
+    if text not in (DEADLINES_3, DEADLINES_7, DEADLINES_14):
+        await message.answer(
+            "Выберите один из вариантов на клавиатуре.",
+            reply_markup=with_support_keyboard(keyboard=_deadlines_keyboard()),
+        )
+        return
+
+    deadlines_offer = DEADLINES_TO_OFFER.get(text, text)
+    await state.update_data(deadlines=deadlines_offer)
+    await message.answer(
+        "В каких городах или регионах может находиться креатор? Можно указать "
+        "от 1 до 10 городов, регионы или написать «РФ». "
+        "(Нужно для бартерных заказов и доставки продукта.)",
+        reply_markup=support_keyboard(),
+    )
+    await state.set_state(OrderCreationStates.geography)
+
+
+@router.message(OrderCreationStates.geography)
+async def handle_geography(
     message: Message,
     state: FSMContext,
     order_service: OrderService,
     config: AppConfig,
     contact_pricing_service: ContactPricingService,
 ) -> None:
-    """Handle product link and create order."""
+    """Handle geography and create order."""
 
-    product_link = (message.text or "").strip()
-    if not product_link:
-        await message.answer("Ссылка не может быть пустой. Введите снова:")
+    geography = (message.text or "").strip()
+    if not geography:
+        await message.answer("Укажите географию. Примеры: Казань, Москва / РФ")
         return
 
     data = await state.get_data()
@@ -336,6 +440,9 @@ async def handle_product_link(
     price = data.get("price", 0.0)
     barter_description = data.get("barter_description")
     bloggers_needed = data["bloggers_needed"]
+    product_link = data["product_link"]
+    content_usage = data.get("content_usage")
+    deadlines = data.get("deadlines")
 
     if cooperation_format == COOP_BARTER:
         price = 0.0
@@ -349,15 +456,13 @@ async def handle_product_link(
         barter_description=barter_description,
         price=price,
         bloggers_needed=bloggers_needed,
+        content_usage=content_usage,
+        deadlines=deadlines,
+        geography=geography,
     )
 
     await state.clear()
-    await message.answer(
-        "Заказ создан ✅\n\n" "Мы отправим ваше предложение подходящим UGC-креаторам."
-    )
-    await message.answer(ORDER_CREATED_WHAT_NEXT, parse_mode="Markdown")
-    await message.answer(ORDER_CREATED_IMPORTANT, parse_mode="Markdown")
-
+    await message.answer(ORDER_CREATED_MESSAGE, parse_mode="Markdown")
     contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
         await message.answer(

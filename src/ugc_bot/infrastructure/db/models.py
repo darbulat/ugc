@@ -180,6 +180,9 @@ class OrderModel(Base):
     contacts_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    content_usage: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    deadlines: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    geography: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class ContactPricingModel(Base):

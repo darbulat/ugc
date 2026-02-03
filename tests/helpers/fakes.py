@@ -67,8 +67,10 @@ class FakeMessage:
         self.bot = bot
         self.answers: list[str | tuple[str, object | None]] = []
         self.reply_markups: list = []
+        self.reply_markup = None
         self.chat = type("Chat", (), {"id": user.id if user else 0})()
         self.successful_payment = None
+        self.edit_reply_markup_calls: list[object] = []
 
     async def answer(self, text: str, reply_markup=None, **kwargs) -> None:  # type: ignore[no-untyped-def]
         """Capture response text and optional reply markup."""
@@ -89,6 +91,12 @@ class FakeMessage:
     async def send_message(self, chat_id: int, text: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
         """Capture advertiser messages."""
         self.answers.append(text)
+
+    async def edit_reply_markup(
+        self, reply_markup: object = None, **kwargs: object
+    ) -> None:
+        """Capture edit_reply_markup calls (e.g. remove keyboard after skip)."""
+        self.edit_reply_markup_calls.append(reply_markup)
 
 
 class FakeCallback:

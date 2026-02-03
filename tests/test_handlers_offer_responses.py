@@ -121,12 +121,15 @@ async def test_contact_sent_immediately(
 
 @pytest.mark.asyncio
 async def test_offer_skip_handler() -> None:
-    """Blogger pressing 'Пропустить' on offer answers without recording response."""
+    """Blogger pressing 'Пропустить' on offer answers without recording response and removes keyboard."""
 
     order_id = UUID("00000000-0000-0000-0000-000000000748")
+    message = FakeMessage()
+    message.reply_markup = object()
     callback = FakeCallback(
         data=f"offer_skip:{order_id}",
         user=FakeUser(1),
+        message=message,
     )
     await handle_offer_skip(callback)
     assert callback.answers
@@ -134,6 +137,8 @@ async def test_offer_skip_handler() -> None:
         "пропущено" in callback.answers[0].lower()
         or "ок" in callback.answers[0].lower()
     )
+    assert len(message.edit_reply_markup_calls) == 1
+    assert message.edit_reply_markup_calls[0] is None
 
 
 @pytest.mark.asyncio

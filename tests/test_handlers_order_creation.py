@@ -8,10 +8,15 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.order_creation import (
     COOP_BARTER,
     COOP_PAYMENT,
+    CONTENT_USAGE_BOTH,
+    DEADLINES_7,
     ORDER_TYPE_UGC_ONLY,
     handle_barter_description,
     handle_bloggers_needed,
+    handle_content_usage,
     handle_cooperation_format,
+    handle_deadlines,
+    handle_geography,
     handle_offer_text,
     handle_order_type,
     handle_price,
@@ -62,7 +67,7 @@ async def test_start_order_creation_requires_role(
 async def test_order_creation_flow_new_advertiser(
     user_repo, advertiser_repo, order_repo, pricing_repo
 ) -> None:
-    """Full flow: order_type -> offer_text -> cooperation (Оплата) -> price -> bloggers -> product_link."""
+    """Full flow: order_type -> offer_text -> cooperation (Оплата) -> price -> bloggers -> product_link -> content_usage -> deadlines -> geography."""
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
@@ -91,6 +96,15 @@ async def test_order_creation_flow_new_advertiser(
     await handle_cooperation_format(FakeMessage(text=COOP_PAYMENT, user=None), state)
     await handle_price(FakeMessage(text="1000", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
+    await handle_product_link(
+        FakeMessage(text="https://example.com", user=FakeUser(5, "adv", "Adv")), state
+    )
+    await handle_content_usage(
+        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(5, "adv", "Adv")), state
+    )
+    await handle_deadlines(
+        FakeMessage(text=DEADLINES_7, user=FakeUser(5, "adv", "Adv")), state
+    )
 
     config = AppConfig.model_validate(
         {
@@ -101,10 +115,8 @@ async def test_order_creation_flow_new_advertiser(
     )
     bot = FakeBot()
     pricing_service = await build_contact_pricing_service({3: 1500.0}, pricing_repo)
-    await handle_product_link(
-        FakeMessage(
-            text="https://example.com", user=FakeUser(5, "adv", "Adv"), bot=bot
-        ),
+    await handle_geography(
+        FakeMessage(text="Казань, Москва", user=FakeUser(5, "adv", "Adv"), bot=bot),
         state,
         order_service,
         config,
@@ -158,6 +170,15 @@ async def test_order_creation_flow_with_barter(
     await handle_cooperation_format(FakeMessage(text=COOP_BARTER, user=None), state)
     await handle_barter_description(FakeMessage(text="Barter", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
+    await handle_product_link(
+        FakeMessage(text="https://example.com", user=FakeUser(6, "adv", "Adv")), state
+    )
+    await handle_content_usage(
+        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(6, "adv", "Adv")), state
+    )
+    await handle_deadlines(
+        FakeMessage(text=DEADLINES_7, user=FakeUser(6, "adv", "Adv")), state
+    )
 
     config = AppConfig.model_validate(
         {
@@ -168,10 +189,8 @@ async def test_order_creation_flow_with_barter(
     )
     bot = FakeBot()
     pricing_service = await build_contact_pricing_service({5: 2500.0}, pricing_repo)
-    await handle_product_link(
-        FakeMessage(
-            text="https://example.com", user=FakeUser(6, "adv", "Adv"), bot=bot
-        ),
+    await handle_geography(
+        FakeMessage(text="РФ", user=FakeUser(6, "adv", "Adv"), bot=bot),
         state,
         order_service,
         config,

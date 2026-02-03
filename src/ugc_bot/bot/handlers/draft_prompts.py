@@ -64,6 +64,15 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     "OrderCreationStates:product_link": (
         "Введите ссылку на продукт (для откликнувшихся креаторов):"
     ),
+    "OrderCreationStates:content_usage": ("Где вы планируете использовать UGC-видео?"),
+    "OrderCreationStates:deadlines": (
+        "В какие сроки вам нужен контент? Укажите, через сколько дней после "
+        "согласования вы ожидаете превью."
+    ),
+    "OrderCreationStates:geography": (
+        "В каких городах или регионах может находиться креатор? "
+        "Можно указать от 1 до 10 городов, регионы или написать «РФ»."
+    ),
     # EditProfileStates
     "EditProfileStates:choosing_field": "Выберите раздел для редактирования:",
     "EditProfileStates:entering_value": "",  # Filled from editing_field below

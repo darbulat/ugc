@@ -852,6 +852,9 @@ def _to_order_entity(model: OrderModel) -> Order:
         status=model.status,
         created_at=model.created_at,
         contacts_sent_at=model.contacts_sent_at,
+        content_usage=getattr(model, "content_usage", None),
+        deadlines=getattr(model, "deadlines", None),
+        geography=getattr(model, "geography", None),
     )
 
 
@@ -884,6 +887,9 @@ def _to_order_model(order: Order) -> OrderModel:
         status=order.status,
         created_at=order.created_at,
         contacts_sent_at=order.contacts_sent_at,
+        content_usage=order.content_usage,
+        deadlines=order.deadlines,
+        geography=order.geography,
     )
 
 
