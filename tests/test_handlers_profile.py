@@ -164,7 +164,7 @@ async def test_show_profile_from_user_none() -> None:
     """Show profile does nothing when from_user is None."""
     message = FakeMessage(user=None)
     service = _FakeProfileServiceUserMissing()
-    await show_profile(message, service)
+    await show_profile(message, service, FakeFSMContext())
     assert not message.answers
 
 
@@ -181,7 +181,7 @@ async def test_show_profile_both_roles(user_repo) -> None:
     message = FakeMessage(user=FakeUser(1))
     service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
 
-    await show_profile(message, service)
+    await show_profile(message, service, FakeFSMContext())
 
     assert message.answers
     answer_text = (
@@ -201,7 +201,7 @@ async def test_show_profile_missing_user() -> None:
             return None
 
     message = FakeMessage(user=FakeUser(1))
-    await show_profile(message, MissingProfileService())
+    await show_profile(message, MissingProfileService(), FakeFSMContext())
 
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
@@ -229,7 +229,7 @@ async def test_show_profile_missing_profiles(user_repo) -> None:
             return None
 
     message = FakeMessage(user=FakeUser(2))
-    await show_profile(message, PartialProfileService())
+    await show_profile(message, PartialProfileService(), FakeFSMContext())
 
     assert message.answers
     assert "Профиль блогера" in message.answers[0]
@@ -251,7 +251,7 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
         user=user, has_blogger=True, has_advertiser=False, blogger_confirmed=False
     )
 
-    await show_profile(message, service)
+    await show_profile(message, service, FakeFSMContext())
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
@@ -277,7 +277,7 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
         user=user, has_blogger=True, has_advertiser=False, blogger_confirmed=True
     )
 
-    await show_profile(message, service)
+    await show_profile(message, service, FakeFSMContext())
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
@@ -300,7 +300,7 @@ async def test_show_profile_advertiser_keyboard(user_repo) -> None:
     message = FakeMessage(user=FakeUser(5))
     service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
 
-    await show_profile(message, service)
+    await show_profile(message, service, FakeFSMContext())
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]

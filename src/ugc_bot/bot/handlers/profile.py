@@ -182,8 +182,11 @@ class EditProfileStates(StatesGroup):
 
 @router.message(Command("profile"))
 @router.message(lambda msg: (msg.text or "").strip() == MY_PROFILE_BUTTON_TEXT)
-async def show_profile(message: Message, profile_service: ProfileService) -> None:
+async def show_profile(
+    message: Message, profile_service: ProfileService, state: FSMContext
+) -> None:
     """Show current user's profile."""
+    await state.clear()
 
     if message.from_user is None:
         return
@@ -333,7 +336,7 @@ async def edit_profile_choose_type(
     text = (message.text or "").strip()
     if text == MY_PROFILE_BUTTON_TEXT:
         await state.clear()
-        await show_profile(message, profile_service)
+        await show_profile(message, profile_service, state)
         return
     if text == "Редактировать профиль блогера":
         await state.update_data(edit_profile_type="blogger")
@@ -370,7 +373,7 @@ async def edit_profile_choose_field(
     text = (message.text or "").strip()
     if text == MY_PROFILE_BUTTON_TEXT:
         await state.clear()
-        await show_profile(message, profile_service)
+        await show_profile(message, profile_service, state)
         return
 
     data = await state.get_data()
@@ -523,7 +526,7 @@ async def edit_profile_enter_value(
             "Профиль обновлён.",
             reply_markup=advertiser_menu_keyboard(),
         )
-        await show_profile(message, profile_service)
+        await show_profile(message, profile_service, state)
         return
 
     blogger = await profile_service.get_blogger_profile(user_id)
@@ -545,7 +548,7 @@ async def edit_profile_enter_value(
         )
         await state.clear()
         await message.answer("Имя обновлено.")
-        await show_profile(message, profile_service)
+        await show_profile(message, profile_service, state)
         return
 
     if field_key == "instagram_url":
@@ -663,4 +666,4 @@ async def edit_profile_enter_value(
         "Профиль обновлён.",
         reply_markup=blogger_profile_view_keyboard(updated_blogger.confirmed),
     )
-    await show_profile(message, profile_service)
+    await show_profile(message, profile_service, state)

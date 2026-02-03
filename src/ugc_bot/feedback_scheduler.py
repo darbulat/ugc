@@ -279,6 +279,7 @@ def main() -> None:
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         advertiser_repo=advertiser_repo,
+        transaction_manager=transaction_manager,
     )
 
     bot = Bot(token=config.bot.bot_token)
