@@ -154,7 +154,10 @@ class Container:
         return (
             UserRoleService(user_repo=repos["user_repo"]),
             ComplaintService(complaint_repo=repos["complaint_repo"]),
-            InteractionService(interaction_repo=repos["interaction_repo"]),
+            InteractionService(
+                interaction_repo=repos["interaction_repo"],
+                postpone_delay_minutes=self._config.feedback.feedback_delay_minutes,
+            ),
         )
 
     def build_outbox_deps(
@@ -265,6 +268,7 @@ class Container:
             ),
             "interaction_service": InteractionService(
                 interaction_repo=repos["interaction_repo"],
+                postpone_delay_minutes=self._config.feedback.feedback_delay_minutes,
                 metrics_collector=metrics_collector,
                 transaction_manager=self._transaction_manager,
             ),

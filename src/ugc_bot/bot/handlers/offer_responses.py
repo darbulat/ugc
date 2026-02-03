@@ -71,7 +71,7 @@ async def handle_offer_response(
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
-        await callback.answer("Профиль блогера не заполнен. Команда: /register")
+        await callback.answer("Профиль блогера не заполнен. Команда: /creator")
         return
     if not blogger_profile.confirmed:
         await callback.answer("Подтвердите Instagram перед откликом.")

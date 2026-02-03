@@ -19,7 +19,7 @@ class InteractionService:
     """Handle interaction feedback and aggregation."""
 
     interaction_repo: InteractionRepository
-    postpone_delay_hours: int = 72
+    postpone_delay_minutes: int = 4320
     max_postpone_count: int = 3
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
@@ -71,7 +71,7 @@ class InteractionService:
         """Create interaction when contacts are sent, with initial next_check_at."""
 
         now = datetime.now(timezone.utc)
-        next_check = now + timedelta(hours=self.postpone_delay_hours)
+        next_check = now + timedelta(minutes=self.postpone_delay_minutes)
 
         interaction = Interaction(
             interaction_id=uuid4(),
@@ -237,7 +237,7 @@ class InteractionService:
     async def _postpone_interaction(
         self, interaction: Interaction, side: str, feedback_text: str
     ) -> Interaction:
-        """Postpone interaction check by 72 hours."""
+        """Postpone interaction check by configured delay (postpone_delay_minutes)."""
 
         if interaction.postpone_count >= self.max_postpone_count:
             # Auto-resolve as NO_DEAL after max postpones
@@ -245,7 +245,7 @@ class InteractionService:
             new_status = InteractionStatus.NO_DEAL
         else:
             next_check = datetime.now(timezone.utc) + timedelta(
-                hours=self.postpone_delay_hours
+                minutes=self.postpone_delay_minutes
             )
             new_status = InteractionStatus.PENDING
 
@@ -289,7 +289,11 @@ class InteractionService:
         """Parse feedback text to InteractionStatus."""
 
         feedback_lower = feedback_text.lower()
-        if "еще не связался" in feedback_lower or "⏳" in feedback_text:
+        if (
+            "еще не связался" in feedback_lower
+            or "ещё не связался" in feedback_lower
+            or "⏳" in feedback_text
+        ):
             return InteractionStatus.PENDING
         if (
             "проблема" in feedback_lower

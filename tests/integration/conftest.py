@@ -209,6 +209,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     )
     dispatcher["interaction_service"] = InteractionService(
         interaction_repo=interaction_repo,
+        postpone_delay_minutes=config.feedback.feedback_delay_minutes,
         transaction_manager=transaction_manager,
     )
     # Use sync-activation outbox so order becomes ACTIVE without outbox_events table

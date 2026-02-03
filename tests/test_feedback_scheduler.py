@@ -47,11 +47,19 @@ from tests.helpers.fakes import FakeBot, FakeBotWithSession
 
 
 def test_feedback_keyboard() -> None:
-    """Ensure feedback keyboard contains callback data."""
+    """Ensure feedback keyboard contains callback data and TZ button labels."""
 
-    markup = _feedback_keyboard("adv", UUID("00000000-0000-0000-0000-000000000950"))
-    first = markup.inline_keyboard[0][0]
-    assert "feedback:adv:" in first.callback_data
+    markup_adv = _feedback_keyboard("adv", UUID("00000000-0000-0000-0000-000000000950"))
+    first_adv = markup_adv.inline_keyboard[0][0]
+    assert "feedback:adv:" in first_adv.callback_data
+    assert first_adv.text == "✅ Всё прошло нормально"
+    postpone_adv = markup_adv.inline_keyboard[2][0]
+    assert postpone_adv.text == "⏳ Ещё не связался"
+
+    markup_blog = _feedback_keyboard(
+        "blog", UUID("00000000-0000-0000-0000-000000000950")
+    )
+    assert markup_blog.inline_keyboard[0][0].text == "✅ Всё прошло нормально"
 
 
 @pytest.mark.asyncio
@@ -149,11 +157,117 @@ async def test_run_once_sends_feedback_requests() -> None:
         interaction_service,
         user_service,
         None,
+        order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
         transaction_manager=None,
     )
     assert len(bot.messages) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_once_blogger_message_adds_https_to_product_link() -> None:
+    """When order product_link has no scheme, scheduler prepends https://."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    interaction_repo = InMemoryInteractionRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000965"),
+        external_id="12",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000966"),
+        external_id="13",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
+    await advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=advertiser.user_id,
+            name="N",
+            phone="c",
+            brand="B",
+        )
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000967"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="example.com/product",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+    )
+    await order_repo.save(order)
+
+    await response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000968"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+    interaction = await interaction_service.create_for_contacts_sent(
+        order_id=order.order_id,
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser.user_id,
+    )
+    past_interaction = Interaction(
+        interaction_id=interaction.interaction_id,
+        order_id=interaction.order_id,
+        blogger_id=interaction.blogger_id,
+        advertiser_id=interaction.advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
+    )
+    await interaction_repo.save(past_interaction)
+
+    feedback_config = FeedbackConfig()
+    bot = FakeBot()
+    await run_once(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        cutoff=datetime.now(timezone.utc),
+        transaction_manager=None,
+    )
+
+    blogger_chat_id = 13
+    blogger_texts = [text for cid, text in bot.messages if cid == blogger_chat_id]
+    assert blogger_texts
+    assert "https://example.com/product" in blogger_texts[0]
 
 
 @pytest.mark.asyncio
@@ -182,6 +296,7 @@ async def test_run_once_skips_active_orders() -> None:
         )
     )
 
+    order_repo = InMemoryOrderRepository()
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
@@ -190,6 +305,7 @@ async def test_run_once_skips_active_orders() -> None:
         interaction_service,
         user_service,
         None,
+        order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
         transaction_manager=None,
@@ -207,6 +323,7 @@ async def test_run_once_skips_orders_without_responses() -> None:
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
     # No interactions created, so nothing to process
+    order_repo = InMemoryOrderRepository()
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
@@ -215,6 +332,7 @@ async def test_run_once_skips_orders_without_responses() -> None:
         interaction_service,
         user_service,
         None,
+        order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
         transaction_manager=None,
@@ -284,7 +402,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
             blogger_id=blogger.user_id,
             advertiser_id=advertiser.user_id,
             status=InteractionStatus.OK,
-            from_advertiser="✅ Сделка состоялась",
+            from_advertiser="✅ Всё прошло нормально",
             from_blogger="✅ Всё прошло нормально",
             postpone_count=0,
             next_check_at=None,
@@ -301,6 +419,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
         interaction_service,
         user_service,
         None,
+        order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
         transaction_manager=None,
@@ -315,6 +434,7 @@ async def test_run_loop_closes_session() -> None:
     bot = FakeBotWithSession()
     interaction_repo = InMemoryInteractionRepository()
     user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
@@ -325,6 +445,7 @@ async def test_run_loop_closes_session() -> None:
         interaction_service,
         user_service,
         None,
+        order_repo,
         feedback_config,
         interval_seconds=0,
         transaction_manager=None,
@@ -350,6 +471,7 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
 
+    order_repo = InMemoryOrderRepository()
     feedback_config = FeedbackConfig()
     await run_loop(
         bot,
@@ -357,6 +479,7 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
         interaction_service,
         user_service,
         None,
+        order_repo,
         feedback_config,
         interval_seconds=1,
         transaction_manager=None,
@@ -555,6 +678,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
         interaction_service,
         user_service,
         profile_service,
+        order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
         transaction_manager=None,

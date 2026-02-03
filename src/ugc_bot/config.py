@@ -30,7 +30,7 @@ _FLAT_KEYS = {
         "KAFKA_SEND_RETRY_DELAY_SECONDS",
     ],
     "feedback": [
-        "FEEDBACK_DELAY_HOURS",
+        "FEEDBACK_DELAY_MINUTES",
         "FEEDBACK_POLL_INTERVAL_SECONDS",
         "FEEDBACK_ENABLED",
         "FEEDBACK_REMINDER_HOUR",
@@ -140,9 +140,9 @@ class KafkaConfig(BaseSettings):
 class FeedbackConfig(BaseSettings):
     model_config = _ENV
 
-    feedback_delay_hours: int = Field(default=72, alias="FEEDBACK_DELAY_HOURS")
+    feedback_delay_minutes: int = Field(default=4320, alias="FEEDBACK_DELAY_MINUTES")
     feedback_poll_interval_seconds: int = Field(
-        default=300, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
+        default=3, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
     )
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
     feedback_reminder_hour: int = Field(default=10, alias="FEEDBACK_REMINDER_HOUR")

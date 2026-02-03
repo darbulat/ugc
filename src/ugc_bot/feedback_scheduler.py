@@ -14,12 +14,13 @@ from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.config import FeedbackConfig, load_config
-from ugc_bot.domain.entities import Interaction
+from ugc_bot.domain.entities import Interaction, Order
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyInteractionRepository,
+    SqlAlchemyOrderRepository,
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import (
@@ -42,9 +43,7 @@ def _feedback_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ Сделка состоялась"
-                    if kind == "adv"
-                    else "✅ Всё прошло нормально",
+                    text="✅ Всё прошло нормально",
                     callback_data=f"feedback:{kind}:{interaction_id}:ok",
                 )
             ],
@@ -56,7 +55,7 @@ def _feedback_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="⏳ Еще не связался",
+                    text="⏳ Ещё не связался",
                     callback_data=f"feedback:{kind}:{interaction_id}:postpone",
                 )
             ],
@@ -84,17 +83,23 @@ async def _iter_due_interactions(
 
 
 def _next_reminder_datetime(feedback_config: FeedbackConfig) -> datetime:
-    """Return next reminder time (e.g. next 10:00 in configured timezone) as UTC."""
+    """Return next reminder time: tomorrow at 10:00 in configured timezone (UTC).
+
+    Ensures at least ~24h between reminder sends (every 24h at 10:00).
+    """
     tz = ZoneInfo(feedback_config.feedback_reminder_timezone)
     now_local = datetime.now(tz)
-    next_local = now_local.replace(
+    tomorrow = now_local.date() + timedelta(days=1)
+    next_local = datetime(
+        tomorrow.year,
+        tomorrow.month,
+        tomorrow.day,
         hour=feedback_config.feedback_reminder_hour,
         minute=feedback_config.feedback_reminder_minute,
         second=0,
         microsecond=0,
+        tzinfo=tz,
     )
-    if next_local <= now_local:
-        next_local = next_local + timedelta(days=1)
     return next_local.astimezone(timezone.utc)
 
 
@@ -104,6 +109,7 @@ async def _send_feedback_requests(
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
     profile_service: Optional[ProfileService],
+    order: Optional[Order],
     feedback_config: FeedbackConfig,
 ) -> None:
     """Send feedback requests to both sides for a single interaction (TZ texts + links)."""
@@ -127,10 +133,11 @@ async def _send_feedback_requests(
                 url = blogger_profile.instagram_url.strip()
                 if url and not url.startswith("http"):
                     url = "https://" + url
-                creator_link = f" [креатор]({url})" if url else " креатора"
+                creator_link = f" [{url}]({url})"
             text = (
-                "Хотим убедиться, что всё прошло корректно. "
-                f"Удалось ли вам связаться с креатором{creator_link}?"
+                "Хотим убедиться, что всё прошло корректно 🙌\n"
+                f"Удалось ли вам связаться с креатором{creator_link}?\n"
+                "Выберите подходящий вариант:"
             )
             await send_with_retry(
                 bot,
@@ -148,14 +155,21 @@ async def _send_feedback_requests(
     # Send to blogger if not yet responded
     if blogger and interaction.from_blogger is None:
         if blogger.external_id.isdigit():
+            order_link_part = "по заказу?"
+            if order and order.product_link:
+                url = order.product_link.strip()
+                if url and not url.startswith("http"):
+                    url = "https://" + url
+                order_link_part = f"[по заказу]({url})?"
             text = (
-                "Мы хотим убедиться, что всё прошло корректно. "
-                f"Удалось ли вам связаться с заказчиком по заказу #{interaction.order_id}?"
+                "Мы хотим убедиться, что всё прошло корректно 🙌\n"
+                f"Удалось ли вам связаться с заказчиком {order_link_part}"
             )
             await send_with_retry(
                 bot,
                 chat_id=int(blogger.external_id),
                 text=text,
+                parse_mode="Markdown",
                 reply_markup=_feedback_keyboard("blog", interaction.interaction_id),
                 retries=_send_retries,
                 delay_seconds=_send_retry_delay_seconds,
@@ -176,6 +190,7 @@ async def run_once(
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
     profile_service: Optional[ProfileService],
+    order_repo,
     feedback_config: FeedbackConfig,
     cutoff: datetime,
     transaction_manager,
@@ -186,12 +201,15 @@ async def run_once(
         interaction_repo, cutoff, transaction_manager
     ):
         try:
+            async with transaction_manager.transaction() as session:
+                order = await order_repo.get_by_id(interaction.order_id, session=session)
             await _send_feedback_requests(
                 bot,
                 interaction,
                 interaction_service,
                 user_role_service,
                 profile_service,
+                order,
                 feedback_config,
             )
         except Exception as exc:  # pragma: no cover - depends on transport failures
@@ -210,6 +228,7 @@ async def run_loop(
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
     profile_service: Optional[ProfileService],
+    order_repo,
     feedback_config: FeedbackConfig,
     interval_seconds: int,
     transaction_manager,
@@ -227,6 +246,7 @@ async def run_loop(
                 interaction_service,
                 user_role_service,
                 profile_service,
+                order_repo,
                 feedback_config,
                 cutoff,
                 transaction_manager,
@@ -263,6 +283,7 @@ def main() -> None:
     transaction_manager = SessionTransactionManager(session_factory)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
     interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
+    order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
     blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
     advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
         session_factory=session_factory
@@ -273,6 +294,7 @@ def main() -> None:
     )
     interaction_service = InteractionService(
         interaction_repo=interaction_repo,
+        postpone_delay_minutes=config.feedback.feedback_delay_minutes,
         transaction_manager=transaction_manager,
     )
     profile_service = ProfileService(
@@ -290,6 +312,7 @@ def main() -> None:
             interaction_service,
             user_role_service,
             profile_service,
+            order_repo,
             config.feedback,
             interval_seconds=config.feedback.feedback_poll_interval_seconds,
             transaction_manager=transaction_manager,
