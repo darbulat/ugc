@@ -6,7 +6,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message
+from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
@@ -131,6 +131,36 @@ def _deadlines_keyboard() -> list[list[KeyboardButton]]:
     ]
 
 
+def _keyboard_for_order_state(state_key: str, data: dict) -> ReplyKeyboardMarkup:
+    """Return the reply keyboard for the given order creation state (draft restore)."""
+    keyboards: dict[str, ReplyKeyboardMarkup] = {
+        "OrderCreationStates:order_type": with_support_keyboard(
+            keyboard=_order_type_keyboard()
+        ),
+        "OrderCreationStates:offer_text": support_keyboard(),
+        "OrderCreationStates:cooperation_format": with_support_keyboard(
+            keyboard=_cooperation_format_keyboard()
+        ),
+        "OrderCreationStates:price": support_keyboard(),
+        "OrderCreationStates:barter_description": support_keyboard(),
+        "OrderCreationStates:bloggers_needed": with_support_keyboard(
+            keyboard=_bloggers_needed_keyboard()
+        ),
+        "OrderCreationStates:product_link": support_keyboard(),
+        "OrderCreationStates:content_usage": with_support_keyboard(
+            keyboard=_content_usage_keyboard()
+        ),
+        "OrderCreationStates:deadlines": with_support_keyboard(
+            keyboard=_deadlines_keyboard()
+        ),
+        "OrderCreationStates:geography": support_keyboard(),
+    }
+    return keyboards.get(
+        state_key,
+        with_support_keyboard(keyboard=_order_type_keyboard()),
+    )
+
+
 @router.message(Command("create_order"))
 @router.message(lambda msg: (msg.text or "").strip() == CREATE_ORDER_BUTTON_TEXT)
 async def start_order_creation(
@@ -190,6 +220,7 @@ async def order_draft_choice(
         first_prompt="Что вам нужно?",
         first_keyboard=with_support_keyboard(keyboard=_order_type_keyboard()),
         session_expired_msg="Сессия истекла. Начните снова с «Создать заказ».",
+        keyboard_for_restored_state=_keyboard_for_order_state,
     )
 
 

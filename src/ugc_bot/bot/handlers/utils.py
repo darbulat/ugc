@@ -6,7 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID
 
 from aiogram.fsm.context import FSMContext
@@ -166,12 +166,18 @@ async def handle_draft_choice(
     first_keyboard: ReplyKeyboardMarkup,
     session_expired_msg: str,
     draft_used_msg: str = "Черновик уже использован. Начинаем с начала.",
+    keyboard_for_restored_state: Callable[[str, dict], ReplyKeyboardMarkup]
+    | None = None,
 ) -> None:
     """Handle draft restore choice: resume draft, start over, or ask to choose.
 
     Call from handlers for state choosing_draft_restore. Uses parse_user_id_from_state
     with user_id_key (e.g. 'user_id' or 'edit_user_id'), then RESUME_DRAFT / START_OVER
     or invalid choice.
+
+    If keyboard_for_restored_state is provided, it is called with (draft.state_key,
+    draft.data) when restoring a draft; the returned keyboard is used instead of
+    first_keyboard so the restored step shows the correct buttons.
     """
     text = (message.text or "").strip()
     data = await state.get_data()
@@ -192,9 +198,14 @@ async def handle_draft_choice(
         await state.update_data(**draft.data)
         await state.set_state(draft.state_key)
         prompt = get_draft_prompt(draft.state_key, draft.data)
+        reply_markup = (
+            keyboard_for_restored_state(draft.state_key, draft.data)
+            if keyboard_for_restored_state is not None
+            else first_keyboard
+        )
         await message.answer(
             f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
-            reply_markup=first_keyboard,
+            reply_markup=reply_markup,
         )
         return
 
