@@ -58,7 +58,7 @@ async def send_order_invoice(
     try:
         await message.bot.send_invoice(
             chat_id=message.chat.id,
-            title=f"Оплата заказа {order_id}",
+            title="Оплата заказа",
             description=offer_text[:255],
             payload=str(order_id),
             provider_token=config.bot.telegram_provider_token,
