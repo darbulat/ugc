@@ -58,26 +58,30 @@ async def start_command(message: Message, user_role_service: UserRoleService) ->
 
 
 @router.message(Command("role"))
-async def role_command(message: Message) -> None:
-    """Handle the /role command for role switching."""
-
+async def role_command(message: Message, state: FSMContext) -> None:
+    """Handle the /role command for role switching; clear any in-progress flow."""
+    await state.clear()
     await message.answer(START_TEXT, reply_markup=_role_keyboard())
 
 
 @router.message(lambda msg: msg.text == CHANGE_ROLE_BUTTON_TEXT)
-async def change_role_button(message: Message) -> None:
+async def change_role_button(message: Message, state: FSMContext) -> None:
     """Handle 'Смена роли' button — show start screen again."""
-
+    await state.clear()
     await message.answer(START_TEXT, reply_markup=_role_keyboard())
 
 
 @router.message(lambda msg: msg.text in {CREATOR_LABEL, ADVERTISER_LABEL})
-async def choose_role(message: Message, user_role_service: UserRoleService) -> None:
+async def choose_role(
+    message: Message,
+    user_role_service: UserRoleService,
+    state: FSMContext,
+) -> None:
     """Persist selected role and guide the user."""
 
     if message.from_user is None:
         return
-
+    await state.clear()
     external_id = str(message.from_user.id)
     username = message.from_user.username or message.from_user.first_name or "user"
     text = message.text or ""

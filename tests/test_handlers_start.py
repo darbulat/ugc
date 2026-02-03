@@ -54,7 +54,8 @@ async def test_role_command_shows_keyboard() -> None:
     """Ensure /role returns role keyboard."""
 
     message = FakeMessage(text=None, user=FakeUser(1, "test", "Alice"))
-    await role_command(message)
+    state = FakeFSMContext(state=None)
+    await role_command(message, state=state)
 
     assert message.answers
     assert START_TEXT in message.answers[0][0] or "UMC" in message.answers[0][0]
@@ -68,7 +69,8 @@ async def test_change_role_button_shows_start_screen() -> None:
     """Change role button shows start text and role keyboard."""
 
     message = FakeMessage(text=CHANGE_ROLE_BUTTON_TEXT, user=FakeUser(1, "u", "User"))
-    await change_role_button(message)
+    state = FakeFSMContext(state=None)
+    await change_role_button(message, state=state)
 
     assert message.answers
     assert START_TEXT in message.answers[0][0]
@@ -82,8 +84,8 @@ async def test_choose_role_creator_persists(user_repo) -> None:
 
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Я креатор", user=FakeUser(42, "bob", "Bob"))
-
-    await choose_role(message, service)
+    state = FakeFSMContext(state=None)
+    await choose_role(message, user_role_service=service, state=state)
 
     user = await service.get_user("42", MessengerType.TELEGRAM)
     assert user is not None
@@ -96,8 +98,8 @@ async def test_choose_role_without_user(user_repo) -> None:
 
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Мне нужны UGC‑креаторы", user=None)
-
-    await choose_role(message, service)
+    state = FakeFSMContext(state=None)
+    await choose_role(message, user_role_service=service, state=state)
     assert await service.get_user("0", MessengerType.TELEGRAM) is None
 
 
@@ -107,8 +109,8 @@ async def test_choose_role_advertiser_response(user_repo) -> None:
 
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text="Мне нужны UGC‑креаторы", user=FakeUser(99, None, "Ann"))
-
-    await choose_role(message, service)
+    state = FakeFSMContext(state=None)
+    await choose_role(message, user_role_service=service, state=state)
     assert message.answers
     assert "Вы выбрали роль" in message.answers[-1][0]
     assert "Давайте создадим профиль" in message.answers[-1][0]
