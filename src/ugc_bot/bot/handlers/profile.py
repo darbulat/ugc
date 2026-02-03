@@ -31,10 +31,104 @@ from ugc_bot.bot.handlers.keyboards import (
     support_keyboard,
     with_support_keyboard,
 )
-from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
+from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
 
 
 router = Router()
+
+_USER_STATUS_LABELS: dict[UserStatus, str] = {
+    UserStatus.NEW: "Новый",
+    UserStatus.ACTIVE: "Активен",
+    UserStatus.PAUSE: "На паузе",
+    UserStatus.BLOCKED: "Заблокирован",
+}
+
+_AUDIENCE_GENDER_LABELS: dict[AudienceGender, str] = {
+    AudienceGender.MALE: "Мужчины",
+    AudienceGender.FEMALE: "Женщины",
+    AudienceGender.ALL: "Все",
+}
+
+_ROLE_LABELS: dict[str, str] = {
+    "blogger": "Блогер",
+    "advertiser": "Рекламодатель",
+}
+
+
+def _format_profile_text(
+    user: User,
+    blogger: BloggerProfile | None,
+    advertiser: AdvertiserProfile | None,
+) -> str:
+    """Format profile data for user-friendly display."""
+    roles: list[str] = []
+    if blogger is not None:
+        roles.append(_ROLE_LABELS["blogger"])
+    if advertiser is not None:
+        roles.append(_ROLE_LABELS["advertiser"])
+    if not roles:
+        roles.append("—")
+
+    status_label = _USER_STATUS_LABELS.get(user.status, user.status.value)
+    username_display = f"@{user.username}" if user.username else "—"
+
+    lines = [
+        "👤 Ваш профиль",
+        "",
+        "📋 Общая информация",
+        f"   Имя пользователя: {username_display}",
+        f"   Роли: {', '.join(roles)}",
+        f"   Статус: {status_label}",
+    ]
+
+    if blogger is None:
+        lines.extend(["", "📸 Профиль блогера", "   Не заполнен"])
+    else:
+        topics = ", ".join(blogger.topics.get("selected", [])) or "—"
+        confirmed = "Да" if blogger.confirmed else "Нет"
+        barter_str = "Да" if blogger.barter else "Нет"
+        work_fmt = (
+            "Размещать рекламу у себя в аккаунте"
+            if blogger.work_format == WorkFormat.ADS_IN_ACCOUNT
+            else "Только UGC"
+        )
+        gender_label = _AUDIENCE_GENDER_LABELS.get(
+            blogger.audience_gender, blogger.audience_gender.value
+        )
+        lines.extend(
+            [
+                "",
+                "📸 Профиль блогера",
+                f"   Instagram: {blogger.instagram_url}",
+                f"   Подтверждён: {confirmed}",
+                f"   Город: {blogger.city}",
+                f"   Тематики: {topics}",
+                f"   Целевая аудитория: {gender_label}, {blogger.audience_age_min}–{blogger.audience_age_max} лет",
+                f"   География: {blogger.audience_geo}",
+                f"   Цена: {blogger.price} ₽",
+                f"   Бартер: {barter_str}",
+                f"   Формат работы: {work_fmt}",
+            ]
+        )
+
+    if advertiser is None:
+        lines.extend(["", "🏢 Профиль рекламодателя", "   Не заполнен"])
+    else:
+        adv_lines = [
+            "",
+            "🏢 Профиль рекламодателя",
+            f"   Имя: {advertiser.name}",
+            f"   Телефон: {advertiser.phone}",
+            f"   Бренд: {advertiser.brand}",
+        ]
+        if advertiser.site_link:
+            adv_lines.append(f"   Сайт: {advertiser.site_link}")
+        lines.extend(adv_lines)
+
+    return "\n".join(lines)
+
+
 logger = logging.getLogger(__name__)
 
 _INSTAGRAM_URL_REGEX = re.compile(
@@ -104,67 +198,15 @@ async def show_profile(message: Message, profile_service: ProfileService) -> Non
 
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
-    roles: list[str] = []
-    if blogger is not None:
-        roles.append("blogger")
-    if advertiser is not None:
-        roles.append("advertiser")
-    if not roles:
-        roles.append("—")
-    parts = [
-        "Ваш профиль:",
-        f"Username: {user.username}",
-        f"Roles: {', '.join(roles)}",
-        f"Status: {user.status.value}",
-    ]
+    text = _format_profile_text(user, blogger, advertiser)
 
-    if blogger is None:
-        parts.append("Профиль блогера не заполнен.")
-    else:
-        topics = ", ".join(blogger.topics.get("selected", []))
-        confirmed = "Да" if blogger.confirmed else "Нет"
-        barter_str = "Да" if blogger.barter else "Нет"
-        work_fmt = (
-            "Размещать рекламу у себя в аккаунте"
-            if blogger.work_format == WorkFormat.ADS_IN_ACCOUNT
-            else "Только UGC"
-        )
-        parts.extend(
-            [
-                "Блогер:",
-                f"Instagram: {blogger.instagram_url}",
-                f"Подтвержден: {confirmed}",
-                f"Город: {blogger.city}",
-                f"Тематики: {topics or '—'}",
-                f"ЦА: {blogger.audience_gender.value} {blogger.audience_age_min}-{blogger.audience_age_max}",
-                f"Гео: {blogger.audience_geo}",
-                f"Цена: {blogger.price}",
-                f"Бартер: {barter_str}",
-                f"Формат работы: {work_fmt}",
-            ]
-        )
-
-    if advertiser is None:
-        parts.append("Профиль рекламодателя не заполнен.")
-    else:
-        adv_parts = [
-            "Рекламодатель:",
-            f"Имя: {advertiser.name}",
-            f"Телефон: {advertiser.phone}",
-            f"Бренд: {advertiser.brand}",
-        ]
-        if advertiser.site_link:
-            adv_parts.append(f"Ссылка на сайт: {advertiser.site_link}")
-        parts.extend(adv_parts)
-
-    # Show appropriate keyboard based on role
     reply_markup = None
     if blogger is not None:
         reply_markup = blogger_profile_view_keyboard(confirmed=blogger.confirmed)
     elif advertiser is not None:
         reply_markup = advertiser_menu_keyboard()
 
-    await message.answer("\n".join(parts), reply_markup=reply_markup)
+    await message.answer(text, reply_markup=reply_markup)
 
 
 def _edit_field_keyboard(profile_type: str = "blogger") -> ReplyKeyboardMarkup:

@@ -189,7 +189,7 @@ async def test_show_profile_both_roles(user_repo) -> None:
         if isinstance(message.answers[0], str)
         else message.answers[0][0]
     )
-    assert "Roles: blogger, advertiser" in answer_text
+    assert "Роли: Блогер, Рекламодатель" in answer_text
 
 
 @pytest.mark.asyncio
@@ -232,8 +232,9 @@ async def test_show_profile_missing_profiles(user_repo) -> None:
     await show_profile(message, PartialProfileService())
 
     assert message.answers
-    assert "Профиль блогера не заполнен" in message.answers[0]
-    assert "Профиль рекламодателя не заполнен" in message.answers[0]
+    assert "Профиль блогера" in message.answers[0]
+    assert "Профиль рекламодателя" in message.answers[0]
+    assert "Не заполнен" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -385,7 +386,7 @@ async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
     )
     assert state.cleared is True
     assert message.answers
-    assert "Ваш профиль" in (
+    assert "👤 Ваш профиль" in (
         message.answers[0]
         if isinstance(message.answers[0], str)
         else message.answers[0][0]
