@@ -72,8 +72,12 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.username,
         UserModel.telegram,
         UserModel.status,
+        UserModel.admin,
         UserModel.issue_count,
         UserModel.created_at,
+    ]
+    form_columns = [
+        UserModel.admin,
     ]
 
     async def update_model(self, request: Request, pk: str, data: dict):
@@ -246,6 +250,7 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
         ComplaintModel.reported_id,
         ComplaintModel.order_id,
         ComplaintModel.reason,
+        ComplaintModel.file_ids,
         ComplaintModel.status,
         ComplaintModel.created_at,
         ComplaintModel.reviewed_at,

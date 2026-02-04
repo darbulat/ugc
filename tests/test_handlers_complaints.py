@@ -225,8 +225,11 @@ async def test_handle_complaint_reason_success(
         reporter_id=str(blogger.user_id),
     )
 
+    user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(2))
-    await handle_complaint_reason(callback, state, complaint_service, order_service)
+    await handle_complaint_reason(
+        callback, state, complaint_service, order_service, user_role_service
+    )
 
     assert any("успешно подана" in ans for ans in callback.message.answers)
     complaints = await complaint_service.list_by_order(order.order_id)
@@ -594,7 +597,10 @@ async def test_handle_complaint_reason_text(
     message = FakeMessage(user=FakeUser(2))
     message.text = "Подробное описание проблемы"
 
-    await handle_complaint_reason_text(message, state, complaint_service)
+    user_role_service = UserRoleService(user_repo=user_repo)
+    await handle_complaint_reason_text(
+        message, state, complaint_service, user_role_service
+    )
 
     assert message.answers
     assert any("успешно подана" in ans for ans in message.answers)
@@ -673,8 +679,11 @@ async def test_handle_complaint_reason_other(
         reporter_id=str(blogger.user_id),
     )
 
+    user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="complaint_reason:Другое", user=FakeUser(2))
-    await handle_complaint_reason(callback, state, complaint_service, order_service)
+    await handle_complaint_reason(
+        callback, state, complaint_service, order_service, user_role_service
+    )
 
     assert callback.message.answers
     assert any("Опишите причину" in ans for ans in callback.message.answers)
@@ -699,8 +708,11 @@ async def test_handle_complaint_reason_no_state(
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
+    user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
-    await handle_complaint_reason(callback, state, complaint_service, order_service)
+    await handle_complaint_reason(
+        callback, state, complaint_service, order_service, user_role_service
+    )
 
     assert any("Сессия истекла" in ans for ans in callback.answers)
 
@@ -729,8 +741,11 @@ async def test_handle_complaint_reason_invalid_reason(
         reporter_id=str(UUID("00000000-0000-0000-0000-000000000996")),
     )
 
+    user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="complaint_reason:InvalidReason", user=FakeUser(1))
-    await handle_complaint_reason(callback, state, complaint_service, order_service)
+    await handle_complaint_reason(
+        callback, state, complaint_service, order_service, user_role_service
+    )
 
     assert any("Неверная причина" in ans for ans in callback.answers)
 
@@ -794,15 +809,18 @@ async def test_handle_complaint_reason_duplicate(
         reporter_id=str(reporter.user_id),
     )
 
+    user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
-    await handle_complaint_reason(callback, state, complaint_service, order_service)
+    await handle_complaint_reason(
+        callback, state, complaint_service, order_service, user_role_service
+    )
 
     assert any("уже подали жалобу" in ans for ans in callback.answers)
 
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_no_state(
-    fake_tm: object, complaint_repo
+    fake_tm: object, user_repo, complaint_repo
 ) -> None:
     """Handle text input when state is empty."""
 
@@ -817,14 +835,17 @@ async def test_handle_complaint_reason_text_no_state(
     message = FakeMessage(user=FakeUser(1))
     message.text = "Some text"
 
-    await handle_complaint_reason_text(message, state, complaint_service)
+    user_role_service = UserRoleService(user_repo=user_repo)
+    await handle_complaint_reason_text(
+        message, state, complaint_service, user_role_service
+    )
 
     assert any("Сессия истекла" in ans for ans in message.answers)
 
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_empty(
-    fake_tm: object, complaint_repo
+    fake_tm: object, user_repo, complaint_repo
 ) -> None:
     """Handle empty text input."""
 
@@ -845,14 +866,17 @@ async def test_handle_complaint_reason_text_empty(
     message = FakeMessage(user=FakeUser(1))
     message.text = "   "  # Whitespace only
 
-    await handle_complaint_reason_text(message, state, complaint_service)
+    user_role_service = UserRoleService(user_repo=user_repo)
+    await handle_complaint_reason_text(
+        message, state, complaint_service, user_role_service
+    )
 
     assert any("введите причину" in ans.lower() for ans in message.answers)
 
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_no_text(
-    fake_tm: object, complaint_repo
+    fake_tm: object, user_repo, complaint_repo
 ) -> None:
     """Handle message without text."""
 
@@ -867,7 +891,10 @@ async def test_handle_complaint_reason_text_no_text(
     message = FakeMessage(user=FakeUser(1))
     message.text = None
 
-    await handle_complaint_reason_text(message, state, complaint_service)
+    user_role_service = UserRoleService(user_repo=user_repo)
+    await handle_complaint_reason_text(
+        message, state, complaint_service, user_role_service
+    )
 
     assert not message.answers
 

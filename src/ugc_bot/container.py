@@ -47,6 +47,7 @@ from ugc_bot.infrastructure.db.session import (
     create_session_factory,
 )
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
+from ugc_bot.infrastructure.redis_lock import IssueDescriptionLockManager
 
 
 class Container:
@@ -196,6 +197,13 @@ class Container:
         """Create metrics collector."""
         return MetricsCollector()
 
+    def build_issue_lock_manager(self) -> IssueDescriptionLockManager:
+        """Create lock manager for issue description (Redis or in-memory)."""
+        redis_url = None
+        if self._config.redis.use_redis_storage and self._config.redis.redis_url:
+            redis_url = self._config.redis.redis_url
+        return IssueDescriptionLockManager(redis_url=redis_url)
+
     def build_instagram_api_client(self):
         """Create Instagram Graph API client if configured."""
         if (
@@ -308,4 +316,5 @@ class Container:
                 nps_repo=repos["nps_repo"],
                 transaction_manager=self._transaction_manager,
             ),
+            "issue_lock_manager": self.build_issue_lock_manager(),
         }

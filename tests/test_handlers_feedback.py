@@ -1640,13 +1640,14 @@ async def test_handle_no_deal_other_text_user_not_in_repo_clears_state(
 
 @pytest.mark.asyncio
 async def test_handle_issue_description_creates_complaint_and_records(
-    user_repo, interaction_repo, complaint_repo
+    user_repo, interaction_repo, complaint_repo, issue_lock_manager
 ) -> None:
-    """When user sends text in waiting_issue_description, create complaint and record ISSUE."""
+    """When user sends text and clicks Отправить, create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
+        _ISSUE_SEND_BUTTON_TEXT,
         handle_issue_description,
     )
 
@@ -1678,15 +1679,35 @@ async def test_handle_issue_description_creates_complaint_and_records(
     await state.update_data(
         feedback_interaction_id=str(interaction.interaction_id),
         feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
     )
     message = FakeMessage(text="Подозреваю мошенничество", user=FakeUser(1130))
 
     await handle_issue_description(
-        message, state, user_service, interaction_service, complaint_service
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+    )
+
+    assert state.cleared is False
+    assert len(message.reply_markups) > 0
+
+    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1130))
+    await handle_issue_description(
+        send_message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
     )
 
     assert state.cleared is True
-    assert any("заявку" in str(a).lower() for a in message.answers)
+    assert any("заявку" in str(a).lower() for a in send_message.answers)
     updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.from_advertiser == "⚠️ Проблема / подозрение на мошенничество"
@@ -1695,13 +1716,14 @@ async def test_handle_issue_description_creates_complaint_and_records(
 
 @pytest.mark.asyncio
 async def test_handle_issue_description_blogger_creates_complaint(
-    user_repo, interaction_repo, complaint_repo
+    user_repo, interaction_repo, complaint_repo, issue_lock_manager
 ) -> None:
-    """When blogger sends text in waiting_issue_description, create complaint and record ISSUE."""
+    """When blogger sends text and clicks Отправить, create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
+        _ISSUE_SEND_BUTTON_TEXT,
         handle_issue_description,
     )
 
@@ -1733,15 +1755,32 @@ async def test_handle_issue_description_blogger_creates_complaint(
     await state.update_data(
         feedback_interaction_id=str(interaction.interaction_id),
         feedback_kind="blog",
+        issue_description_parts=[],
+        issue_file_ids=[],
     )
     message = FakeMessage(text="Креатор не выполнил условия", user=FakeUser(1131))
 
     await handle_issue_description(
-        message, state, user_service, interaction_service, complaint_service
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+    )
+
+    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1131))
+    await handle_issue_description(
+        send_message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
     )
 
     assert state.cleared is True
-    assert any("заявку" in str(a).lower() for a in message.answers)
+    assert any("заявку" in str(a).lower() for a in send_message.answers)
     updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
@@ -1753,7 +1792,7 @@ async def test_handle_issue_description_blogger_creates_complaint(
 
 @pytest.mark.asyncio
 async def test_handle_issue_description_expired_state(
-    user_repo, interaction_repo, complaint_repo
+    user_repo, interaction_repo, complaint_repo, issue_lock_manager
 ) -> None:
     """When state data is missing (expired), reply session expired and clear state."""
 
@@ -1781,7 +1820,12 @@ async def test_handle_issue_description_expired_state(
     message = FakeMessage(text="Проблема", user=FakeUser(1135))
 
     await handle_issue_description(
-        message, state, user_service, interaction_service, complaint_service
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
     )
 
     assert state.cleared is True
@@ -1790,7 +1834,7 @@ async def test_handle_issue_description_expired_state(
 
 @pytest.mark.asyncio
 async def test_handle_issue_description_interaction_not_found(
-    user_repo, interaction_repo, complaint_repo
+    user_repo, interaction_repo, complaint_repo, issue_lock_manager
 ) -> None:
     """When interaction is not found (valid UUID), reply and clear state."""
 
@@ -1824,7 +1868,12 @@ async def test_handle_issue_description_interaction_not_found(
     message = FakeMessage(text="Проблема", user=FakeUser(1136))
 
     await handle_issue_description(
-        message, state, user_service, interaction_service, complaint_service
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
     )
 
     assert state.cleared is True
@@ -1833,7 +1882,7 @@ async def test_handle_issue_description_interaction_not_found(
 
 @pytest.mark.asyncio
 async def test_handle_issue_description_user_not_in_repo_clears_state(
-    interaction_repo, complaint_repo
+    interaction_repo, complaint_repo, issue_lock_manager
 ) -> None:
     """When user is not in repo in waiting_issue_description, clear state and return."""
 
@@ -1864,7 +1913,12 @@ async def test_handle_issue_description_user_not_in_repo_clears_state(
     message = FakeMessage(text="Проблема", user=FakeUser(1145))
 
     await handle_issue_description(
-        message, state, user_service, interaction_service, complaint_service
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
     )
 
     assert state.cleared is True
@@ -1968,15 +2022,16 @@ async def test_feedback_reason_blogger_conditions(
 
 @pytest.mark.asyncio
 async def test_handle_issue_description_with_photos(
-    user_repo, interaction_repo, complaint_repo
+    user_repo, interaction_repo, complaint_repo, issue_lock_manager
 ) -> None:
-    """When user sends photo with caption, file_ids stored in complaint reason."""
+    """When user sends photo with caption and clicks Отправить, file_ids in complaint."""
 
     from tests.helpers.fakes import FakePhotoSize
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
+        _ISSUE_SEND_BUTTON_TEXT,
         handle_issue_description,
     )
 
@@ -2001,6 +2056,8 @@ async def test_handle_issue_description_with_photos(
     await state.update_data(
         feedback_interaction_id=str(interaction.interaction_id),
         feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
     )
     message = FakeMessage(
         caption="Скриншот переписки",
@@ -2009,15 +2066,30 @@ async def test_handle_issue_description_with_photos(
     )
 
     await handle_issue_description(
-        message, state, user_service, interaction_service, complaint_service
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+    )
+
+    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1170))
+    await handle_issue_description(
+        send_message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
     )
 
     assert state.cleared is True
-    assert any("заявку" in str(a).lower() for a in message.answers)
+    assert any("заявку" in str(a).lower() for a in send_message.answers)
     complaints = list(complaint_repo.complaints.values())
     assert len(complaints) == 1
-    assert "file_123" in complaints[0].reason
-    assert "file_456" in complaints[0].reason
+    # One photo → Telegram sends multiple sizes; we take largest only
+    assert complaints[0].file_ids == ["file_456"]
 
 
 @pytest.mark.asyncio
@@ -2303,13 +2375,14 @@ class FailingComplaintRepo:
 
 @pytest.mark.asyncio
 async def test_handle_issue_description_complaint_fails(
-    user_repo, interaction_repo
+    user_repo, interaction_repo, issue_lock_manager
 ) -> None:
-    """When complaint creation fails, user gets error message."""
+    """When complaint creation fails on Отправить, user gets error message."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
+        _ISSUE_SEND_BUTTON_TEXT,
         handle_issue_description,
     )
 
@@ -2334,12 +2407,19 @@ async def test_handle_issue_description_complaint_fails(
     await state.update_data(
         feedback_interaction_id=str(interaction.interaction_id),
         feedback_kind="adv",
+        issue_description_parts=["Мошенник"],
+        issue_file_ids=[],
     )
-    message = FakeMessage(text="Мошенник", user=FakeUser(1210))
+    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1210))
 
     await handle_issue_description(
-        message, state, user_service, interaction_service, complaint_service
+        send_message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
     )
 
     assert state.cleared is True
-    assert any("ошибка" in str(a).lower() for a in message.answers)
+    assert any("ошибка" in str(a).lower() for a in send_message.answers)

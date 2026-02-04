@@ -57,6 +57,14 @@ def fake_tm():
     return fake_transaction_manager()
 
 
+@pytest.fixture
+def issue_lock_manager():
+    """In-memory lock manager for issue description (no Redis in tests)."""
+    from ugc_bot.infrastructure.redis_lock import IssueDescriptionLockManager
+
+    return IssueDescriptionLockManager(redis_url=None)
+
+
 _TRACKED_ASYNC_ENGINES: list[object] = []
 
 

@@ -31,6 +31,7 @@ class ComplaintService:
         reported_id: UUID,
         order_id: UUID,
         reason: str,
+        file_ids: list[str] | None = None,
     ) -> Complaint:
         """Create a new complaint."""
 
@@ -57,6 +58,7 @@ class ComplaintService:
             status=ComplaintStatus.PENDING,
             created_at=datetime.now(timezone.utc),
             reviewed_at=None,
+            file_ids=file_ids,
         )
         if self.transaction_manager is None:
             await self.complaint_repo.save(complaint)
@@ -147,6 +149,7 @@ class ComplaintService:
             status=ComplaintStatus.DISMISSED,
             created_at=complaint.created_at,
             reviewed_at=datetime.now(timezone.utc),
+            file_ids=complaint.file_ids,
         )
         if self.transaction_manager is None:
             await self.complaint_repo.save(dismissed)
@@ -196,6 +199,7 @@ class ComplaintService:
             status=ComplaintStatus.ACTION_TAKEN,
             created_at=complaint.created_at,
             reviewed_at=datetime.now(timezone.utc),
+            file_ids=complaint.file_ids,
         )
         if self.transaction_manager is None:
             await self.complaint_repo.save(resolved)

@@ -101,6 +101,23 @@ def test_container_build_metrics_collector() -> None:
     assert hasattr(metrics, "record_error")
 
 
+def test_container_build_issue_lock_manager_with_redis() -> None:
+    """build_issue_lock_manager uses Redis URL when Redis storage is enabled."""
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": True,
+            "REDIS_URL": "redis://localhost:6379/1",
+        }
+    )
+    container = Container(config)
+    manager = container.build_issue_lock_manager()
+    assert manager is not None
+    assert manager._redis_url == "redis://localhost:6379/1"
+
+
 def test_container_build_instagram_api_client_with_token() -> None:
     """build_instagram_api_client creates client when token is configured."""
 

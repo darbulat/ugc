@@ -34,6 +34,7 @@ class User:
     role_chosen_at: Optional[datetime] = None
     last_role_reminder_at: Optional[datetime] = None
     telegram: Optional[str] = None
+    admin: bool = False
 
 
 @dataclass(frozen=True)
@@ -140,6 +141,7 @@ class Complaint:
     status: ComplaintStatus
     created_at: datetime
     reviewed_at: Optional[datetime]
+    file_ids: Optional[list[str]] = None
 
 
 @dataclass(frozen=True)

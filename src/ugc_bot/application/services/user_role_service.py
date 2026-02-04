@@ -69,6 +69,7 @@ class UserRoleService:
                     role_chosen_at=role_chosen_at,
                     last_role_reminder_at=existing.last_role_reminder_at,
                     telegram=telegram,
+                    admin=existing.admin,
                 )
                 await self.user_repo.save(updated, session=session)
                 return updated
@@ -86,6 +87,7 @@ class UserRoleService:
                 role_chosen_at=role_chosen_at,
                 last_role_reminder_at=None,
                 telegram=telegram_username,
+                admin=False,
             )
             await self.user_repo.save(new_user, session=session)
             return new_user
@@ -144,6 +146,7 @@ class UserRoleService:
                 role_chosen_at=user.role_chosen_at,
                 last_role_reminder_at=user.last_role_reminder_at,
                 telegram=user.telegram,
+                admin=user.admin,
             )
             await self.user_repo.save(updated, session=session)
             return (updated, user)
@@ -193,6 +196,7 @@ class UserRoleService:
             role_chosen_at=None,
             last_role_reminder_at=None,
             telegram=None,
+            admin=False,
         )
 
         async def _run(session: object | None) -> User:
@@ -210,6 +214,20 @@ class UserRoleService:
             return list(
                 await self.user_repo.list_pending_role_reminders(
                     reminder_cutoff, session=session
+                )
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def list_admins(
+        self, messenger_type: MessengerType | None = None
+    ) -> list[User]:
+        """List users with admin=True. Optionally filter by messenger_type."""
+
+        async def _run(session: object | None) -> list[User]:
+            return list(
+                await self.user_repo.list_admins(
+                    messenger_type=messenger_type, session=session
                 )
             )
 
@@ -234,6 +252,7 @@ class UserRoleService:
                 role_chosen_at=user.role_chosen_at,
                 last_role_reminder_at=now,
                 telegram=user.telegram,
+                admin=user.admin,
             )
             await self.user_repo.save(updated, session=session)
 

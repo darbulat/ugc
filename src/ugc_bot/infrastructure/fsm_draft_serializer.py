@@ -62,16 +62,16 @@ def _uuid_keys_for_flow(flow_type: str) -> set[str]:
         return {"user_id"}
     if flow_type == "order_creation":
         return {"user_id"}
-    if flow_type == "edit_profile":  # pragma: no cover
+    if flow_type == "edit_profile":
         return {"edit_user_id"}
-    return set()  # pragma: no cover
+    return set()
 
 
 def _enum_keys_for_flow(flow_type: str) -> dict[str, type]:
     """Keys that store enum (by value) in this flow."""
     if flow_type == "blogger_registration":
         return {"audience_gender": AudienceGender, "work_format": WorkFormat}
-    return {}  # pragma: no cover
+    return {}
 
 
 def _parse_uuid(value: object) -> UUID:

@@ -67,6 +67,7 @@ async def create_test_user(
         issue_count=issue_count,
         created_at=kwargs.get("created_at", datetime.now(timezone.utc)),
         telegram=kwargs.get("telegram"),
+        admin=kwargs.get("admin", False),
     )
     await user_repo.save(user)
     return user

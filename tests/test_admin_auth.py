@@ -39,3 +39,13 @@ async def test_auth_rejects_invalid() -> None:
     request = FakeRequest({"username": "admin", "password": "wrong"})
 
     assert await auth.login(request) is False
+
+
+@pytest.mark.asyncio
+async def test_auth_rejects_wrong_username() -> None:
+    """Reject when username does not match."""
+
+    auth = AdminAuth(secret_key="secret", username="admin", password="pass")
+    request = FakeRequest({"username": "wrong_user", "password": "pass"})
+
+    assert await auth.login(request) is False

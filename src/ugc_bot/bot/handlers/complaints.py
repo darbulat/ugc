@@ -12,6 +12,9 @@ from aiogram.types import (
     Message,
 )
 
+from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_complaint,
+)
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.application.services.order_service import OrderService
@@ -234,6 +237,7 @@ async def handle_complaint_reason(
     state: FSMContext,
     complaint_service: ComplaintService,
     order_service: OrderService,
+    user_role_service: UserRoleService,
 ) -> None:
     """Handle complaint reason selection."""
 
@@ -269,12 +273,16 @@ async def handle_complaint_reason(
 
     # Create complaint with selected reason
     try:
-        await complaint_service.create_complaint(
+        complaint = await complaint_service.create_complaint(
             reporter_id=reporter_id,
             reported_id=reported_id,
             order_id=order_id,
             reason=reason,
         )
+        if callback.message and callback.bot:
+            await notify_admins_about_complaint(
+                complaint, callback.bot, user_role_service
+            )
         await callback.message.answer(  # type: ignore[union-attr]
             "Жалоба успешно подана. Администратор рассмотрит её в ближайшее время."
         )
@@ -292,6 +300,7 @@ async def handle_complaint_reason_text(
     message: Message,
     state: FSMContext,
     complaint_service: ComplaintService,
+    user_role_service: UserRoleService,
 ) -> None:
     """Handle text input for complaint reason."""
 
@@ -325,12 +334,16 @@ async def handle_complaint_reason_text(
         full_reason = reason_text
 
     try:
-        await complaint_service.create_complaint(
+        complaint = await complaint_service.create_complaint(
             reporter_id=reporter_id,
             reported_id=reported_id,
             order_id=order_id,
             reason=full_reason,
         )
+        if message.bot:
+            await notify_admins_about_complaint(
+                complaint, message.bot, user_role_service
+            )
         await message.answer(
             "Жалоба успешно подана. Администратор рассмотрит её в ближайшее время."
         )

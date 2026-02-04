@@ -1,18 +1,29 @@
 """Handlers for feedback after contacts sharing."""
 
 import logging
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from aiogram import Router
+
+if TYPE_CHECKING:
+    from ugc_bot.domain.entities import Interaction, User
+    from ugc_bot.infrastructure.redis_lock import IssueDescriptionLockManager
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 
+from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_complaint,
+)
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -70,6 +81,14 @@ def _uuid_hex(uuid_val: UUID) -> str:
     return uuid_val.hex
 
 
+async def _remove_inline_keyboard(callback: CallbackQuery) -> None:
+    """Remove inline keyboard from message after user selection."""
+    if callback.message:
+        edit_reply_markup = getattr(callback.message, "edit_reply_markup", None)
+        if callable(edit_reply_markup):
+            await edit_reply_markup(reply_markup=None)
+
+
 def _parse_uuid_hex(hex_str: str) -> UUID:
     """Parse 32-char hex string to UUID."""
     return UUID(hex=hex_str)
@@ -89,6 +108,17 @@ def _no_deal_reason_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardM
             ]
             for key, label, code in reasons
         ]
+    )
+
+
+_ISSUE_SEND_BUTTON_TEXT = "📤 Отправить"
+
+
+def _issue_send_keyboard() -> ReplyKeyboardMarkup:
+    """Build reply keyboard with 'Отправить' button for issue submission."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=_ISSUE_SEND_BUTTON_TEXT)]],
+        resize_keyboard=True,
     )
 
 
@@ -161,6 +191,7 @@ async def handle_feedback_reason(
             feedback_interaction_id=str(interaction_id),
             feedback_kind=kind,
         )
+        await _remove_inline_keyboard(callback)
         await callback.answer()
         if callback.message:
             await callback.message.answer("Напишите, пожалуйста, причину:")
@@ -182,6 +213,7 @@ async def handle_feedback_reason(
     else:
         await interaction_service.record_blogger_feedback(interaction_id, feedback_text)
 
+    await _remove_inline_keyboard(callback)
     await callback.answer("Спасибо, ответ сохранен.")
     if callback.message:
         await callback.message.answer("Спасибо за обратную связь.")
@@ -253,20 +285,16 @@ async def handle_issue_description(
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
     complaint_service: ComplaintService,
+    issue_lock_manager: "IssueDescriptionLockManager",
 ) -> None:
-    """Handle issue description and optional photos: create complaint, record ISSUE."""
+    """Collect issue description and photos; complaint created on 'Отправить' button."""
 
     if message.from_user is None:
         return
-    text = (message.text or message.caption or "").strip() or "Без описания"
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
-    )
-    if user is None:
-        await state.clear()
-        return
+    text = (message.text or message.caption or "").strip()
+    photos = getattr(message, "photo", None)
+    # Telegram sends multiple sizes (smallest to largest); take the largest only
+    new_file_ids = [photos[-1].file_id] if photos else []
 
     data = await state.get_data()
     interaction_id_raw = data.get("feedback_interaction_id")
@@ -274,6 +302,67 @@ async def handle_issue_description(
     if not interaction_id_raw or kind not in ("adv", "blog"):
         await state.clear()
         await message.answer("Сессия истекла. Ответьте на вопрос обратной связи снова.")
+        return
+
+    if text == _ISSUE_SEND_BUTTON_TEXT:
+        try:
+            interaction_id = UUID(interaction_id_raw)
+        except ValueError:
+            await state.clear()
+            await message.answer("Ошибка. Попробуйте снова.")
+            return
+        user = await user_role_service.get_user(
+            external_id=str(message.from_user.id),
+            messenger_type=MessengerType.TELEGRAM,
+        )
+        if user is None:
+            await state.clear()
+            return
+        interaction = await interaction_service.get_interaction(interaction_id)
+        if interaction is None:
+            await state.clear()
+            await message.answer("Взаимодействие не найдено.")
+            return
+        if kind == "adv" and interaction.advertiser_id != user.user_id:
+            await state.clear()
+            await message.answer("Недостаточно прав.")
+            return
+        if kind == "blog" and interaction.blogger_id != user.user_id:
+            await state.clear()
+            await message.answer("Недостаточно прав.")
+            return
+        await _create_complaint_from_issue(
+            message,
+            state,
+            interaction_id,
+            kind,
+            user,
+            interaction,
+            user_role_service,
+            interaction_service,
+            complaint_service,
+        )
+        return
+
+    if not text and not new_file_ids:
+        try:
+            interaction_id = UUID(interaction_id_raw)
+            await message.answer(
+                "Добавьте описание или фото, затем нажмите «Отправить».",
+                reply_markup=_issue_send_keyboard(),
+            )
+        except ValueError:
+            await message.answer(
+                "Добавьте описание или фото, затем нажмите «Отправить»."
+            )
+        return
+
+    user = await user_role_service.get_user(
+        external_id=str(message.from_user.id),
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await state.clear()
         return
 
     try:
@@ -297,20 +386,70 @@ async def handle_issue_description(
         await message.answer("Недостаточно прав.")
         return
 
+    user_key = str(message.from_user.id)
+    async with issue_lock_manager.lock(user_key):
+        # Re-read state so we see updates from other parallel messages (e.g. media group)
+        data = await state.get_data()
+        parts = list(data.get("issue_description_parts") or [])
+        file_ids = list(data.get("issue_file_ids") or [])
+
+        if text:
+            parts.append(text)
+        file_ids.extend(new_file_ids)
+
+        await state.update_data(
+            issue_description_parts=parts,
+            issue_file_ids=file_ids,
+        )
+
+    await message.answer(
+        "\u200b",
+        reply_markup=_issue_send_keyboard(),
+    )
+
+
+async def _create_complaint_from_issue(
+    message: Message,
+    state: FSMContext,
+    interaction_id: UUID,
+    kind: str,
+    user: "User",
+    interaction: "Interaction",
+    user_role_service: UserRoleService,
+    interaction_service: InteractionService,
+    complaint_service: ComplaintService,
+) -> bool:
+    """Create complaint from collected issue data. Returns True on success."""
+
+    data = await state.get_data()
+    parts_list = data.get("issue_description_parts") or []
+    file_ids = data.get("issue_file_ids") or []
+
+    if not parts_list and not file_ids:
+        await message.answer(
+            "Добавьте описание или фото перед отправкой.",
+            reply_markup=_issue_send_keyboard(),
+        )
+        return False
+
+    reason = "\n\n".join(parts_list) if parts_list else "Без описания"
+    reason += " [из фидбека: проблема/мошенничество]"
+
     reporter_id = user.user_id
     reported_id = interaction.blogger_id if kind == "adv" else interaction.advertiser_id
-    reason = text + " [из фидбека: проблема/мошенничество]"
-    photos = getattr(message, "photo", None)
-    if photos:
-        file_ids = [p.file_id for p in photos]
-        reason += f" [file_ids: {','.join(file_ids)}]"
+
     try:
-        await complaint_service.create_complaint(
+        complaint = await complaint_service.create_complaint(
             reporter_id=reporter_id,
             reported_id=reported_id,
             order_id=interaction.order_id,
             reason=reason,
+            file_ids=file_ids if file_ids else None,
         )
+        if message.bot:
+            await notify_admins_about_complaint(
+                complaint, message.bot, user_role_service
+            )
     except Exception as exc:
         logger.exception(
             "Failed to create complaint from feedback",
@@ -324,9 +463,10 @@ async def handle_issue_description(
         await state.clear()
         await message.answer(
             "Произошла ошибка при создании заявки. Пожалуйста, попробуйте снова "
-            "или обратитесь в поддержку через меню."
+            "или обратитесь в поддержку через меню.",
+            reply_markup=ReplyKeyboardRemove(),
         )
-        return
+        return False
 
     feedback_text = "⚠️ Проблема / подозрение на мошенничество"
     if kind == "adv":
@@ -335,11 +475,14 @@ async def handle_issue_description(
         )
     else:
         await interaction_service.record_blogger_feedback(interaction_id, feedback_text)
+
     await state.clear()
     await message.answer(
         "Мы приняли вашу заявку. Поддержка разберётся в ситуации. "
-        "При необходимости нажмите «Поддержка» в меню."
+        "При необходимости нажмите «Поддержка» в меню.",
+        reply_markup=ReplyKeyboardRemove(),
     )
+    return True
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("nps:"))
@@ -441,6 +584,7 @@ async def handle_feedback(
         if kind == "blog" and interaction.blogger_id != user.user_id:
             await callback.answer("Недостаточно прав.")
             return
+        await _remove_inline_keyboard(callback)
         await callback.answer()
         if callback.message:
             question = (
@@ -493,13 +637,17 @@ async def handle_feedback(
             await state.update_data(
                 feedback_interaction_id=str(interaction_id),
                 feedback_kind=kind,
+                issue_description_parts=[],
+                issue_file_ids=[],
             )
+            await _remove_inline_keyboard(callback)
             await callback.answer("Спасибо.")
             if callback.message:
                 await callback.message.answer(
                     "Опишите, пожалуйста, проблему и приложите скриншоты переписки или "
                     "другие подтверждения. Это поможет нам разобраться в ситуации и принять меры.\n"
-                    "👉 Напишите текст ниже и при необходимости прикрепите скриншоты."
+                    "👉 Напишите текст, прикрепите фото и нажмите «Отправить».",
+                    reply_markup=_issue_send_keyboard(),
                 )
             return
 
@@ -513,6 +661,7 @@ async def handle_feedback(
             )
 
         if status_raw == "postpone":
+            await _remove_inline_keyboard(callback)
             if (
                 updated_interaction.postpone_count
                 >= interaction_service.max_postpone_count
@@ -540,6 +689,7 @@ async def handle_feedback(
                             "написать первым. Связь всегда начинается с вашей стороны."
                         )
         elif status_raw == "ok":
+            await _remove_inline_keyboard(callback)
             await callback.answer("Спасибо, ответ сохранен.")
             if callback.message:
                 if kind == "blog":
@@ -557,6 +707,7 @@ async def handle_feedback(
                         reply_markup=_nps_keyboard(interaction_id),
                     )
         else:
+            await _remove_inline_keyboard(callback)
             await callback.answer("Спасибо, ответ сохранен.")
     except Exception:
         await callback.answer("Произошла ошибка. Попробуйте позже.")

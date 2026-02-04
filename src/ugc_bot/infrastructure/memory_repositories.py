@@ -96,6 +96,18 @@ class InMemoryUserRepository(UserRepository):
 
         return list(self.users.values())
 
+    async def list_admins(
+        self,
+        messenger_type: MessengerType | None = None,
+        session: object | None = None,
+    ) -> Iterable[User]:
+        """List users with admin=True. Optionally filter by messenger_type."""
+
+        result = [u for u in self.users.values() if getattr(u, "admin", False)]
+        if messenger_type is not None:
+            result = [u for u in result if u.messenger_type == messenger_type]
+        return result
+
 
 @dataclass
 class InMemoryBloggerProfileRepository(BloggerProfileRepository):

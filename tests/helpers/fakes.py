@@ -120,6 +120,7 @@ class FakeCallback:
         data: str,
         user: FakeUser,
         message: FakeMessage | None = None,
+        bot: object | None = None,
     ) -> None:
         """Initialize fake callback.
 
@@ -127,11 +128,13 @@ class FakeCallback:
             data: Callback data
             user: User who triggered callback
             message: Optional message
+            bot: Optional bot instance (for admin notification)
         """
         self.data = data
         self.from_user = user
         self.message = message or FakeMessage()
         self.answers: list[str] = []
+        self.bot = bot
 
     async def answer(
         self, text: str = "", show_alert: bool = False, **kwargs: object

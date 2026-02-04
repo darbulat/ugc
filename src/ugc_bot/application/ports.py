@@ -65,6 +65,13 @@ class UserRepository(ABC):
 
         raise NotImplementedError  # pragma: no cover
 
+    async def list_admins(
+        self, messenger_type: MessengerType | None = None, session: object | None = None
+    ) -> Iterable[User]:
+        """List users with admin=True. Optionally filter by messenger_type."""
+
+        raise NotImplementedError  # pragma: no cover
+
 
 class BloggerProfileRepository(ABC):
     """Port for blogger profile persistence."""

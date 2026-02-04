@@ -158,6 +158,21 @@ class SqlAlchemyUserRepository(UserRepository):
         results = exec_result.scalars().all()
         return [_to_user_entity(row) for row in results]
 
+    async def list_admins(
+        self,
+        messenger_type: MessengerType | None = None,
+        session: object | None = None,
+    ) -> Iterable[User]:
+        """List users with admin=True. Optionally filter by messenger_type."""
+
+        db_session = _get_async_session(session)
+        query = select(UserModel).where(UserModel.admin.is_(True))
+        if messenger_type is not None:
+            query = query.where(UserModel.messenger_type == messenger_type.value)
+        exec_result = await db_session.execute(query)
+        results = exec_result.scalars().all()
+        return [_to_user_entity(row) for row in results]
+
 
 @dataclass(slots=True)
 class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
@@ -689,6 +704,7 @@ def _to_user_entity(model: UserModel) -> User:
         role_chosen_at=model.role_chosen_at,
         last_role_reminder_at=model.last_role_reminder_at,
         telegram=getattr(model, "telegram", None),
+        admin=getattr(model, "admin", False),
     )
 
 
@@ -706,6 +722,7 @@ def _to_user_model(user: User) -> UserModel:
         role_chosen_at=user.role_chosen_at,
         last_role_reminder_at=user.last_role_reminder_at,
         telegram=user.telegram,
+        admin=getattr(user, "admin", False),
     )
 
 
@@ -1096,7 +1113,7 @@ class SqlAlchemyComplaintRepository(ComplaintRepository):
 
         db_session = _get_async_session(session)
         model = _to_complaint_model(complaint)
-        db_session.add(model)
+        await db_session.merge(model)
 
     async def get_by_id(
         self, complaint_id: UUID, session: object | None = None
@@ -1174,6 +1191,7 @@ def _to_complaint_entity(model: ComplaintModel) -> Complaint:
         status=model.status,
         created_at=model.created_at,
         reviewed_at=model.reviewed_at,
+        file_ids=getattr(model, "file_ids", None),
     )
 
 
@@ -1189,6 +1207,7 @@ def _to_complaint_model(complaint: Complaint) -> ComplaintModel:
         status=complaint.status,
         created_at=complaint.created_at,
         reviewed_at=complaint.reviewed_at,
+        file_ids=complaint.file_ids,
     )
 
 

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -91,6 +92,9 @@ class UserModel(Base):
         DateTime(timezone=True), nullable=True
     )
     telegram: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
 
 class BloggerProfileModel(Base):
@@ -323,6 +327,7 @@ class ComplaintModel(Base):
         nullable=False,
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    file_ids: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
     status: Mapped[ComplaintStatus] = mapped_column(
         _enum_column(ComplaintStatus), nullable=False
     )

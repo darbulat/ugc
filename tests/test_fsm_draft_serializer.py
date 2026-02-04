@@ -58,6 +58,15 @@ def test_deserialize_fsm_data_order_flow_uuid() -> None:
     assert result["product_link"] == "https://x.com"
 
 
+def test_deserialize_fsm_data_advertiser_flow_uuid() -> None:
+    """Deserialize advertiser_registration: user_id -> UUID."""
+    user_id = uuid4()
+    data = {"user_id": str(user_id), "brand": "Test"}
+    result = deserialize_fsm_data(data, "advertiser_registration")
+    assert result["user_id"] == user_id
+    assert result["brand"] == "Test"
+
+
 def test_deserialize_fsm_data_edit_profile_edit_user_id() -> None:
     """Deserialize edit_profile: edit_user_id -> UUID."""
     user_id = uuid4()
@@ -98,3 +107,26 @@ def test_deserialize_fsm_data_invalid_uuid_type() -> None:
     data = {"user_id": 12345, "nickname": "test"}
     with pytest.raises(TypeError, match="Cannot parse UUID"):
         deserialize_fsm_data(data, "blogger_registration")
+
+
+def test_deserialize_fsm_data_uuid_passthrough() -> None:
+    """When value is already UUID, pass through unchanged."""
+    user_id = uuid4()
+    data = {"user_id": user_id, "nickname": "test"}
+    result = deserialize_fsm_data(data, "blogger_registration")
+    assert result["user_id"] is user_id
+
+
+def test_deserialize_fsm_data_edit_profile_flow_hits_edit_user_id() -> None:
+    """edit_profile flow uses edit_user_id as UUID key."""
+    data = {"edit_user_id": str(uuid4()), "other": "val"}
+    result = deserialize_fsm_data(data, "edit_profile")
+    assert hasattr(result["edit_user_id"], "hex")
+    assert result["other"] == "val"
+
+
+def test_deserialize_fsm_data_unknown_flow_passes_through() -> None:
+    """Unknown flow_type uses empty uuid_keys and enum_keys, passes values through."""
+    data = {"foo": "bar", "num": 42}
+    result = deserialize_fsm_data(data, "unknown_flow")
+    assert result == {"foo": "bar", "num": 42}
