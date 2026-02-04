@@ -292,7 +292,7 @@ async def test_handle_name_success_asks_phone(user_repo) -> None:
 async def test_handle_phone_success_asks_brand(user_repo) -> None:
     """Valid phone leads to brand prompt."""
 
-    message = FakeMessage(text="+7 900 000-00-00", user=FakeUser(1, "adv", "Adv"))
+    message = FakeMessage(text="89001110777", user=FakeUser(1, "adv", "Adv"))
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:phone"
     await state.update_data(name="Test")
@@ -302,7 +302,7 @@ async def test_handle_phone_success_asks_brand(user_repo) -> None:
     assert message.answers
     first_ans = message.answers[0]
     assert "бренда" in (first_ans if isinstance(first_ans, str) else first_ans[0])
-    assert state._data.get("phone") == "+7 900 000-00-00"
+    assert state._data.get("phone") == "89001110777"
 
 
 @pytest.mark.asyncio

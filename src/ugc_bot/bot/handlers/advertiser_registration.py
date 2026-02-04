@@ -151,7 +151,7 @@ async def handle_advertiser_start(
         await state.update_data(name=user.username)
         await message.answer(
             "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
-            "Пример: +7 900 000-00-00",
+            "Пример: 89001110777",
             reply_markup=support_keyboard(),
         )
         await state.set_state(AdvertiserRegistrationStates.phone)
@@ -194,7 +194,7 @@ async def handle_name(message: Message, state: FSMContext) -> None:
     await state.update_data(name=name)
     await message.answer(
         "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
-        "Пример: +7 900 000-00-00",
+        "Пример: 89001110777",
         reply_markup=support_keyboard(),
     )
     await state.set_state(AdvertiserRegistrationStates.phone)
