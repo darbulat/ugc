@@ -572,6 +572,8 @@ async def test_feedback_handler_nps_saves_score(
 
     assert "Спасибо" in callback.answers[0]
     assert nps_service.nps_repo.scores.get(interaction.interaction_id) == [4]
+    assert len(callback.message.edit_reply_markup_calls) == 1
+    assert callback.message.edit_reply_markup_calls[0] is None
 
 
 @pytest.mark.asyncio

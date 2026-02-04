@@ -388,6 +388,10 @@ async def handle_nps(
 
     await nps_service.save(interaction_id, score)
     await callback.answer("Спасибо за оценку!")
+    if callback.message:
+        edit_reply_markup = getattr(callback.message, "edit_reply_markup", None)
+        if callable(edit_reply_markup):
+            await edit_reply_markup(reply_markup=None)
 
 
 @router.callback_query(
