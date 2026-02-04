@@ -39,9 +39,13 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
         "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
         "Пример: 89001110777"
     ),
+    "AdvertiserRegistrationStates:city": (
+        "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург"
+    ),
     "AdvertiserRegistrationStates:brand": (
         "Название вашего бренда / компании / бизнеса:"
     ),
+    "AdvertiserRegistrationStates:company_activity": ("Чем занимается ваша компания?"),
     "AdvertiserRegistrationStates:site_link": (
         "Ссылка на сайт, продукт или соцсети бренда:"
     ),
@@ -81,7 +85,7 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
 EDIT_FIELD_PROMPTS: dict[str, str] = {
     "nickname": "Введите новое имя:",
     "instagram_url": "Прикрепите новую ссылку в формате instagram.com/name:",
-    "city": "Из какого вы города?",
+    "city": "Из какого вы города? Пример: Казань / Москва / Санкт‑Петербург",
     "topics": "Напишите 1–3 тематики через запятую:",
     "audience_gender": "Кто в основном смотрит ваш контент?",
     "audience_age": "Основной возраст вашей аудитории?",
@@ -94,6 +98,7 @@ EDIT_FIELD_PROMPTS: dict[str, str] = {
     "phone": "Укажите номер телефона, по которому с вами можно связаться по заказу. Пример: 89001110777",
     "brand": "Название вашего бренда / компании / бизнеса:",
     "site_link": "Ссылка на сайт, продукт или соцсети бренда:",
+    "company_activity": "Чем занимается ваша компания?",
 }
 
 

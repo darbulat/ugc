@@ -119,6 +119,9 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
         AdvertiserProfileModel.user_id,
         AdvertiserProfileModel.contact,
         AdvertiserProfileModel.brand,
+        AdvertiserProfileModel.city,
+        AdvertiserProfileModel.company_activity,
+        AdvertiserProfileModel.site_link,
     ]
 
 

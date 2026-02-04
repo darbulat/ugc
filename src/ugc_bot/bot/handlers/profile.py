@@ -121,6 +121,10 @@ def _format_profile_text(
             f"   Телефон: {advertiser.phone}",
             f"   Бренд: {advertiser.brand}",
         ]
+        if advertiser.city:
+            adv_lines.append(f"   Город: {advertiser.city}")
+        if advertiser.company_activity:
+            adv_lines.append(f"   Деятельность: {advertiser.company_activity}")
         if advertiser.site_link:
             adv_lines.append(f"   Сайт: {advertiser.site_link}")
         lines.extend(adv_lines)
@@ -152,7 +156,9 @@ EDIT_FIELD_KEYS = {label: key for label, key in _EDIT_FIELDS}
 _EDIT_FIELDS_ADVERTISER = [
     ("Имя", "name"),
     ("Телефон", "phone"),
+    ("Город", "city"),
     ("Бренд", "brand"),
+    ("Деятельность компании", "company_activity"),
     ("Ссылка на сайт", "site_link"),
 ]
 EDIT_FIELD_LABELS_ADVERTISER = [label for label, _ in _EDIT_FIELDS_ADVERTISER]
@@ -520,6 +526,14 @@ async def edit_profile_enter_value(
         elif field_key == "site_link":
             updated = await advertiser_registration_service.update_advertiser_profile(
                 user_id, site_link=text or None
+            )
+        elif field_key == "city":
+            updated = await advertiser_registration_service.update_advertiser_profile(
+                user_id, city=text or None
+            )
+        elif field_key == "company_activity":
+            updated = await advertiser_registration_service.update_advertiser_profile(
+                user_id, company_activity=text or None
             )
         else:
             await state.clear()

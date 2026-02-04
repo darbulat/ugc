@@ -143,6 +143,8 @@ class AdvertiserProfileModel(Base):
     contact: Mapped[str] = mapped_column(String, nullable=False)  # phone for contact
     brand: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     site_link: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    company_activity: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class OrderModel(Base):

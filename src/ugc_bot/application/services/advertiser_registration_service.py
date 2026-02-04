@@ -31,12 +31,16 @@ class AdvertiserRegistrationService:
         phone: str,
         brand: str,
         site_link: Optional[str] = None,
+        city: Optional[str] = None,
+        company_activity: Optional[str] = None,
     ) -> AdvertiserProfile:
         """Create an advertiser profile after validating input."""
 
         phone = phone.strip()
         brand = brand.strip()
         site_link = (site_link or "").strip() or None
+        city = (city or "").strip() or None
+        company_activity = (company_activity or "").strip() or None
         if not phone:
             raise AdvertiserRegistrationError("Phone is required.")
         if not brand:
@@ -52,6 +56,8 @@ class AdvertiserRegistrationService:
                 phone=phone,
                 brand=brand,
                 site_link=site_link,
+                city=city,
+                company_activity=company_activity,
             )
             await self.advertiser_repo.save(profile)
         else:
@@ -67,6 +73,8 @@ class AdvertiserRegistrationService:
                     phone=phone,
                     brand=brand,
                     site_link=site_link,
+                    city=city,
+                    company_activity=company_activity,
                 )
                 await self.advertiser_repo.save(profile, session=session)
 
@@ -90,6 +98,8 @@ class AdvertiserRegistrationService:
         phone: Optional[str] = None,
         brand: Optional[str] = None,
         site_link: Optional[str] = None,
+        city: Optional[str] = None,
+        company_activity: Optional[str] = None,
     ) -> Optional[AdvertiserProfile]:
         """Update advertiser profile fields. Returns updated profile or None if not found."""
 
@@ -110,6 +120,10 @@ class AdvertiserRegistrationService:
             site_link=(site_link or "").strip() or None
             if site_link is not None
             else profile.site_link,
+            city=(city or "").strip() or None if city is not None else profile.city,
+            company_activity=(company_activity or "").strip() or None
+            if company_activity is not None
+            else profile.company_activity,
         )
         if self.transaction_manager is None:
             await self.advertiser_repo.save(updated)

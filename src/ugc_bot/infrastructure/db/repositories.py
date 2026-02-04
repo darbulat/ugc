@@ -804,6 +804,8 @@ def _to_advertiser_profile_entity(
         phone=model.contact,
         brand=model.brand or "",
         site_link=getattr(model, "site_link", None),
+        city=getattr(model, "city", None),
+        company_activity=getattr(model, "company_activity", None),
     )
 
 
@@ -817,6 +819,8 @@ def _to_advertiser_profile_model(
         contact=profile.phone,
         brand=profile.brand or None,
         site_link=profile.site_link,
+        city=profile.city,
+        company_activity=profile.company_activity,
     )
 
 

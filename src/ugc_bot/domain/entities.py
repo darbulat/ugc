@@ -64,6 +64,8 @@ class AdvertiserProfile:
     phone: str
     brand: str
     site_link: Optional[str] = None
+    city: Optional[str] = None
+    company_activity: Optional[str] = None
 
 
 @dataclass(frozen=True)

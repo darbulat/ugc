@@ -99,7 +99,9 @@ class AdvertiserRegistrationStates(StatesGroup):
     choosing_draft_restore = State()
     name = State()
     phone = State()
+    city = State()
     brand = State()
+    company_activity = State()
     site_link = State()
     agreements = State()
 
@@ -202,7 +204,7 @@ async def handle_name(message: Message, state: FSMContext) -> None:
 
 @router.message(AdvertiserRegistrationStates.phone)
 async def handle_phone(message: Message, state: FSMContext) -> None:
-    """Store phone and ask for brand."""
+    """Store phone and ask for city."""
 
     phone = (message.text or "").strip()
     if not phone:
@@ -214,6 +216,19 @@ async def handle_phone(message: Message, state: FSMContext) -> None:
 
     await state.update_data(phone=phone)
     await message.answer(
+        "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
+        reply_markup=support_keyboard(),
+    )
+    await state.set_state(AdvertiserRegistrationStates.city)
+
+
+@router.message(AdvertiserRegistrationStates.city)
+async def handle_city(message: Message, state: FSMContext) -> None:
+    """Store city and ask for brand."""
+
+    city = (message.text or "").strip() or None
+    await state.update_data(city=city)
+    await message.answer(
         "Название вашего бренда / компании / бизнеса:",
         reply_markup=support_keyboard(),
     )
@@ -222,7 +237,7 @@ async def handle_phone(message: Message, state: FSMContext) -> None:
 
 @router.message(AdvertiserRegistrationStates.brand)
 async def handle_brand(message: Message, state: FSMContext) -> None:
-    """Store brand and ask for site link."""
+    """Store brand and ask for company activity."""
 
     brand = (message.text or "").strip()
     if not brand:
@@ -233,6 +248,19 @@ async def handle_brand(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(brand=brand)
+    await message.answer(
+        "Чем занимается ваша компания?",
+        reply_markup=support_keyboard(),
+    )
+    await state.set_state(AdvertiserRegistrationStates.company_activity)
+
+
+@router.message(AdvertiserRegistrationStates.company_activity)
+async def handle_company_activity(message: Message, state: FSMContext) -> None:
+    """Store company activity and ask for site link."""
+
+    company_activity = (message.text or "").strip() or None
+    await state.update_data(company_activity=company_activity)
     await message.answer(
         "Ссылка на сайт, продукт или соцсети бренда:",
         reply_markup=support_keyboard(),
@@ -317,6 +345,8 @@ async def handle_agreements_confirm(
     phone = data["phone"]
     brand = data["brand"]
     site_link = data.get("site_link")
+    city = data.get("city")
+    company_activity = data.get("company_activity")
 
     user = await user_role_service.get_user_by_id(user_id)
     if user is not None:
@@ -333,6 +363,8 @@ async def handle_agreements_confirm(
         phone=phone,
         brand=brand,
         site_link=site_link,
+        city=city,
+        company_activity=company_activity,
     )
 
     await state.clear()

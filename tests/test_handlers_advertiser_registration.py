@@ -6,6 +6,8 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
     handle_advertiser_start,
     handle_brand,
+    handle_city,
+    handle_company_activity,
     handle_name,
     handle_phone,
 )
@@ -194,7 +196,7 @@ async def test_handle_name_requires_value(user_repo, advertiser_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_brand_success(user_repo) -> None:
-    """Store brand and ask for site_link."""
+    """Store brand and ask for company activity."""
 
     user_service = UserRoleService(user_repo=user_repo)
     user = await user_service.set_user(
@@ -206,13 +208,15 @@ async def test_handle_brand_success(user_repo) -> None:
     message = FakeMessage(text="My Brand", user=FakeUser(20, "adv", "Adv"))
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:brand"
-    await state.update_data(user_id=user.user_id, name="Test Name", phone="+7900")
+    await state.update_data(
+        user_id=user.user_id, name="Test Name", phone="+7900", city="Казань"
+    )
 
     await handle_brand(message, state)
 
     assert message.answers
     ans = message.answers[0]
-    assert "Ссылка на сайт" in (ans if isinstance(ans, str) else ans[0])
+    assert "занимается" in (ans if isinstance(ans, str) else ans[0])
     assert state._data.get("brand") == "My Brand"
 
 
@@ -289,8 +293,8 @@ async def test_handle_name_success_asks_phone(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_phone_success_asks_brand(user_repo) -> None:
-    """Valid phone leads to brand prompt."""
+async def test_handle_phone_success_asks_city(user_repo) -> None:
+    """Valid phone leads to city prompt."""
 
     message = FakeMessage(text="89001110777", user=FakeUser(1, "adv", "Adv"))
     state = FakeFSMContext()
@@ -301,7 +305,7 @@ async def test_handle_phone_success_asks_brand(user_repo) -> None:
 
     assert message.answers
     first_ans = message.answers[0]
-    assert "бренда" in (first_ans if isinstance(first_ans, str) else first_ans[0])
+    assert "города" in (first_ans if isinstance(first_ans, str) else first_ans[0])
     assert state._data.get("phone") == "89001110777"
 
 
@@ -320,6 +324,52 @@ async def test_handle_phone_requires_value(user_repo) -> None:
     assert "Номер телефона не может быть пустым" in (
         ans if isinstance(ans, str) else ans[0]
     )
+
+
+@pytest.mark.asyncio
+async def test_handle_city_success_asks_brand(user_repo) -> None:
+    """Valid city leads to brand prompt."""
+
+    message = FakeMessage(text="Казань", user=FakeUser(1, "adv", "Adv"))
+    state = FakeFSMContext()
+    state.state = "AdvertiserRegistrationStates:city"
+    await state.update_data(name="Test", phone="+7900")
+
+    await handle_city(message, state)
+
+    assert message.answers
+    first_ans = message.answers[0]
+    assert "бренда" in (first_ans if isinstance(first_ans, str) else first_ans[0])
+    assert state._data.get("city") == "Казань"
+
+
+@pytest.mark.asyncio
+async def test_handle_company_activity_success_asks_site_link(user_repo) -> None:
+    """Valid company activity leads to site link prompt."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    user = await user_service.set_user(
+        external_id="20",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    message = FakeMessage(text="Продажа одежды", user=FakeUser(20, "adv", "Adv"))
+    state = FakeFSMContext()
+    state.state = "AdvertiserRegistrationStates:company_activity"
+    await state.update_data(
+        user_id=user.user_id,
+        name="Test Name",
+        phone="+7900",
+        city="Казань",
+        brand="My Brand",
+    )
+
+    await handle_company_activity(message, state)
+
+    assert message.answers
+    ans = message.answers[0]
+    assert "Ссылка на сайт" in (ans if isinstance(ans, str) else ans[0])
+    assert state._data.get("company_activity") == "Продажа одежды"
 
 
 @pytest.mark.asyncio

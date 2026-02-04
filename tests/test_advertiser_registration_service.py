@@ -52,10 +52,14 @@ async def test_register_advertiser_success() -> None:
         user_id=user_id,
         phone="@contact",
         brand="Test Brand",
+        city="Казань",
+        company_activity="Продажа одежды",
     )
     assert profile.user_id == user_id
     assert profile.phone == "@contact"
     assert profile.brand == "Test Brand"
+    assert profile.city == "Казань"
+    assert profile.company_activity == "Продажа одежды"
 
 
 @pytest.mark.asyncio
