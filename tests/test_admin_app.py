@@ -26,14 +26,22 @@ from ugc_bot.infrastructure.db.models import (
 )
 
 
-class AsyncContextManager:
-    """Async context manager for session.begin()."""
+def _make_session_maker_mock(mock_session: MagicMock) -> MagicMock:
+    """Create a mock session_maker that yields mock_session when used as context manager."""
 
-    async def __aenter__(self):
-        return self
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_cm.__aexit__ = AsyncMock(return_value=None)
+    return MagicMock(return_value=mock_cm)
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        return None
+
+def _make_sync_session_maker_mock(mock_session: MagicMock) -> MagicMock:
+    """Create a mock sync session_maker for is_async=False (production) path."""
+
+    mock_cm = MagicMock()
+    mock_cm.__enter__ = MagicMock(return_value=mock_session)
+    mock_cm.__exit__ = MagicMock(return_value=None)
+    return MagicMock(return_value=mock_cm)
 
 
 def test_create_admin_app(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,11 +132,51 @@ async def test_user_admin_update_model_status_change() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_user, new_user])
 
     admin = UserAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"status": UserStatus.BLOCKED}
+
+    with patch.object(UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock):
+        await admin.update_model(request, str(user_id), data)
+
+    assert mock_session.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_user_admin_update_model_sync_session() -> None:
+    """Test UserAdmin.update_model with sync session (is_async=False, production path)."""
+
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    old_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    new_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(side_effect=[old_user, new_user])
+
+    admin = UserAdmin()
+    admin.session_maker = _make_sync_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = False  # type: ignore[attr-defined]
 
     request = MagicMock()
     data = {"status": UserStatus.BLOCKED}
@@ -172,7 +220,6 @@ async def test_interaction_admin_update_model_resolve_issue() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_interaction, new_interaction])
 
     mock_engine = MagicMock()
@@ -180,7 +227,8 @@ async def test_interaction_admin_update_model_resolve_issue() -> None:
     mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
 
     admin = InteractionAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
     admin._engine = mock_engine  # type: ignore[attr-defined]
 
     request = MagicMock()
@@ -234,7 +282,6 @@ async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_interaction, new_interaction])
 
     mock_engine = MagicMock()
@@ -242,7 +289,8 @@ async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
     mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
 
     admin = InteractionAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
     admin._engine = mock_engine  # type: ignore[attr-defined]
 
     request = MagicMock()
@@ -291,7 +339,6 @@ async def test_complaint_admin_update_model_action_taken() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_complaint, new_complaint])
 
     mock_engine = MagicMock()
@@ -299,7 +346,8 @@ async def test_complaint_admin_update_model_action_taken() -> None:
     mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
 
     admin = ComplaintAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
     admin._engine = mock_engine  # type: ignore[attr-defined]
 
     request = MagicMock()
@@ -356,7 +404,6 @@ async def test_complaint_admin_update_model_dismissed() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_complaint, new_complaint])
 
     mock_engine = MagicMock()
@@ -364,7 +411,8 @@ async def test_complaint_admin_update_model_dismissed() -> None:
     mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
 
     admin = ComplaintAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
     admin._engine = mock_engine  # type: ignore[attr-defined]
 
     request = MagicMock()
@@ -416,11 +464,11 @@ async def test_interaction_admin_update_model_no_engine() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_interaction, new_interaction])
 
     admin = InteractionAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
     # No engine set
 
     request = MagicMock()
@@ -462,11 +510,11 @@ async def test_complaint_admin_update_model_no_engine() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_complaint, new_complaint])
 
     admin = ComplaintAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
     # No engine set
 
     request = MagicMock()
@@ -508,7 +556,6 @@ async def test_complaint_admin_update_model_dismissed_exception() -> None:
     )
 
     mock_session = MagicMock()
-    mock_session.begin = MagicMock(return_value=AsyncContextManager())
     mock_session.get = AsyncMock(side_effect=[old_complaint, new_complaint])
 
     mock_engine = MagicMock()
@@ -516,7 +563,8 @@ async def test_complaint_admin_update_model_dismissed_exception() -> None:
     mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
 
     admin = ComplaintAdmin()
-    admin.session = mock_session  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
     admin._engine = mock_engine  # type: ignore[attr-defined]
 
     request = MagicMock()

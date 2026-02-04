@@ -202,44 +202,60 @@ async def test_admin_update_model_logic(monkeypatch: pytest.MonkeyPatch) -> None
             self._objects = objects
             self._idx = 0
 
-        @asynccontextmanager
-        async def begin(self):
-            yield self
-
         async def get(self, model_cls, pk):  # type: ignore[no-untyped-def]
             obj = self._objects[self._idx]
             self._idx += 1
             return obj
 
+    def make_session_maker(dummy: DummySession):
+        """Create session_maker that yields dummy session when used as context manager."""
+
+        @asynccontextmanager
+        async def _cm():
+            yield dummy
+
+        return lambda **kwargs: _cm()
+
     pk = "00000000-0000-0000-0000-000000000001"
 
     user_admin = UserAdmin()
-    user_admin.session = DummySession(  # type: ignore[attr-defined]
-        [
-            SimpleNamespace(status=UserStatus.ACTIVE),
-            SimpleNamespace(status=UserStatus.BLOCKED),
-        ]
+    user_admin.is_async = True  # type: ignore[attr-defined]
+    user_admin.session_maker = make_session_maker(  # type: ignore[attr-defined]
+        DummySession(
+            [
+                SimpleNamespace(status=UserStatus.ACTIVE),
+                SimpleNamespace(status=UserStatus.BLOCKED),
+            ]
+        )
     )
     await user_admin.update_model(object(), pk, {"status": UserStatus.BLOCKED})
 
     interaction_admin = InteractionAdmin()
-    interaction_admin.session = DummySession(  # type: ignore[attr-defined]
-        [
-            SimpleNamespace(status=InteractionStatus.ISSUE),
-            SimpleNamespace(status=InteractionStatus.OK),
-        ]
+    interaction_admin.is_async = True  # type: ignore[attr-defined]
+    interaction_admin.session_maker = make_session_maker(  # type: ignore[attr-defined]
+        DummySession(
+            [
+                SimpleNamespace(status=InteractionStatus.ISSUE),
+                SimpleNamespace(status=InteractionStatus.OK),
+            ]
+        )
     )
     await interaction_admin.update_model(object(), pk, {"status": InteractionStatus.OK})
 
     reported_id = UUID("00000000-0000-0000-0000-000000000002")
     complaint_admin = ComplaintAdmin()
-    complaint_admin.session = DummySession(  # type: ignore[attr-defined]
-        [
-            SimpleNamespace(status=ComplaintStatus.PENDING, reported_id=reported_id),
-            SimpleNamespace(
-                status=ComplaintStatus.ACTION_TAKEN, reported_id=reported_id
-            ),
-        ]
+    complaint_admin.is_async = True  # type: ignore[attr-defined]
+    complaint_admin.session_maker = make_session_maker(  # type: ignore[attr-defined]
+        DummySession(
+            [
+                SimpleNamespace(
+                    status=ComplaintStatus.PENDING, reported_id=reported_id
+                ),
+                SimpleNamespace(
+                    status=ComplaintStatus.ACTION_TAKEN, reported_id=reported_id
+                ),
+            ]
+        )
     )
     await complaint_admin.update_model(
         object(), pk, {"status": ComplaintStatus.ACTION_TAKEN}

@@ -1,6 +1,8 @@
 """SQLAdmin application setup."""
 
+import asyncio
 import logging
+from typing import TypeVar
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -39,6 +41,27 @@ def _get_services(
     return container.build_admin_services()
 
 
+T = TypeVar("T")
+
+
+async def _get_obj_by_pk(
+    view: ModelView,
+    model_cls: type[T],
+    pk: UUID,
+) -> T | None:
+    """Get model instance by pk, supporting both sync and async session makers."""
+    if view.is_async:
+        async with view.session_maker(expire_on_commit=False) as session:
+            return await session.get(model_cls, pk)
+    else:
+
+        def _sync_get() -> T | None:
+            with view.session_maker(expire_on_commit=False) as session:
+                return session.get(model_cls, pk)
+
+        return await asyncio.to_thread(_sync_get)
+
+
 class UserAdmin(ModelView, model=UserModel):
     """Admin view for users."""
 
@@ -53,20 +76,17 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.created_at,
     ]
 
-    async def update_model(self, request: Request, pk: str, data: dict) -> None:
+    async def update_model(self, request: Request, pk: str, data: dict):
         """Update user model with status change handling."""
 
-        # Get current object before update using session
-        async with self.session.begin():  # type: ignore[attr-defined]
-            obj = await self.session.get(UserModel, UUID(pk))  # type: ignore[attr-defined]
-            old_status = obj.status if obj else None
+        pk_uuid = UUID(pk)
+        obj = await _get_obj_by_pk(self, UserModel, pk_uuid)
+        old_status = obj.status if obj else None
 
-        await super().update_model(request, pk, data)
+        result = await super().update_model(request, pk, data)
 
-        # Get updated object
-        async with self.session.begin():  # type: ignore[attr-defined]
-            obj = await self.session.get(UserModel, UUID(pk))  # type: ignore[attr-defined]
-            new_status = obj.status if obj else None
+        obj = await _get_obj_by_pk(self, UserModel, pk_uuid)
+        new_status = obj.status if obj else None
 
         # If status changed to BLOCKED, log it
         if old_status != new_status and new_status == UserStatus.BLOCKED:
@@ -91,6 +111,8 @@ class UserAdmin(ModelView, model=UserModel):
             except Exception:
                 # If logging fails, don't break the update
                 pass
+
+        return result
 
 
 class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
@@ -172,20 +194,17 @@ class InteractionAdmin(ModelView, model=InteractionModel):
         InteractionModel.status,
     ]
 
-    async def update_model(self, request: Request, pk: str, data: dict) -> None:
+    async def update_model(self, request: Request, pk: str, data: dict):
         """Update interaction model with manual issue resolution."""
 
-        # Get current object before update using session
-        async with self.session.begin():  # type: ignore[attr-defined]
-            obj = await self.session.get(InteractionModel, UUID(pk))  # type: ignore[attr-defined]
-            old_status = obj.status if obj else None
+        pk_uuid = UUID(pk)
+        obj = await _get_obj_by_pk(self, InteractionModel, pk_uuid)
+        old_status = obj.status if obj else None
 
-        await super().update_model(request, pk, data)
+        result = await super().update_model(request, pk, data)
 
-        # Get updated object
-        async with self.session.begin():  # type: ignore[attr-defined]
-            obj = await self.session.get(InteractionModel, UUID(pk))  # type: ignore[attr-defined]
-            new_status = obj.status if obj else None
+        obj = await _get_obj_by_pk(self, InteractionModel, pk_uuid)
+        new_status = obj.status if obj else None
 
         # If manually resolving ISSUE to OK or NO_DEAL
         if old_status == InteractionStatus.ISSUE and new_status in (
@@ -202,6 +221,8 @@ class InteractionAdmin(ModelView, model=InteractionModel):
             except Exception:
                 # If service call fails, the status change is already saved
                 pass
+
+        return result
 
 
 class InstagramVerificationAdmin(ModelView, model=InstagramVerificationCodeModel):
@@ -233,21 +254,18 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
         ComplaintModel.status,
     ]
 
-    async def update_model(self, request: Request, pk: str, data: dict) -> None:
+    async def update_model(self, request: Request, pk: str, data: dict):
         """Update complaint model with automatic user blocking."""
 
-        # Get current object before update using session
-        async with self.session.begin():  # type: ignore[attr-defined]
-            obj = await self.session.get(ComplaintModel, UUID(pk))  # type: ignore[attr-defined]
-            old_status = obj.status if obj else None
-            reported_id = obj.reported_id if obj else None
+        pk_uuid = UUID(pk)
+        obj = await _get_obj_by_pk(self, ComplaintModel, pk_uuid)
+        old_status = obj.status if obj else None
+        reported_id = obj.reported_id if obj else None
 
-        await super().update_model(request, pk, data)
+        result = await super().update_model(request, pk, data)
 
-        # Get updated object
-        async with self.session.begin():  # type: ignore[attr-defined]
-            obj = await self.session.get(ComplaintModel, UUID(pk))  # type: ignore[attr-defined]
-            new_status = obj.status if obj else None
+        obj = await _get_obj_by_pk(self, ComplaintModel, pk_uuid)
+        new_status = obj.status if obj else None
 
         # If status changed to ACTION_TAKEN, block the reported user
         if (
@@ -278,6 +296,8 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
             except Exception:
                 # If service call fails, the status change is already saved
                 pass
+
+        return result
 
 
 class ContactPricingAdmin(ModelView, model=ContactPricingModel):
