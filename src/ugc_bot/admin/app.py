@@ -47,12 +47,10 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.external_id,
         UserModel.messenger_type,
         UserModel.username,
+        UserModel.telegram,
         UserModel.status,
         UserModel.issue_count,
         UserModel.created_at,
-    ]
-    form_columns = [
-        UserModel.status,
     ]
 
     async def update_model(self, request: Request, pk: str, data: dict) -> None:

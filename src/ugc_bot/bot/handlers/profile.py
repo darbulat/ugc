@@ -71,13 +71,13 @@ def _format_profile_text(
         roles.append("—")
 
     status_label = _USER_STATUS_LABELS.get(user.status, user.status.value)
-    username_display = f"@{user.username}" if user.username else "—"
+    name_display = user.username or "—"
 
     lines = [
         "👤 Ваш профиль",
         "",
         "📋 Общая информация",
-        f"   Имя пользователя: {username_display}",
+        f"   Имя: {name_display}",
         f"   Роли: {', '.join(roles)}",
         f"   Статус: {status_label}",
     ]
@@ -389,7 +389,7 @@ async def edit_profile_choose_field(
     await state.update_data(editing_field=field_key)
 
     prompts_blogger = {
-        "nickname": "Введите новое имя или ник:",
+        "nickname": "Введите новое имя:",
         "instagram_url": "Прикрепите новую ссылку в формате instagram.com/name:",
         "city": "Из какого вы города?",
         "topics": "Напишите 1–3 тематики через запятую:",

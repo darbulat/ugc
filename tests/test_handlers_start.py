@@ -93,7 +93,7 @@ async def test_choose_role_creator_persists(user_repo, blogger_repo) -> None:
 
     user = await service.get_user("42", MessengerType.TELEGRAM)
     assert user is not None
-    assert user.username == "bob"
+    assert user.username == "Bob"
     assert message.answers
     assert CREATOR_INTRO_NOT_REGISTERED in message.answers[-1][0]
     assert message.answers[-1][1].keyboard == creator_start_keyboard().keyboard

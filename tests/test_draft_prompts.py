@@ -9,7 +9,7 @@ from ugc_bot.bot.handlers.draft_prompts import (
 def test_get_draft_prompt_blogger_name() -> None:
     """Return prompt for blogger registration name step."""
     prompt = get_draft_prompt("BloggerRegistrationStates:name", {})
-    assert "имя или ник" in prompt.lower()
+    assert "ваше имя" in prompt.lower()
 
 
 def test_get_draft_prompt_order_product_link() -> None:

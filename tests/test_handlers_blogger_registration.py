@@ -529,4 +529,4 @@ async def test_blogger_draft_choice_start_over_deletes_and_starts(user_repo) -> 
         if isinstance(message.answers[0], str)
         else message.answers[0][0]
     )
-    assert "имя или ник" in text.lower()
+    assert "ваше имя" in text.lower()

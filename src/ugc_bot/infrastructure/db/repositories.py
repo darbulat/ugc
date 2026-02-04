@@ -688,6 +688,7 @@ def _to_user_entity(model: UserModel) -> User:
         created_at=model.created_at,
         role_chosen_at=model.role_chosen_at,
         last_role_reminder_at=model.last_role_reminder_at,
+        telegram=getattr(model, "telegram", None),
     )
 
 
@@ -704,6 +705,7 @@ def _to_user_model(user: User) -> UserModel:
         created_at=user.created_at,
         role_chosen_at=user.role_chosen_at,
         last_role_reminder_at=user.last_role_reminder_at,
+        telegram=user.telegram,
     )
 
 

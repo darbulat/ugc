@@ -136,7 +136,7 @@ async def _send_contact_immediately(
         )
         return
 
-    creator_name = f"@{user.username}" if user.username else user.external_id
+    creator_name = user.username or "Креатор"
     ugc_format = _format_ugc_type(order)
     contact_text = (
         "Новый отклик по вашему заказу 🙌\n\n"

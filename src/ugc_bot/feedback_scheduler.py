@@ -202,7 +202,9 @@ async def run_once(
     ):
         try:
             async with transaction_manager.transaction() as session:
-                order = await order_repo.get_by_id(interaction.order_id, session=session)
+                order = await order_repo.get_by_id(
+                    interaction.order_id, session=session
+                )
             await _send_feedback_requests(
                 bot,
                 interaction,

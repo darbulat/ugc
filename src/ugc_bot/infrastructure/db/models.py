@@ -90,6 +90,7 @@ class UserModel(Base):
     last_role_reminder_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    telegram: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class BloggerProfileModel(Base):

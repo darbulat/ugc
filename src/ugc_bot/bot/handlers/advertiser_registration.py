@@ -67,6 +67,7 @@ async def choose_advertiser_role(
         messenger_type=MessengerType.TELEGRAM,
         username=username,
         role_chosen=True,
+        telegram_username=message.from_user.username,
     )
 
     user = await user_role_service.get_user(

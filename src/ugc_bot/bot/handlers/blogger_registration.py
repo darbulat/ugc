@@ -87,13 +87,14 @@ async def choose_creator_role(
         return
     await state.clear()
     external_id = str(message.from_user.id)
-    username = message.from_user.username or message.from_user.first_name or "user"
+    username = message.from_user.first_name or "user"
 
     await user_role_service.set_user(
         external_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
         username=username,
         role_chosen=True,
+        telegram_username=message.from_user.username,
     )
 
     user = await user_role_service.get_user(
@@ -141,7 +142,7 @@ async def _start_registration_flow(
         return
 
     await message.answer(
-        "Введите имя или ник для профиля, который увидят бренды:",
+        "Введите ваше имя:",
         reply_markup=support_keyboard(),
     )
     await state.set_state(BloggerRegistrationStates.name)
@@ -173,7 +174,7 @@ async def blogger_draft_choice(
         flow_type=BLOGGER_FLOW_TYPE,
         user_id_key="user_id",
         first_state=BloggerRegistrationStates.name,
-        first_prompt="Введите имя или ник для профиля, который увидят бренды:",
+        first_prompt="Введите ваше имя:",
         first_keyboard=support_keyboard(),
         session_expired_msg="Сессия истекла. Начните снова с «Создать профиль».",
     )
@@ -490,10 +491,12 @@ async def handle_agreements(
         await message.answer("Сессия истекла. Начните заново.")
         return
     try:
+        telegram_username = message.from_user.username if message.from_user else None
         await user_role_service.set_user(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
             username=data["nickname"],
+            telegram_username=telegram_username,
         )
         await blogger_registration_service.register_blogger(
             user_id=user_id,

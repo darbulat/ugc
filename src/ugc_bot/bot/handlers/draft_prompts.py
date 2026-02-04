@@ -2,7 +2,7 @@
 
 DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     # BloggerRegistrationStates
-    "BloggerRegistrationStates:name": "Введите имя или ник для профиля, который увидят бренды:",
+    "BloggerRegistrationStates:name": "Введите ваше имя:",
     "BloggerRegistrationStates:instagram": "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
     "BloggerRegistrationStates:city": (
         "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург"
@@ -79,7 +79,7 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
 }
 
 EDIT_FIELD_PROMPTS: dict[str, str] = {
-    "nickname": "Введите новое имя или ник:",
+    "nickname": "Введите новое имя:",
     "instagram_url": "Прикрепите новую ссылку в формате instagram.com/name:",
     "city": "Из какого вы города?",
     "topics": "Напишите 1–3 тематики через запятую:",

@@ -29,14 +29,16 @@ class UserRoleService:
         messenger_type: MessengerType,
         username: str,
         role_chosen: bool = False,
+        telegram_username: str | None = None,
     ) -> User:
         """Create or update a user.
 
         Args:
             external_id: External messenger id.
             messenger_type: Messenger type.
-            username: Display username.
+            username: Display username (name shown to advertisers).
             role_chosen: If True, set role_chosen_at to now when still unset.
+            telegram_username: Telegram alias (@username), stored for admin only.
         """
 
         async def _run(session: object | None) -> User:
@@ -51,6 +53,11 @@ class UserRoleService:
                     if role_chosen and existing.role_chosen_at is None
                     else existing.role_chosen_at
                 )
+                telegram = (
+                    telegram_username
+                    if telegram_username is not None
+                    else existing.telegram
+                )
                 updated = User(
                     user_id=existing.user_id,
                     external_id=existing.external_id,
@@ -61,6 +68,7 @@ class UserRoleService:
                     created_at=existing.created_at,
                     role_chosen_at=role_chosen_at,
                     last_role_reminder_at=existing.last_role_reminder_at,
+                    telegram=telegram,
                 )
                 await self.user_repo.save(updated, session=session)
                 return updated
@@ -77,6 +85,7 @@ class UserRoleService:
                 created_at=now,
                 role_chosen_at=role_chosen_at,
                 last_role_reminder_at=None,
+                telegram=telegram_username,
             )
             await self.user_repo.save(new_user, session=session)
             return new_user
@@ -134,6 +143,7 @@ class UserRoleService:
                 created_at=user.created_at,
                 role_chosen_at=user.role_chosen_at,
                 last_role_reminder_at=user.last_role_reminder_at,
+                telegram=user.telegram,
             )
             await self.user_repo.save(updated, session=session)
             return (updated, user)
@@ -182,6 +192,7 @@ class UserRoleService:
             created_at=datetime.now(timezone.utc),
             role_chosen_at=None,
             last_role_reminder_at=None,
+            telegram=None,
         )
 
         async def _run(session: object | None) -> User:
@@ -222,6 +233,7 @@ class UserRoleService:
                 created_at=user.created_at,
                 role_chosen_at=user.role_chosen_at,
                 last_role_reminder_at=now,
+                telegram=user.telegram,
             )
             await self.user_repo.save(updated, session=session)
 

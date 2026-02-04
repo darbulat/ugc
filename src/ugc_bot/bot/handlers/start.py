@@ -41,6 +41,7 @@ async def start_command(message: Message, user_role_service: UserRoleService) ->
         messenger_type=MessengerType.TELEGRAM,
         username=username,
         role_chosen=False,
+        telegram_username=message.from_user.username,
     )
     await message.answer(START_TEXT, reply_markup=_role_keyboard())
 
@@ -107,6 +108,7 @@ async def support_button(
         messenger_type=MessengerType.TELEGRAM,
         username=username,
         role_chosen=True,
+        telegram_username=message.from_user.username,
     )
     await message.answer(
         SUPPORT_RESPONSE_TEXT,

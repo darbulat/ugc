@@ -33,6 +33,7 @@ class User:
     created_at: datetime
     role_chosen_at: Optional[datetime] = None
     last_role_reminder_at: Optional[datetime] = None
+    telegram: Optional[str] = None
 
 
 @dataclass(frozen=True)

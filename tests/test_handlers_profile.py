@@ -436,7 +436,7 @@ async def test_edit_profile_choose_field_nickname(user_repo) -> None:
         message, state, profile_service, reg_service, role_service
     )
     assert message.answers
-    assert "имя или ник" in message.answers[0][0].lower()
+    assert "новое имя" in message.answers[0][0].lower()
     assert state._data.get("editing_field") == "nickname"
 
 

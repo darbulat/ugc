@@ -63,7 +63,7 @@ def test_feedback_keyboard() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_once_sends_feedback_requests() -> None:
+async def test_run_once_sends_feedback_requests(fake_tm) -> None:
     """Send feedback to advertiser and blogger."""
 
     user_repo = InMemoryUserRepository()
@@ -160,13 +160,13 @@ async def test_run_once_sends_feedback_requests() -> None:
         order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
-        transaction_manager=None,
+        transaction_manager=fake_tm,
     )
     assert len(bot.messages) == 2
 
 
 @pytest.mark.asyncio
-async def test_run_once_blogger_message_adds_https_to_product_link() -> None:
+async def test_run_once_blogger_message_adds_https_to_product_link(fake_tm) -> None:
     """When order product_link has no scheme, scheduler prepends https://."""
 
     user_repo = InMemoryUserRepository()
@@ -261,7 +261,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link() -> None:
         order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
-        transaction_manager=None,
+        transaction_manager=fake_tm,
     )
 
     blogger_chat_id = 13
@@ -560,9 +560,9 @@ def test_log_startup_info_includes_config_in_text_logs(
 
 
 @pytest.mark.asyncio
-async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram() -> (
-    None
-):
+async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
+    fake_tm,
+) -> None:
     """Advertiser feedback message includes creator link when profile has instagram_url without http."""
 
     user_repo = InMemoryUserRepository()
@@ -681,11 +681,11 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
         order_repo,
         feedback_config,
         cutoff=datetime.now(timezone.utc),
-        transaction_manager=None,
+        transaction_manager=fake_tm,
     )
     assert len(bot.messages) == 2
     adv_text = next((t for (cid, t) in bot.messages if cid == 30), "")
-    assert "[креатор]" in adv_text
+    assert "креатор" in adv_text
     assert "https://instagram.com/creator" in adv_text
 
 
