@@ -118,13 +118,6 @@ async def select_complaint_target(
             await callback.answer("У вас нет доступа к этому заказу.")
             return
 
-        # Blogger: complain about advertiser
-        # Verify access
-        responses = await offer_response_service.list_by_order(order_id)
-        if not any(response.blogger_id == user.user_id for response in responses):
-            await callback.answer("У вас нет доступа к этому заказу.")
-            return
-
         # Store complaint data in state
         await state.update_data(
             order_id=str(order_id),

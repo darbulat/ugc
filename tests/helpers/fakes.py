@@ -46,6 +46,13 @@ class FakeBot:
         self.messages.append((chat_id, text))
 
 
+class FakePhotoSize:
+    """Minimal PhotoSize stub for message.photo."""
+
+    def __init__(self, file_id: str = "fake_file_id") -> None:
+        self.file_id = file_id
+
+
 class FakeMessage:
     """Minimal message stub for handler tests."""
 
@@ -54,6 +61,8 @@ class FakeMessage:
         text: str | None = None,
         user: FakeUser | None = None,
         bot: FakeBot | None = None,
+        photo: list | None = None,
+        caption: str | None = None,
     ) -> None:
         """Initialize fake message.
 
@@ -61,10 +70,14 @@ class FakeMessage:
             text: Message text
             user: Optional user who sent the message
             bot: Optional bot instance
+            photo: Optional list of FakePhotoSize for photo messages
+            caption: Optional caption for photo messages
         """
         self.text = text
+        self.caption = caption
         self.from_user = user
         self.bot = bot
+        self.photo = photo or []
         self.answers: list[str | tuple[str, object | None]] = []
         self.reply_markups: list = []
         self.reply_markup = None

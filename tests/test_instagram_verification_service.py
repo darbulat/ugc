@@ -629,3 +629,12 @@ async def test_verify_code_with_transaction_manager(fake_tm: object) -> None:
     assert result is True
     profile = await profile_repo.get_by_user_id(user_id)
     assert profile is not None and profile.confirmed is True
+
+
+@pytest.mark.asyncio
+async def test_mark_used_nonexistent_code_no_op() -> None:
+    """mark_used with nonexistent code_id returns without error (no-op)."""
+
+    verification_repo = InMemoryInstagramVerificationRepository()
+    await verification_repo.mark_used(UUID("00000000-0000-0000-0000-000000000999"))
+    assert len(verification_repo.codes) == 0

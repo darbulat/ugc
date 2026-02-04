@@ -141,6 +141,75 @@ async def test_create_order_requires_advertiser_profile(
 
 
 @pytest.mark.asyncio
+async def test_create_order_blocked_user_rejected(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Blocked users cannot create orders."""
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.BLOCKED
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    with pytest.raises(OrderCreationError, match="Blocked"):
+        await service.create_order(
+            advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            ugc_requirements=None,
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=3,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_order_paused_user_rejected(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Paused users cannot create orders."""
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.PAUSE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    with pytest.raises(OrderCreationError, match="Paused"):
+        await service.create_order(
+            advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            ugc_requirements=None,
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=3,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_order_negative_price_rejected(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Negative price is rejected."""
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    with pytest.raises(OrderCreationError, match="negative"):
+        await service.create_order(
+            advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            ugc_requirements=None,
+            barter_description=None,
+            price=-100.0,
+            bloggers_needed=3,
+        )
+
+
+@pytest.mark.asyncio
 async def test_create_order_and_list_with_transaction_manager(
     fake_tm: object, user_repo, advertiser_repo, order_repo
 ) -> None:

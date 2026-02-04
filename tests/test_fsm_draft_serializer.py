@@ -81,3 +81,20 @@ def test_deserialize_fsm_data_topics_unchanged() -> None:
     data = {"user_id": str(uuid4()), "topics": {"selected": ["a", "b"]}}
     result = deserialize_fsm_data(data, "blogger_registration")
     assert result["topics"] == {"selected": ["a", "b"]}
+
+
+def test_serialize_fsm_data_none_value() -> None:
+    """None values are preserved in serialization."""
+    data = {"user_id": uuid4(), "optional_field": None}
+    result = serialize_fsm_data(data)
+    assert result["optional_field"] is None
+    assert result["user_id"] == str(data["user_id"])
+
+
+def test_deserialize_fsm_data_invalid_uuid_type() -> None:
+    """Deserialize with invalid UUID type raises TypeError."""
+    import pytest
+
+    data = {"user_id": 12345, "nickname": "test"}
+    with pytest.raises(TypeError, match="Cannot parse UUID"):
+        deserialize_fsm_data(data, "blogger_registration")

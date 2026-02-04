@@ -7,7 +7,9 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import InteractionError, InteractionNotFoundError
+from ugc_bot.application.feedback_utils import next_reminder_datetime
 from ugc_bot.application.ports import InteractionRepository, TransactionManager
+from ugc_bot.config import FeedbackConfig
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
 
@@ -23,6 +25,7 @@ class InteractionService:
     max_postpone_count: int = 3
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
+    feedback_config: Optional[FeedbackConfig] = None
 
     async def _save(self, interaction: Interaction) -> None:
         """Persist interaction using an optional transaction boundary."""
@@ -237,16 +240,29 @@ class InteractionService:
     async def _postpone_interaction(
         self, interaction: Interaction, side: str, feedback_text: str
     ) -> Interaction:
-        """Postpone interaction check by configured delay (postpone_delay_minutes)."""
+        """Postpone interaction check by configured delay (postpone_delay_minutes).
+
+        When the other side has not responded yet, use next 24h reminder time
+        so they continue receiving reminders. Only use 72h delay when both
+        sides have responded with postpone.
+        """
 
         if interaction.postpone_count >= self.max_postpone_count:
             # Auto-resolve as NO_DEAL after max postpones
             next_check = None
             new_status = InteractionStatus.NO_DEAL
         else:
-            next_check = datetime.now(timezone.utc) + timedelta(
-                minutes=self.postpone_delay_minutes
+            other_side_responded = (
+                interaction.from_advertiser is not None
+                if side == "blogger"
+                else interaction.from_blogger is not None
             )
+            if not other_side_responded and self.feedback_config is not None:
+                next_check = next_reminder_datetime(self.feedback_config)
+            else:
+                next_check = datetime.now(timezone.utc) + timedelta(
+                    minutes=self.postpone_delay_minutes
+                )
             new_status = InteractionStatus.PENDING
 
         new_postpone_count = interaction.postpone_count + 1

@@ -21,6 +21,7 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.db.repositories import NoopOfferBroadcaster
@@ -157,6 +158,7 @@ class Container:
             InteractionService(
                 interaction_repo=repos["interaction_repo"],
                 postpone_delay_minutes=self._config.feedback.feedback_delay_minutes,
+                feedback_config=self._config.feedback,
             ),
         )
 
@@ -271,6 +273,7 @@ class Container:
                 postpone_delay_minutes=self._config.feedback.feedback_delay_minutes,
                 metrics_collector=metrics_collector,
                 transaction_manager=self._transaction_manager,
+                feedback_config=self._config.feedback,
             ),
             "payment_service": PaymentService(
                 user_repo=repos["user_repo"],
@@ -301,5 +304,8 @@ class Container:
                 draft_repo=repos["draft_repo"],
                 transaction_manager=self._transaction_manager,
             ),
-            "nps_repo": repos["nps_repo"],
+            "nps_service": NpsService(
+                nps_repo=repos["nps_repo"],
+                transaction_manager=self._transaction_manager,
+            ),
         }

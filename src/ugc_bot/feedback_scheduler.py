@@ -1,15 +1,15 @@
 """Scheduler for feedback requests after contacts sharing."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import logging
 from typing import Iterable, Optional
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from ugc_bot.application.feedback_utils import next_reminder_datetime
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import send_with_retry
@@ -82,27 +82,6 @@ async def _iter_due_interactions(
     return await with_optional_tx(transaction_manager, _run)
 
 
-def _next_reminder_datetime(feedback_config: FeedbackConfig) -> datetime:
-    """Return next reminder time: tomorrow at 10:00 in configured timezone (UTC).
-
-    Ensures at least ~24h between reminder sends (every 24h at 10:00).
-    """
-    tz = ZoneInfo(feedback_config.feedback_reminder_timezone)
-    now_local = datetime.now(tz)
-    tomorrow = now_local.date() + timedelta(days=1)
-    next_local = datetime(
-        tomorrow.year,
-        tomorrow.month,
-        tomorrow.day,
-        hour=feedback_config.feedback_reminder_hour,
-        minute=feedback_config.feedback_reminder_minute,
-        second=0,
-        microsecond=0,
-        tzinfo=tz,
-    )
-    return next_local.astimezone(timezone.utc)
-
-
 async def _send_feedback_requests(
     bot: Bot,
     interaction: Interaction,
@@ -121,7 +100,7 @@ async def _send_feedback_requests(
         if profile_service
         else None
     )
-    next_reminder = _next_reminder_datetime(feedback_config)
+    next_reminder = next_reminder_datetime(feedback_config)
     sent_to_adv = False
     sent_to_blog = False
 
@@ -298,6 +277,7 @@ def main() -> None:
         interaction_repo=interaction_repo,
         postpone_delay_minutes=config.feedback.feedback_delay_minutes,
         transaction_manager=transaction_manager,
+        feedback_config=config.feedback,
     )
     profile_service = ProfileService(
         user_repo=user_repo,

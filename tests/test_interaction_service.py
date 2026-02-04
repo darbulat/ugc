@@ -251,6 +251,41 @@ async def test_record_blogger_feedback_pending() -> None:
 
 
 @pytest.mark.asyncio
+async def test_postpone_with_feedback_config_uses_24h_reminder() -> None:
+    """When other side has not responded, use next_reminder_datetime (24h) not 72h."""
+
+    from ugc_bot.config import FeedbackConfig
+
+    repo = InMemoryInteractionRepository()
+    feedback_config = FeedbackConfig(
+        feedback_reminder_hour=10,
+        feedback_reminder_minute=0,
+        feedback_reminder_timezone="UTC",
+    )
+    service = InteractionService(
+        interaction_repo=repo,
+        max_postpone_count=3,
+        feedback_config=feedback_config,
+    )
+    interaction = await service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000000974"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000975"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000976"),
+    )
+    assert interaction.from_advertiser is None
+
+    updated = await service.record_blogger_feedback(
+        interaction.interaction_id, "⏳ Еще не связался"
+    )
+    assert updated.from_blogger == "⏳ Еще не связался"
+    assert updated.next_check_at is not None
+    from ugc_bot.application.feedback_utils import next_reminder_datetime
+
+    expected_next = next_reminder_datetime(feedback_config)
+    assert updated.next_check_at == expected_next
+
+
+@pytest.mark.asyncio
 async def test_record_blogger_feedback_max_postpone() -> None:
     """Auto-resolve to NO_DEAL when max postpone count reached."""
 
@@ -487,6 +522,50 @@ async def test_manually_resolve_issue_not_found() -> None:
         await service.manually_resolve_issue(
             UUID("00000000-0000-0000-0000-000000000999"), InteractionStatus.OK
         )
+
+
+@pytest.mark.asyncio
+async def test_record_feedback_issue_with_metrics() -> None:
+    """Record ISSUE feedback triggers metrics_collector.record_interaction_issue."""
+
+    from ugc_bot.metrics.collector import MetricsCollector
+
+    repo = InMemoryInteractionRepository()
+    metrics = MetricsCollector()
+    service = InteractionService(interaction_repo=repo, metrics_collector=metrics)
+    interaction = await service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000000951"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000952"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000953"),
+    )
+
+    updated = await service.record_advertiser_feedback(
+        interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
+    )
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.from_advertiser == "⚠️ Проблема / подозрение на мошенничество"
+
+
+@pytest.mark.asyncio
+async def test_record_blogger_feedback_issue_with_metrics() -> None:
+    """Record ISSUE from blogger triggers metrics_collector.record_interaction_issue."""
+
+    from ugc_bot.metrics.collector import MetricsCollector
+
+    repo = InMemoryInteractionRepository()
+    metrics = MetricsCollector()
+    service = InteractionService(interaction_repo=repo, metrics_collector=metrics)
+    interaction = await service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000000961"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000962"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000963"),
+    )
+
+    updated = await service.record_blogger_feedback(
+        interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
+    )
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
 
 
 @pytest.mark.asyncio

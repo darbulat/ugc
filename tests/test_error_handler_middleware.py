@@ -5,6 +5,10 @@ import pytest
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     BloggerRegistrationError,
+    ComplaintAlreadyExistsError,
+    ComplaintNotFoundError,
+    InteractionError,
+    InteractionNotFoundError,
     OrderCreationError,
     UserNotFoundError,
 )
@@ -209,3 +213,50 @@ async def test_middleware_error_message_mapping() -> None:
 
         assert len(message.answers) == 1
         assert expected_text in _answer_text(message.answers)
+
+
+@pytest.mark.asyncio
+async def test_middleware_handles_complaint_errors() -> None:
+    """Middleware handles ComplaintAlreadyExistsError and ComplaintNotFoundError."""
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+    message = FakeMessage(user=FakeUser(123))
+
+    for error in [
+        ComplaintAlreadyExistsError("Вы уже подали жалобу по этому заказу."),
+        ComplaintNotFoundError("Complaint not found."),
+    ]:
+        message.answers.clear()
+
+        async def handler(event, data, exc=error):
+            raise exc
+
+        await middleware(handler, message, {})
+
+        assert len(message.answers) == 1
+        assert (
+            "жалоб" in _answer_text(message.answers).lower()
+            or "найдена" in _answer_text(message.answers).lower()
+        )
+
+
+@pytest.mark.asyncio
+async def test_middleware_handles_interaction_errors() -> None:
+    """Middleware handles InteractionNotFoundError and InteractionError."""
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+    message = FakeMessage(user=FakeUser(123))
+
+    for error in [
+        InteractionNotFoundError("Interaction not found."),
+        InteractionError("Interaction not found."),
+    ]:
+        message.answers.clear()
+
+        async def handler(event, data, exc=error):
+            raise exc
+
+        await middleware(handler, message, {})
+
+        assert len(message.answers) == 1
+        assert "Взаимодействие" in _answer_text(message.answers)

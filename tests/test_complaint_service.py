@@ -90,6 +90,25 @@ async def test_get_by_id_not_found() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_complaint_with_transaction(fake_tm) -> None:
+    """Create complaint when transaction_manager is provided."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
+
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000951"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000952"),
+        order_id=UUID("00000000-0000-0000-0000-000000000953"),
+        reason="Нарушение сроков",
+    )
+
+    assert complaint.status == ComplaintStatus.PENDING
+    found = await repo.get_by_id(complaint.complaint_id)
+    assert found is not None
+
+
+@pytest.mark.asyncio
 async def test_list_by_order() -> None:
     """List complaints for a specific order."""
 
@@ -289,3 +308,130 @@ async def test_resolve_with_action_with_transaction_manager(fake_tm: object) -> 
     )
     resolved = await service.resolve_complaint_with_action(complaint.complaint_id)
     assert resolved.status == ComplaintStatus.ACTION_TAKEN
+
+
+@pytest.mark.asyncio
+async def test_create_complaint_with_metrics_collector() -> None:
+    """Create complaint records metrics when metrics_collector is provided."""
+
+    from ugc_bot.metrics.collector import MetricsCollector
+
+    repo = InMemoryComplaintRepository()
+    metrics = MetricsCollector()
+    service = ComplaintService(complaint_repo=repo, metrics_collector=metrics)
+
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000901"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000902"),
+        order_id=UUID("00000000-0000-0000-0000-000000000903"),
+        reason="Мошенничество",
+    )
+
+    assert complaint.status == ComplaintStatus.PENDING
+    found = await repo.get_by_id(complaint.complaint_id)
+    assert found is not None
+
+
+@pytest.mark.asyncio
+async def test_dismiss_complaint_with_metrics_collector() -> None:
+    """Dismiss complaint records metrics when metrics_collector is provided."""
+
+    from ugc_bot.metrics.collector import MetricsCollector
+
+    repo = InMemoryComplaintRepository()
+    metrics = MetricsCollector()
+    service = ComplaintService(complaint_repo=repo, metrics_collector=metrics)
+
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000961"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000962"),
+        order_id=UUID("00000000-0000-0000-0000-000000000963"),
+        reason="Мошенничество",
+    )
+    dismissed = await service.dismiss_complaint(complaint.complaint_id)
+
+    assert dismissed.status == ComplaintStatus.DISMISSED
+
+
+@pytest.mark.asyncio
+async def test_resolve_with_action_with_metrics_collector() -> None:
+    """Resolve complaint with action records metrics when metrics_collector provided."""
+
+    from ugc_bot.metrics.collector import MetricsCollector
+
+    repo = InMemoryComplaintRepository()
+    metrics = MetricsCollector()
+    service = ComplaintService(complaint_repo=repo, metrics_collector=metrics)
+
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000971"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000972"),
+        order_id=UUID("00000000-0000-0000-0000-000000000973"),
+        reason="Мошенничество",
+    )
+    resolved = await service.resolve_complaint_with_action(complaint.complaint_id)
+
+    assert resolved.status == ComplaintStatus.ACTION_TAKEN
+
+
+@pytest.mark.asyncio
+async def test_create_complaint_duplicate_with_transaction(fake_tm: object) -> None:
+    """Prevent duplicate complaints when transaction_manager is provided."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
+
+    reporter_id = UUID("00000000-0000-0000-0000-000000000911")
+    order_id = UUID("00000000-0000-0000-0000-000000000912")
+
+    await service.create_complaint(
+        reporter_id=reporter_id,
+        reported_id=UUID("00000000-0000-0000-0000-000000000913"),
+        order_id=order_id,
+        reason="Мошенничество",
+    )
+
+    with pytest.raises(ComplaintAlreadyExistsError, match="уже подали жалобу"):
+        await service.create_complaint(
+            reporter_id=reporter_id,
+            reported_id=UUID("00000000-0000-0000-0000-000000000914"),
+            order_id=order_id,
+            reason="Другое",
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_by_reporter_with_transaction_manager(fake_tm: object) -> None:
+    """List complaints by reporter when transaction_manager is provided."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
+
+    reporter_id = UUID("00000000-0000-0000-0000-000000000941")
+    await service.create_complaint(
+        reporter_id=reporter_id,
+        reported_id=UUID("00000000-0000-0000-0000-000000000942"),
+        order_id=UUID("00000000-0000-0000-0000-000000000943"),
+        reason="Мошенничество",
+    )
+
+    complaints = await service.list_by_reporter(reporter_id)
+    assert len(list(complaints)) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_by_status_with_transaction_manager(fake_tm: object) -> None:
+    """List complaints by status when transaction_manager is provided."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
+
+    await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000951"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000952"),
+        order_id=UUID("00000000-0000-0000-0000-000000000953"),
+        reason="Мошенничество",
+    )
+
+    pending = await service.list_by_status(ComplaintStatus.PENDING)
+    assert len(list(pending)) == 1

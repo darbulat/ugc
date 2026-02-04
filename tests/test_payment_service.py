@@ -317,6 +317,22 @@ async def test_confirm_payment_wrong_owner(
 
 
 @pytest.mark.asyncio
+async def test_get_order_with_transaction_manager(
+    fake_tm: object, user_repo, advertiser_repo, order_repo, payment_repo, outbox_repo
+) -> None:
+    """get_order uses transaction_manager when provided."""
+
+    user_id = await create_test_advertiser(user_repo, advertiser_repo)
+    order = await create_test_order(order_repo, user_id)
+    service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+    )
+    found = await service.get_order(order.order_id)
+    assert found is not None
+    assert found.order_id == order.order_id
+
+
+@pytest.mark.asyncio
 async def test_confirm_payment_order_not_new(
     fake_tm: object, user_repo, advertiser_repo, order_repo, payment_repo, outbox_repo
 ) -> None:

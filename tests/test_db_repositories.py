@@ -51,6 +51,23 @@ from ugc_bot.infrastructure.db.models import (
 )
 
 
+class FakeScalarResult:
+    """Fake ScalarResult with all() and iteration for list queries."""
+
+    def __init__(self, value) -> None:
+        self._value = value
+
+    def all(self):  # type: ignore[no-untyped-def]
+        if self._value is None:
+            return []
+        if isinstance(self._value, list):
+            return self._value
+        return [self._value]
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        return iter(self.all())
+
+
 class FakeResult:
     """Fake SQLAlchemy result."""
 
@@ -64,7 +81,7 @@ class FakeResult:
         return self._value
 
     def scalars(self):  # type: ignore[no-untyped-def]
-        return [self._value]
+        return FakeScalarResult(self._value)
 
 
 class FakeSession:
@@ -719,6 +736,116 @@ async def test_order_repository_save_and_get() -> None:
     repo_get = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
     fetched = await repo_get.get_by_id(order.order_id, session=_repo_session(repo_get))
     assert fetched is not None
+
+
+@pytest.mark.asyncio
+async def test_user_repository_list_pending_role_reminders() -> None:
+    """List users pending role reminder."""
+
+    user_model = UserModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000160"),
+        external_id="160",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        role_chosen_at=None,
+        last_role_reminder_at=None,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory([user_model]))
+    cutoff = datetime.now(timezone.utc)
+    users = list(
+        await repo.list_pending_role_reminders(cutoff, session=_repo_session(repo))
+    )
+    assert len(users) == 1
+    assert users[0].username == "alice"
+
+
+@pytest.mark.asyncio
+async def test_order_repository_list_active() -> None:
+    """List active orders."""
+
+    order_model = OrderModel(
+        order_id=UUID("00000000-0000-0000-0000-000000000174"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000175"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    repo = SqlAlchemyOrderRepository(session_factory=_session_factory([order_model]))
+    orders = list(await repo.list_active(session=_repo_session(repo)))
+    assert len(orders) == 1
+    assert orders[0].status == OrderStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_order_repository_get_by_id_for_update() -> None:
+    """Fetch order by id for update (with row lock)."""
+
+    order_model = OrderModel(
+        order_id=UUID("00000000-0000-0000-0000-000000000176"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000177"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    session = FakeSession(order_model)
+
+    class FakeSessionMaker:
+        def __call__(self):
+            return session
+
+    repo = SqlAlchemyOrderRepository(session_factory=FakeSessionMaker())
+    order = await repo.get_by_id_for_update(order_model.order_id, session=session)
+    assert order is not None
+    assert order.order_id == order_model.order_id
+
+
+@pytest.mark.asyncio
+async def test_order_repository_list_completed_before() -> None:
+    """List orders completed before cutoff."""
+
+    cutoff = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    order_model = OrderModel(
+        order_id=UUID("00000000-0000-0000-0000-000000000178"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000179"),
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime(2025, 5, 15, tzinfo=timezone.utc),
+    )
+    repo = SqlAlchemyOrderRepository(session_factory=_session_factory([order_model]))
+    orders = list(await repo.list_completed_before(cutoff, session=_repo_session(repo)))
+    assert len(orders) == 1
+    assert orders[0].completed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_order_repository_count_by_advertiser() -> None:
+    """Count orders by advertiser."""
+
+    advertiser_id = UUID("00000000-0000-0000-0000-00000000017a")
+    repo = SqlAlchemyOrderRepository(session_factory=_session_factory(2))
+    count = await repo.count_by_advertiser(advertiser_id, session=_repo_session(repo))
+    assert count == 2
 
 
 @pytest.mark.asyncio

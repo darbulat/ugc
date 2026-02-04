@@ -1,5 +1,6 @@
 """Handlers for feedback after contacts sharing."""
 
+import logging
 from uuid import UUID
 
 from aiogram import Router
@@ -18,12 +19,13 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.application.ports import NpsRepository
+from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed_callback
 from ugc_bot.domain.enums import MessengerType
 
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 class FeedbackStates(StatesGroup):
@@ -41,32 +43,51 @@ _FEEDBACK_TEXT_MAP = {
 }
 
 # No-deal reason keys and labels (blogger: 4; advertiser: 4, different third option)
+# Short codes for callback_data (Telegram limit 64 bytes)
 _NO_DEAL_REASONS_BLOGGER = [
-    ("conditions", "💰 Не сошлись по условиям"),
-    ("timing", "⏱ Не подошли сроки"),
-    ("differed_from_offer", "📝 Условия отличались от оффера"),
-    ("other", "🤝 Другое"),
+    ("conditions", "💰 Не сошлись по условиям", "c"),
+    ("timing", "⏱ Не подошли сроки", "t"),
+    ("differed_from_offer", "📝 Условия отличались от оффера", "d"),
+    ("other", "🤝 Другое", "o"),
 ]
 _NO_DEAL_REASONS_ADVERTISER = [
-    ("conditions", "💰 Не сошлись по условиям"),
-    ("timing", "⏱ Не подошли сроки"),
-    ("creator_wanted_to_change", "📝 Креатор хотел изменить условия"),
-    ("other", "🤝 Другое"),
+    ("conditions", "💰 Не сошлись по условиям", "c"),
+    ("timing", "⏱ Не подошли сроки", "t"),
+    ("creator_wanted_to_change", "📝 Креатор хотел изменить условия", "w"),
+    ("other", "🤝 Другое", "o"),
 ]
+_REASON_CODE_TO_KEY = {
+    "c": "conditions",
+    "t": "timing",
+    "d": "differed_from_offer",
+    "w": "creator_wanted_to_change",
+    "o": "other",
+}
+
+
+def _uuid_hex(uuid_val: UUID) -> str:
+    """Return UUID as 32-char hex (no dashes) for compact callback_data."""
+    return uuid_val.hex
+
+
+def _parse_uuid_hex(hex_str: str) -> UUID:
+    """Parse 32-char hex string to UUID."""
+    return UUID(hex=hex_str)
 
 
 def _no_deal_reason_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
     """Build inline keyboard for no_deal reason (blogger or advertiser)."""
     reasons = _NO_DEAL_REASONS_ADVERTISER if kind == "adv" else _NO_DEAL_REASONS_BLOGGER
+    id_hex = _uuid_hex(interaction_id)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=label,
-                    callback_data=f"feedback_reason:{kind}:{interaction_id}:{key}",
+                    callback_data=f"fb_r:{kind}:{id_hex}:{code}",
                 )
             ]
-            for key, label in reasons
+            for key, label, code in reasons
         ]
     )
 
@@ -86,7 +107,7 @@ def _nps_keyboard(interaction_id: UUID) -> InlineKeyboardMarkup:
     )
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("feedback_reason:"))
+@router.callback_query(lambda c: c.data and c.data.startswith("fb_r:"))
 async def handle_feedback_reason(
     callback: CallbackQuery,
     state: FSMContext,
@@ -102,11 +123,15 @@ async def handle_feedback_reason(
     if len(parts) != 4:
         await callback.answer("Неверный формат.")
         return
-    _, kind, interaction_id_raw, reason_key = parts
+    _, kind, interaction_id_raw, reason_code = parts
     try:
-        interaction_id = UUID(interaction_id_raw)
-    except ValueError:
+        interaction_id = _parse_uuid_hex(interaction_id_raw)
+    except (ValueError, TypeError):
         await callback.answer("Неверный идентификатор.")
+        return
+    reason_key = _REASON_CODE_TO_KEY.get(reason_code)
+    if reason_key is None:
+        await callback.answer("Неверный формат.")
         return
 
     user = await get_user_and_ensure_allowed_callback(
@@ -141,8 +166,8 @@ async def handle_feedback_reason(
             await callback.message.answer("Напишите, пожалуйста, причину:")
         return
 
-    reason_labels = {k: label for k, label in _NO_DEAL_REASONS_BLOGGER}
-    reason_labels.update({k: label for k, label in _NO_DEAL_REASONS_ADVERTISER})
+    reason_labels = {k: label for k, label, _ in _NO_DEAL_REASONS_BLOGGER}
+    reason_labels.update({k: label for k, label, _ in _NO_DEAL_REASONS_ADVERTISER})
     reason_label = reason_labels.get(reason_key, reason_key)
     feedback_text = "❌ Не договорились: " + reason_label
 
@@ -275,6 +300,10 @@ async def handle_issue_description(
     reporter_id = user.user_id
     reported_id = interaction.blogger_id if kind == "adv" else interaction.advertiser_id
     reason = text + " [из фидбека: проблема/мошенничество]"
+    photos = getattr(message, "photo", None)
+    if photos:
+        file_ids = [p.file_id for p in photos]
+        reason += f" [file_ids: {','.join(file_ids)}]"
     try:
         await complaint_service.create_complaint(
             reporter_id=reporter_id,
@@ -282,8 +311,22 @@ async def handle_issue_description(
             order_id=interaction.order_id,
             reason=reason,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception(
+            "Failed to create complaint from feedback",
+            extra={
+                "interaction_id": str(interaction_id),
+                "reporter_id": str(reporter_id),
+                "order_id": str(interaction.order_id),
+                "error": str(exc),
+            },
+        )
+        await state.clear()
+        await message.answer(
+            "Произошла ошибка при создании заявки. Пожалуйста, попробуйте снова "
+            "или обратитесь в поддержку через меню."
+        )
+        return
 
     feedback_text = "⚠️ Проблема / подозрение на мошенничество"
     if kind == "adv":
@@ -303,7 +346,8 @@ async def handle_issue_description(
 async def handle_nps(
     callback: CallbackQuery,
     user_role_service: UserRoleService,
-    nps_repo: NpsRepository,
+    interaction_service: InteractionService,
+    nps_service: NpsService,
 ) -> None:
     """Handle NPS score selection (1-5) after advertiser ok."""
 
@@ -334,7 +378,15 @@ async def handle_nps(
     if user is None:
         return
 
-    await nps_repo.save(interaction_id, score)
+    interaction = await interaction_service.get_interaction(interaction_id)
+    if interaction is None:
+        await callback.answer("Взаимодействие не найдено.")
+        return
+    if interaction.advertiser_id != user.user_id:
+        await callback.answer("Недостаточно прав.")
+        return
+
+    await nps_service.save(interaction_id, score)
     await callback.answer("Спасибо за оценку!")
 
 
@@ -346,7 +398,7 @@ async def handle_feedback(
     state: FSMContext,
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
-    nps_repo: NpsRepository,
+    nps_service: NpsService,
 ) -> None:
     """Handle feedback callbacks from advertiser or blogger."""
 

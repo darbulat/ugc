@@ -99,6 +99,12 @@ def test_parse_user_id_from_state_invalid_string() -> None:
     assert parse_user_id_from_state({"user_id": "not-a-uuid"}) is None
 
 
+def test_parse_user_id_from_state_invalid_type() -> None:
+    """Return None when value is not str or UUID (e.g. int, list)."""
+    assert parse_user_id_from_state({"user_id": 123}) is None
+    assert parse_user_id_from_state({"user_id": []}) is None
+
+
 @pytest.mark.asyncio
 async def test_get_user_and_ensure_allowed_none() -> None:
     """When user is None, send user_not_found_msg and return None."""

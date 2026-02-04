@@ -1,7 +1,7 @@
 """Tests for the user role service."""
 
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -212,6 +212,27 @@ async def test_list_pending_role_reminders_returns_users_without_role_chosen(
     external_ids = {u.external_id for u in pending}
     assert "p1" in external_ids
     assert "p2" not in external_ids
+
+
+@pytest.mark.asyncio
+async def test_user_repo_iter_all() -> None:
+    """InMemoryUserRepository.iter_all returns all users."""
+
+    repo = InMemoryUserRepository()
+    await repo.save(
+        User(
+            user_id=uuid4(),
+            external_id="1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="u1",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    users = list(await repo.iter_all())
+    assert len(users) == 1
+    assert users[0].username == "u1"
 
 
 @pytest.mark.asyncio
