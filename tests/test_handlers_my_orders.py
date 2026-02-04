@@ -8,9 +8,17 @@ import pytest
 from ugc_bot.application.services.offer_response_service import OfferResponseService
 from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.my_orders import paginate_orders, show_my_orders
+from ugc_bot.bot.handlers.my_orders import (
+    _format_date,
+    _format_order_type,
+    _format_price,
+    _format_price_and_barter,
+    paginate_orders,
+    show_my_orders,
+)
 from ugc_bot.domain.entities import OrderResponse
-from ugc_bot.domain.enums import MessengerType, OrderStatus
+from ugc_bot.domain.entities import Order
+from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType
 from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 from tests.helpers.factories import (
     create_test_advertiser_profile,
@@ -277,7 +285,7 @@ async def test_my_orders_list(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    order = await create_test_order(
+    await create_test_order(
         order_repo,
         user.user_id,
         order_id=UUID("00000000-0000-0000-0000-000000000901"),
@@ -298,7 +306,13 @@ async def test_my_orders_list(
         else message.answers[0][0]
     )
     assert "№ 1" in answer_text
-    assert order.status.value in answer_text
+    assert "Создан" in answer_text
+    assert "Креаторов: 3" in answer_text
+    assert "Подобрано: 0 / 3" in answer_text
+    assert "Стоимость 1 UGC: 1 000 ₽" in answer_text
+    assert "Дата создания:" in answer_text
+    assert "Дата завершения: —" in answer_text
+    assert "Ссылка на проект:" in answer_text
 
 
 @pytest.mark.asyncio
@@ -610,7 +624,7 @@ async def test_my_orders_with_complaint_button(
         price=1000.0,
         bloggers_needed=3,
         status=OrderStatus.CLOSED,
-        contacts_sent_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
 
     await order_response_repo.save(
@@ -703,3 +717,387 @@ async def test_paginate_orders_blogger(
     )
     assert "откликнулись" in answer_text
     assert "№ 1" in answer_text
+    assert "Активен" in answer_text
+    assert "Формат:" in answer_text
+    assert "Стоимость 1 UGC: 300 ₽" in answer_text
+    assert "Ссылка на проект:" in answer_text
+
+
+def test_format_price() -> None:
+    """_format_price uses space as thousands separator and ruble sign."""
+    assert _format_price(500) == "500 ₽"
+    assert _format_price(1000) == "1 000 ₽"
+    assert _format_price(14343) == "14 343 ₽"
+    assert _format_price(1000000) == "1 000 000 ₽"
+
+
+def test_format_date() -> None:
+    """_format_date returns DD.MM.YYYY or em dash for None."""
+    from datetime import datetime, timezone
+
+    assert _format_date(None) == "—"
+    dt = datetime(2026, 2, 3, 12, 0, 0, tzinfo=timezone.utc)
+    assert _format_date(dt) == "03.02.2026"
+
+
+def test_format_order_type() -> None:
+    """_format_order_type returns correct labels."""
+    order_ugc = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    order_placement = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_PLUS_PLACEMENT,
+        product_link="https://x.com",
+        offer_text="",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    assert _format_order_type(order_ugc) == "UGC-видео для бренда"
+    assert _format_order_type(order_placement) == "UGC + размещение"
+
+
+def test_format_price_and_barter() -> None:
+    """_format_price_and_barter returns correct lines."""
+    order_price_only = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="",
+        ugc_requirements=None,
+        barter_description=None,
+        price=5000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    order_barter_only = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="",
+        ugc_requirements=None,
+        barter_description="Продукт + доставка",
+        price=0.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    order_both = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="",
+        ugc_requirements=None,
+        barter_description="Доп. бартер",
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    assert _format_price_and_barter(order_price_only) == [
+        "Стоимость 1 UGC: 5 000 ₽",
+    ]
+    assert _format_price_and_barter(order_barter_only) == [
+        "Бартер: Продукт + доставка",
+    ]
+    both_lines = _format_price_and_barter(order_both)
+    assert "Стоимость 1 UGC: 1 000 ₽" in both_lines
+    assert "Бартер: Доп. бартер" in both_lines
+    assert len(both_lines) == 2
+
+
+@pytest.mark.asyncio
+async def test_my_orders_shows_active_status_and_matched_count(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Active order shows 'Активен' and dynamic matched count 2/10."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="adv_active",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    blogger1 = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="b1",
+        username="blogger1",
+    )
+    blogger2 = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="b2",
+        username="blogger2",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=uuid4(),
+        price=14343.0,
+        bloggers_needed=10,
+        status=OrderStatus.ACTIVE,
+    )
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order.order_id,
+            blogger_id=blogger1.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order.order_id,
+            blogger_id=blogger2.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_active"))
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    answer_text = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "Активен" in answer_text
+    assert "Подобрано: 2 / 10" in answer_text
+    assert "Стоимость 1 UGC: 14 343 ₽" in answer_text
+    assert "Дата завершения: —" in answer_text
+
+
+@pytest.mark.asyncio
+async def test_my_orders_shows_completed_status_and_completion_date(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Completed order shows 'Завершён' and completion date."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="adv_done",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    completion_dt = datetime(2026, 2, 5, 14, 30, 0, tzinfo=timezone.utc)
+
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=uuid4(),
+        price=2000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        completed_at=completion_dt,
+    )
+    for i in range(3):
+        blogger = await create_test_user(
+            user_repo,
+            user_id=uuid4(),
+            external_id=f"b{i}",
+            username=f"blogger{i}",
+        )
+        await order_response_repo.save(
+            OrderResponse(
+                response_id=uuid4(),
+                order_id=order.order_id,
+                blogger_id=blogger.user_id,
+                responded_at=datetime.now(timezone.utc),
+            )
+        )
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_done"))
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    answer_text = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "Завершён" in answer_text
+    assert "Подобрано: 3 / 3" in answer_text
+    assert "Дата завершения: 05.02.2026" in answer_text
+
+
+@pytest.mark.asyncio
+async def test_my_orders_advertiser_shows_barter(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Advertiser order list shows barter when barter_description is set."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="adv_barter",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=uuid4(),
+        price=2000.0,
+        barter_description="Продукт бренда + доставка",
+        bloggers_needed=5,
+        status=OrderStatus.NEW,
+    )
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_barter"))
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    answer_text = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "Стоимость 1 UGC: 2 000 ₽" in answer_text
+    assert "Бартер: Продукт бренда + доставка" in answer_text
+
+
+@pytest.mark.asyncio
+async def test_my_orders_blogger_shows_barter(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Blogger order list shows barter when barter_description is set."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    adv_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="adv_b",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, adv_user.user_id)
+    order = await create_test_order(
+        order_repo,
+        adv_user.user_id,
+        order_id=uuid4(),
+        price=0.0,
+        barter_description="Бартерное предложение",
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+
+    blogger_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="blogger_b",
+        username="creator",
+    )
+    await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order.order_id,
+            blogger_id=blogger_user.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("blogger_b"))
+    await show_my_orders(
+        message, user_service, profile_service, order_service, offer_response_service
+    )
+
+    assert message.answers
+    answer_text = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "Бартер: Бартерное предложение" in answer_text
+    assert "Активен" in answer_text
+    assert "Формат:" in answer_text

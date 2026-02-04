@@ -208,7 +208,7 @@ async def create_test_order(
     bloggers_needed: int = 3,
     status: OrderStatus = OrderStatus.NEW,
     created_at: datetime | None = None,
-    contacts_sent_at: datetime | None = None,
+    completed_at: datetime | None = None,
 ) -> Order:
     """Create and save test order.
 
@@ -225,7 +225,7 @@ async def create_test_order(
         bloggers_needed: Number of bloggers needed
         status: Order status
         created_at: Creation timestamp
-        contacts_sent_at: Contacts sent timestamp
+        completed_at: Order completion timestamp
 
     Returns:
         Created order
@@ -248,7 +248,7 @@ async def create_test_order(
         bloggers_needed=bloggers_needed,
         status=status,
         created_at=created_at,
-        contacts_sent_at=contacts_sent_at,
+        completed_at=completed_at,
     )
     await order_repo.save(order)
     return order

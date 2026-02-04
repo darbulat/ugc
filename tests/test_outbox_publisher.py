@@ -35,7 +35,7 @@ class TestOutboxPublisher:
             bloggers_needed=3,
             status=OrderStatus.ACTIVE,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
 
         await publisher.publish_order_activation(order)
@@ -77,7 +77,7 @@ class TestOutboxPublisher:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
 
         event = publisher._create_event_from_order(order)
@@ -130,7 +130,7 @@ class TestOutboxPublisher:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
 
         outbox_repo.get_pending_events.return_value = [event]
@@ -199,7 +199,7 @@ class TestOutboxPublisher:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
 
         outbox_repo.get_pending_events.return_value = [event]
@@ -317,7 +317,7 @@ class TestOutboxPublisher:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
 
         outbox_repo.get_pending_events = AsyncMock(return_value=[event])
@@ -482,7 +482,7 @@ class TestOutboxPublisher:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
         order_repo.get_by_id = AsyncMock(return_value=test_order)
         order_repo.save = AsyncMock()

@@ -238,7 +238,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
                 bloggers_needed=order.bloggers_needed,
                 status=OrderStatus.ACTIVE,
                 created_at=order.created_at,
-                contacts_sent_at=order.contacts_sent_at,
+                completed_at=order.completed_at,
             )
             await self.order_repo.save(activated, session=session)
 
@@ -365,7 +365,7 @@ def create_test_order(session):
             "price": 15000.0,
             "status": OrderStatus.NEW,
             "created_at": datetime.now(timezone.utc),
-            "contacts_sent_at": None,
+            "completed_at": None,
         }
         defaults.update(kwargs)
 

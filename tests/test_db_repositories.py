@@ -697,7 +697,7 @@ async def test_order_repository_save_and_get() -> None:
         bloggers_needed=3,
         status=OrderStatus.NEW,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await repo.save(order, session=session)
     assert session.merged is not None
@@ -714,7 +714,7 @@ async def test_order_repository_save_and_get() -> None:
         bloggers_needed=order.bloggers_needed,
         status=order.status,
         created_at=order.created_at,
-        contacts_sent_at=None,
+        completed_at=None,
     )
     repo_get = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
     fetched = await repo_get.get_by_id(order.order_id, session=_repo_session(repo_get))
@@ -737,7 +737,7 @@ async def test_order_repository_list_by_advertiser() -> None:
         bloggers_needed=3,
         status=OrderStatus.NEW,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     repo = SqlAlchemyOrderRepository(session_factory=_session_factory(model))
 

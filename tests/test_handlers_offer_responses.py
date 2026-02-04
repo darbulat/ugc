@@ -159,7 +159,7 @@ async def test_order_closed_when_limit_reached(
         order_id=UUID("00000000-0000-0000-0000-000000000744"),
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
-        contacts_sent_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
 
     blogger1 = UUID("00000000-0000-0000-0000-000000000746")
@@ -315,7 +315,7 @@ async def test_offer_response_handler_order_not_active(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.NEW,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -433,7 +433,7 @@ async def test_offer_response_handler_already_responded(fake_tm: object) -> None
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     await response_repo.save(
@@ -511,7 +511,7 @@ async def test_offer_response_handler_limit_reached(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     await response_repo.save(
@@ -793,7 +793,7 @@ async def test_offer_response_handler_exception(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -850,7 +850,7 @@ async def test_send_contact_order_not_found(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
 
     bot = FakeMessage()
@@ -902,7 +902,7 @@ async def test_send_contact_order_not_active(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
 
     bot = FakeMessage()
@@ -953,7 +953,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(fake_tm: object) -> N
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
 
     bot = FakeMessage()

@@ -55,7 +55,7 @@ async def test_offer_response_success(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -90,7 +90,7 @@ async def test_offer_response_limit(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     await service.respond(
@@ -147,7 +147,7 @@ async def test_offer_response_requires_active_order(fake_tm: object) -> None:
             bloggers_needed=1,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
     )
 
@@ -181,7 +181,7 @@ async def test_offer_response_finalize_closes_order(fake_tm: object) -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -193,7 +193,7 @@ async def test_offer_response_finalize_closes_order(fake_tm: object) -> None:
     updated = await order_repo.get_by_id(order.order_id)
     assert updated is not None
     assert updated.status == OrderStatus.CLOSED
-    assert updated.contacts_sent_at is not None
+    assert updated.completed_at is not None
     assert result.response_count == 1
 
 
@@ -220,7 +220,7 @@ async def test_offer_response_transaction_manager(fake_tm: object) -> None:
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -259,7 +259,7 @@ async def test_offer_response_records_metrics_when_enabled(fake_tm: object) -> N
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -314,7 +314,7 @@ async def test_offer_response_tx_requires_active_order(fake_tm: object) -> None:
             bloggers_needed=1,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
     )
 
@@ -354,7 +354,7 @@ async def test_offer_response_tx_duplicate_response_is_rejected(
             bloggers_needed=2,
             status=OrderStatus.ACTIVE,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
     )
 

@@ -85,7 +85,7 @@ def test_order_mapping_roundtrip() -> None:
         bloggers_needed=3,
         status=OrderStatus.NEW,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
 
     model = _to_order_model(order)

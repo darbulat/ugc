@@ -26,7 +26,7 @@ def _order() -> Order:
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
 
 

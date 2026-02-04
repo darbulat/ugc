@@ -136,10 +136,10 @@ class OrderRepository(ABC):
         """List orders by advertiser."""
 
     @abstractmethod
-    async def list_with_contacts_before(
+    async def list_completed_before(
         self, cutoff: datetime, session: object | None = None
     ) -> Iterable[Order]:
-        """List orders with contacts_sent_at before cutoff."""
+        """List orders completed before cutoff."""
 
     @abstractmethod
     async def count_by_advertiser(

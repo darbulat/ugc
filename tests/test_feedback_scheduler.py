@@ -114,7 +114,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
         bloggers_needed=1,
         status=OrderStatus.CLOSED,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
     await response_repo.save(
@@ -216,7 +216,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(fake_tm) -> N
         bloggers_needed=1,
         status=OrderStatus.CLOSED,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
 
@@ -382,7 +382,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
         bloggers_needed=1,
         status=OrderStatus.CLOSED,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
     await response_repo.save(
@@ -635,7 +635,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
         bloggers_needed=1,
         status=OrderStatus.CLOSED,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
     await response_repo.save(

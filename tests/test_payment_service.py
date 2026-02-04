@@ -204,7 +204,7 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
         bloggers_needed=3,
         status=OrderStatus.NEW,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     payment_repo = Mock()
     payment_repo.get_by_order = AsyncMock(return_value=None)

@@ -179,7 +179,7 @@ class OrderModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    contacts_sent_at: Mapped[Optional[datetime]] = mapped_column(
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     content_usage: Mapped[Optional[str]] = mapped_column(String, nullable=True)

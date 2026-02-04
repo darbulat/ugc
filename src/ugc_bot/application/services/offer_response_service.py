@@ -23,7 +23,7 @@ class OfferResponseResult:
     response: OrderResponse
     response_count: int
     order_closed: bool
-    contacts_sent_at: datetime
+    completed_at: datetime
 
 
 @dataclass(slots=True)
@@ -60,6 +60,14 @@ class OfferResponseService:
             return list(
                 await self.response_repo.list_by_blogger(blogger_id, session=session)
             )
+
+    async def count_by_order(self, order_id: UUID) -> int:
+        """Count responses for an order."""
+
+        if self.transaction_manager is None:
+            return await self.response_repo.count_by_order(order_id)
+        async with self.transaction_manager.transaction() as session:
+            return await self.response_repo.count_by_order(order_id, session=session)
 
     async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID
@@ -112,7 +120,7 @@ class OfferResponseService:
             response=response,
             response_count=response_count,
             order_closed=order_closed,
-            contacts_sent_at=now,
+            completed_at=now,
         )
 
 
@@ -136,7 +144,7 @@ def _update_order_after_response(
         bloggers_needed=order.bloggers_needed,
         status=new_status,
         created_at=order.created_at,
-        contacts_sent_at=now,
+        completed_at=now,
         content_usage=order.content_usage,
         deadlines=order.deadlines,
         geography=order.geography,

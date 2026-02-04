@@ -88,7 +88,7 @@ class TestOutboxIntegration:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
         await order_repo.save(order)
 
@@ -174,7 +174,7 @@ class TestOutboxIntegration:
             bloggers_needed=3,
             status=OrderStatus.NEW,  # Start as NEW
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
         await outbox_publisher.publish_order_activation(test_order)
 
@@ -232,7 +232,7 @@ class TestOutboxIntegration:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
         await outbox_publisher.publish_order_activation(test_order)
 
@@ -284,7 +284,7 @@ class TestOutboxIntegration:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
         await outbox_publisher.publish_order_activation(test_order)
 
@@ -369,7 +369,7 @@ class TestOutboxIntegration:
             bloggers_needed=3,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
         )
         await order_repo.save(order)
 

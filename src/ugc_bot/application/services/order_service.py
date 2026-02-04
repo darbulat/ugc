@@ -140,7 +140,7 @@ class OrderService:
             bloggers_needed=bloggers_needed,
             status=OrderStatus.NEW,
             created_at=datetime.now(timezone.utc),
-            contacts_sent_at=None,
+            completed_at=None,
             content_usage=(content_usage or "").strip() or None,
             deadlines=(deadlines or "").strip() or None,
             geography=(geography or "").strip() or None,

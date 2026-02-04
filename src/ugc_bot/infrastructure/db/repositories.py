@@ -370,16 +370,16 @@ class SqlAlchemyOrderRepository(OrderRepository):
         result = exec_result.scalars()
         return [_to_order_entity(item) for item in result]
 
-    async def list_with_contacts_before(
+    async def list_completed_before(
         self, cutoff: datetime, session: object | None = None
     ) -> Iterable[Order]:
-        """List orders with contacts_sent_at before cutoff."""
+        """List orders completed before cutoff."""
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
             select(OrderModel).where(
-                OrderModel.contacts_sent_at.is_not(None),
-                OrderModel.contacts_sent_at <= cutoff,
+                OrderModel.completed_at.is_not(None),
+                OrderModel.completed_at <= cutoff,
             )
         )
         result = exec_result.scalars()
@@ -869,7 +869,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         bloggers_needed=model.bloggers_needed,
         status=model.status,
         created_at=model.created_at,
-        contacts_sent_at=model.contacts_sent_at,
+        completed_at=model.completed_at,
         content_usage=getattr(model, "content_usage", None),
         deadlines=getattr(model, "deadlines", None),
         geography=getattr(model, "geography", None),
@@ -904,7 +904,7 @@ def _to_order_model(order: Order) -> OrderModel:
         bloggers_needed=order.bloggers_needed,
         status=order.status,
         created_at=order.created_at,
-        contacts_sent_at=order.contacts_sent_at,
+        completed_at=order.completed_at,
         content_usage=order.content_usage,
         deadlines=order.deadlines,
         geography=order.geography,

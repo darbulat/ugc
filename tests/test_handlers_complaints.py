@@ -198,7 +198,7 @@ async def test_handle_complaint_reason_success(
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -277,7 +277,7 @@ async def test_select_complaint_target_advertiser(
         bloggers_needed=3,
         status=OrderStatus.CLOSED,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
     await order_repo.save(order)
 
@@ -417,7 +417,7 @@ async def test_select_complaint_target_blogger(
         bloggers_needed=3,
         status=OrderStatus.CLOSED,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
     await order_repo.save(order)
 
@@ -498,7 +498,7 @@ async def test_select_complaint_target_no_bloggers(
         bloggers_needed=3,
         status=OrderStatus.CLOSED,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
     )
     await order_repo.save(order)
 
@@ -573,7 +573,7 @@ async def test_handle_complaint_reason_text(
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -646,7 +646,7 @@ async def test_handle_complaint_reason_other(
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -769,7 +769,7 @@ async def test_handle_complaint_reason_duplicate(
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -970,7 +970,7 @@ async def test_start_complaint_invalid_reported_id(
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 

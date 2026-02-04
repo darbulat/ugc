@@ -155,7 +155,7 @@ class OutboxPublisher:
             bloggers_needed=order.bloggers_needed,
             status=OrderStatus.ACTIVE,
             created_at=order.created_at,
-            contacts_sent_at=order.contacts_sent_at,
+            completed_at=order.completed_at,
             content_usage=order.content_usage,
             deadlines=order.deadlines,
             geography=order.geography,

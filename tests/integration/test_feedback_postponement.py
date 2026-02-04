@@ -72,7 +72,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         bloggers_needed=order.bloggers_needed,
         status=OrderStatus.CLOSED,
         created_at=order.created_at,
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
     async with tm.transaction() as session:
@@ -193,7 +193,7 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         bloggers_needed=order.bloggers_needed,
         status=OrderStatus.CLOSED,
         created_at=order.created_at,
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
     async with tm.transaction() as session:
@@ -282,7 +282,7 @@ async def test_feedback_mixed_responses_aggregation(
         bloggers_needed=order.bloggers_needed,
         status=OrderStatus.CLOSED,
         created_at=order.created_at,
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
     async with tm.transaction() as session:
@@ -376,7 +376,7 @@ async def test_feedback_issue_status_blocks_user(
         bloggers_needed=order.bloggers_needed,
         status=OrderStatus.CLOSED,
         created_at=order.created_at,
-        contacts_sent_at=datetime.now(timezone.utc) - timedelta(hours=73),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     order_repo = dispatcher["order_repo"]
     async with tm.transaction() as session:

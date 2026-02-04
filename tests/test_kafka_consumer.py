@@ -85,7 +85,7 @@ async def test_send_offers_sends_messages() -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=now,
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -186,7 +186,7 @@ async def test_send_offers_returns_when_advertiser_not_found() -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=now,
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     offer_service = OfferDispatchService(
@@ -238,7 +238,7 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=now,
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     offer_service = OfferDispatchService(
@@ -492,7 +492,7 @@ async def test_send_offers_retries_then_succeeds() -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=now,
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     blogger = User(
@@ -582,7 +582,7 @@ async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=now,
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     blogger = User(

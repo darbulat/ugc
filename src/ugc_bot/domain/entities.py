@@ -83,7 +83,7 @@ class Order:
     bloggers_needed: int
     status: OrderStatus
     created_at: datetime
-    contacts_sent_at: Optional[datetime]
+    completed_at: Optional[datetime]
     content_usage: Optional[str] = None
     deadlines: Optional[str] = None
     geography: Optional[str] = None

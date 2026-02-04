@@ -49,7 +49,7 @@ async def test_dispatch_selects_confirmed_bloggers() -> None:
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -110,7 +110,7 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     blogger = User(
@@ -170,7 +170,7 @@ async def test_dispatch_requires_active_order() -> None:
         bloggers_needed=2,
         status=OrderStatus.NEW,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -205,7 +205,7 @@ async def test_get_order_and_advertiser_with_transaction_manager(
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
     advertiser = User(
@@ -265,7 +265,7 @@ def test_format_offer_ugc_plus_placement() -> None:
         bloggers_needed=3,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     text = service.format_offer(order, "Advertiser")
     assert "UGC + размещение" in text
@@ -299,7 +299,7 @@ async def test_dispatch_skips_ineligible_bloggers() -> None:
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -379,7 +379,7 @@ async def test_dispatch_no_profiles_returns_empty() -> None:
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 
@@ -414,7 +414,7 @@ async def test_dispatch_excludes_order_author() -> None:
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
-        contacts_sent_at=None,
+        completed_at=None,
     )
     await order_repo.save(order)
 

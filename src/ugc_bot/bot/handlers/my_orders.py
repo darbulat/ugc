@@ -1,6 +1,8 @@
 """Handlers for advertiser and blogger orders."""
 
+from datetime import datetime
 from math import ceil
+from typing import Optional
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -17,6 +19,7 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
 from ugc_bot.domain.entities import Order, OrderResponse
+from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
@@ -24,6 +27,42 @@ from ugc_bot.bot.handlers.utils import (
 
 
 router = Router()
+ORDER_STATUS_LABELS = {
+    OrderStatus.NEW: "Создан",
+    OrderStatus.ACTIVE: "Активен",
+    OrderStatus.CLOSED: "Завершён",
+}
+
+
+def _format_price(price: float) -> str:
+    """Format price with space as thousands separator and ruble sign."""
+    return f"{int(price):,}".replace(",", " ") + " ₽"
+
+
+def _format_date(dt: Optional[datetime]) -> str:
+    """Format date as DD.MM.YYYY or em dash if None."""
+    if dt is None:
+        return "—"
+    return dt.strftime("%d.%m.%Y")
+
+
+def _format_order_type(order: Order) -> str:
+    """Format order type for display."""
+    if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
+        return "UGC + размещение"
+    return "UGC-видео для бренда"
+
+
+def _format_price_and_barter(order: Order) -> list[str]:
+    """Return lines for price and/or barter (0-2 lines)."""
+    result: list[str] = []
+    if order.price > 0:
+        result.append(f"Стоимость 1 UGC: {_format_price(order.price)}")
+    if order.barter_description:
+        result.append(f"Бартер: {order.barter_description}")
+    return result
+
+
 _PAGE_SIZE = 5
 _MY_ORDERS_CALLBACK_PREFIX = "my_orders:"
 _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
@@ -176,33 +215,29 @@ async def _render_page(
     for idx, order in enumerate(slice_orders):
         # Нумерация по дате создания: 1 = первый созданный (самый старый)
         creation_number = len(orders) - start - idx
-        lines.append(
-            "\n".join(
+        matched_count = await offer_response_service.count_by_order(order.order_id)
+        status_label = ORDER_STATUS_LABELS.get(order.status, order.status.value)
+        order_lines = [
+            f"№ {creation_number}",
+            f"Статус: {status_label}",
+            f"Креаторов: {order.bloggers_needed}",
+            f"Подобрано: {matched_count} / {order.bloggers_needed}",
+            *_format_price_and_barter(order),
+            f"Дата создания: {_format_date(order.created_at)}",
+            f"Дата завершения: {_format_date(order.completed_at)}",
+            f"Ссылка на проект: {order.product_link}",
+        ]
+        lines.append("\n".join(order_lines))
+        # Add complaint button for closed orders (when contacts are sent)
+        if order.status == OrderStatus.CLOSED and matched_count > 0:
+            buttons_rows.append(
                 [
-                    f"№ {creation_number}",
-                    f"Статус: {order.status.value}",
-                    f"Ссылка: {order.product_link}",
-                    f"Цена: {order.price}",
-                    f"Блогеров нужно: {order.bloggers_needed}",
+                    InlineKeyboardButton(
+                        text="⚠️ Пожаловаться",
+                        callback_data=f"complaint_select:{order.order_id}",
+                    )
                 ]
             )
-        )
-        # Add complaint button for closed orders (when contacts are sent)
-        if order.status.value == "closed":
-            # Get bloggers who responded to this order
-            responses = await offer_response_service.response_repo.list_by_order(
-                order.order_id
-            )
-            if responses:
-                # For advertiser: show button to select blogger to complain about
-                buttons_rows.append(
-                    [
-                        InlineKeyboardButton(
-                            text="⚠️ Пожаловаться",
-                            callback_data=f"complaint_select:{order.order_id}",
-                        )
-                    ]
-                )
 
     # Pagination buttons
     nav_buttons: list[InlineKeyboardButton] = []
@@ -253,16 +288,15 @@ def _render_blogger_orders_page(
 
     for order, _response in slice_pairs:
         creation_number = order_id_to_number.get(order.order_id, 0)
-        lines.append(
-            "\n".join(
-                [
-                    f"№ {creation_number}",
-                    f"Статус: {order.status.value}",
-                    f"Ссылка: {order.product_link}",
-                    f"Цена: {order.price}",
-                ]
-            )
-        )
+        status_label = ORDER_STATUS_LABELS.get(order.status, order.status.value)
+        order_lines = [
+            f"№ {creation_number}",
+            f"Статус: {status_label}",
+            f"Формат: {_format_order_type(order)}",
+            *_format_price_and_barter(order),
+            f"Ссылка на проект: {order.product_link}",
+        ]
+        lines.append("\n".join(order_lines))
 
     nav_buttons: list[InlineKeyboardButton] = []
     if page > 1:
