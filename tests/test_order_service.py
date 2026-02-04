@@ -5,6 +5,7 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.domain.enums import OrderType, UserStatus
 from tests.helpers.factories import create_test_advertiser
 from tests.helpers.services import build_order_service
@@ -205,6 +206,29 @@ async def test_create_order_negative_price_rejected(
             ugc_requirements=None,
             barter_description=None,
             price=-100.0,
+            bloggers_needed=3,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_order_price_exceeds_max_rejected(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Price exceeding NUMERIC(10,2) limit is rejected."""
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    with pytest.raises(OrderCreationError, match="exceeds maximum"):
+        await service.create_order(
+            advertiser_id=user_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            ugc_requirements=None,
+            barter_description=None,
+            price=MAX_ORDER_PRICE + 1,
             bloggers_needed=3,
         )
 

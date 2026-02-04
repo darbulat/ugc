@@ -47,6 +47,7 @@ ERROR_MESSAGES = {
         "Order response limit reached.": "Лимит откликов по заказу достигнут.",
         "Order is not in NEW status.": "Заказ не в статусе NEW.",
         "Order does not belong to advertiser.": "Заказ не принадлежит рекламодателю.",
+        "Price exceeds maximum (99,999,999).": "Сумма превышает максимально допустимую (99 999 999 ₽).",
         "default": "Ошибка создания заказа.",
     },
     InteractionNotFoundError: {

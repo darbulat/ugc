@@ -11,7 +11,7 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.contact_pricing_service import ContactPricingService
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
-from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE, OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
@@ -319,6 +319,11 @@ async def handle_price(message: Message, state: FSMContext) -> None:
 
     if price < 0:
         await message.answer("Цена не может быть отрицательной.")
+        return
+    if price > MAX_ORDER_PRICE:
+        await message.answer(
+            f"Сумма превышает максимально допустимую ({MAX_ORDER_PRICE:,.0f} ₽)."
+        )
         return
 
     await state.update_data(price=price)

@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 _ALLOWED_BLOGGER_COUNTS = {3, 5, 10}
 
+# Matches NUMERIC(10, 2) in DB: max 8 digits before decimal, 2 after
+MAX_ORDER_PRICE = 99_999_999.99
+
 
 @dataclass(slots=True)
 class OrderService:
@@ -117,6 +120,8 @@ class OrderService:
         barter_description = (barter_description or "").strip() or None
         if price < 0:
             raise OrderCreationError("Price cannot be negative.")
+        if price > MAX_ORDER_PRICE:
+            raise OrderCreationError(f"Price exceeds maximum ({MAX_ORDER_PRICE:,.0f}).")
         if price <= 0 and not barter_description:
             raise OrderCreationError("Price must be positive when no barter.")
 

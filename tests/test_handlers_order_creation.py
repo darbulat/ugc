@@ -5,6 +5,7 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.bot.handlers.order_creation import (
     COOP_BARTER,
     COOP_PAYMENT,
@@ -246,3 +247,18 @@ async def test_bloggers_needed_only_3_5_10() -> None:
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
     assert "3, 5 или 10" in text
+
+
+@pytest.mark.asyncio
+async def test_handle_price_exceeds_max_rejected() -> None:
+    """Reject price exceeding NUMERIC(10,2) limit."""
+
+    state = FakeFSMContext()
+    overflow_price = str(int(MAX_ORDER_PRICE) + 1)
+    message = FakeMessage(text=overflow_price, user=None)
+    await handle_price(message, state)
+
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "превышает максимально допустимую" in text
