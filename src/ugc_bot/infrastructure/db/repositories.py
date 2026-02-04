@@ -801,7 +801,6 @@ def _to_advertiser_profile_entity(
 
     return AdvertiserProfile(
         user_id=model.user_id,
-        name=model.name or "",
         phone=model.contact,
         brand=model.brand or "",
         site_link=getattr(model, "site_link", None),
@@ -816,7 +815,6 @@ def _to_advertiser_profile_model(
     return AdvertiserProfileModel(
         user_id=profile.user_id,
         contact=profile.phone,
-        name=profile.name or None,
         brand=profile.brand or None,
         site_link=profile.site_link,
     )

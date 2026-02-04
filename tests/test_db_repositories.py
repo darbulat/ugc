@@ -440,7 +440,6 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
     )
     profile = AdvertiserProfile(
         user_id=UUID("00000000-0000-0000-0000-000000000116"),
-        name="Test",
         phone="@contact",
         brand="Brand",
     )
@@ -453,7 +452,6 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
             AdvertiserProfileModel(
                 user_id=profile.user_id,
                 contact=profile.phone,
-                name=profile.name,
                 brand=profile.brand,
             )
         )
@@ -463,7 +461,6 @@ async def test_advertiser_profile_repository_save_and_get() -> None:
     )
     assert fetched is not None
     assert fetched.phone == "@contact"
-    assert fetched.name == "Test"
     assert fetched.brand == "Brand"
 
 

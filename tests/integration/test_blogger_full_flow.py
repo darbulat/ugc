@@ -47,7 +47,6 @@ async def test_blogger_full_flow(
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=advertiser_user.user_id,
-            name="Adv",
             phone="test_contact",
             brand="Brand",
         ),

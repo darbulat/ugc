@@ -117,7 +117,6 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
 
     column_list = [
         AdvertiserProfileModel.user_id,
-        AdvertiserProfileModel.name,
         AdvertiserProfileModel.contact,
         AdvertiserProfileModel.brand,
     ]

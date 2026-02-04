@@ -61,7 +61,6 @@ class AdvertiserProfile:
     """Advertiser profile entity."""
 
     user_id: UUID
-    name: str
     phone: str
     brand: str
     site_link: Optional[str] = None

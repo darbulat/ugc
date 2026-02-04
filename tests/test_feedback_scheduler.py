@@ -97,7 +97,6 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=advertiser.user_id,
-            name="N",
             phone="c",
             brand="B",
         )
@@ -200,7 +199,6 @@ async def test_run_once_blogger_message_adds_https_to_product_link(fake_tm) -> N
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=advertiser.user_id,
-            name="N",
             phone="c",
             brand="B",
         )
@@ -603,7 +601,6 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=advertiser.user_id,
-            name="N",
             phone="c",
             brand="B",
         )

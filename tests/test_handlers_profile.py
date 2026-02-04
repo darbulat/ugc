@@ -69,7 +69,6 @@ class FakeProfileService:
             return None
         return AdvertiserProfile(
             user_id=user_id,
-            name="Test",
             phone="contact",
             brand="Brand",
         )
@@ -425,7 +424,7 @@ async def test_edit_profile_choose_field_nickname(user_repo) -> None:
         external_id="36",
         username="user",
     )
-    message = FakeMessage(text="Имя/ник", user=FakeUser(36))
+    message = FakeMessage(text="Имя", user=FakeUser(36))
     state = FakeFSMContext()
     profile_service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False

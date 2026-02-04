@@ -28,19 +28,15 @@ class AdvertiserRegistrationService:
     async def register_advertiser(
         self,
         user_id: UUID,
-        name: str,
         phone: str,
         brand: str,
         site_link: Optional[str] = None,
     ) -> AdvertiserProfile:
         """Create an advertiser profile after validating input."""
 
-        name = name.strip()
         phone = phone.strip()
         brand = brand.strip()
         site_link = (site_link or "").strip() or None
-        if not name:
-            raise AdvertiserRegistrationError("Name is required.")
         if not phone:
             raise AdvertiserRegistrationError("Phone is required.")
         if not brand:
@@ -53,7 +49,6 @@ class AdvertiserRegistrationService:
 
             profile = AdvertiserProfile(
                 user_id=user.user_id,
-                name=name,
                 phone=phone,
                 brand=brand,
                 site_link=site_link,
@@ -69,7 +64,6 @@ class AdvertiserRegistrationService:
 
                 profile = AdvertiserProfile(
                     user_id=user.user_id,
-                    name=name,
                     phone=phone,
                     brand=brand,
                     site_link=site_link,
@@ -93,7 +87,6 @@ class AdvertiserRegistrationService:
         self,
         user_id: UUID,
         *,
-        name: Optional[str] = None,
         phone: Optional[str] = None,
         brand: Optional[str] = None,
         site_link: Optional[str] = None,
@@ -112,7 +105,6 @@ class AdvertiserRegistrationService:
 
         updated = AdvertiserProfile(
             user_id=profile.user_id,
-            name=name.strip() if name is not None else profile.name,
             phone=phone.strip() if phone is not None else profile.phone,
             brand=brand.strip() if brand is not None else profile.brand,
             site_link=(site_link or "").strip() or None

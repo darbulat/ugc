@@ -103,7 +103,6 @@ async def test_get_advertiser_profile_with_transaction_manager(fake_tm) -> None:
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     profile = AdvertiserProfile(
         user_id=user_id,
-        name="Test",
         phone="contact@test.com",
         brand="Brand",
     )

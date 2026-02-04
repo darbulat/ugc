@@ -55,7 +55,7 @@ async def test_start_advertiser_registration_sets_state(
     await service.set_user(
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
-        username="adv",
+        username="",
     )
     message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
     state = FakeFSMContext()
@@ -76,6 +76,38 @@ async def test_start_advertiser_registration_sets_state(
     assert "Как вас зовут" in (
         first_ans if isinstance(first_ans, str) else first_ans[0]
     )
+
+
+@pytest.mark.asyncio
+async def test_start_advertiser_registration_skips_name_when_username_set(
+    user_repo, advertiser_repo
+) -> None:
+    """When user has username, skip name step and ask for phone."""
+
+    service = UserRoleService(user_repo=user_repo)
+    await service.set_user(
+        external_id="10",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
+    state = FakeFSMContext()
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+
+    await handle_advertiser_start(
+        message,
+        state,
+        service,
+        profile_service=profile_service,
+        fsm_draft_service=FakeFsmDraftService(),
+    )
+
+    assert state._data["user_id"] is not None
+    assert state._data["name"] == "adv"
+    assert state.state is not None
+    assert message.answers
+    first_ans = message.answers[0]
+    assert "телефона" in (first_ans if isinstance(first_ans, str) else first_ans[0])
 
 
 @pytest.mark.asyncio
@@ -221,7 +253,6 @@ async def test_handle_advertiser_start_shows_menu_when_profile_exists(
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=user.user_id,
-            name="N",
             phone="+7900",
             brand="B",
         )

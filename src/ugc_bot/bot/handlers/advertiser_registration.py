@@ -60,7 +60,11 @@ async def choose_advertiser_role(
         return
     await state.clear()
     external_id = str(message.from_user.id)
-    username = message.from_user.username or message.from_user.first_name or "user"
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    username = user.username if user else ""
 
     await user_role_service.set_user(
         external_id=external_id,
@@ -143,7 +147,16 @@ async def handle_advertiser_start(
         await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
         await state.set_state(AdvertiserRegistrationStates.choosing_draft_restore)
         return
-    await _ask_name(message, state)
+    if user.username:
+        await state.update_data(name=user.username)
+        await message.answer(
+            "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
+            "Пример: +7 900 000-00-00",
+            reply_markup=support_keyboard(),
+        )
+        await state.set_state(AdvertiserRegistrationStates.phone)
+    else:
+        await _ask_name(message, state)
 
 
 @router.message(AdvertiserRegistrationStates.choosing_draft_restore)
@@ -283,6 +296,7 @@ async def handle_agreements_confirm(
     message: Message,
     state: FSMContext,
     advertiser_registration_service: AdvertiserRegistrationService,
+    user_role_service: UserRoleService,
 ) -> None:
     """On 'Confirm agreement' create profile and show success."""
 
@@ -304,9 +318,18 @@ async def handle_agreements_confirm(
     brand = data["brand"]
     site_link = data.get("site_link")
 
+    user = await user_role_service.get_user_by_id(user_id)
+    if user is not None:
+        await user_role_service.set_user(
+            external_id=user.external_id,
+            messenger_type=user.messenger_type,
+            username=name,
+            role_chosen=False,
+            telegram_username=None,
+        )
+
     await advertiser_registration_service.register_advertiser(
         user_id=user_id,
-        name=name,
         phone=phone,
         brand=brand,
         site_link=site_link,

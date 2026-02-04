@@ -37,7 +37,6 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
     advertiser_repo = dispatcher["advertiser_repo"]
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
-        name="Adv",
         phone="test@example.com",
         brand="Brand",
     )
@@ -161,7 +160,6 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
     advertiser_repo = dispatcher["advertiser_repo"]
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
-        name="Adv",
         phone="test@example.com",
         brand="Brand",
     )
@@ -251,7 +249,6 @@ async def test_feedback_mixed_responses_aggregation(
     advertiser_repo = dispatcher["advertiser_repo"]
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
-        name="Adv",
         phone="test@example.com",
         brand="Brand",
     )
@@ -346,7 +343,6 @@ async def test_feedback_issue_status_blocks_user(
     advertiser_repo = dispatcher["advertiser_repo"]
     advertiser_profile = AdvertiserProfile(
         user_id=advertiser_user.user_id,
-        name="Adv",
         phone="test@example.com",
         brand="Brand",
     )

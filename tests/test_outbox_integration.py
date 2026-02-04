@@ -70,7 +70,6 @@ class TestOutboxIntegration:
 
         profile = AdvertiserProfile(
             user_id=user.user_id,
-            name="Test",
             phone="test@example.com",
             brand="Brand",
         )
@@ -352,7 +351,6 @@ class TestOutboxIntegration:
 
         profile = AdvertiserProfile(
             user_id=user.user_id,
-            name="Test",
             phone="test@example.com",
             brand="Brand",
         )

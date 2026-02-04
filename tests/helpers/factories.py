@@ -78,7 +78,6 @@ async def create_test_advertiser(
     user_id: UUID | None = None,
     external_id: str = "888",
     status: UserStatus = UserStatus.ACTIVE,
-    name: str = "Test Advertiser",
     phone: str = "+79001234567",
     brand: str = "Test Brand",
 ) -> UUID:
@@ -90,7 +89,6 @@ async def create_test_advertiser(
         user_id: Optional user ID (generated if not provided)
         external_id: External user ID
         status: User status
-        name: Advertiser name
         phone: Phone for contact
         brand: Brand / company name
 
@@ -107,7 +105,6 @@ async def create_test_advertiser(
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=user.user_id,
-            name=name,
             phone=phone,
             brand=brand,
             site_link=None,
@@ -172,7 +169,6 @@ async def create_test_blogger_profile(
 async def create_test_advertiser_profile(
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     user_id: UUID,
-    name: str = "Test Advertiser",
     phone: str = "+79001234567",
     brand: str = "Test Brand",
     site_link: str | None = None,
@@ -182,7 +178,6 @@ async def create_test_advertiser_profile(
     Args:
         advertiser_repo: Advertiser profile repository
         user_id: User ID
-        name: Advertiser name
         phone: Phone for contact
         brand: Brand / company name
         site_link: Optional site link
@@ -192,7 +187,6 @@ async def create_test_advertiser_profile(
     """
     profile = AdvertiserProfile(
         user_id=user_id,
-        name=name,
         phone=phone,
         brand=brand,
         site_link=site_link,

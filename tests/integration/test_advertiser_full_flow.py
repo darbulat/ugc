@@ -33,7 +33,6 @@ async def test_advertiser_basic_flow(
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=advertiser_user.user_id,
-            name="Adv",
             phone="test_contact",
             brand="Brand",
         ),

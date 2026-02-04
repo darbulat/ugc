@@ -215,7 +215,6 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
     advertiser_repo.get_by_user_id = AsyncMock(
         return_value=AdvertiserProfile(
             user_id=user_id,
-            name="Test",
             phone="contact",
             brand="Brand",
         )

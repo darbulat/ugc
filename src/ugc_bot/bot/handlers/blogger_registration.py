@@ -87,7 +87,11 @@ async def choose_creator_role(
         return
     await state.clear()
     external_id = str(message.from_user.id)
-    username = message.from_user.first_name or "user"
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    username = user.username if user else ""
 
     await user_role_service.set_user(
         external_id=external_id,
@@ -141,11 +145,19 @@ async def _start_registration_flow(
         await state.set_state(BloggerRegistrationStates.choosing_draft_restore)
         return
 
-    await message.answer(
-        "Введите ваше имя:",
-        reply_markup=support_keyboard(),
-    )
-    await state.set_state(BloggerRegistrationStates.name)
+    if user.username:
+        await state.update_data(nickname=user.username)
+        await message.answer(
+            "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
+            reply_markup=support_keyboard(),
+        )
+        await state.set_state(BloggerRegistrationStates.instagram)
+    else:
+        await message.answer(
+            "Введите ваше имя:",
+            reply_markup=support_keyboard(),
+        )
+        await state.set_state(BloggerRegistrationStates.name)
 
 
 @router.message(lambda msg: (msg.text or "").strip() == CREATE_PROFILE_BUTTON_TEXT)

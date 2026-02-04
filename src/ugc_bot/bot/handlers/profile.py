@@ -118,7 +118,6 @@ def _format_profile_text(
         adv_lines = [
             "",
             "🏢 Профиль рекламодателя",
-            f"   Имя: {advertiser.name}",
             f"   Телефон: {advertiser.phone}",
             f"   Бренд: {advertiser.brand}",
         ]
@@ -136,7 +135,7 @@ _INSTAGRAM_URL_REGEX = re.compile(
 )
 
 _EDIT_FIELDS = [
-    ("Имя/ник", "nickname"),
+    ("Имя", "nickname"),
     ("Instagram", "instagram_url"),
     ("Город", "city"),
     ("Тематики", "topics"),
@@ -492,9 +491,18 @@ async def edit_profile_enter_value(
             if not text:
                 await message.answer("Имя не может быть пустым.")
                 return
-            updated = await advertiser_registration_service.update_advertiser_profile(
-                user_id, name=text
+            await user_role_service.set_user(
+                external_id=external_id,
+                messenger_type=MessengerType.TELEGRAM,
+                username=text,
             )
+            await state.clear()
+            await message.answer(
+                "Профиль обновлён.",
+                reply_markup=advertiser_menu_keyboard(),
+            )
+            await show_profile(message, profile_service, state)
+            return
         elif field_key == "phone":
             if not text:
                 await message.answer("Номер телефона не может быть пустым.")

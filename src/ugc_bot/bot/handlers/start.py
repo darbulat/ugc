@@ -34,7 +34,11 @@ async def start_command(message: Message, user_role_service: UserRoleService) ->
         return
 
     external_id = str(message.from_user.id)
-    username = message.from_user.username or message.from_user.first_name or "user"
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    username = user.username if user else ""
 
     await user_role_service.set_user(
         external_id=external_id,
@@ -101,7 +105,11 @@ async def support_button(
     await state.clear()
 
     external_id = str(message.from_user.id)
-    username = message.from_user.username or message.from_user.first_name or "user"
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    username = user.username if user else ""
 
     await user_role_service.set_user(
         external_id=external_id,

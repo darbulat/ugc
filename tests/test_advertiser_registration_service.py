@@ -50,12 +50,10 @@ async def test_register_advertiser_success() -> None:
 
     profile = await service.register_advertiser(
         user_id=user_id,
-        name="Test Name",
         phone="@contact",
         brand="Test Brand",
     )
     assert profile.user_id == user_id
-    assert profile.name == "Test Name"
     assert profile.phone == "@contact"
     assert profile.brand == "Test Brand"
 
@@ -72,27 +70,8 @@ async def test_register_advertiser_missing_user() -> None:
     with pytest.raises(UserNotFoundError):
         await service.register_advertiser(
             user_id=UUID("00000000-0000-0000-0000-000000000121"),
-            name="N",
             phone="@contact",
             brand="B",
-        )
-
-
-@pytest.mark.asyncio
-async def test_register_advertiser_empty_name() -> None:
-    """Fail when name is empty."""
-
-    user_repo = InMemoryUserRepository()
-    advertiser_repo = InMemoryAdvertiserProfileRepository()
-    user_id = await _seed_user(user_repo)
-
-    service = AdvertiserRegistrationService(
-        user_repo=user_repo, advertiser_repo=advertiser_repo
-    )
-
-    with pytest.raises(AdvertiserRegistrationError):
-        await service.register_advertiser(
-            user_id=user_id, name=" ", phone="+7900", brand="B"
         )
 
 
@@ -109,9 +88,7 @@ async def test_register_advertiser_empty_phone() -> None:
     )
 
     with pytest.raises(AdvertiserRegistrationError):
-        await service.register_advertiser(
-            user_id=user_id, name="N", phone=" ", brand="B"
-        )
+        await service.register_advertiser(user_id=user_id, phone=" ", brand="B")
 
 
 @pytest.mark.asyncio
@@ -127,9 +104,7 @@ async def test_register_advertiser_empty_brand() -> None:
     )
 
     with pytest.raises(AdvertiserRegistrationError):
-        await service.register_advertiser(
-            user_id=user_id, name="N", phone="+7900", brand=" "
-        )
+        await service.register_advertiser(user_id=user_id, phone="+7900", brand=" ")
 
 
 @pytest.mark.asyncio
@@ -151,7 +126,6 @@ async def test_register_advertiser_records_metrics_when_enabled() -> None:
 
     await service.register_advertiser(
         user_id=user_id,
-        name="N",
         phone="@contact",
         brand="B",
     )
@@ -173,7 +147,6 @@ async def test_get_profile_returns_saved_profile() -> None:
 
     created = await service.register_advertiser(
         user_id=user_id,
-        name="N",
         phone="@contact",
         brand="B",
     )
@@ -196,7 +169,6 @@ async def test_register_advertiser_with_transaction_manager(fake_tm: object) -> 
     )
     profile = await service.register_advertiser(
         user_id=user_id,
-        name="TM",
         phone="@tm_contact",
         brand="Brand",
     )
