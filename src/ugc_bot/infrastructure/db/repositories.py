@@ -74,13 +74,13 @@ def _require_session(session: AsyncSession | None) -> AsyncSession:
     We keep `session: object | None` in repository ports to support in-memory
     repositories in unit tests. SQLAlchemy repositories must always operate
     with an explicit session provided by a higher-level transaction boundary
-    (e.g., UnitOfWork / transaction manager).
+    (e.g., transaction manager).
     """
 
     if session is None:
         raise RuntimeError(
             "Database session is required. Use a transaction boundary and pass "
-            "the session explicitly (e.g., via UnitOfWork)."
+            "the session explicitly (e.g., via transaction manager)."
         )
     return session
 

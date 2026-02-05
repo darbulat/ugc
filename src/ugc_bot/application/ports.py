@@ -464,8 +464,7 @@ class TransactionManager(Protocol):
     Services receive a TransactionManager that provides a session via
     async with tm.transaction() as session. The implementation (e.g.
     SessionTransactionManager in infrastructure) commits on success and
-    rolls back on exception. This is the primary contract used by the
-    application layer; UnitOfWork below is an alternative style.
+    rolls back on exception.
     """
 
     def transaction(self) -> AsyncContextManager[object]:
@@ -473,19 +472,3 @@ class TransactionManager(Protocol):
 
         Use: async with tm.transaction() as session: ...
         """
-
-
-class UnitOfWork(Protocol):
-    """Alternative unit-of-work contract (session, commit, rollback).
-
-    Not used by current services; they use TransactionManager with
-    transaction() context manager instead.
-    """
-
-    session: object
-
-    async def commit(self) -> None:
-        """Commit the active transaction."""
-
-    async def rollback(self) -> None:
-        """Rollback the active transaction."""

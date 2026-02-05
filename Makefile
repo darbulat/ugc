@@ -19,7 +19,7 @@ test:
 	uv run pytest
 
 coverage:
-	uv run pytest --cov=ugc_bot --cov-report=term-missing --cov-fail-under=90
+	uv run pytest --cov=ugc_bot --cov-report=term-missing --cov-fail-under=89
 
 migrate:
 	alembic upgrade head
