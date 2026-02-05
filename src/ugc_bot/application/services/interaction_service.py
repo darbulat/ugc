@@ -7,7 +7,10 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import InteractionError, InteractionNotFoundError
-from ugc_bot.application.feedback_utils import next_reminder_datetime
+from ugc_bot.application.feedback_utils import (
+    needs_feedback_reminder,
+    next_reminder_datetime,
+)
 from ugc_bot.application.ports import InteractionRepository, TransactionManager
 from ugc_bot.config import FeedbackConfig
 from ugc_bot.domain.entities import Interaction
@@ -66,6 +69,16 @@ class InteractionService:
                 blogger_id=blogger_id,
                 advertiser_id=advertiser_id,
                 session=session,
+            )
+
+    async def list_interactions_by_order(self, order_id: UUID) -> list[Interaction]:
+        """List interactions for order within a transaction boundary."""
+
+        if self.transaction_manager is None:
+            return list(await self.interaction_repo.list_by_order(order_id))
+        async with self.transaction_manager.transaction() as session:
+            return list(
+                await self.interaction_repo.list_by_order(order_id, session=session)
             )
 
     async def create_for_contacts_sent(
@@ -162,18 +175,29 @@ class InteractionService:
             outcome = InteractionStatus.NO_DEAL
 
         final_status = self._aggregate(feedback_text, interaction.from_blogger)
+        other_needs_reminder = needs_feedback_reminder(interaction.from_blogger)
+        if other_needs_reminder:
+            effective_status = InteractionStatus.PENDING
+            next_check = (
+                next_reminder_datetime(self.feedback_config)
+                if self.feedback_config
+                else datetime.now(timezone.utc)
+                + timedelta(minutes=self.postpone_delay_minutes)
+            )
+        else:
+            effective_status = final_status
+            next_check = None
+
         updated = Interaction(
             interaction_id=interaction.interaction_id,
             order_id=interaction.order_id,
             blogger_id=interaction.blogger_id,
             advertiser_id=interaction.advertiser_id,
-            status=final_status,
+            status=effective_status,
             from_advertiser=feedback_text,
             from_blogger=interaction.from_blogger,
             postpone_count=interaction.postpone_count,
-            next_check_at=None
-            if outcome != InteractionStatus.PENDING
-            else interaction.next_check_at,
+            next_check_at=next_check,
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )
@@ -209,18 +233,29 @@ class InteractionService:
             outcome = InteractionStatus.NO_DEAL
 
         final_status = self._aggregate(interaction.from_advertiser, feedback_text)
+        other_needs_reminder = needs_feedback_reminder(interaction.from_advertiser)
+        if other_needs_reminder:
+            effective_status = InteractionStatus.PENDING
+            next_check = (
+                next_reminder_datetime(self.feedback_config)
+                if self.feedback_config
+                else datetime.now(timezone.utc)
+                + timedelta(minutes=self.postpone_delay_minutes)
+            )
+        else:
+            effective_status = final_status
+            next_check = None
+
         updated = Interaction(
             interaction_id=interaction.interaction_id,
             order_id=interaction.order_id,
             blogger_id=interaction.blogger_id,
             advertiser_id=interaction.advertiser_id,
-            status=final_status,
+            status=effective_status,
             from_advertiser=interaction.from_advertiser,
             from_blogger=feedback_text,
             postpone_count=interaction.postpone_count,
-            next_check_at=None
-            if outcome != InteractionStatus.PENDING
-            else interaction.next_check_at,
+            next_check_at=next_check,
             created_at=interaction.created_at,
             updated_at=datetime.now(timezone.utc),
         )

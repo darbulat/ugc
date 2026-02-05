@@ -449,18 +449,27 @@ class InMemoryInteractionRepository(InteractionRepository):
 class InMemoryNpsRepository(NpsRepository):
     """In-memory NPS repository for tests."""
 
-    scores: Dict[UUID, List[int]] = field(default_factory=lambda: {})
+    scores: Dict[UUID, List[tuple[int, Optional[str]]]] = field(
+        default_factory=lambda: {}
+    )
 
     async def save(
         self,
-        interaction_id: UUID,
+        user_id: UUID,
         score: int,
+        comment: Optional[str] = None,
         session: object | None = None,
     ) -> None:
         """Save NPS score in memory."""
-        if interaction_id not in self.scores:
-            self.scores[interaction_id] = []
-        self.scores[interaction_id].append(score)
+        if user_id not in self.scores:
+            self.scores[user_id] = []
+        self.scores[user_id].append((score, comment))
+
+    async def exists_for_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if user already gave NPS."""
+        return user_id in self.scores and len(self.scores[user_id]) > 0
 
 
 @dataclass

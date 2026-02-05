@@ -221,7 +221,7 @@ class Container:
         )
 
     def build_bot_services(self) -> dict:
-        """Build all services for the bot dispatcher."""
+        """Build all services and repos for the bot dispatcher."""
         if not self._session_factory:
             raise ValueError("DATABASE_URL is required for bot services.")
         repos = self.build_repos()
@@ -317,4 +317,7 @@ class Container:
                 transaction_manager=self._transaction_manager,
             ),
             "issue_lock_manager": self.build_issue_lock_manager(),
+            "order_repo": repos["order_repo"],
+            "order_response_repo": repos["order_response_repo"],
+            "interaction_repo": repos["interaction_repo"],
         }

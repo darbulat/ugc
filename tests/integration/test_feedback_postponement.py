@@ -391,8 +391,10 @@ async def test_feedback_issue_status_blocks_user(
     # === Шаг 1: Один участник отвечает ISSUE ===
     await interaction_service.record_blogger_feedback(interaction.interaction_id, "⚠️")
 
-    # Проверяем, что взаимодействие в статусе ISSUE
+    # Проверяем, что взаимодействие остаётся PENDING (другая сторона ещё не ответила)
+    # и next_check_at установлен для повторного запроса
     updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
-    assert updated_interaction.status == InteractionStatus.ISSUE
+    assert updated_interaction.status == InteractionStatus.PENDING
+    assert updated_interaction.next_check_at is not None
 
     print("✅ Feedback ISSUE status test passed!")

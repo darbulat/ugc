@@ -29,8 +29,9 @@ from ugc_bot.application.services.blogger_registration_service import (
 )
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.interaction_service import InteractionService
-from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.application.services.nps_service import NpsService
+from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed_callback
 from ugc_bot.domain.enums import MessengerType
 
@@ -40,10 +41,11 @@ logger = logging.getLogger(__name__)
 
 
 class FeedbackStates(StatesGroup):
-    """FSM states for feedback follow-up (no_deal other text, issue description)."""
+    """FSM states for feedback follow-up (no_deal other text, issue, NPS comment)."""
 
     waiting_no_deal_other = State()
     waiting_issue_description = State()
+    waiting_nps_comment = State()
 
 
 _FEEDBACK_TEXT_MAP = {
@@ -122,19 +124,142 @@ def _issue_send_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def _nps_keyboard(interaction_id: UUID) -> InlineKeyboardMarkup:
-    """Build inline keyboard for NPS 1-5 (star emoji labels)."""
+_NPS_DONE_BUTTON = "Готово"
+_NPS_THANK = (
+    "Благодарю! 🙌\n" "Ваш отзыв сохранён, он помогает нам делать платформу UMC лучше🙏"
+)
+
+# 1. Вопрос оценки
+_NPS_QUESTION = "Оцените, пожалуйста, работу с платформой UMC по шкале от 1 до 5 ⭐"
+
+# 2. Ветка «5 ⭐» — всё супер
+_NPS_PROMPT_5_ADV = (
+    "Спасибо за оценку 5 ⭐ — очень рады, что вам было удобно работать с платформой UMC! 🙌\n"
+    "Если есть 1–2 идеи, как сделать сервис ещё удобнее (интерфейс, подбор креаторов, "
+    "уведомления и т. д.) — пожалуйста, напишите в ответ одним сообщением.\n"
+    "Мы внимательно читаем каждое предложение и используем его для развития платформы."
+)
+_NPS_PROMPT_5_BLOG = (
+    "Спасибо за оценку 5 ⭐ — очень рады, что вам комфортно работать с заказчиками "
+    "через платформу UMC! 🙌\n"
+    "Если есть 1–2 идеи, как улучшить сервис (личный кабинет, подбор заказов, условия, "
+    "поддержка) — напишите, пожалуйста, в ответ одним сообщением.\n"
+    "Мы внимательно читаем каждое предложение и используем его для развития платформы."
+)
+
+# 3. Ветка «2–4 ⭐» — в целом ок, но есть вопросы
+_NPS_PROMPT_34_ADV = (
+    "Спасибо за вашу оценку 🙏\n"
+    "Нам важно понять, что именно можно улучшить в работе с UMC.\n"
+    "Пожалуйста, в одном сообщении напишите:\n"
+    "– что не устроило или было неудобно (подбор креаторов, скорость, интерфейс, "
+    "коммуникация и т. д.)."
+)
+_NPS_PROMPT_34_BLOG = (
+    "Спасибо за вашу оценку 🙏\n"
+    "Нам важно понимать, что можно улучшить в работе с заказами через UMC.\n"
+    "Пожалуйста, в одном сообщении напишите:\n"
+    "– что было сложно или неудобно (условия, общение с заказчиком, интерфейс, "
+    "уведомления и т. д.)."
+)
+
+# 4. Ветка «1 ⭐» — всё плохо, нужен разбор
+_NPS_PROMPT_1_ADV = (
+    "Спасибо, что честно поставили 1 ⭐ — нам правда важно это знать 🙏\n"
+    "Нам очень жаль, что опыт работы с платформой UMC оказался негативным.\n"
+    "Пожалуйста, опишите в одном сообщении, что именно пошло не так:\n"
+    "– проблемы с креатором;\n"
+    "– сложности с платформой;\n"
+    "– ошибки, задержки, недопонимание и т. д.\n"
+    "Мы внимательно разберём ситуацию."
+)
+_NPS_PROMPT_1_BLOG = (
+    "Спасибо, что честно поставили 1 ⭐ — нам правда важно это знать 🙏\n"
+    "Нам очень жаль, что опыт работы через UMC оказался негативным.\n"
+    "Пожалуйста, опишите в одном сообщении, что именно произошло:\n"
+    "– проблемы с заказчиком;\n"
+    "– сложность условий;\n"
+    "– технические проблемы платформы;\n"
+    "– любые другие моменты.\n"
+    "Мы внимательно разберём ситуацию."
+)
+
+
+def _get_nps_comment_prompt(score: int, kind: str) -> str:
+    """Return branch-specific prompt for NPS follow-up (adv/blog)."""
+    if score == 5:
+        return _NPS_PROMPT_5_ADV if kind == "adv" else _NPS_PROMPT_5_BLOG
+    if score in (2, 3, 4):
+        return _NPS_PROMPT_34_ADV if kind == "adv" else _NPS_PROMPT_34_BLOG
+    return _NPS_PROMPT_1_ADV if kind == "adv" else _NPS_PROMPT_1_BLOG
+
+
+def _nps_keyboard(user_id: UUID, kind: str) -> InlineKeyboardMarkup:
+    """Build inline keyboard for NPS 1-5 (star labels)."""
+    id_hex = _uuid_hex(user_id)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"⭐️ {i}",
-                    callback_data=f"nps:{interaction_id}:{i}",
+                    text=f"{i} ⭐",
+                    callback_data=f"nps:{id_hex}:{i}:{kind}",
                 )
                 for i in range(1, 6)
             ]
         ]
     )
+
+
+def _nps_comment_keyboard() -> ReplyKeyboardMarkup:
+    """Reply keyboard with 'Готово' for optional NPS comment."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=_NPS_DONE_BUTTON)]],
+        resize_keyboard=True,
+    )
+
+
+async def _advertiser_has_feedback_for_bloggers_needed(
+    interaction: "Interaction",
+    interaction_service: InteractionService,
+    order_service: OrderService,
+) -> bool:
+    """Check if advertiser has given feedback for order.bloggers_needed interactions."""
+    order = await order_service.get_order(interaction.order_id)
+    if order is None:
+        return False
+    interactions = await interaction_service.list_interactions_by_order(
+        interaction.order_id
+    )
+    count_with_feedback = sum(1 for i in interactions if i.from_advertiser is not None)
+    return count_with_feedback >= order.bloggers_needed
+
+
+async def _maybe_send_nps(
+    kind: str,
+    interaction: "Interaction",
+    chat_id: int,
+    bot,
+    nps_service: NpsService,
+    interaction_service: InteractionService,
+    order_service: OrderService,
+) -> None:
+    """Send NPS request if applicable: blogger after first feedback, advertiser after bloggers_needed."""
+    if kind == "blog":
+        if await nps_service.exists_for_user(interaction.blogger_id):
+            return
+        user_id = interaction.blogger_id
+    else:
+        if not await _advertiser_has_feedback_for_bloggers_needed(
+            interaction, interaction_service, order_service
+        ):
+            return
+        user_id = interaction.advertiser_id
+    if bot:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=_NPS_QUESTION,
+            reply_markup=_nps_keyboard(user_id, kind),
+        )
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("fb_r:"))
@@ -144,6 +269,8 @@ async def handle_feedback_reason(
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
     blogger_registration_service: BloggerRegistrationService,
+    nps_service: NpsService,
+    order_service: OrderService,
 ) -> None:
     """Handle no_deal reason selection: record feedback or ask for text (Другое)."""
 
@@ -217,6 +344,16 @@ async def handle_feedback_reason(
     await callback.answer("Спасибо, ответ сохранен.")
     if callback.message:
         await callback.message.answer("Спасибо за обратную связь.")
+        if callback.bot:
+            await _maybe_send_nps(
+                kind,
+                interaction,
+                callback.message.chat.id,
+                callback.bot,
+                nps_service,
+                interaction_service,
+                order_service,
+            )
 
 
 @router.message(FeedbackStates.waiting_no_deal_other)
@@ -225,6 +362,8 @@ async def handle_no_deal_other_text(
     state: FSMContext,
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
+    nps_service: NpsService,
+    order_service: OrderService,
 ) -> None:
     """Handle free-text reason for no_deal 'Другое': record feedback and clear state."""
 
@@ -276,6 +415,16 @@ async def handle_no_deal_other_text(
     else:
         await interaction_service.record_blogger_feedback(interaction_id, feedback_text)
     await message.answer("Спасибо за обратную связь.")
+    if message.bot:
+        await _maybe_send_nps(
+            kind,
+            interaction,
+            message.chat.id,
+            message.bot,
+            nps_service,
+            interaction_service,
+            order_service,
+        )
 
 
 @router.message(FeedbackStates.waiting_issue_description)
@@ -286,6 +435,8 @@ async def handle_issue_description(
     interaction_service: InteractionService,
     complaint_service: ComplaintService,
     issue_lock_manager: "IssueDescriptionLockManager",
+    nps_service: NpsService,
+    order_service: OrderService,
 ) -> None:
     """Collect issue description and photos; complaint created on 'Отправить' button."""
 
@@ -341,6 +492,8 @@ async def handle_issue_description(
             user_role_service,
             interaction_service,
             complaint_service,
+            nps_service,
+            order_service,
         )
         return
 
@@ -418,6 +571,8 @@ async def _create_complaint_from_issue(
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
     complaint_service: ComplaintService,
+    nps_service: NpsService,
+    order_service: OrderService,
 ) -> bool:
     """Create complaint from collected issue data. Returns True on success."""
 
@@ -482,27 +637,40 @@ async def _create_complaint_from_issue(
         "При необходимости нажмите «Поддержка» в меню.",
         reply_markup=ReplyKeyboardRemove(),
     )
+    if message.bot:
+        await _maybe_send_nps(
+            kind,
+            interaction,
+            message.chat.id,
+            message.bot,
+            nps_service,
+            interaction_service,
+            order_service,
+        )
     return True
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("nps:"))
 async def handle_nps(
     callback: CallbackQuery,
+    state: FSMContext,
     user_role_service: UserRoleService,
-    interaction_service: InteractionService,
     nps_service: NpsService,
 ) -> None:
-    """Handle NPS score selection (1-5) after advertiser ok."""
+    """Handle NPS score selection (1-5); show branch-specific prompt, transition to comment."""
 
     if not callback.data:
         return
     parts = callback.data.split(":")
-    if len(parts) != 3:
+    if len(parts) not in (3, 4):
         await callback.answer("Неверный формат.")
         return
-    _, interaction_id_raw, score_raw = parts
+    _, user_id_raw, score_raw = parts[:3]
+    kind = parts[3] if len(parts) == 4 else "blog"
+    if kind not in ("adv", "blog"):
+        kind = "blog"
     try:
-        interaction_id = UUID(interaction_id_raw)
+        user_id = _parse_uuid_hex(user_id_raw)
         score = int(score_raw)
     except (ValueError, TypeError):
         await callback.answer("Неверный формат.")
@@ -520,21 +688,72 @@ async def handle_nps(
     )
     if user is None:
         return
-
-    interaction = await interaction_service.get_interaction(interaction_id)
-    if interaction is None:
-        await callback.answer("Взаимодействие не найдено.")
-        return
-    if interaction.advertiser_id != user.user_id:
+    if user.user_id != user_id:
         await callback.answer("Недостаточно прав.")
         return
 
-    await nps_service.save(interaction_id, score)
+    await state.set_state(FeedbackStates.waiting_nps_comment)
+    await state.update_data(
+        nps_user_id=str(user_id),
+        nps_score=score,
+        nps_kind=kind,
+    )
+    await _remove_inline_keyboard(callback)
     await callback.answer("Спасибо за оценку!")
+    prompt = _get_nps_comment_prompt(score, kind)
     if callback.message:
-        edit_reply_markup = getattr(callback.message, "edit_reply_markup", None)
-        if callable(edit_reply_markup):
-            await edit_reply_markup(reply_markup=None)
+        await callback.message.answer(
+            prompt,
+            reply_markup=_nps_comment_keyboard(),
+        )
+
+
+@router.message(FeedbackStates.waiting_nps_comment)
+async def handle_nps_comment(
+    message: Message,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    nps_service: NpsService,
+) -> None:
+    """Handle optional NPS comment or 'Готово'; save and thank user."""
+
+    if message.from_user is None:
+        return
+    text = (message.text or "").strip()
+    if text == _NPS_DONE_BUTTON:
+        text = ""
+
+    user = await user_role_service.get_user(
+        external_id=str(message.from_user.id),
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    await state.clear()
+    user_id_raw = data.get("nps_user_id")
+    score = data.get("nps_score")
+    if not user_id_raw or score is None:
+        await message.answer("Сессия истекла. Ответьте на вопрос оценки снова.")
+        return
+
+    try:
+        user_id = UUID(user_id_raw)
+    except ValueError:
+        await message.answer("Ошибка. Попробуйте снова.")
+        return
+
+    if user.user_id != user_id:
+        await message.answer("Недостаточно прав.")
+        return
+
+    await nps_service.save(user_id, score, comment=text or None)
+    await message.answer(
+        _NPS_THANK,
+        reply_markup=ReplyKeyboardRemove(),
+    )
 
 
 @router.callback_query(
@@ -546,6 +765,7 @@ async def handle_feedback(
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
     nps_service: NpsService,
+    order_service: OrderService,
 ) -> None:
     """Handle feedback callbacks from advertiser or blogger."""
 
@@ -671,6 +891,16 @@ async def handle_feedback(
                 )
                 if callback.message:
                     await callback.message.answer("Спасибо за обратную связь.")
+                    if callback.bot:
+                        await _maybe_send_nps(
+                            kind,
+                            updated_interaction,
+                            callback.message.chat.id,
+                            callback.bot,
+                            nps_service,
+                            interaction_service,
+                            order_service,
+                        )
             else:
                 await callback.answer(
                     f"Проверка перенесена на 72 часа. "
@@ -688,6 +918,16 @@ async def handle_feedback(
                             "ℹ️ Напоминаем: креатор не видит ваши контакты и не может "
                             "написать первым. Связь всегда начинается с вашей стороны."
                         )
+                    if callback.bot:
+                        await _maybe_send_nps(
+                            kind,
+                            updated_interaction,
+                            callback.message.chat.id,
+                            callback.bot,
+                            nps_service,
+                            interaction_service,
+                            order_service,
+                        )
         elif status_raw == "ok":
             await _remove_inline_keyboard(callback)
             await callback.answer("Спасибо, ответ сохранен.")
@@ -702,13 +942,31 @@ async def handle_feedback(
                         "Спасибо за обратную связь 👍 "
                         "Желаем удачной работы с креатором."
                     )
-                    await callback.message.answer(
-                        "Оцените, пожалуйста, удобство работы с платформой UMC:",
-                        reply_markup=_nps_keyboard(interaction_id),
+                if callback.bot:
+                    await _maybe_send_nps(
+                        kind,
+                        updated_interaction,
+                        callback.message.chat.id,
+                        callback.bot,
+                        nps_service,
+                        interaction_service,
+                        order_service,
                     )
         else:
             await _remove_inline_keyboard(callback)
             await callback.answer("Спасибо, ответ сохранен.")
+            if callback.message:
+                await callback.message.answer("Спасибо за обратную связь.")
+                if callback.bot:
+                    await _maybe_send_nps(
+                        kind,
+                        updated_interaction,
+                        callback.message.chat.id,
+                        callback.bot,
+                        nps_service,
+                        interaction_service,
+                        order_service,
+                    )
     except Exception:
         await callback.answer("Произошла ошибка. Попробуйте позже.")
         return

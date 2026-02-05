@@ -9,7 +9,10 @@ from uuid import UUID
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from ugc_bot.application.feedback_utils import next_reminder_datetime
+from ugc_bot.application.feedback_utils import (
+    needs_feedback_reminder,
+    next_reminder_datetime,
+)
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import send_with_retry
@@ -79,7 +82,13 @@ async def _iter_due_interactions(
     async def _run(session: object | None):
         return await interaction_repo.list_due_for_feedback(cutoff, session=session)
 
-    return await with_optional_tx(transaction_manager, _run)
+    interactions = await with_optional_tx(transaction_manager, _run)
+    interactions_list = list(interactions)
+    logger.debug(
+        "Found interactions due for feedback",
+        extra={"cutoff": cutoff.isoformat(), "count": len(interactions_list)},
+    )
+    return interactions_list
 
 
 async def _send_feedback_requests(
@@ -91,10 +100,27 @@ async def _send_feedback_requests(
     order: Optional[Order],
     feedback_config: FeedbackConfig,
 ) -> None:
-    """Send feedback requests to both sides for a single interaction (TZ texts + links)."""
+    """Send feedback requests to both sides for a single interaction."""
 
+    logger.debug(
+        "Processing interaction for feedback",
+        extra={
+            "interaction_id": str(interaction.interaction_id),
+            "order_id": str(interaction.order_id),
+        },
+    )
     blogger = await user_role_service.get_user_by_id(interaction.blogger_id)
     advertiser = await user_role_service.get_user_by_id(interaction.advertiser_id)
+    if not blogger:
+        logger.debug(
+            "Skipping blogger feedback: user not found",
+            extra={"blogger_id": str(interaction.blogger_id)},
+        )
+    if not advertiser:
+        logger.debug(
+            "Skipping advertiser feedback: user not found",
+            extra={"advertiser_id": str(interaction.advertiser_id)},
+        )
     blogger_profile = (
         await profile_service.get_blogger_profile(interaction.blogger_id)
         if profile_service
@@ -104,8 +130,7 @@ async def _send_feedback_requests(
     sent_to_adv = False
     sent_to_blog = False
 
-    # Send to advertiser if not yet responded
-    if advertiser and interaction.from_advertiser is None:
+    if advertiser and needs_feedback_reminder(interaction.from_advertiser):
         if advertiser.external_id.isdigit():
             creator_link = ""
             if blogger_profile and blogger_profile.instagram_url:
@@ -130,36 +155,59 @@ async def _send_feedback_requests(
                 extra={"interaction_id": str(interaction.interaction_id)},
             )
             sent_to_adv = True
+            logger.info(
+                "Sent interaction feedback request to advertiser",
+                extra={
+                    "interaction_id": str(interaction.interaction_id),
+                    "advertiser_id": str(advertiser.user_id),
+                },
+            )
 
-    # Send to blogger if not yet responded
-    if blogger and interaction.from_blogger is None:
-        if blogger.external_id.isdigit():
-            order_link_part = "по заказу?"
-            if order and order.product_link:
-                url = order.product_link.strip()
-                if url and not url.startswith("http"):
-                    url = "https://" + url
-                order_link_part = f"[по заказу]({url})?"
-            text = (
-                "Мы хотим убедиться, что всё прошло корректно 🙌\n"
-                f"Удалось ли вам связаться с заказчиком {order_link_part}"
-            )
-            await send_with_retry(
-                bot,
-                chat_id=int(blogger.external_id),
-                text=text,
-                parse_mode="Markdown",
-                reply_markup=_feedback_keyboard("blog", interaction.interaction_id),
-                retries=_send_retries,
-                delay_seconds=_send_retry_delay_seconds,
-                logger=logger,
-                extra={"interaction_id": str(interaction.interaction_id)},
-            )
-            sent_to_blog = True
+    if (
+        blogger
+        and needs_feedback_reminder(interaction.from_blogger)
+        and blogger.external_id.isdigit()
+    ):
+        order_link_part = "по заказу?"
+        if order and order.product_link:
+            url = order.product_link.strip()
+            if url and not url.startswith("http"):
+                url = "https://" + url
+            order_link_part = f"[по заказу]({url})?"
+        text = (
+            "Мы хотим убедиться, что всё прошло корректно 🙌\n"
+            f"Удалось ли вам связаться с заказчиком {order_link_part}"
+        )
+        await send_with_retry(
+            bot,
+            chat_id=int(blogger.external_id),
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=_feedback_keyboard("blog", interaction.interaction_id),
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={"interaction_id": str(interaction.interaction_id)},
+        )
+        sent_to_blog = True
+        logger.info(
+            "Sent interaction feedback request to blogger",
+            extra={
+                "interaction_id": str(interaction.interaction_id),
+                "blogger_id": str(interaction.blogger_id),
+            },
+        )
 
     if sent_to_adv or sent_to_blog:
         await interaction_service.schedule_next_reminder(
             interaction.interaction_id, next_reminder
+        )
+        logger.debug(
+            "Scheduled next reminder for interaction",
+            extra={
+                "interaction_id": str(interaction.interaction_id),
+                "next_reminder": next_reminder.isoformat() if next_reminder else None,
+            },
         )
 
 
@@ -176,9 +224,17 @@ async def run_once(
 ) -> None:
     """Run a single feedback dispatch cycle."""
 
-    for interaction in await _iter_due_interactions(
+    logger.debug(
+        "Starting feedback dispatch cycle",
+        extra={"cutoff": cutoff.isoformat()},
+    )
+
+    interactions = await _iter_due_interactions(
         interaction_repo, cutoff, transaction_manager
-    ):
+    )
+    interaction_count = 0
+    for interaction in interactions:
+        interaction_count += 1
         try:
             async with transaction_manager.transaction() as session:
                 order = await order_repo.get_by_id(
@@ -201,6 +257,13 @@ async def run_once(
                     "error": str(exc),
                 },
             )
+    logger.info(
+        "Feedback cycle completed",
+        extra={
+            "interactions_processed": interaction_count,
+            "cutoff": cutoff.isoformat(),
+        },
+    )
 
 
 async def run_loop(
@@ -218,9 +281,12 @@ async def run_loop(
     """Run periodic feedback dispatch."""
 
     iterations = 0
+    logger.info("Feedback scheduler loop started")
     try:
         while True:
+            iterations += 1
             cutoff = datetime.now(timezone.utc)
+            logger.debug("Feedback loop iteration", extra={"iteration": iterations})
             await run_once(
                 bot,
                 interaction_repo,
@@ -232,11 +298,14 @@ async def run_loop(
                 cutoff,
                 transaction_manager,
             )
-            iterations += 1
             if max_iterations is not None and iterations >= max_iterations:
                 return
             await asyncio.sleep(interval_seconds)
     finally:
+        logger.info(
+            "Feedback scheduler loop stopped",
+            extra={"total_iterations": iterations},
+        )
         session = getattr(bot, "session", None)
         if session is not None:
             await session.close()
@@ -255,6 +324,13 @@ def main() -> None:
         logger.info("Feedback scheduler disabled by config")
         return
 
+    logger.info(
+        "Initializing feedback scheduler",
+        extra={
+            "feedback_delay_minutes": config.feedback.feedback_delay_minutes,
+            "poll_interval_seconds": config.feedback.feedback_poll_interval_seconds,
+        },
+    )
     session_factory = create_session_factory(
         config.db.database_url,
         pool_size=config.db.pool_size,

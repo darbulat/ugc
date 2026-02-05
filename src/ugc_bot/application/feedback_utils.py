@@ -6,6 +6,21 @@ from zoneinfo import ZoneInfo
 from ugc_bot.config import FeedbackConfig
 
 
+def needs_feedback_reminder(feedback_text: str | None) -> bool:
+    """Return True if user should receive feedback request (not yet given final response).
+
+    Users who chose postpone ("⏳ Ещё не связался") should receive reminders again.
+    """
+    if feedback_text is None:
+        return True
+    lower = feedback_text.lower()
+    return (
+        "ещё не связался" in lower
+        or "еще не связался" in lower
+        or "⏳" in feedback_text
+    )
+
+
 def next_reminder_datetime(feedback_config: FeedbackConfig) -> datetime:
     """Return next reminder time: tomorrow at configured hour in timezone (UTC).
 

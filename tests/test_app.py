@@ -10,6 +10,7 @@ from aiogram import Router
 from ugc_bot.app import (
     _handle_health_connection,
     _json_dumps,
+    _run_health_server,
     build_dispatcher,
     create_storage,
     run_bot,
@@ -348,3 +349,28 @@ async def test_health_server_handles_oserror_when_client_closes_early() -> None:
         except OSError:
             pass
     # Handler may hit OSError in finally when client already closed
+
+
+@pytest.mark.asyncio
+async def test_run_health_server_starts_and_responds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_run_health_server starts server and responds to health checks."""
+    monkeypatch.setattr("ugc_bot.app.BOT_HEALTH_PORT", 19998)
+    task = asyncio.create_task(_run_health_server())
+    await asyncio.sleep(0.05)
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", 19998)
+        writer.write(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        await writer.drain()
+        data = await reader.read(512)
+        writer.close()
+        await writer.wait_closed()
+        assert b"200 OK" in data
+        assert b'{"status":"ok"}' in data
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

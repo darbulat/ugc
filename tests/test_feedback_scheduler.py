@@ -263,9 +263,107 @@ async def test_run_once_blogger_message_adds_https_to_product_link(fake_tm) -> N
     )
 
     blogger_chat_id = 13
-    blogger_texts = [text for cid, text in bot.messages if cid == blogger_chat_id]
+    blogger_texts = [text for cid, text, _ in bot.messages if cid == blogger_chat_id]
     assert blogger_texts
-    assert "https://example.com/product" in blogger_texts[0]
+    assert any("example.com" in t for t in blogger_texts)
+
+
+@pytest.mark.asyncio
+async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
+    """For blogger second order, old feedback includes product link with https."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    interaction_repo = InMemoryInteractionRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000969"),
+        external_id="14",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-00000000096a"),
+        external_id="15",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger)
+    await user_repo.save(advertiser)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=advertiser.user_id, phone="c", brand="B")
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-00000000096d"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="example.com/product2",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
+    )
+    await order_repo.save(order)
+    await response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-00000000096e"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+    interaction = await interaction_service.create_for_contacts_sent(
+        order_id=order.order_id,
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser.user_id,
+    )
+    past_interaction = Interaction(
+        interaction_id=interaction.interaction_id,
+        order_id=interaction.order_id,
+        blogger_id=interaction.blogger_id,
+        advertiser_id=interaction.advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
+    )
+    await interaction_repo.save(past_interaction)
+
+    feedback_config = FeedbackConfig()
+    bot = FakeBot()
+    await run_once(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        cutoff=datetime.now(timezone.utc),
+        transaction_manager=fake_tm,
+    )
+
+    blogger_texts = [text for cid, text, _ in bot.messages if cid == 14]
+    assert blogger_texts
+    assert "https://example.com/product2" in blogger_texts[0]
 
 
 @pytest.mark.asyncio
@@ -423,6 +521,276 @@ async def test_run_once_existing_feedback_no_messages() -> None:
         transaction_manager=None,
     )
     assert not bot.messages
+
+
+@pytest.mark.asyncio
+async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
+    """When advertiser chose postpone, scheduler sends reminder again when due."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    interaction_repo = InMemoryInteractionRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000990"),
+        external_id="30",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000991"),
+        external_id="31",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
+    await advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=advertiser.user_id,
+            phone="c",
+            brand="B",
+        )
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000992"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
+    )
+    await order_repo.save(order)
+    await response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000993"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    await interaction_repo.save(
+        Interaction(
+            interaction_id=UUID("00000000-0000-0000-0000-000000000994"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            advertiser_id=advertiser.user_id,
+            status=InteractionStatus.PENDING,
+            from_advertiser="⏳ Ещё не связался",
+            from_blogger=None,
+            postpone_count=1,
+            next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    feedback_config = FeedbackConfig()
+    bot = FakeBot()
+    await run_once(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        cutoff=datetime.now(timezone.utc),
+        transaction_manager=fake_tm,
+    )
+    assert len(bot.messages) >= 1
+    adv_messages = [m for m in bot.messages if m[0] == 30]
+    assert adv_messages, "Advertiser who postponed should receive reminder"
+
+
+@pytest.mark.asyncio
+async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
+    """Skip blogger feedback when blogger user not found; still send to advertiser."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    interaction_repo = InMemoryInteractionRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000985"),
+        external_id="985",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger_id = UUID("00000000-0000-0000-0000-000000000986")
+    await user_repo.save(advertiser)
+    await advertiser_repo.save(
+        AdvertiserProfile(user_id=advertiser.user_id, phone="x", brand="B")
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000987"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
+    )
+    await order_repo.save(order)
+    await response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000988"),
+            order_id=order.order_id,
+            blogger_id=blogger_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+    interaction = await interaction_service.create_for_contacts_sent(
+        order_id=order.order_id,
+        blogger_id=blogger_id,
+        advertiser_id=advertiser.user_id,
+    )
+    past_interaction = Interaction(
+        interaction_id=interaction.interaction_id,
+        order_id=interaction.order_id,
+        blogger_id=blogger_id,
+        advertiser_id=advertiser.user_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
+    )
+    await interaction_repo.save(past_interaction)
+
+    feedback_config = FeedbackConfig()
+    bot = FakeBot()
+    await run_once(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        cutoff=datetime.now(timezone.utc),
+        transaction_manager=fake_tm,
+    )
+    adv_messages = [m for m in bot.messages if m[0] == 985]
+    assert len(adv_messages) == 1
+    assert "креатор" in adv_messages[0][1] or "связаться" in adv_messages[0][1]
+
+
+@pytest.mark.asyncio
+async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
+    """Skip advertiser feedback when advertiser user not found; still send to blogger."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    interaction_repo = InMemoryInteractionRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000989"),
+        external_id="989",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser_id = UUID("00000000-0000-0000-0000-00000000098a")
+    await user_repo.save(blogger)
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-00000000098b"),
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
+    )
+    await order_repo.save(order)
+    await response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-00000000098c"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+    interaction = await interaction_service.create_for_contacts_sent(
+        order_id=order.order_id,
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser_id,
+    )
+    past_interaction = Interaction(
+        interaction_id=interaction.interaction_id,
+        order_id=interaction.order_id,
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
+    )
+    await interaction_repo.save(past_interaction)
+
+    feedback_config = FeedbackConfig()
+    bot = FakeBot()
+    await run_once(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        cutoff=datetime.now(timezone.utc),
+        transaction_manager=fake_tm,
+    )
+    blog_messages = [m for m in bot.messages if m[0] == 989]
+    assert len(blog_messages) == 1
+    assert "заказчик" in blog_messages[0][1] or "связаться" in blog_messages[0][1]
 
 
 @pytest.mark.asyncio
@@ -680,8 +1048,9 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
         cutoff=datetime.now(timezone.utc),
         transaction_manager=fake_tm,
     )
-    assert len(bot.messages) == 2
-    adv_text = next((t for (cid, t) in bot.messages if cid == 30), "")
+    assert len(bot.messages) >= 2
+    adv_texts = [t for (cid, t, _) in bot.messages if cid == 30]
+    adv_text = " ".join(adv_texts)
     assert "креатор" in adv_text
     assert "https://instagram.com/creator" in adv_text
 

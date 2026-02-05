@@ -389,7 +389,7 @@ class FsmDraftModel(Base):
 
 
 class NpsResponseModel(Base):
-    """NPS response ORM model (advertiser rating after ok feedback)."""
+    """NPS response ORM model (user rating after feedback)."""
 
     __tablename__ = "nps_responses"
 
@@ -398,13 +398,14 @@ class NpsResponseModel(Base):
         primary_key=True,
         server_default=text("uuid_generate_v4()"),
     )
-    interaction_id: Mapped[UUID] = mapped_column(
+    user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("interactions.interaction_id", ondelete="CASCADE"),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     score: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

@@ -666,18 +666,34 @@ class SqlAlchemyNpsRepository(NpsRepository):
 
     async def save(
         self,
-        interaction_id: UUID,
+        user_id: UUID,
         score: int,
+        comment: Optional[str] = None,
         session: object | None = None,
     ) -> None:
-        """Save NPS score for an interaction."""
+        """Save NPS score for a user."""
 
         db_session = _get_async_session(session)
         model = NpsResponseModel(
-            interaction_id=interaction_id,
+            user_id=user_id,
             score=score,
+            comment=comment,
         )
         db_session.add(model)
+
+    async def exists_for_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if user already gave NPS."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(NpsResponseModel)
+            .where(NpsResponseModel.user_id == user_id)
+        )
+        count = exec_result.scalar_one()
+        return int(count) > 0
 
 
 @dataclass(slots=True)

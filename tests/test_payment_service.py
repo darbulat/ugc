@@ -333,6 +333,46 @@ async def test_get_order_with_transaction_manager(
 
 
 @pytest.mark.asyncio
+async def test_activate_order(
+    fake_tm: object, user_repo, advertiser_repo, order_repo, payment_repo, outbox_repo
+) -> None:
+    """_activate_order saves order, broadcasts, and publishes activation."""
+
+    user_id = await create_test_advertiser(user_repo, advertiser_repo)
+    order = await create_test_order(order_repo, user_id)
+    service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+    )
+    await service._activate_order(order)
+    updated = await order_repo.get_by_id(order.order_id)
+    assert updated is not None
+    assert updated.status == OrderStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_get_order_without_transaction_manager(
+    user_repo, advertiser_repo, order_repo, payment_repo, outbox_repo
+) -> None:
+    """get_order uses order_repo directly when transaction_manager is None."""
+
+    user_id = await create_test_advertiser(user_repo, advertiser_repo)
+    order = await create_test_order(order_repo, user_id)
+    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+    service = PaymentService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+        payment_repo=payment_repo,
+        broadcaster=NoopOfferBroadcaster(),
+        outbox_publisher=outbox_publisher,
+        transaction_manager=None,
+    )
+    found = await service.get_order(order.order_id)
+    assert found is not None
+    assert found.order_id == order.order_id
+
+
+@pytest.mark.asyncio
 async def test_confirm_payment_order_not_new(
     fake_tm: object, user_repo, advertiser_repo, order_repo, payment_repo, outbox_repo
 ) -> None:

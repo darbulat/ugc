@@ -82,6 +82,59 @@ def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     assert response.json()["status"] in ("ok", "degraded")
 
 
+def test_create_admin_app_raises_when_admin_secret_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_admin_app raises ValueError when ADMIN_SECRET is empty."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "password")
+    monkeypatch.setenv("ADMIN_SECRET", "")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    with pytest.raises(ValueError, match="ADMIN_SECRET is required"):
+        create_admin_app()
+
+
+def test_create_admin_app_raises_when_admin_password_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_admin_app raises ValueError when ADMIN_PASSWORD is empty."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "")
+    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    with pytest.raises(ValueError, match="ADMIN_PASSWORD is required"):
+        create_admin_app()
+
+
+def test_admin_health_returns_degraded_when_db_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Health endpoint returns degraded when database connection fails."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "password")
+    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    mock_engine = MagicMock()
+    mock_conn = MagicMock()
+    mock_conn.__enter__ = MagicMock(side_effect=Exception("db fail"))
+    mock_conn.__exit__ = MagicMock(return_value=None)
+    mock_engine.connect.return_value = mock_conn
+
+    with patch.object(Container, "get_admin_engine", return_value=mock_engine):
+        app = create_admin_app()
+    client = TestClient(app)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["db"] is False
+
+
 def test_get_services() -> None:
     """Test _get_services function creates services correctly."""
 
@@ -145,6 +198,58 @@ async def test_user_admin_update_model_status_change() -> None:
         await admin.update_model(request, str(user_id), data)
 
     assert mock_session.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_user_admin_update_model_exception_in_logging_suppressed() -> None:
+    """When logging status change raises, update still succeeds (except pass)."""
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    old_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    new_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(side_effect=[old_user, new_user])
+
+    mock_user_service = MagicMock()
+    mock_user_service.get_user_by_id = AsyncMock(
+        side_effect=RuntimeError("service fail")
+    )
+
+    mock_container = MagicMock()
+
+    admin = UserAdmin()
+    admin._container = mock_container  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"status": UserStatus.BLOCKED}
+
+    with patch.object(UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock):
+        with patch(
+            "ugc_bot.admin.app._get_services",
+            return_value=(mock_user_service, None, None),
+        ):
+            result = await admin.update_model(request, str(user_id), data)
+
+    assert result is not None
+    mock_user_service.get_user_by_id.assert_called_once_with(user_id)
 
 
 @pytest.mark.asyncio

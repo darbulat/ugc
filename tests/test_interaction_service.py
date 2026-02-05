@@ -75,7 +75,8 @@ async def test_record_advertiser_feedback() -> None:
         interaction.interaction_id, "✅ Сделка состоялась"
     )
     assert updated.from_advertiser == "✅ Сделка состоялась"
-    assert updated.status == InteractionStatus.OK
+    assert updated.status == InteractionStatus.PENDING
+    assert updated.next_check_at is not None
 
 
 @pytest.mark.asyncio
@@ -93,7 +94,8 @@ async def test_record_blogger_feedback_issue() -> None:
         interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
     assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
-    assert updated.status == InteractionStatus.ISSUE
+    assert updated.status == InteractionStatus.PENDING
+    assert updated.next_check_at is not None
 
 
 @pytest.mark.asyncio
@@ -542,7 +544,8 @@ async def test_record_feedback_issue_with_metrics() -> None:
     updated = await service.record_advertiser_feedback(
         interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
-    assert updated.status == InteractionStatus.ISSUE
+    assert updated.status == InteractionStatus.PENDING
+    assert updated.next_check_at is not None
     assert updated.from_advertiser == "⚠️ Проблема / подозрение на мошенничество"
 
 
@@ -564,8 +567,74 @@ async def test_record_blogger_feedback_issue_with_metrics() -> None:
     updated = await service.record_blogger_feedback(
         interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
-    assert updated.status == InteractionStatus.ISSUE
+    assert updated.status == InteractionStatus.PENDING
+    assert updated.next_check_at is not None
     assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
+
+
+@pytest.mark.asyncio
+async def test_record_one_side_keeps_next_check_for_other() -> None:
+    """When one side responds with ok/no_deal, keep status=PENDING and next_check_at for other side."""
+
+    from ugc_bot.config import FeedbackConfig
+
+    repo = InMemoryInteractionRepository()
+    feedback_config = FeedbackConfig(
+        feedback_reminder_hour=10,
+        feedback_reminder_minute=0,
+        feedback_reminder_timezone="UTC",
+    )
+    service = InteractionService(
+        interaction_repo=repo,
+        feedback_config=feedback_config,
+    )
+    interaction = await service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000001151"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001152"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001153"),
+    )
+    assert interaction.from_blogger is None
+
+    updated = await service.record_advertiser_feedback(
+        interaction.interaction_id, "✅ Всё прошло нормально"
+    )
+    assert updated.status == InteractionStatus.PENDING
+    assert updated.next_check_at is not None
+    assert updated.from_advertiser == "✅ Всё прошло нормально"
+
+
+@pytest.mark.asyncio
+async def test_record_both_sides_sets_next_check_none() -> None:
+    """When both sides have responded, next_check_at is None and status from aggregate."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+    interaction = await service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000001161"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001162"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001163"),
+    )
+    await repo.save(
+        Interaction(
+            interaction_id=interaction.interaction_id,
+            order_id=interaction.order_id,
+            blogger_id=interaction.blogger_id,
+            advertiser_id=interaction.advertiser_id,
+            status=interaction.status,
+            from_advertiser=None,
+            from_blogger="✅ Всё прошло нормально",
+            postpone_count=interaction.postpone_count,
+            next_check_at=interaction.next_check_at,
+            created_at=interaction.created_at,
+            updated_at=interaction.updated_at,
+        )
+    )
+
+    updated = await service.record_advertiser_feedback(
+        interaction.interaction_id, "✅ Всё прошло нормально"
+    )
+    assert updated.status == InteractionStatus.OK
+    assert updated.next_check_at is None
 
 
 @pytest.mark.asyncio

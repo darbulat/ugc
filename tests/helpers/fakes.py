@@ -42,8 +42,8 @@ class FakeBot:
     async def send_message(
         self, chat_id: int, text: str, reply_markup: object = None, **kwargs: object
     ) -> None:  # type: ignore[no-untyped-def]
-        """Capture sent messages."""
-        self.messages.append((chat_id, text))
+        """Capture sent messages with optional reply_markup."""
+        self.messages.append((chat_id, text, reply_markup))
 
 
 class FakePhotoSize:

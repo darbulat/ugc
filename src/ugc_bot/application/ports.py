@@ -251,9 +251,19 @@ class NpsRepository(ABC):
 
     @abstractmethod
     async def save(
-        self, interaction_id: UUID, score: int, session: object | None = None
+        self,
+        user_id: UUID,
+        score: int,
+        comment: Optional[str] = None,
+        session: object | None = None,
     ) -> None:
-        """Save NPS score for an interaction."""
+        """Save NPS score for a user."""
+
+    @abstractmethod
+    async def exists_for_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if user already gave NPS."""
 
 
 class InstagramVerificationRepository(ABC):

@@ -251,3 +251,49 @@ async def test_update_last_role_reminder_at(fake_tm: object) -> None:
     updated = await service.get_user_by_id(user.user_id)
     assert updated is not None
     assert updated.last_role_reminder_at is not None
+
+
+@pytest.mark.asyncio
+async def test_update_last_role_reminder_at_nonexistent_user(
+    fake_tm: object,
+) -> None:
+    """update_last_role_reminder_at does nothing when user not found."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    await service.update_last_role_reminder_at(
+        UUID("00000000-0000-0000-0000-000000000999")
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_user_with_default_username() -> None:
+    """create_user uses default username when username is None."""
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+    user = await service.create_user(
+        external_id="ext-42",
+        messenger_type=MessengerType.TELEGRAM,
+        username=None,
+    )
+    assert user.username == "user_ext-42"
+
+
+@pytest.mark.asyncio
+async def test_update_status_records_metrics_when_blocked() -> None:
+    """update_status calls metrics_collector.record_user_blocked when status becomes BLOCKED."""
+
+    from unittest.mock import MagicMock
+
+    repo = InMemoryUserRepository()
+    metrics = MagicMock()
+    metrics.record_user_blocked = MagicMock()
+    service = UserRoleService(user_repo=repo, metrics_collector=metrics)
+    user = await service.set_user(
+        external_id="m1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+    )
+    await service.update_status(user.user_id, UserStatus.BLOCKED)
+    metrics.record_user_blocked.assert_called_once()
