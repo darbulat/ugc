@@ -34,7 +34,15 @@ from ugc_bot.bot.handlers.keyboards import (
     support_keyboard,
     with_support_keyboard,
 )
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.bot.handlers.start import CREATOR_LABEL
+from ugc_bot.bot.validators import (
+    validate_audience_geo,
+    validate_city,
+    validate_nickname,
+    validate_price,
+    validate_topics,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
 
@@ -145,7 +153,7 @@ async def _start_registration_flow(
         await state.set_state(BloggerRegistrationStates.choosing_draft_restore)
         return
 
-    if user.username:
+    if user.username and len(user.username.strip()) >= 2:
         await state.update_data(nickname=user.username)
         await message.answer(
             "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
@@ -197,8 +205,9 @@ async def handle_name(message: Message, state: FSMContext) -> None:
     """Store nickname."""
 
     nickname = (message.text or "").strip()
-    if not nickname:
-        await message.answer("Ник не может быть пустым. Введите снова:")
+    err = validate_nickname(nickname)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(nickname=nickname)
@@ -256,8 +265,9 @@ async def handle_city(message: Message, state: FSMContext) -> None:
     """Store creator city."""
 
     city = (message.text or "").strip()
-    if not city:
-        await message.answer("Укажите город. Введите снова:")
+    err = validate_city(city, required=True)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(city=city)
@@ -276,13 +286,10 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
     """Store blogger topics."""
 
     raw = (message.text or "").strip()
-    if not raw:
-        await message.answer("Введите хотя бы одну тематику:")
-        return
-
     topics = [topic.strip().lower() for topic in raw.split(",") if topic.strip()]
-    if not topics:
-        await message.answer("Введите хотя бы одну тематику:")
+    err = validate_topics(topics)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
     await state.update_data(topics={"selected": topics})
 
@@ -365,13 +372,17 @@ async def handle_geo(message: Message, state: FSMContext) -> None:
     """Store audience geography (up to 3 cities)."""
 
     geo = (message.text or "").strip()
-    if not geo:
-        await message.answer("Укажите хотя бы один город. Введите снова:")
+    err = validate_audience_geo(geo)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     cities = [c.strip() for c in geo.split(",") if c.strip()]
     if len(cities) > 3:
-        await message.answer("Укажите не более 3 городов через запятую.")
+        await message.answer(
+            "Укажите не более 3 городов через запятую.",
+            reply_markup=support_keyboard(),
+        )
         return
 
     await state.update_data(audience_geo=geo)
@@ -393,8 +404,9 @@ async def handle_price(message: Message, state: FSMContext) -> None:
         await message.answer("Введите число, например 500, 1000, 2000.")
         return
 
-    if price <= 0:
-        await message.answer("Цена должна быть больше 0.")
+    err = validate_price(price, MAX_ORDER_PRICE)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(price=price)

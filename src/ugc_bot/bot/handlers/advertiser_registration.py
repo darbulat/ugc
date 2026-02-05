@@ -30,6 +30,14 @@ from ugc_bot.bot.handlers.keyboards import (
     support_keyboard,
 )
 from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
+from ugc_bot.bot.validators import (
+    validate_brand,
+    validate_city,
+    validate_company_activity,
+    validate_name,
+    validate_phone,
+    validate_site_link,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType
 
@@ -149,7 +157,7 @@ async def handle_advertiser_start(
         await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
         await state.set_state(AdvertiserRegistrationStates.choosing_draft_restore)
         return
-    if user.username:
+    if user.username and len(user.username.strip()) >= 2:
         await state.update_data(name=user.username)
         await message.answer(
             "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
@@ -186,11 +194,9 @@ async def handle_name(message: Message, state: FSMContext) -> None:
     """Store name and ask for phone."""
 
     name = (message.text or "").strip()
-    if not name:
-        await message.answer(
-            "Имя не может быть пустым. Введите снова:",
-            reply_markup=support_keyboard(),
-        )
+    err = validate_name(name)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(name=name)
@@ -207,11 +213,9 @@ async def handle_phone(message: Message, state: FSMContext) -> None:
     """Store phone and ask for city."""
 
     phone = (message.text or "").strip()
-    if not phone:
-        await message.answer(
-            "Номер телефона не может быть пустым. Введите снова:",
-            reply_markup=support_keyboard(),
-        )
+    err = validate_phone(phone)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(phone=phone)
@@ -227,6 +231,10 @@ async def handle_city(message: Message, state: FSMContext) -> None:
     """Store city and ask for brand."""
 
     city = (message.text or "").strip() or None
+    err = validate_city(city, required=False)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return
     await state.update_data(city=city)
     await message.answer(
         "Название вашего бренда / компании / бизнеса:",
@@ -240,11 +248,9 @@ async def handle_brand(message: Message, state: FSMContext) -> None:
     """Store brand and ask for company activity."""
 
     brand = (message.text or "").strip()
-    if not brand:
-        await message.answer(
-            "Название бренда не может быть пустым. Введите снова:",
-            reply_markup=support_keyboard(),
-        )
+    err = validate_brand(brand)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(brand=brand)
@@ -260,6 +266,10 @@ async def handle_company_activity(message: Message, state: FSMContext) -> None:
     """Store company activity and ask for site link."""
 
     company_activity = (message.text or "").strip() or None
+    err = validate_company_activity(company_activity)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return
     await state.update_data(company_activity=company_activity)
     await message.answer(
         "Ссылка на сайт, продукт или соцсети бренда:",
@@ -308,6 +318,10 @@ async def handle_site_link(
     """Store site_link and show agreements step."""
 
     site_link = (message.text or "").strip() or None
+    err = validate_site_link(site_link)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return
     await state.update_data(site_link=site_link)
 
     text = _format_agreements_message(config)

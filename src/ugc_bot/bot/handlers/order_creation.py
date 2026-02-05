@@ -28,6 +28,13 @@ from ugc_bot.bot.handlers.keyboards import (
 )
 from ugc_bot.bot.handlers.payments import send_order_invoice
 from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
+from ugc_bot.bot.validators import (
+    validate_barter_description,
+    validate_geography,
+    validate_offer_text,
+    validate_price,
+    validate_product_link,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderType
 
@@ -270,8 +277,9 @@ async def handle_offer_text(message: Message, state: FSMContext) -> None:
     """Handle offer text and ask cooperation format."""
 
     offer_text = (message.text or "").strip()
-    if not offer_text:
-        await message.answer("Текст не может быть пустым. Введите снова:")
+    err = validate_offer_text(offer_text)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(offer_text=offer_text)
@@ -333,13 +341,9 @@ async def handle_price(message: Message, state: FSMContext) -> None:
         await message.answer("Введите число, например 1500.")
         return
 
-    if price < 0:
-        await message.answer("Цена не может быть отрицательной.")
-        return
-    if price > MAX_ORDER_PRICE:
-        await message.answer(
-            f"Сумма превышает максимально допустимую ({MAX_ORDER_PRICE:,.0f} ₽)."
-        )
+    err = validate_price(price, MAX_ORDER_PRICE)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(price=price)
@@ -365,8 +369,10 @@ async def handle_barter_description(message: Message, state: FSMContext) -> None
 
     barter_description = (message.text or "").strip()
     coop = (await state.get_data()).get("cooperation_format")
-    if coop == COOP_BOTH and not barter_description:
-        await message.answer("Опишите бартерное предложение:")
+    required = coop == COOP_BOTH
+    err = validate_barter_description(barter_description, required=required)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
     await state.update_data(barter_description=barter_description or None)
     await message.answer(
@@ -402,8 +408,9 @@ async def handle_product_link(message: Message, state: FSMContext) -> None:
     """Store product link and ask content usage."""
 
     product_link = (message.text or "").strip()
-    if not product_link:
-        await message.answer("Ссылка не может быть пустой. Введите снова:")
+    err = validate_product_link(product_link)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     await state.update_data(product_link=product_link)
@@ -513,8 +520,9 @@ async def handle_geography(
     """Handle geography and create order."""
 
     geography = (message.text or "").strip()
-    if not geography:
-        await message.answer("Укажите географию. Примеры: Казань, Москва / РФ")
+    err = validate_geography(geography)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
         return
 
     data = await state.get_data()

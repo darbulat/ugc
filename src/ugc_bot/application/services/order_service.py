@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 
 _ALLOWED_BLOGGER_COUNTS = {3, 5, 10}
 
-# Matches NUMERIC(10, 2) in DB: max 8 digits before decimal, 2 after
-MAX_ORDER_PRICE = 99_999_999.99
+MAX_ORDER_PRICE = 10_000.0
 
 
 @dataclass(slots=True)

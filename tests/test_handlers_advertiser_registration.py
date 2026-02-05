@@ -199,7 +199,7 @@ async def test_start_advertiser_registration_paused_user(
 
 @pytest.mark.asyncio
 async def test_handle_name_requires_value(user_repo, advertiser_repo) -> None:
-    """Require non-empty name."""
+    """Require non-empty name with min 2 chars."""
 
     message = FakeMessage(text=" ", user=FakeUser(1, "adv", "Adv"))
     state = FakeFSMContext()
@@ -208,7 +208,7 @@ async def test_handle_name_requires_value(user_repo, advertiser_repo) -> None:
     await handle_name(message, state)
     assert message.answers
     ans = message.answers[0]
-    assert "Имя не может быть пустым" in (ans if isinstance(ans, str) else ans[0])
+    assert "символ" in (ans if isinstance(ans, str) else ans[0]).lower()
 
 
 @pytest.mark.asyncio
@@ -226,7 +226,10 @@ async def test_handle_brand_success(user_repo) -> None:
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:brand"
     await state.update_data(
-        user_id=user.user_id, name="Test Name", phone="+7900", city="Казань"
+        user_id=user.user_id,
+        name="Test Name",
+        phone="+79001234567",
+        city="Казань",
     )
 
     await handle_brand(message, state)
@@ -274,7 +277,7 @@ async def test_handle_advertiser_start_shows_menu_when_profile_exists(
     await advertiser_repo.save(
         AdvertiserProfile(
             user_id=user.user_id,
-            phone="+7900",
+            phone="+79001234567",
             brand="B",
         )
     )
@@ -350,7 +353,7 @@ async def test_handle_city_success_asks_brand(user_repo) -> None:
     message = FakeMessage(text="Казань", user=FakeUser(1, "adv", "Adv"))
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:city"
-    await state.update_data(name="Test", phone="+7900")
+    await state.update_data(name="Test", phone="+79001234567")
 
     await handle_city(message, state)
 
@@ -376,7 +379,7 @@ async def test_handle_company_activity_success_asks_site_link(user_repo) -> None
     await state.update_data(
         user_id=user.user_id,
         name="Test Name",
-        phone="+7900",
+        phone="+79001234567",
         city="Казань",
         brand="My Brand",
     )
@@ -402,15 +405,13 @@ async def test_handle_brand_requires_value(user_repo) -> None:
     message = FakeMessage(text=" ", user=FakeUser(40, "adv", "Adv"))
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:brand"
-    await state.update_data(user_id=user.user_id, name="N", phone="+7900")
+    await state.update_data(user_id=user.user_id, name="N", phone="+79001234567")
 
     await handle_brand(message, state)
 
     assert message.answers
     ans = message.answers[0]
-    assert "Название бренда не может быть пустым" in (
-        ans if isinstance(ans, str) else ans[0]
-    )
+    assert "символ" in (ans if isinstance(ans, str) else ans[0]).lower()
 
 
 @pytest.mark.asyncio
@@ -511,7 +512,7 @@ async def test_handle_name_empty_string(user_repo) -> None:
 
     assert message.answers
     ans = message.answers[0]
-    assert "Имя не может быть пустым" in (ans if isinstance(ans, str) else ans[0])
+    assert "символ" in (ans if isinstance(ans, str) else ans[0]).lower()
 
 
 def _test_config() -> AppConfig:
@@ -571,7 +572,7 @@ async def test_handle_site_link_no_docs_shows_fallback(user_repo) -> None:
     await state.update_data(
         user_id=user.user_id,
         name="Test",
-        phone="+7900",
+        phone="+79001234567",
         city="City",
         brand="Brand",
         company_activity="Activity",
@@ -602,7 +603,7 @@ async def test_handle_site_link_shows_agreements(user_repo) -> None:
     await state.update_data(
         user_id=user.user_id,
         name="Test",
-        phone="+7900",
+        phone="+79001234567",
         city="City",
         brand="Brand",
         company_activity="Activity",

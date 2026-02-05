@@ -230,11 +230,13 @@ async def test_name_and_topics_invalid() -> None:
     state = FakeFSMContext()
     name_message = FakeMessage(text=" ", user=None)
     await handle_name(name_message, state)
-    assert "Ник не может" in name_message.answers[0]
+    ans = name_message.answers[0]
+    assert "символ" in (ans if isinstance(ans, str) else ans[0]).lower()
 
     topics_message = FakeMessage(text=" ", user=None)
     await handle_topics(topics_message, state)
-    assert "тематику" in topics_message.answers[0]
+    ans_t = topics_message.answers[0]
+    assert "тематику" in (ans_t if isinstance(ans_t, str) else ans_t[0])
 
 
 @pytest.mark.asyncio
@@ -268,11 +270,13 @@ async def test_geo_empty_and_price_negative() -> None:
     state = FakeFSMContext()
     geo_message = FakeMessage(text=" ", user=None)
     await handle_geo(geo_message, state)
-    assert "город" in geo_message.answers[0]
+    ans_g = geo_message.answers[0]
+    assert "город" in (ans_g if isinstance(ans_g, str) else ans_g[0])
 
     price_message = FakeMessage(text="-5", user=None)
     await handle_price(price_message, state)
-    assert "Цена должна" in price_message.answers[0]
+    ans_p = price_message.answers[0]
+    assert "Цена должна" in (ans_p if isinstance(ans_p, str) else ans_p[0])
 
 
 @pytest.mark.asyncio
@@ -573,7 +577,9 @@ async def test_handle_city_empty_rejects(user_repo) -> None:
     await handle_city(message, state)
 
     assert message.answers
-    assert "город" in message.answers[0].lower()
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "город" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -601,7 +607,9 @@ async def test_handle_topics_only_commas_rejects(user_repo) -> None:
     await handle_topics(message, state)
 
     assert message.answers
-    assert "тематику" in message.answers[0].lower()
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "тематику" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -616,7 +624,9 @@ async def test_handle_geo_too_many_cities_rejects(user_repo) -> None:
     await handle_geo(message, state)
 
     assert message.answers
-    assert "не более 3" in message.answers[0]
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "не более 3" in text
 
 
 @pytest.mark.asyncio

@@ -360,7 +360,7 @@ def create_test_order(session):
             "ugc_requirements": None,
             "barter_description": None,
             "bloggers_needed": 3,
-            "price": 15000.0,
+            "price": 5000.0,
             "status": OrderStatus.NEW,
             "created_at": datetime.now(timezone.utc),
             "completed_at": None,

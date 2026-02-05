@@ -53,7 +53,7 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         offer_text="Test offer",
         ugc_requirements=None,
         barter_description=None,
-        price=15000.0,
+        price=5000.0,
         bloggers_needed=3,
     )
 
@@ -176,7 +176,7 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         offer_text="Test offer",
         ugc_requirements=None,
         barter_description=None,
-        price=15000.0,
+        price=5000.0,
         bloggers_needed=3,
     )
     from ugc_bot.domain.entities import Order
@@ -265,7 +265,7 @@ async def test_feedback_mixed_responses_aggregation(
         offer_text="Test offer",
         ugc_requirements=None,
         barter_description=None,
-        price=15000.0,
+        price=5000.0,
         bloggers_needed=3,
     )
     from ugc_bot.domain.entities import Order
@@ -359,7 +359,7 @@ async def test_feedback_issue_status_blocks_user(
         offer_text="Test offer",
         ugc_requirements=None,
         barter_description=None,
-        price=15000.0,
+        price=5000.0,
         bloggers_needed=3,
     )
     from ugc_bot.domain.entities import Order

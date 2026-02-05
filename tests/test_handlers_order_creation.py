@@ -55,6 +55,9 @@ from tests.helpers.services import (
     build_profile_service,
 )
 
+# Valid offer text: min 20 chars per validator
+VALID_OFFER_TEXT = "Видео с распаковкой продукта и личным отзывом."
+
 
 @pytest.mark.asyncio
 async def test_start_order_creation_requires_role(
@@ -108,7 +111,7 @@ async def test_order_creation_flow_new_advertiser(
     assert "Что вам нужно?" in message.answers[0]
 
     await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
-    await handle_offer_text(FakeMessage(text="Offer", user=None), state)
+    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
     await handle_cooperation_format(FakeMessage(text=COOP_PAYMENT, user=None), state)
     await handle_price(FakeMessage(text="1000", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
@@ -185,9 +188,11 @@ async def test_order_creation_flow_with_barter(
     )
 
     await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
-    await handle_offer_text(FakeMessage(text="Offer", user=None), state)
+    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
     await handle_cooperation_format(FakeMessage(text=COOP_BARTER, user=None), state)
-    await handle_barter_description(FakeMessage(text="Barter", user=None), state)
+    await handle_barter_description(
+        FakeMessage(text="Barter product with delivery", user=None), state
+    )
     await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(6, "adv", "Adv")), state
@@ -446,14 +451,16 @@ async def test_handle_order_type_invalid() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_offer_text_empty() -> None:
-    """Reject empty offer text."""
+    """Reject empty or too short offer text."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="   ", user=None)
     await handle_offer_text(message, state)
 
     assert message.answers
-    assert "пустым" in message.answers[0].lower()
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "20" in text or "символ" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -481,7 +488,7 @@ async def test_handle_price_negative() -> None:
     assert message.answers
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
-    assert "отрицательной" in text
+    assert "больше 0" in text or "отрицательной" in text
 
 
 @pytest.mark.asyncio
@@ -512,7 +519,7 @@ async def test_order_creation_flow_coop_both(
     )
 
     await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
-    await handle_offer_text(FakeMessage(text="Offer", user=None), state)
+    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
     await handle_cooperation_format(FakeMessage(text=COOP_BOTH, user=None), state)
     await handle_price(FakeMessage(text="1500", user=None), state)
     await handle_barter_description(
@@ -566,7 +573,9 @@ async def test_handle_barter_description_empty_when_coop_both() -> None:
     await handle_barter_description(message, state)
 
     assert message.answers
-    assert "бартер" in message.answers[0].lower()
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "бартер" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -578,7 +587,9 @@ async def test_handle_product_link_empty() -> None:
     await handle_product_link(message, state)
 
     assert message.answers
-    assert "пустой" in message.answers[0].lower()
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "пустой" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -698,7 +709,9 @@ async def test_handle_geography_empty(
     await handle_geography(message, state, order_service, config, pricing_service)
 
     assert message.answers
-    assert "географию" in message.answers[0].lower()
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "географию" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -779,7 +792,7 @@ async def test_order_creation_flow_ugc_plus_placement(
     await handle_order_type(
         FakeMessage(text=ORDER_TYPE_UGC_PLUS_PLACEMENT, user=None), state
     )
-    await handle_offer_text(FakeMessage(text="Offer", user=None), state)
+    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
     await handle_cooperation_format(FakeMessage(text=COOP_PAYMENT, user=None), state)
     await handle_price(FakeMessage(text="1000", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
