@@ -210,8 +210,8 @@ async def successful_payment_handler(
 
     await message.answer(ADVERTISER_AFTER_PAYMENT_SUCCESS)
     await message.answer(ADVERTISER_AFTER_PAYMENT_WHAT_NEXT, parse_mode="Markdown")
-    await message.answer(ADVERTISER_AFTER_PAYMENT_IMPORTANT, parse_mode="Markdown")
     await message.answer(
-        "Выберите действие:",
+        ADVERTISER_AFTER_PAYMENT_IMPORTANT,
+        parse_mode="Markdown",
         reply_markup=advertiser_after_payment_keyboard(),
     )
