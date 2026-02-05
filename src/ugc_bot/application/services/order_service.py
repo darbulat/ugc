@@ -79,6 +79,7 @@ class OrderService:
         content_usage: Optional[str] = None,
         deadlines: Optional[str] = None,
         geography: Optional[str] = None,
+        product_photo_file_id: Optional[str] = None,
     ) -> Order:
         """Create an order after validating input."""
 
@@ -149,6 +150,7 @@ class OrderService:
             content_usage=(content_usage or "").strip() or None,
             deadlines=(deadlines or "").strip() or None,
             geography=(geography or "").strip() or None,
+            product_photo_file_id=(product_photo_file_id or "").strip() or None,
         )
         if self.transaction_manager is None:
             await self.order_repo.save(order)

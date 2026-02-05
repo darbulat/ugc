@@ -17,6 +17,8 @@ from ugc_bot.bot.handlers.order_creation import (
     COOP_PAYMENT,
     CONTENT_USAGE_BOTH,
     DEADLINES_7,
+    ORDER_PHOTO_ADD,
+    ORDER_PHOTO_SKIP,
     ORDER_TYPE_UGC_ONLY,
     ORDER_TYPE_UGC_PLUS_PLACEMENT,
     OrderCreationStates,
@@ -27,6 +29,7 @@ from ugc_bot.bot.handlers.order_creation import (
     handle_deadlines,
     handle_geography,
     handle_offer_text,
+    handle_order_photo,
     handle_order_type,
     handle_price,
     handle_product_link,
@@ -41,6 +44,7 @@ from tests.helpers.fakes import (
     FakeFSMContext,
     FakeFsmDraftService,
     FakeMessage,
+    FakePhotoSize,
     FakeUser,
     RecordingFsmDraftService,
 )
@@ -110,6 +114,9 @@ async def test_order_creation_flow_new_advertiser(
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(5, "adv", "Adv")), state
+    )
+    await handle_order_photo(
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(5, "adv", "Adv")), state
     )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(5, "adv", "Adv")), state
@@ -184,6 +191,9 @@ async def test_order_creation_flow_with_barter(
     await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(6, "adv", "Adv")), state
+    )
+    await handle_order_photo(
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(6, "adv", "Adv")), state
     )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(6, "adv", "Adv")), state
@@ -512,6 +522,9 @@ async def test_order_creation_flow_coop_both(
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(13, "adv", "Adv")), state
     )
+    await handle_order_photo(
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(13, "adv", "Adv")), state
+    )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(13, "adv", "Adv")), state
     )
@@ -566,6 +579,62 @@ async def test_handle_product_link_empty() -> None:
 
     assert message.answers
     assert "пустой" in message.answers[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_order_photo_skip() -> None:
+    """When user clicks Пропустить, proceed to content_usage."""
+    state = FakeFSMContext()
+    state._data = {"product_link": "https://example.com"}
+    state.state = OrderCreationStates.order_photo
+
+    message = FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(1, "u", "U"))
+    await handle_order_photo(message, state)
+
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "Где вы планируете использовать" in text
+    assert state.state == OrderCreationStates.content_usage
+
+
+@pytest.mark.asyncio
+async def test_handle_order_photo_add_then_photo() -> None:
+    """When user sends photo after Add, save file_id and proceed to content_usage."""
+    state = FakeFSMContext()
+    state._data = {"product_link": "https://example.com"}
+    state.state = OrderCreationStates.order_photo
+
+    message = FakeMessage(
+        photo=[FakePhotoSize("AgACAgIAAxkB")],
+        user=FakeUser(1, "u", "U"),
+    )
+    await handle_order_photo(message, state)
+
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "Где вы планируете использовать" in text
+    assert state.state == OrderCreationStates.content_usage
+    data = await state.get_data()
+    assert data.get("product_photo_file_id") == "AgACAgIAAxkB"
+
+
+@pytest.mark.asyncio
+async def test_handle_order_photo_add_prompts_upload() -> None:
+    """When user clicks Добавить фото, prompt to send photo."""
+    state = FakeFSMContext()
+    state._data = {"product_link": "https://example.com"}
+    state.state = OrderCreationStates.order_photo
+
+    message = FakeMessage(text=ORDER_PHOTO_ADD, user=FakeUser(1, "u", "U"))
+    await handle_order_photo(message, state)
+
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "Отправьте фото" in text
+    assert state.state == OrderCreationStates.order_photo
 
 
 @pytest.mark.asyncio
@@ -716,6 +785,9 @@ async def test_order_creation_flow_ugc_plus_placement(
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(16, "adv", "Adv")), state
+    )
+    await handle_order_photo(
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(16, "adv", "Adv")), state
     )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(16, "adv", "Adv")), state

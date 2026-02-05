@@ -18,6 +18,12 @@ def test_get_draft_prompt_order_product_link() -> None:
     assert "ссылку на продукт" in prompt.lower()
 
 
+def test_get_draft_prompt_order_order_photo() -> None:
+    """Return prompt for order order_photo step."""
+    prompt = get_draft_prompt("OrderCreationStates:order_photo", {})
+    assert "фото" in prompt.lower() and "креатор" in prompt.lower()
+
+
 def test_get_draft_prompt_order_content_usage() -> None:
     """Return prompt for order content_usage step."""
     prompt = get_draft_prompt("OrderCreationStates:content_usage", {})

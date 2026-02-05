@@ -58,6 +58,7 @@ class OrderCreationStates(StatesGroup):
     barter_description = State()
     bloggers_needed = State()
     product_link = State()
+    order_photo = State()
     content_usage = State()
     deadlines = State()
     geography = State()
@@ -77,6 +78,18 @@ def _cooperation_format_keyboard() -> list[list[KeyboardButton]]:
         [KeyboardButton(text=COOP_BARTER)],
         [KeyboardButton(text=COOP_PAYMENT)],
         [KeyboardButton(text=COOP_BOTH)],
+    ]
+
+
+ORDER_PHOTO_ADD = "📷 Добавить фото"
+ORDER_PHOTO_SKIP = "⏭ Пропустить"
+
+
+def _order_photo_keyboard() -> list[list[KeyboardButton]]:
+    """Keyboard for optional order photo: add or skip."""
+    return [
+        [KeyboardButton(text=ORDER_PHOTO_ADD)],
+        [KeyboardButton(text=ORDER_PHOTO_SKIP)],
     ]
 
 
@@ -147,6 +160,9 @@ def _keyboard_for_order_state(state_key: str, data: dict) -> ReplyKeyboardMarkup
             keyboard=_bloggers_needed_keyboard()
         ),
         "OrderCreationStates:product_link": support_keyboard(),
+        "OrderCreationStates:order_photo": with_support_keyboard(
+            keyboard=_order_photo_keyboard()
+        ),
         "OrderCreationStates:content_usage": with_support_keyboard(
             keyboard=_content_usage_keyboard()
         ),
@@ -392,10 +408,53 @@ async def handle_product_link(message: Message, state: FSMContext) -> None:
 
     await state.update_data(product_link=product_link)
     await message.answer(
-        "Где вы планируете использовать UGC-видео?",
-        reply_markup=with_support_keyboard(keyboard=_content_usage_keyboard()),
+        "Прикрепите фото (по желанию).\n"
+        "Фотография поможет креатору быстрее понять заказ и повысит отклик "
+        "на ваше предложение",
+        reply_markup=with_support_keyboard(keyboard=_order_photo_keyboard()),
     )
-    await state.set_state(OrderCreationStates.content_usage)
+    await state.set_state(OrderCreationStates.order_photo)
+
+
+@router.message(OrderCreationStates.order_photo)
+async def handle_order_photo(message: Message, state: FSMContext) -> None:
+    """Handle optional order photo: skip, add, or receive photo."""
+
+    text = (message.text or "").strip()
+    if text == ORDER_PHOTO_SKIP:
+        await state.update_data(product_photo_file_id=None)
+        await message.answer(
+            "Где вы планируете использовать UGC-видео?",
+            reply_markup=with_support_keyboard(
+                keyboard=_content_usage_keyboard(),
+            ),
+        )
+        await state.set_state(OrderCreationStates.content_usage)
+        return
+    if text == ORDER_PHOTO_ADD:
+        await message.answer(
+            "Отправьте фото продукта:",
+            reply_markup=with_support_keyboard(keyboard=_order_photo_keyboard()),
+        )
+        return
+
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        await state.update_data(product_photo_file_id=file_id)
+        await message.answer(
+            "Где вы планируете использовать UGC-видео?",
+            reply_markup=with_support_keyboard(
+                keyboard=_content_usage_keyboard(),
+            ),
+        )
+        await state.set_state(OrderCreationStates.content_usage)
+        return
+
+    await message.answer(
+        "Выберите «Добавить фото» или «Пропустить» на клавиатуре, "
+        "либо отправьте фото продукта.",
+        reply_markup=with_support_keyboard(keyboard=_order_photo_keyboard()),
+    )
 
 
 @router.message(OrderCreationStates.content_usage)
@@ -477,6 +536,7 @@ async def handle_geography(
     barter_description = data.get("barter_description")
     bloggers_needed = data["bloggers_needed"]
     product_link = data["product_link"]
+    product_photo_file_id = data.get("product_photo_file_id")
     content_usage = data.get("content_usage")
     deadlines = data.get("deadlines")
 
@@ -495,6 +555,7 @@ async def handle_geography(
         content_usage=content_usage,
         deadlines=deadlines,
         geography=geography,
+        product_photo_file_id=product_photo_file_id,
     )
 
     await state.clear()

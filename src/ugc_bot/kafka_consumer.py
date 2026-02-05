@@ -70,26 +70,35 @@ async def _send_offers(
                 offer_text = offer_dispatch_service.format_offer(
                     order, advertisers_status
                 )
-                await bot.send_message(
-                    chat_id=int(blogger.external_id),
-                    text=offer_text,
-                    reply_markup=InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [
-                                InlineKeyboardButton(
-                                    text="Готов снять UGC",
-                                    callback_data=f"offer:{order.order_id}",
-                                )
-                            ],
-                            [
-                                InlineKeyboardButton(
-                                    text="Пропустить",
-                                    callback_data=f"offer_skip:{order.order_id}",
-                                )
-                            ],
-                        ]
-                    ),
+                reply_markup = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="Готов снять UGC",
+                                callback_data=f"offer:{order.order_id}",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="Пропустить",
+                                callback_data=f"offer_skip:{order.order_id}",
+                            )
+                        ],
+                    ]
                 )
+                if order.product_photo_file_id:
+                    await bot.send_photo(
+                        chat_id=int(blogger.external_id),
+                        photo=order.product_photo_file_id,
+                        caption=offer_text,
+                        reply_markup=reply_markup,
+                    )
+                else:
+                    await bot.send_message(
+                        chat_id=int(blogger.external_id),
+                        text=offer_text,
+                        reply_markup=reply_markup,
+                    )
                 break
             except Exception as exc:
                 logger.warning(

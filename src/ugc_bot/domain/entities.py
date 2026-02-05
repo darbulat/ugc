@@ -88,6 +88,7 @@ class Order:
     content_usage: Optional[str] = None
     deadlines: Optional[str] = None
     geography: Optional[str] = None
+    product_photo_file_id: Optional[str] = None
 
 
 @dataclass(frozen=True)

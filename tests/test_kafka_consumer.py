@@ -120,11 +120,17 @@ async def test_send_offers_sends_messages() -> None:
     class FakeBot:
         def __init__(self) -> None:
             self.sent: list[tuple[int, str]] = []
+            self.photos_sent: list[tuple[int, str, str]] = []
 
         async def send_message(
             self, chat_id: int, text: str, reply_markup=None, **kwargs
         ) -> None:  # type: ignore[no-untyped-def]
             self.sent.append((chat_id, text))
+
+        async def send_photo(
+            self, chat_id: int, photo: str, caption: str, reply_markup=None, **kwargs
+        ) -> None:  # type: ignore[no-untyped-def]
+            self.photos_sent.append((chat_id, photo, caption))
 
     bot = FakeBot()
     await _send_offers(
@@ -137,6 +143,110 @@ async def test_send_offers_sends_messages() -> None:
         retry_delay_seconds=0.0,
     )
     assert bot.sent
+    assert not bot.photos_sent
+
+
+@pytest.mark.asyncio
+async def test_send_offers_with_photo_uses_send_photo() -> None:
+    """When order has product_photo_file_id, send photo with caption."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    offer_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+    )
+
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000930"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(advertiser)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000931"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+        product_photo_file_id="AgACAgIAAxkB_test_photo",
+    )
+    await order_repo.save(order)
+
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000932"),
+        external_id="2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(blogger)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger.user_id,
+            instagram_url="https://instagram.com/blogger",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+
+    class FakeBot:
+        def __init__(self) -> None:
+            self.sent: list[tuple[int, str]] = []
+            self.photos_sent: list[tuple[int, str, str]] = []
+
+        async def send_message(
+            self, chat_id: int, text: str, reply_markup=None, **kwargs
+        ) -> None:  # type: ignore[no-untyped-def]
+            self.sent.append((chat_id, text))
+
+        async def send_photo(
+            self, chat_id: int, photo: str, caption: str, reply_markup=None, **kwargs
+        ) -> None:  # type: ignore[no-untyped-def]
+            self.photos_sent.append((chat_id, photo, caption))
+
+    bot = FakeBot()
+    await _send_offers(
+        order.order_id,
+        bot,
+        offer_service,
+        dlq_producer=None,
+        dlq_topic="dlq",
+        retries=1,
+        retry_delay_seconds=0.0,
+    )
+    assert bot.photos_sent
+    assert len(bot.photos_sent) == 1
+    chat_id, photo, caption = bot.photos_sent[0]
+    assert chat_id == 2
+    assert photo == "AgACAgIAAxkB_test_photo"
+    assert "Новый заказ" in caption
+    assert not bot.sent
 
 
 @pytest.mark.asyncio

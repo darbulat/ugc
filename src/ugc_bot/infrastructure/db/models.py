@@ -189,6 +189,7 @@ class OrderModel(Base):
     content_usage: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     deadlines: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     geography: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    product_photo_file_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class ContactPricingModel(Base):

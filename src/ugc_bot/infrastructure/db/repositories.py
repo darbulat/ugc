@@ -895,6 +895,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         content_usage=getattr(model, "content_usage", None),
         deadlines=getattr(model, "deadlines", None),
         geography=getattr(model, "geography", None),
+        product_photo_file_id=getattr(model, "product_photo_file_id", None),
     )
 
 
@@ -930,6 +931,7 @@ def _to_order_model(order: Order) -> OrderModel:
         content_usage=order.content_usage,
         deadlines=order.deadlines,
         geography=order.geography,
+        product_photo_file_id=order.product_photo_file_id,
     )
 
 

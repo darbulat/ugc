@@ -210,6 +210,7 @@ async def create_test_order(
     status: OrderStatus = OrderStatus.NEW,
     created_at: datetime | None = None,
     completed_at: datetime | None = None,
+    product_photo_file_id: str | None = None,
 ) -> Order:
     """Create and save test order.
 
@@ -227,6 +228,7 @@ async def create_test_order(
         status: Order status
         created_at: Creation timestamp
         completed_at: Order completion timestamp
+        product_photo_file_id: Optional Telegram file_id for product photo
 
     Returns:
         Created order
@@ -250,6 +252,7 @@ async def create_test_order(
         status=status,
         created_at=created_at,
         completed_at=completed_at,
+        product_photo_file_id=product_photo_file_id,
     )
     await order_repo.save(order)
     return order

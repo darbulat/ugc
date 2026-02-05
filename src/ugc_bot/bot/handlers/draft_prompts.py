@@ -68,6 +68,11 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     "OrderCreationStates:product_link": (
         "Введите ссылку на продукт (для откликнувшихся креаторов):"
     ),
+    "OrderCreationStates:order_photo": (
+        "Прикрепите фото (по желанию). "
+        "Фотография поможет креатору быстрее понять заказ и повысит отклик "
+        "на ваше предложение"
+    ),
     "OrderCreationStates:content_usage": ("Где вы планируете использовать UGC-видео?"),
     "OrderCreationStates:deadlines": (
         "В какие сроки вам нужен контент? Укажите, через сколько дней после "

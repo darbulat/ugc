@@ -170,6 +170,7 @@ class OutboxPublisher:
             content_usage=order.content_usage,
             deadlines=order.deadlines,
             geography=order.geography,
+            product_photo_file_id=order.product_photo_file_id,
         )
         await self.order_repo.save(activated_order, session=session)
 
