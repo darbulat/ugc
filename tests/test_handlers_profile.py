@@ -11,6 +11,7 @@ from ugc_bot.bot.handlers.keyboards import (
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
 )
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.bot.handlers.profile import (
     EditProfileStates,
     edit_profile_choose_field,
@@ -566,7 +567,9 @@ async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
         role_service,
     )
     assert message.answers
-    assert "Город не может быть пустым" in message.answers[0]
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "город" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -893,7 +896,9 @@ async def test_edit_profile_enter_value_nickname_empty(user_repo) -> None:
         role_service,
     )
     assert message.answers
-    assert "Имя не может быть пустым" in message.answers[0]
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "символ" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -992,7 +997,45 @@ async def test_edit_profile_enter_value_topics_empty(user_repo) -> None:
         role_service,
     )
     assert message.answers
-    assert "хотя бы одну тематику" in message.answers[0]
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "тематику" in text
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_topics_too_many(user_repo) -> None:
+    """More than 10 topics gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083b"),
+        external_id="41",
+        username="user",
+    )
+    topics = ",".join(f"topic{i}" for i in range(11))
+    message = FakeMessage(text=topics, user=FakeUser(41))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "topics",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "41",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "10" in text or "тематик" in text
+    assert not reg_service.update_calls
 
 
 @pytest.mark.asyncio
@@ -1091,7 +1134,9 @@ async def test_edit_profile_enter_value_audience_geo_empty(user_repo) -> None:
         role_service,
     )
     assert message.answers
-    assert "хотя бы один город" in message.answers[0]
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "город" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -1124,7 +1169,9 @@ async def test_edit_profile_enter_value_audience_geo_too_many(user_repo) -> None
         role_service,
     )
     assert message.answers
-    assert "не более 3 городов" in message.answers[0]
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "не более 3" in text
 
 
 @pytest.mark.asyncio
@@ -1190,7 +1237,45 @@ async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
         role_service,
     )
     assert message.answers
-    assert "Цена должна быть больше 0" in message.answers[0]
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "Цена должна" in text or "больше 0" in text
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_price_exceeds_max(user_repo) -> None:
+    """Price exceeding MAX_ORDER_PRICE gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083a"),
+        external_id="40",
+        username="user",
+    )
+    overflow = str(int(MAX_ORDER_PRICE) + 1)
+    message = FakeMessage(text=overflow, user=FakeUser(40))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "price",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "40",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "превышает" in text or str(int(MAX_ORDER_PRICE)) in text
+    assert not reg_service.update_calls
 
 
 @pytest.mark.asyncio
@@ -1629,7 +1714,10 @@ async def test_edit_profile_enter_value_advertiser_name_empty(user_repo) -> None
         adv_service,
         FakeUserRoleService(),
     )
-    assert "Имя не может быть пустым" in message.answers[0]
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "символ" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -1692,7 +1780,10 @@ async def test_edit_profile_enter_value_advertiser_phone_empty(user_repo) -> Non
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
     )
-    assert "Номер телефона не может быть пустым" in message.answers[0]
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "телефон" in text.lower() or "цифр" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -1721,7 +1812,10 @@ async def test_edit_profile_enter_value_advertiser_brand_empty(user_repo) -> Non
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
     )
-    assert "Название бренда не может быть пустым" in message.answers[0]
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "символ" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -1756,6 +1850,74 @@ async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
         FakeUserRoleService(),
     )
     assert adv_service.update_calls[0][1].get("site_link") == "https://site.com"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_phone_invalid(user_repo) -> None:
+    """Edit advertiser phone with invalid format gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084a"),
+        external_id="60",
+        username="u",
+    )
+    message = FakeMessage(text="+7900", user=FakeUser(60))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "phone",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "60",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "цифр" in text or "корректный" in text.lower()
+    assert not adv_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_site_link_invalid(user_repo) -> None:
+    """Edit advertiser site_link with invalid URL gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084b"),
+        external_id="61",
+        username="u",
+    )
+    message = FakeMessage(text="not-a-url", user=FakeUser(61))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "site_link",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "61",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "ссылк" in text.lower() or "http" in text.lower()
+    assert not adv_service.update_calls
 
 
 @pytest.mark.asyncio
@@ -1796,7 +1958,7 @@ async def test_edit_profile_enter_value_advertiser_update_none(user_repo) -> Non
         external_id="55",
         username="u",
     )
-    message = FakeMessage(text="+7900", user=FakeUser(55))
+    message = FakeMessage(text="+79001234567", user=FakeUser(55))
     state = FakeFSMContext()
     state._data = {
         "editing_field": "phone",

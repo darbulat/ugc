@@ -15,6 +15,19 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
+from ugc_bot.bot.validators import (
+    validate_audience_geo,
+    validate_brand,
+    validate_city,
+    validate_company_activity,
+    validate_name,
+    validate_nickname,
+    validate_phone,
+    validate_price,
+    validate_site_link,
+    validate_topics,
+)
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -494,8 +507,9 @@ async def edit_profile_enter_value(
             return
         text = (message.text or "").strip()
         if field_key == "name":
-            if not text:
-                await message.answer("Имя не может быть пустым.")
+            err = validate_name(text)
+            if err is not None:
+                await message.answer(err, reply_markup=support_keyboard())
                 return
             await user_role_service.set_user(
                 external_id=external_id,
@@ -510,28 +524,42 @@ async def edit_profile_enter_value(
             await show_profile(message, profile_service, state)
             return
         elif field_key == "phone":
-            if not text:
-                await message.answer("Номер телефона не может быть пустым.")
+            err = validate_phone(text)
+            if err is not None:
+                await message.answer(err, reply_markup=support_keyboard())
                 return
             updated = await advertiser_registration_service.update_advertiser_profile(
                 user_id, phone=text
             )
         elif field_key == "brand":
-            if not text:
-                await message.answer("Название бренда не может быть пустым.")
+            err = validate_brand(text)
+            if err is not None:
+                await message.answer(err, reply_markup=support_keyboard())
                 return
             updated = await advertiser_registration_service.update_advertiser_profile(
                 user_id, brand=text
             )
         elif field_key == "site_link":
+            err = validate_site_link(text or None)
+            if err is not None:
+                await message.answer(err, reply_markup=support_keyboard())
+                return
             updated = await advertiser_registration_service.update_advertiser_profile(
                 user_id, site_link=text or None
             )
         elif field_key == "city":
+            err = validate_city(text or None, required=False)
+            if err is not None:
+                await message.answer(err, reply_markup=support_keyboard())
+                return
             updated = await advertiser_registration_service.update_advertiser_profile(
                 user_id, city=text or None
             )
         elif field_key == "company_activity":
+            err = validate_company_activity(text or None)
+            if err is not None:
+                await message.answer(err, reply_markup=support_keyboard())
+                return
             updated = await advertiser_registration_service.update_advertiser_profile(
                 user_id, company_activity=text or None
             )
@@ -560,8 +588,9 @@ async def edit_profile_enter_value(
     text = (message.text or "").strip()
 
     if field_key == "nickname":
-        if not text:
-            await message.answer("Имя не может быть пустым.")
+        err = validate_nickname(text)
+        if err is not None:
+            await message.answer(err, reply_markup=support_keyboard())
             return
         await user_role_service.set_user(
             external_id=external_id,
@@ -590,19 +619,18 @@ async def edit_profile_enter_value(
             user_id, instagram_url=text
         )
     elif field_key == "city":
-        if not text:
-            await message.answer("Город не может быть пустым.")
+        err = validate_city(text, required=True)
+        if err is not None:
+            await message.answer(err, reply_markup=support_keyboard())
             return
         updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, city=text
         )
     elif field_key == "topics":
-        if not text:
-            await message.answer("Введите хотя бы одну тематику.")
-            return
         topics = [t.strip().lower() for t in text.split(",") if t.strip()]
-        if not topics:
-            await message.answer("Введите хотя бы одну тематику.")
+        err = validate_topics(topics)
+        if err is not None:
+            await message.answer(err, reply_markup=support_keyboard())
             return
         updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, topics={"selected": topics}
@@ -629,12 +657,16 @@ async def edit_profile_enter_value(
             user_id, audience_age_min=min_age, audience_age_max=max_age
         )
     elif field_key == "audience_geo":
-        if not text:
-            await message.answer("Укажите хотя бы один город.")
+        err = validate_audience_geo(text)
+        if err is not None:
+            await message.answer(err, reply_markup=support_keyboard())
             return
         cities = [c.strip() for c in text.split(",") if c.strip()]
         if len(cities) > 3:
-            await message.answer("Укажите не более 3 городов.")
+            await message.answer(
+                "Укажите не более 3 городов.",
+                reply_markup=support_keyboard(),
+            )
             return
         updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, audience_geo=text
@@ -645,8 +677,9 @@ async def edit_profile_enter_value(
         except ValueError:
             await message.answer("Введите число, например 1000.")
             return
-        if price <= 0:
-            await message.answer("Цена должна быть больше 0.")
+        err = validate_price(price, MAX_ORDER_PRICE)
+        if err is not None:
+            await message.answer(err, reply_markup=support_keyboard())
             return
         updated_blogger = await blogger_registration_service.update_blogger_profile(
             user_id, price=price
