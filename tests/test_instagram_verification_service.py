@@ -638,3 +638,112 @@ async def test_mark_used_nonexistent_code_no_op() -> None:
     verification_repo = InMemoryInstagramVerificationRepository()
     await verification_repo.mark_used(UUID("00000000-0000-0000-0000-000000000999"))
     assert len(verification_repo.codes) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_notification_recipient_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """get_notification_recipient with transaction_manager returns user and profile."""
+
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        transaction_manager=fake_tm,
+    )
+    user, profile = await service.get_notification_recipient(user_id)
+    assert user is not None
+    assert profile is not None
+    assert user.user_id == user_id
+    assert profile.user_id == user_id
+
+
+@pytest.mark.asyncio
+async def test_get_notification_recipient_user_none_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """get_notification_recipient returns (None, None) when user not found."""
+
+    user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
+    verification_repo = InMemoryInstagramVerificationRepository()
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        transaction_manager=fake_tm,
+    )
+    user, profile = await service.get_notification_recipient(
+        UUID("00000000-0000-0000-0000-000000000999")
+    )
+    assert user is None
+    assert profile is None
+
+
+@pytest.mark.asyncio
+async def test_generate_code_user_not_found_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """generate_code raises UserNotFoundError when user missing and tm is used."""
+
+    service = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        transaction_manager=fake_tm,
+    )
+    with pytest.raises(UserNotFoundError):
+        await service.generate_code(UUID("00000000-0000-0000-0000-000000000999"))
+
+
+@pytest.mark.asyncio
+async def test_verify_code_profile_not_found_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """verify_code raises BloggerRegistrationError when profile missing and tm used."""
+
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        transaction_manager=fake_tm,
+    )
+    with pytest.raises(BloggerRegistrationError):
+        await service.verify_code(user_id, "ABC123")
+
+
+@pytest.mark.asyncio
+async def test_verify_code_by_instagram_sender_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """verify_code_by_instagram_sender succeeds with transaction_manager."""
+
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        transaction_manager=fake_tm,
+    )
+    verification = await service.generate_code(user_id)
+    result = await service.verify_code_by_instagram_sender(
+        instagram_sender_id="instagram_123",
+        code=verification.code,
+        admin_instagram_username="admin_test",
+    )
+    assert result == user_id
+    updated = await profile_repo.get_by_user_id(user_id)
+    assert updated is not None
+    assert updated.confirmed is True

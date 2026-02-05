@@ -91,7 +91,7 @@ def _get_user_id(event: TelegramObject) -> str | None:
         return str(event.from_user.id)
     if isinstance(event, CallbackQuery) and event.from_user:
         return str(event.from_user.id)
-    return None  # pragma: no cover
+    return None  # pragma: no cover - defensive fallback for test fixtures
 
 
 async def _send_error_message(event: TelegramObject, message: str) -> None:
@@ -107,7 +107,7 @@ async def _send_error_message(event: TelegramObject, message: str) -> None:
             # Try with show_alert=False for callback-like objects, fallback to no args
             try:
                 await answer_method(message, show_alert=False)
-            except TypeError:  # pragma: no cover
+            except TypeError:  # pragma: no cover - answer() does not accept show_alert
                 await answer_method(message)
 
 

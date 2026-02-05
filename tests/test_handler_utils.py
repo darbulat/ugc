@@ -5,10 +5,16 @@ from uuid import uuid4
 
 import pytest
 
+from ugc_bot.bot.handlers.keyboards import (
+    RESUME_DRAFT_BUTTON_TEXT,
+    START_OVER_BUTTON_TEXT,
+    draft_choice_keyboard,
+)
 from ugc_bot.bot.handlers.utils import (
     RateLimiter,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
+    handle_draft_choice,
     parse_user_id_from_state,
     send_with_retry,
 )
@@ -249,3 +255,228 @@ async def test_get_user_and_ensure_allowed_callback_ok() -> None:
     )
     assert result is ok_user
     assert len(callback.answers) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_draft_choice_session_expired() -> None:
+    """When user_id is missing from state, clear and send session_expired_msg."""
+
+    class FakeMessage:
+        def __init__(self) -> None:
+            self.text = ""
+            self.answers = []
+
+        async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
+            self.answers.append((text, reply_markup))
+
+    class FakeState:
+        async def get_data(self) -> dict:
+            return {}
+
+        async def clear(self) -> None:
+            self.cleared = True
+
+        async def set_state(self, state) -> None:
+            pass
+
+        async def update_data(self, **kwargs) -> None:
+            pass
+
+    message = FakeMessage()
+    state = FakeState()
+    state.cleared = False
+
+    async def get_draft(*args):  # type: ignore[no-untyped-def]
+        return None
+
+    async def delete_draft(*args):  # type: ignore[no-untyped-def]
+        pass
+
+    draft_service = type(
+        "S", (), {"get_draft": get_draft, "delete_draft": delete_draft}
+    )()
+
+    await handle_draft_choice(
+        message,
+        state,
+        draft_service,
+        flow_type="test",
+        user_id_key="user_id",
+        first_state="FirstState",
+        first_prompt="Start",
+        first_keyboard=draft_choice_keyboard(),
+        session_expired_msg="Session expired",
+    )
+    assert state.cleared
+    assert len(message.answers) == 1
+    assert message.answers[0][0] == "Session expired"
+
+
+@pytest.mark.asyncio
+async def test_handle_draft_choice_resume_draft_none() -> None:
+    """When RESUME_DRAFT but draft is None, show draft_used_msg and first step."""
+
+    class FakeMessage:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.answers = []
+
+        async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
+            self.answers.append((text, reply_markup))
+
+    class FakeState:
+        async def get_data(self) -> dict:
+            return {"user_id": str(uuid4())}
+
+        async def clear(self) -> None:
+            pass
+
+        async def set_state(self, state) -> None:
+            self.state = state
+
+        async def update_data(self, **kwargs) -> None:
+            pass
+
+    message = FakeMessage(RESUME_DRAFT_BUTTON_TEXT)
+    state = FakeState()
+
+    async def get_draft(*args):  # type: ignore[no-untyped-def]
+        return None
+
+    async def delete_draft(*args):  # type: ignore[no-untyped-def]
+        pass
+
+    draft_service = type(
+        "S", (), {"get_draft": get_draft, "delete_draft": delete_draft}
+    )()
+
+    await handle_draft_choice(
+        message,
+        state,
+        draft_service,
+        flow_type="test",
+        user_id_key="user_id",
+        first_state="FirstState",
+        first_prompt="Start",
+        first_keyboard=draft_choice_keyboard(),
+        session_expired_msg="Expired",
+        draft_used_msg="Draft used",
+    )
+    assert len(message.answers) >= 2
+    assert message.answers[0][0] == "Draft used"
+    assert message.answers[1][0] == "Start"
+
+
+@pytest.mark.asyncio
+async def test_handle_draft_choice_start_over() -> None:
+    """When START_OVER, delete draft and show first step."""
+
+    class FakeMessage:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.answers = []
+
+        async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
+            self.answers.append((text, reply_markup))
+
+    class FakeState:
+        async def get_data(self) -> dict:
+            return {"user_id": str(uuid4())}
+
+        async def clear(self) -> None:
+            pass
+
+        async def set_state(self, state) -> None:
+            self.state = state
+
+        async def update_data(self, **kwargs) -> None:
+            pass
+
+    message = FakeMessage(START_OVER_BUTTON_TEXT)
+    state = FakeState()
+    delete_calls = []
+
+    async def mock_delete(*args):  # type: ignore[no-untyped-def]
+        delete_calls.append(args)
+
+    async def get_draft(*args):  # type: ignore[no-untyped-def]
+        return None
+
+    draft_service = type(
+        "S",
+        (),
+        {"get_draft": get_draft, "delete_draft": mock_delete},
+    )()
+
+    await handle_draft_choice(
+        message,
+        state,
+        draft_service,
+        flow_type="test",
+        user_id_key="user_id",
+        first_state="FirstState",
+        first_prompt="Start",
+        first_keyboard=draft_choice_keyboard(),
+        session_expired_msg="Expired",
+    )
+    assert len(delete_calls) == 1
+    assert len(message.answers) == 1
+    assert message.answers[0][0] == "Start"
+
+
+@pytest.mark.asyncio
+async def test_handle_draft_choice_invalid_choice() -> None:
+    """When text is neither RESUME nor START_OVER, ask to choose."""
+
+    class FakeMessage:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.answers = []
+
+        async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
+            self.answers.append((text, reply_markup))
+
+    class FakeState:
+        async def get_data(self) -> dict:
+            return {"user_id": str(uuid4())}
+
+        async def clear(self) -> None:
+            pass
+
+        async def set_state(self, state) -> None:
+            pass
+
+        async def update_data(self, **kwargs) -> None:
+            pass
+
+    message = FakeMessage("invalid")
+    state = FakeState()
+
+    async def get_draft(*args):  # type: ignore[no-untyped-def]
+        return None
+
+    async def delete_draft(*args):  # type: ignore[no-untyped-def]
+        pass
+
+    draft_service = type(
+        "S",
+        (),
+        {"get_draft": get_draft, "delete_draft": delete_draft},
+    )()
+
+    await handle_draft_choice(
+        message,
+        state,
+        draft_service,
+        flow_type="test",
+        user_id_key="user_id",
+        first_state="FirstState",
+        first_prompt="Start",
+        first_keyboard=draft_choice_keyboard(),
+        session_expired_msg="Expired",
+    )
+    assert len(message.answers) == 1
+    assert (
+        "Продолжить" in message.answers[0][0]
+        or "Начать заново" in message.answers[0][0]
+    )

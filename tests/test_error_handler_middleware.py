@@ -1,6 +1,9 @@
 """Tests for error handling middleware."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
@@ -260,3 +263,70 @@ async def test_middleware_handles_interaction_errors() -> None:
 
         assert len(message.answers) == 1
         assert "Взаимодействие" in _answer_text(message.answers)
+
+
+@pytest.mark.asyncio
+async def test_middleware_send_error_with_answer_no_show_alert() -> None:
+    """Event with answer() that does not accept show_alert falls back to answer(msg)."""
+
+    class EventWithSimpleAnswer:
+        """Event whose answer() only accepts message, not show_alert."""
+
+        def __init__(self) -> None:
+            self.answers = []
+
+        async def answer(self, text: str) -> None:
+            self.answers.append(text)
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+    event = EventWithSimpleAnswer()
+
+    async def handler(ev, data):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, event, {})
+
+    assert len(event.answers) == 1
+    assert "Заказ не найден" in event.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_middleware_get_user_id_from_message() -> None:
+    """_get_user_id extracts id from Message with from_user."""
+
+    msg = MagicMock(spec=Message)
+    msg.from_user = MagicMock()
+    msg.from_user.id = 777
+    msg.answer = AsyncMock()
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+
+    async def handler(event, data):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, msg, {})
+
+    msg.answer.assert_called_once()
+    call_args = msg.answer.call_args
+    assert "Заказ не найден" in str(call_args)
+
+
+@pytest.mark.asyncio
+async def test_middleware_get_user_id_from_callback() -> None:
+    """_get_user_id extracts id from CallbackQuery with from_user."""
+
+    callback = MagicMock(spec=CallbackQuery)
+    callback.from_user = MagicMock()
+    callback.from_user.id = 888
+    callback.answer = AsyncMock()
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+
+    async def handler(event, data):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, callback, {})
+
+    callback.answer.assert_called_once()
+    call_args = callback.answer.call_args
+    assert "Заказ не найден" in str(call_args)

@@ -179,3 +179,135 @@ async def test_register_advertiser_with_transaction_manager(fake_tm: object) -> 
     assert profile.phone == "@tm_contact"
     loaded = await service.get_profile(user_id)
     assert loaded == profile
+
+
+@pytest.mark.asyncio
+async def test_register_advertiser_user_not_found_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """Raise UserNotFoundError when user does not exist and transaction_manager is used."""
+
+    service = AdvertiserRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+        transaction_manager=fake_tm,
+    )
+
+    with pytest.raises(UserNotFoundError):
+        await service.register_advertiser(
+            user_id=UUID("00000000-0000-0000-0000-000000000121"),
+            phone="@contact",
+            brand="B",
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_advertiser_profile_success() -> None:
+    """Update advertiser profile fields and return updated profile."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    await service.register_advertiser(
+        user_id=user_id,
+        phone="@old_contact",
+        brand="Old Brand",
+        site_link="https://old.com",
+        city="Old City",
+        company_activity="Old Activity",
+    )
+
+    updated = await service.update_advertiser_profile(
+        user_id,
+        phone="@new_contact",
+        brand="New Brand",
+        site_link="https://new.com",
+        city="New City",
+        company_activity="New Activity",
+    )
+
+    assert updated is not None
+    assert updated.phone == "@new_contact"
+    assert updated.brand == "New Brand"
+    assert updated.site_link == "https://new.com"
+    assert updated.city == "New City"
+    assert updated.company_activity == "New Activity"
+
+
+@pytest.mark.asyncio
+async def test_update_advertiser_profile_partial_update() -> None:
+    """Update only some fields, others remain unchanged."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    await service.register_advertiser(
+        user_id=user_id,
+        phone="@contact",
+        brand="Brand",
+        site_link="https://site.com",
+        city="City",
+        company_activity="Activity",
+    )
+
+    updated = await service.update_advertiser_profile(user_id, phone="@updated_phone")
+
+    assert updated is not None
+    assert updated.phone == "@updated_phone"
+    assert updated.brand == "Brand"
+    assert updated.site_link == "https://site.com"
+
+
+@pytest.mark.asyncio
+async def test_update_advertiser_profile_returns_none_when_not_found() -> None:
+    """Return None when profile does not exist."""
+
+    service = AdvertiserRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+    )
+
+    result = await service.update_advertiser_profile(
+        UUID("00000000-0000-0000-0000-000000000999"),
+        phone="@contact",
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_advertiser_profile_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """Cover transaction_manager path for update_advertiser_profile."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        transaction_manager=fake_tm,
+    )
+
+    await service.register_advertiser(
+        user_id=user_id,
+        phone="@contact",
+        brand="Brand",
+    )
+
+    updated = await service.update_advertiser_profile(user_id, brand="Updated Brand")
+
+    assert updated is not None
+    assert updated.brand == "Updated Brand"

@@ -969,3 +969,345 @@ async def test_maybe_send_contacts_missing_user_or_profile(fake_tm: object) -> N
 
     # Contact should not be sent when user/profile is missing
     assert not bot.answers
+
+
+@pytest.mark.asyncio
+async def test_offer_skip_edit_reply_markup_exception() -> None:
+    """handle_offer_skip handles exception when edit_reply_markup fails."""
+
+    class MessageWithFailingEdit:
+        reply_markup = object()
+
+        async def edit_reply_markup(self, reply_markup=None, **kwargs):
+            raise RuntimeError("edit failed")
+
+    message = MessageWithFailingEdit()
+    callback = FakeCallback(
+        data="offer_skip:00000000-0000-0000-0000-000000000750",
+        user=FakeUser(1),
+        message=message,
+    )
+    await handle_offer_skip(callback)
+    assert callback.answers
+    assert (
+        "пропущено" in callback.answers[0].lower()
+        or "ок" in callback.answers[0].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_offer_response_handler_rate_limited(
+    fake_tm: object,
+    user_repo,
+    blogger_repo,
+    order_repo,
+    order_response_repo,
+    interaction_repo,
+) -> None:
+    """Reject when rate limit exceeded."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000760"),
+        external_id="21",
+        username="blogger",
+    )
+    await user_service.set_user(
+        external_id="21",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000761"),
+        external_id="761",
+        username="adv",
+    )
+    advertiser_id = advertiser.user_id
+    orders = []
+    for i in range(762, 768):
+        order = await create_test_order(
+            order_repo,
+            advertiser_id,
+            order_id=UUID(f"00000000-0000-0000-0000-000000000{i}"),
+            bloggers_needed=3,
+            status=OrderStatus.ACTIVE,
+        )
+        orders.append(order)
+
+    message = FakeMessage()
+    callback = FakeCallback(
+        data=f"offer:{orders[0].order_id}", user=FakeUser(21), message=message
+    )
+
+    for i in range(6):
+        callback.data = f"offer:{orders[i].order_id}"
+        await handle_offer_response(
+            callback,
+            user_service,
+            profile_service,
+            response_service,
+            interaction_service,
+        )
+
+    assert any("Слишком много запросов" in ans for ans in callback.answers)
+
+
+@pytest.mark.asyncio
+async def test_offer_response_sends_product_link_and_what_next(
+    fake_tm: object,
+    user_repo,
+    blogger_repo,
+    order_repo,
+    order_response_repo,
+    interaction_repo,
+) -> None:
+    """When response succeeds, product_link and BLOGGER_AFTER_RESPONSE_WHAT_NEXT are sent."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000770"),
+        external_id="22",
+        username="blogger",
+    )
+    await user_service.set_user(
+        external_id="22",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+
+    order = await create_test_order(
+        order_repo,
+        UUID("00000000-0000-0000-0000-000000000771"),
+        order_id=UUID("00000000-0000-0000-0000-000000000772"),
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        product_link="https://product.example.com",
+    )
+
+    from tests.helpers.fakes import FakeBot
+
+    bot = FakeBot()
+    message = FakeMessage()
+    message.bot = bot
+    message.chat = type("Chat", (), {"id": 123})()
+    callback = FakeCallback(
+        data=f"offer:{order.order_id}", user=FakeUser(22), message=message
+    )
+
+    await handle_offer_response(
+        callback, user_service, profile_service, response_service, interaction_service
+    )
+
+    assert callback.answers
+    assert any("product.example.com" in str(a) for a in message.answers)
+    assert any(
+        "отклик" in str(a).lower() or "ожидайте" in str(a).lower()
+        for a in message.answers
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_contact_ugc_plus_placement_format(
+    fake_tm: object,
+    user_repo,
+    blogger_repo,
+    order_repo,
+    order_response_repo,
+    interaction_repo,
+) -> None:
+    """_send_contact_immediately shows UGC + размещение for ugc_plus_placement order."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000780"),
+        external_id="780",
+        username="adv",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000781"),
+        external_id="781",
+        username="blogger",
+    )
+    await create_test_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
+
+    order = await create_test_order(
+        order_repo,
+        advertiser.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000782"),
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        order_type=OrderType.UGC_PLUS_PLACEMENT,
+    )
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000783"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    bot = FakeMessage()
+    await _send_contact_immediately(
+        order=order,
+        blogger_id=blogger.user_id,
+        response_count=1,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        interaction_service=interaction_service,
+        bot=bot,
+    )
+
+    assert any("UGC + размещение" in answer for answer in bot.answers)
+
+
+@pytest.mark.asyncio
+async def test_send_contact_empty_instagram_url(
+    fake_tm: object,
+    user_repo,
+    blogger_repo,
+    order_repo,
+    order_response_repo,
+    interaction_repo,
+) -> None:
+    """_send_contact_immediately works when instagram_url is empty (no profile button)."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000790"),
+        external_id="790",
+        username="adv",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000791"),
+        external_id="791",
+        username="blogger",
+    )
+    await create_test_blogger_profile(
+        blogger_repo, blogger.user_id, confirmed=True, instagram_url=""
+    )
+
+    order = await create_test_order(
+        order_repo,
+        advertiser.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000792"),
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000793"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    bot = FakeMessage()
+    await _send_contact_immediately(
+        order=order,
+        blogger_id=blogger.user_id,
+        response_count=1,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        interaction_service=interaction_service,
+        bot=bot,
+    )
+
+    assert any("Новый отклик" in answer for answer in bot.answers)
+
+
+@pytest.mark.asyncio
+async def test_send_contact_instagram_url_without_http(
+    fake_tm: object,
+    user_repo,
+    blogger_repo,
+    order_repo,
+    order_response_repo,
+    interaction_repo,
+) -> None:
+    """_send_contact_immediately adds https:// when instagram_url has no scheme."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000794"),
+        external_id="794",
+        username="adv",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000795"),
+        external_id="795",
+        username="blogger",
+    )
+    await create_test_blogger_profile(
+        blogger_repo,
+        blogger.user_id,
+        confirmed=True,
+        instagram_url="instagram.com/creator",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        advertiser.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000796"),
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=UUID("00000000-0000-0000-0000-000000000797"),
+            order_id=order.order_id,
+            blogger_id=blogger.user_id,
+            responded_at=datetime.now(timezone.utc),
+        )
+    )
+
+    bot = FakeMessage()
+    await _send_contact_immediately(
+        order=order,
+        blogger_id=blogger.user_id,
+        response_count=1,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        interaction_service=interaction_service,
+        bot=bot,
+    )
+
+    assert any("Новый отклик" in answer for answer in bot.answers)

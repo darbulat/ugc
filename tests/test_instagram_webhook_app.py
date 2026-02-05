@@ -535,3 +535,281 @@ def test_main_logs_startup_info(
 
     mock_log_startup_info.assert_called_once()
     assert mock_log_startup_info.call_args.kwargs["service_name"] == "instagram-webhook"
+
+
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_startup_event(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    test_config: AppConfig,
+) -> None:
+    """Startup event loads config and logs."""
+    mock_load_config.return_value = test_config
+    from ugc_bot.instagram_webhook_app import _log_startup
+
+    await _log_startup()
+    mock_load_config.assert_called()
+
+
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_entry_empty_messaging(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """Entry with empty messaging is skipped."""
+    mock_load_config.return_value = test_config
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    payload = {
+        "object": "instagram",
+        "entry": [{"id": "page1", "time": 123, "messaging": []}],
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
+    response = client.post(
+        "/webhook/instagram",
+        content=payload_bytes,
+        headers={"X-Hub-Signature-256": signature},
+    )
+    assert response.status_code == 200
+
+
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_echo_and_self_messages_skipped(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """Echo and self messages are skipped."""
+    mock_load_config.return_value = test_config
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    for is_echo, is_self in [(True, False), (False, True)]:
+        payload = {
+            "object": "instagram",
+            "entry": [
+                {
+                    "id": "page1",
+                    "time": 123,
+                    "messaging": [
+                        {
+                            "is_echo": is_echo,
+                            "is_self": is_self,
+                            "sender": {"id": "123"},
+                            "recipient": {"id": "page1"},
+                            "message": {"text": "code", "mid": "m1"},
+                        }
+                    ],
+                }
+            ],
+        }
+        payload_bytes = json.dumps(payload).encode("utf-8")
+        signature = _create_signature(
+            payload_bytes, test_config.instagram.instagram_app_secret
+        )
+        response = client.post(
+            "/webhook/instagram",
+            content=payload_bytes,
+            headers={"X-Hub-Signature-256": signature},
+        )
+        assert response.status_code == 200
+
+
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_no_sender_id_skipped(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """Message with no sender id is skipped."""
+    mock_load_config.return_value = test_config
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    payload = {
+        "object": "instagram",
+        "entry": [
+            {
+                "id": "page1",
+                "time": 123,
+                "messaging": [
+                    {
+                        "sender": {},
+                        "recipient": {"id": "page1"},
+                        "message": {"text": "code", "mid": "m1"},
+                    }
+                ],
+            }
+        ],
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
+    response = client.post(
+        "/webhook/instagram",
+        content=payload_bytes,
+        headers={"X-Hub-Signature-256": signature},
+    )
+    assert response.status_code == 200
+
+
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_no_message_object_skipped(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """Message with no message object is skipped."""
+    mock_load_config.return_value = test_config
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    payload = {
+        "object": "instagram",
+        "entry": [
+            {
+                "id": "page1",
+                "time": 123,
+                "messaging": [
+                    {
+                        "sender": {"id": "123"},
+                        "recipient": {"id": "page1"},
+                    }
+                ],
+            }
+        ],
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
+    response = client.post(
+        "/webhook/instagram",
+        content=payload_bytes,
+        headers={"X-Hub-Signature-256": signature},
+    )
+    assert response.status_code == 200
+
+
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_empty_text_skipped(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """Message with empty text is skipped."""
+    mock_load_config.return_value = test_config
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    payload = {
+        "object": "instagram",
+        "entry": [
+            {
+                "id": "page1",
+                "time": 123,
+                "messaging": [
+                    {
+                        "sender": {"id": "123"},
+                        "recipient": {"id": "page1"},
+                        "message": {"text": "   ", "mid": "m1"},
+                    }
+                ],
+            }
+        ],
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
+    response = client.post(
+        "/webhook/instagram",
+        content=payload_bytes,
+        headers={"X-Hub-Signature-256": signature},
+    )
+    assert response.status_code == 200
+
+
+@patch("ugc_bot.instagram_webhook_app._notify_user_verification_success")
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_verification_exception_logged(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    mock_notify: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """When verify_code raises, exception is logged and processing continues."""
+    mock_load_config.return_value = test_config
+    verification_service = MagicMock()
+    verification_service.verify_code_by_instagram_sender = MagicMock(
+        side_effect=RuntimeError("Verification failed")
+    )
+    mock_container_cls.return_value.build_instagram_verification_service.return_value = verification_service
+    payload = {
+        "object": "instagram",
+        "entry": [
+            {
+                "id": "page1",
+                "time": 123,
+                "messaging": [
+                    {
+                        "sender": {"id": "123"},
+                        "recipient": {"id": "page1"},
+                        "message": {"text": "CODE", "mid": "m1"},
+                    }
+                ],
+            }
+        ],
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
+    response = client.post(
+        "/webhook/instagram",
+        content=payload_bytes,
+        headers={"X-Hub-Signature-256": signature},
+    )
+    assert response.status_code == 200
+    mock_notify.assert_not_called()

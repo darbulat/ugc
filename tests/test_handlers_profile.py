@@ -9,9 +9,12 @@ from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
+    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
 )
 from ugc_bot.bot.handlers.profile import (
+    EditProfileStates,
     edit_profile_choose_field,
+    edit_profile_choose_type,
     edit_profile_enter_value,
     edit_profile_start,
     show_profile,
@@ -36,11 +39,17 @@ class FakeProfileService:
         has_blogger: bool,
         has_advertiser: bool,
         blogger_confirmed: bool = True,
+        advertiser_city: str | None = None,
+        advertiser_company_activity: str | None = None,
+        advertiser_site_link: str | None = None,
     ) -> None:
         self._user = user
         self._has_blogger = has_blogger
         self._has_advertiser = has_advertiser
         self._blogger_confirmed = blogger_confirmed
+        self._advertiser_city = advertiser_city
+        self._advertiser_company_activity = advertiser_company_activity
+        self._advertiser_site_link = advertiser_site_link
 
     async def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
         return self._user
@@ -71,6 +80,9 @@ class FakeProfileService:
             user_id=user_id,
             phone="contact",
             brand="Brand",
+            city=self._advertiser_city,
+            company_activity=self._advertiser_company_activity,
+            site_link=self._advertiser_site_link,
         )
 
 
@@ -1349,3 +1361,552 @@ async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
     assert "Не удалось обновить" in text
+
+
+@pytest.mark.asyncio
+async def test_show_profile_advertiser_with_optional_fields(user_repo) -> None:
+    """Show advertiser profile with city, company_activity, site_link."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000836"),
+        external_id="38",
+        username="adv",
+    )
+    message = FakeMessage(user=FakeUser(38))
+    service = FakeProfileService(
+        user=user,
+        has_blogger=False,
+        has_advertiser=True,
+        advertiser_city="Moscow",
+        advertiser_company_activity="Retail",
+        advertiser_site_link="https://brand.com",
+    )
+    await show_profile(message, service, FakeFSMContext())
+    ans = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "Город: Moscow" in ans
+    assert "Деятельность: Retail" in ans
+    assert "Сайт: https://brand.com" in ans
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_start_from_user_none(user_repo) -> None:
+    """edit_profile_start returns when from_user is None."""
+    message = FakeMessage(text="Редактировать профиль", user=None)
+    state = FakeFSMContext()
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000837"),
+        external_id="39",
+        username="u",
+    )
+    service = FakeProfileService(user=user, has_blogger=True, has_advertiser=False)
+    await edit_profile_start(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
+    assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_start_both_profiles_shows_type_choice(user_repo) -> None:
+    """When user has both blogger and advertiser, show profile type choice."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000838"),
+        external_id="40",
+        username="u",
+    )
+    message = FakeMessage(text="Редактировать профиль", user=FakeUser(40))
+    state = FakeFSMContext()
+    service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
+    await edit_profile_start(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
+    assert "Выберите профиль для редактирования" in message.answers[0][0]
+    assert state.state == EditProfileStates.choosing_profile_type
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_start_advertiser_only(user_repo) -> None:
+    """When user has only advertiser, go directly to field selection."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000839"),
+        external_id="41",
+        username="u",
+    )
+    message = FakeMessage(text="Редактировать профиль", user=FakeUser(41))
+    state = FakeFSMContext()
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    await edit_profile_start(
+        message, state, service, fsm_draft_service=FakeFsmDraftService()
+    )
+    assert "Выберите раздел" in message.answers[0][0]
+    assert state._data.get("edit_profile_type") == "advertiser"
+    assert state.state == EditProfileStates.choosing_field
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_type_blogger(user_repo) -> None:
+    """edit_profile_choose_type selects blogger profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083a"),
+        external_id="42",
+        username="u",
+    )
+    message = FakeMessage(text="Редактировать профиль блогера", user=FakeUser(42))
+    state = FakeFSMContext()
+    state.state = EditProfileStates.choosing_profile_type
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "42"}
+    service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
+    await edit_profile_choose_type(message, state, service)
+    assert state._data.get("edit_profile_type") == "blogger"
+    assert "Выберите раздел" in message.answers[0][0]
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_type_advertiser(user_repo) -> None:
+    """edit_profile_choose_type selects advertiser profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083b"),
+        external_id="43",
+        username="u",
+    )
+    message = FakeMessage(text="Редактировать профиль рекламодателя", user=FakeUser(43))
+    state = FakeFSMContext()
+    state.state = EditProfileStates.choosing_profile_type
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "43"}
+    service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
+    await edit_profile_choose_type(message, state, service)
+    assert state._data.get("edit_profile_type") == "advertiser"
+    assert "Выберите раздел" in message.answers[0][0]
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_type_invalid(user_repo) -> None:
+    """edit_profile_choose_type rejects invalid choice."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083c"),
+        external_id="44",
+        username="u",
+    )
+    message = FakeMessage(text="Другое", user=FakeUser(44))
+    state = FakeFSMContext()
+    state.state = EditProfileStates.choosing_profile_type
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "44"}
+    service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
+    await edit_profile_choose_type(message, state, service)
+    ans = message.answers[0]
+    assert "Выберите один из вариантов" in (ans if isinstance(ans, str) else ans[0])
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_type_my_profile_returns(user_repo) -> None:
+    """edit_profile_choose_type with MY_PROFILE clears and shows profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083d"),
+        external_id="45",
+        username="u",
+    )
+    message = FakeMessage(text=MY_PROFILE_BUTTON_TEXT, user=FakeUser(45))
+    state = FakeFSMContext()
+    state.state = EditProfileStates.choosing_profile_type
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "45"}
+    service = FakeProfileService(user=user, has_blogger=True, has_advertiser=True)
+    await edit_profile_choose_type(message, state, service)
+    assert state.cleared
+    assert "👤 Ваш профиль" in (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_advertiser_phone(user_repo) -> None:
+    """edit_profile_choose_field for advertiser shows phone prompt."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083e"),
+        external_id="46",
+        username="u",
+    )
+    message = FakeMessage(text="Телефон", user=FakeUser(46))
+    state = FakeFSMContext()
+    state._data = {"edit_user_id": user.user_id, "edit_profile_type": "advertiser"}
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    reg_service = FakeBloggerRegistrationService()
+    role_service = FakeUserRoleService()
+    await edit_profile_choose_field(message, state, service, reg_service, role_service)
+    assert "телефона" in message.answers[0][0].lower()
+    assert state._data.get("editing_field") == "phone"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_advertiser_brand(user_repo) -> None:
+    """edit_profile_choose_field for advertiser shows brand prompt."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000083f"),
+        external_id="47",
+        username="u",
+    )
+    message = FakeMessage(text="Бренд", user=FakeUser(47))
+    state = FakeFSMContext()
+    state._data = {"edit_user_id": user.user_id, "edit_profile_type": "advertiser"}
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    reg_service = FakeBloggerRegistrationService()
+    role_service = FakeUserRoleService()
+    await edit_profile_choose_field(message, state, service, reg_service, role_service)
+    assert "бренда" in message.answers[0][0].lower()
+    assert state._data.get("editing_field") == "brand"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_name_success(user_repo) -> None:
+    """Edit advertiser name updates user and shows profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000840"),
+        external_id="48",
+        username="u",
+    )
+    message = FakeMessage(text="NewName", user=FakeUser(48))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "name",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "48",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    reg_service = FakeBloggerRegistrationService()
+    adv_service = FakeAdvertiserRegistrationService()
+    role_service = FakeUserRoleService()
+    await edit_profile_enter_value(
+        message, state, service, reg_service, adv_service, role_service
+    )
+    assert state.cleared
+    assert role_service.set_user_calls[0][2] == "NewName"
+    assert "Профиль обновлён" in (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_name_empty(user_repo) -> None:
+    """Edit advertiser name empty gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000841"),
+        external_id="49",
+        username="u",
+    )
+    message = FakeMessage(text="", user=FakeUser(49))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "name",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "49",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+    )
+    assert "Имя не может быть пустым" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_phone_success(user_repo) -> None:
+    """Edit advertiser phone updates profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000842"),
+        external_id="50",
+        username="u",
+    )
+    message = FakeMessage(text="+79001234567", user=FakeUser(50))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "phone",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "50",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    adv_service = FakeAdvertiserRegistrationService(
+        update_returns=AdvertiserProfile(
+            user_id=user.user_id, phone="+79001234567", brand="B"
+        )
+    )
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+    )
+    assert adv_service.update_calls[0][1].get("phone") == "+79001234567"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_phone_empty(user_repo) -> None:
+    """Edit advertiser phone empty gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000843"),
+        external_id="51",
+        username="u",
+    )
+    message = FakeMessage(text="", user=FakeUser(51))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "phone",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "51",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert "Номер телефона не может быть пустым" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_brand_empty(user_repo) -> None:
+    """Edit advertiser brand empty gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000844"),
+        external_id="52",
+        username="u",
+    )
+    message = FakeMessage(text="", user=FakeUser(52))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "brand",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "52",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert "Название бренда не может быть пустым" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
+    """Edit advertiser site_link updates profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000845"),
+        external_id="53",
+        username="u",
+    )
+    message = FakeMessage(text="https://site.com", user=FakeUser(53))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "site_link",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "53",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    adv_service = FakeAdvertiserRegistrationService(
+        update_returns=AdvertiserProfile(
+            user_id=user.user_id, phone="+7", brand="B", site_link="https://site.com"
+        )
+    )
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+    )
+    assert adv_service.update_calls[0][1].get("site_link") == "https://site.com"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_missing(user_repo) -> None:
+    """Edit when advertiser profile is gone replies profile not found."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000846"),
+        external_id="54",
+        username="u",
+    )
+    message = FakeMessage(text="+7", user=FakeUser(54))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "phone",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "54",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=False)
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert "Профиль рекламодателя не найден" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_update_none(user_repo) -> None:
+    """When advertiser update returns None user gets error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000847"),
+        external_id="55",
+        username="u",
+    )
+    message = FakeMessage(text="+7900", user=FakeUser(55))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "phone",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "55",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    adv_service = FakeAdvertiserRegistrationService(update_returns=None)
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+    )
+    assert "Не удалось обновить" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_barter_no(user_repo) -> None:
+    """Enter barter No updates profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000848"),
+        external_id="56",
+        username="u",
+    )
+    message = FakeMessage(text="Нет", user=FakeUser(56))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "barter",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "56",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert reg_service.update_calls[0][1].get("barter") is False
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_work_format_ugc_only(user_repo) -> None:
+    """Enter work format UGC only updates profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000849"),
+        external_id="57",
+        username="u",
+    )
+    message = FakeMessage(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT, user=FakeUser(57))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "work_format",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "57",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert reg_service.update_calls[0][1].get("work_format") == WorkFormat.UGC_ONLY
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_unknown_field(user_repo) -> None:
+    """Advertiser unknown field clears state and replies unknown."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084a"),
+        external_id="58",
+        username="u",
+    )
+    message = FakeMessage(text="value", user=FakeUser(58))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "unknown",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "58",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(user=user, has_blogger=False, has_advertiser=True)
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+    )
+    assert state.cleared
+    assert "Неизвестное поле" in message.answers[0]

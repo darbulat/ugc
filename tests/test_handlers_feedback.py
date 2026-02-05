@@ -3137,3 +3137,464 @@ async def test_handle_issue_description_complaint_fails(
 
     assert state.cleared is True
     assert any("ошибка" in str(a).lower() for a in send_message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_reason_invalid_hex(
+    user_repo,
+    interaction_repo,
+    blogger_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """Reject invalid hex in interaction_id."""
+
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.application.services.blogger_registration_service import (
+        BloggerRegistrationService,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    blogger_registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001300"),
+        external_id="1300",
+        username="adv",
+    )
+
+    callback = FakeCallback(data="fb_r:adv:notvalidhex:c", user=FakeUser(1300))
+    state = FakeFSMContext()
+    await handle_feedback_reason(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        blogger_registration_service,
+        nps_service,
+        order_service,
+    )
+    assert "Неверный идентификатор" in callback.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_empty_text_no_photos(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """When text and photos empty, show prompt to add description."""
+
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001310"),
+        external_id="1310",
+        username="adv",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001311"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001312"),
+        advertiser_id=advertiser.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001313"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(interaction.interaction_id),
+        feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text="", user=FakeUser(1310))
+    message.photo = None
+    message.caption = None
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert any("Добавьте описание" in str(a) for a in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_send_button_invalid_uuid(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """When Отправить with invalid interaction_id in state, show error."""
+
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        _ISSUE_SEND_BUTTON_TEXT,
+        handle_issue_description,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001320"),
+        external_id="1320",
+        username="adv",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id="not-a-uuid",
+        feedback_kind="adv",
+        issue_description_parts=["Text"],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1320))
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert any("Ошибка" in str(a) for a in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_send_button_blogger(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """Blogger can submit issue and complaint is created with blogger as reporter."""
+
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        _ISSUE_SEND_BUTTON_TEXT,
+        handle_issue_description,
+    )
+
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001330"),
+        external_id="1330",
+        username="blogger",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001331"),
+        blogger_id=blogger.user_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001332"),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001333"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(interaction.interaction_id),
+        feedback_kind="blog",
+        issue_description_parts=["Проблема с заказчиком"],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(
+        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1330), bot=FakeBot()
+    )
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert state.cleared is True
+    assert any("заявку" in str(a).lower() for a in message.answers)
+    complaints = list(complaint_repo.complaints.values())
+    assert len(complaints) == 1
+    assert complaints[0].reporter_id == blogger.user_id
+
+
+@pytest.mark.asyncio
+async def test_handle_nps_invalid_kind_defaults_to_blog(user_repo, nps_service) -> None:
+    """When kind is invalid, default to blog."""
+
+    from ugc_bot.bot.handlers.feedback import handle_nps
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001340"),
+        external_id="1340",
+        username="u",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    callback = FakeCallback(
+        data=f"nps:{user.user_id.hex}:5:invalid_kind", user=FakeUser(1340)
+    )
+    state = FakeFSMContext()
+    await handle_nps(callback, state, user_service, nps_service)
+    assert callback.message.answers
+    assert (
+        "5" in str(callback.message.answers[0])
+        or "оценк" in str(callback.message.answers[0]).lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_nps_score_zero_rejected(user_repo, nps_service) -> None:
+    """Reject score 0."""
+
+    from ugc_bot.bot.handlers.feedback import handle_nps
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001350"),
+        external_id="1350",
+        username="u",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    callback = FakeCallback(data=f"nps:{user.user_id.hex}:0:blog", user=FakeUser(1350))
+    state = FakeFSMContext()
+    await handle_nps(callback, state, user_service, nps_service)
+    assert "1 до 5" in callback.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_nps_score_six_rejected(user_repo, nps_service) -> None:
+    """Reject score 6."""
+
+    from ugc_bot.bot.handlers.feedback import handle_nps
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001360"),
+        external_id="1360",
+        username="u",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    callback = FakeCallback(data=f"nps:{user.user_id.hex}:6:blog", user=FakeUser(1360))
+    state = FakeFSMContext()
+    await handle_nps(callback, state, user_service, nps_service)
+    assert "1 до 5" in callback.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_nps_comment_invalid_uuid(user_repo, nps_service) -> None:
+    """Reject invalid nps_user_id in state."""
+
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_nps_comment,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001370"),
+        external_id="1370",
+        username="u",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_nps_comment)
+    await state.update_data(
+        nps_user_id="not-a-uuid",
+        nps_score=5,
+        nps_kind="blog",
+    )
+    message = FakeMessage(text="Готово", user=FakeUser(1370))
+
+    await handle_nps_comment(message, state, user_service, nps_service)
+    assert any("Ошибка" in str(a) for a in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_no_deal_invalid_uuid(
+    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+) -> None:
+    """Reject no_deal with invalid interaction UUID."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001380"),
+        external_id="1380",
+        username="adv",
+    )
+    callback = FakeCallback(
+        data="feedback:adv:not-a-valid-uuid:no_deal", user=FakeUser(1380)
+    )
+    state = FakeFSMContext()
+    await handle_feedback(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+    assert "Неверный идентификатор" in callback.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_issue_blogger(
+    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+) -> None:
+    """Blogger can select issue and get prompt."""
+
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001390"),
+        external_id="1390",
+        username="blogger",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001391"),
+        blogger_id=blogger.user_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001392"),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001393"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    callback = FakeCallback(
+        data=f"feedback:blog:{interaction.interaction_id}:issue",
+        user=FakeUser(1390),
+    )
+    state = FakeFSMContext()
+    await handle_feedback(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+    assert callback.message.answers
+    assert any(
+        "проблем" in str(a).lower() or "скриншот" in str(a).lower()
+        for a in callback.message.answers
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_postpone_blogger_message(
+    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+) -> None:
+    """Postpone from blogger shows blogger-specific message."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(
+        interaction_repo=interaction_repo, max_postpone_count=3
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001400"),
+        external_id="1400",
+        username="blogger",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001401"),
+        blogger_id=blogger.user_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001402"),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001403"),
+        postpone_count=0,
+    )
+    callback = FakeCallback(
+        data=f"feedback:blog:{interaction.interaction_id}:postpone",
+        user=FakeUser(1400),
+    )
+    state = FakeFSMContext()
+    await handle_feedback(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+    assert callback.message.answers
+    assert any("заказчик" in str(a).lower() for a in callback.message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_postpone_advertiser_message(
+    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+) -> None:
+    """Postpone from advertiser shows advertiser-specific message."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(
+        interaction_repo=interaction_repo, max_postpone_count=3
+    )
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001410"),
+        external_id="1410",
+        username="adv",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001411"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001412"),
+        advertiser_id=advertiser.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001413"),
+        postpone_count=0,
+    )
+    callback = FakeCallback(
+        data=f"feedback:adv:{interaction.interaction_id}:postpone",
+        user=FakeUser(1410),
+    )
+    state = FakeFSMContext()
+    await handle_feedback(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+    assert callback.message.answers
+    assert any("креатор" in str(a).lower() for a in callback.message.answers)

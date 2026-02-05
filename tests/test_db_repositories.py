@@ -1,14 +1,17 @@
 """Tests for SQLAlchemy repositories with fake sessions."""
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    Complaint,
     FsmDraft,
     InstagramVerificationCode,
+    Interaction,
     Order,
     OrderResponse,
     OutboxEvent,
@@ -17,6 +20,8 @@ from ugc_bot.domain.entities import (
 )
 from ugc_bot.domain.enums import (
     AudienceGender,
+    ComplaintStatus,
+    InteractionStatus,
     MessengerType,
     OrderStatus,
     OrderType,
@@ -28,9 +33,12 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
+    SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
     SqlAlchemyFsmDraftRepository,
     SqlAlchemyInstagramVerificationRepository,
+    SqlAlchemyInteractionRepository,
+    SqlAlchemyNpsRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyOrderResponseRepository,
     SqlAlchemyOutboxRepository,
@@ -40,9 +48,11 @@ from ugc_bot.infrastructure.db.repositories import (
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    ComplaintModel,
     ContactPricingModel,
     FsmDraftModel,
     InstagramVerificationCodeModel,
+    InteractionModel,
     OrderModel,
     OrderResponseModel,
     OutboxEventModel,
@@ -78,6 +88,12 @@ class FakeResult:
         return self._value
 
     def scalar_one(self):  # type: ignore[no-untyped-def]
+        return self._value
+
+    def scalar(self):  # type: ignore[no-untyped-def]
+        """Return first column of first row (e.g. for count queries)."""
+        if isinstance(self._value, list) and self._value:
+            return self._value[0]
         return self._value
 
     def scalars(self):  # type: ignore[no-untyped-def]
@@ -763,6 +779,50 @@ async def test_user_repository_list_pending_role_reminders() -> None:
 
 
 @pytest.mark.asyncio
+async def test_user_repository_list_admins() -> None:
+    """List admin users."""
+
+    admin_model = UserModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000161"),
+        external_id="161",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    admin_model.admin = True
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory([admin_model]))
+    admins = list(await repo.list_admins(session=_repo_session(repo)))
+    assert len(admins) == 1
+    assert admins[0].username == "admin_user"
+
+
+@pytest.mark.asyncio
+async def test_user_repository_list_admins_with_messenger_type() -> None:
+    """List admin users filtered by messenger type."""
+
+    admin_model = UserModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000162"),
+        external_id="162",
+        messenger_type=MessengerType.TELEGRAM,
+        username="tg_admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    admin_model.admin = True
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory([admin_model]))
+    admins = list(
+        await repo.list_admins(
+            messenger_type=MessengerType.TELEGRAM, session=_repo_session(repo)
+        )
+    )
+    assert len(admins) == 1
+    assert admins[0].username == "tg_admin"
+
+
+@pytest.mark.asyncio
 async def test_order_repository_list_active() -> None:
     """List active orders."""
 
@@ -1101,19 +1161,478 @@ async def test_outbox_repository_rejects_invalid_session() -> None:
         await repo.save(event)
 
 
-def test_outbox_repository_get_pending_events() -> None:
-    """Only pending events are returned."""
+@pytest.mark.asyncio
+async def test_require_session_raises_when_no_session() -> None:
+    """Calling repo method without session raises RuntimeError."""
+    model = UserModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000199"),
+        external_id="199",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
+    with pytest.raises(RuntimeError, match="session is required"):
+        await repo.get_by_id(model.user_id)
 
-    # This test would require complex mocking of SQLAlchemy query chain
-    # For now, we'll skip it as the in-memory repository tests cover this functionality
-    # and the SQL implementation follows the same pattern as other repositories
-    pass
+
+@pytest.mark.asyncio
+async def test_order_response_repository_list_by_blogger() -> None:
+    """list_by_blogger returns responses for the blogger."""
+    blogger_id = UUID("00000000-0000-0000-0000-000000000193")
+    model = OrderResponseModel(
+        response_id=UUID("00000000-0000-0000-0000-000000000194"),
+        order_id=UUID("00000000-0000-0000-0000-000000000195"),
+        blogger_id=blogger_id,
+        responded_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyOrderResponseRepository(session_factory=_session_factory([model]))
+    responses = list(
+        await repo.list_by_blogger(blogger_id, session=_repo_session(repo))
+    )
+    assert len(responses) == 1
+    assert responses[0].blogger_id == blogger_id
 
 
-def test_outbox_repository_mark_operations() -> None:
-    """Mark operations work correctly."""
+@pytest.mark.asyncio
+async def test_interaction_repository_list_due_for_feedback() -> None:
+    """list_due_for_feedback returns interactions due for feedback."""
+    cutoff = datetime.now(timezone.utc)
+    model = InteractionModel(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000196"),
+        order_id=UUID("00000000-0000-0000-0000-000000000197"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000198"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000199"),
+        status=InteractionStatus.PENDING,
+        next_check_at=cutoff - timedelta(minutes=1),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInteractionRepository(session_factory=_session_factory([model]))
+    interactions = list(
+        await repo.list_due_for_feedback(cutoff, session=_repo_session(repo))
+    )
+    assert len(interactions) == 1
+    assert interactions[0].status == InteractionStatus.PENDING
 
-    # This test would require complex mocking of SQLAlchemy update operations
-    # For now, we'll rely on the in-memory repository tests which cover this functionality
-    # and integration tests that verify the end-to-end behavior
-    pass
+
+@pytest.mark.asyncio
+async def test_interaction_repository_list_by_status() -> None:
+    """list_by_status returns interactions by status."""
+    model = InteractionModel(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000200"),
+        order_id=UUID("00000000-0000-0000-0000-000000000201"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000202"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000203"),
+        status=InteractionStatus.PENDING,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInteractionRepository(session_factory=_session_factory([model]))
+    interactions = list(
+        await repo.list_by_status(
+            InteractionStatus.PENDING, session=_repo_session(repo)
+        )
+    )
+    assert len(interactions) == 1
+    assert interactions[0].status == InteractionStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_interaction_repository_update_next_check_at() -> None:
+    """update_next_check_at executes update."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyInteractionRepository(
+        session_factory=FakeAsyncSessionMaker(session)
+    )
+    interaction_id = UUID("00000000-0000-0000-0000-000000000204")
+    next_check = datetime.now(timezone.utc) + timedelta(hours=1)
+    await repo.update_next_check_at(interaction_id, next_check, session=session)
+
+
+@pytest.mark.asyncio
+async def test_complaint_repository_list_by_reporter() -> None:
+    """list_by_reporter returns complaints by reporter."""
+    reporter_id = UUID("00000000-0000-0000-0000-000000000205")
+    model = ComplaintModel(
+        complaint_id=UUID("00000000-0000-0000-0000-000000000206"),
+        reporter_id=reporter_id,
+        reported_id=UUID("00000000-0000-0000-0000-000000000207"),
+        order_id=UUID("00000000-0000-0000-0000-000000000208"),
+        reason="test",
+        status=ComplaintStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyComplaintRepository(session_factory=_session_factory([model]))
+    complaints = list(
+        await repo.list_by_reporter(reporter_id, session=_repo_session(repo))
+    )
+    assert len(complaints) == 1
+    assert complaints[0].reporter_id == reporter_id
+
+
+@pytest.mark.asyncio
+async def test_complaint_repository_exists() -> None:
+    """exists returns True when complaint exists."""
+    repo = SqlAlchemyComplaintRepository(session_factory=_session_factory(1))
+    order_id = UUID("00000000-0000-0000-0000-000000000209")
+    reporter_id = UUID("00000000-0000-0000-0000-000000000210")
+    result = await repo.exists(order_id, reporter_id, session=_repo_session(repo))
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_complaint_repository_list_by_status() -> None:
+    """list_by_status returns complaints by status."""
+    model = ComplaintModel(
+        complaint_id=UUID("00000000-0000-0000-0000-000000000211"),
+        reporter_id=UUID("00000000-0000-0000-0000-000000000212"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000213"),
+        order_id=UUID("00000000-0000-0000-0000-000000000214"),
+        reason="test",
+        status=ComplaintStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyComplaintRepository(session_factory=_session_factory([model]))
+    complaints = list(
+        await repo.list_by_status(ComplaintStatus.PENDING, session=_repo_session(repo))
+    )
+    assert len(complaints) == 1
+    assert complaints[0].status == ComplaintStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_mark_as_processing() -> None:
+    """mark_as_processing executes update."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyOutboxRepository(session_factory=FakeAsyncSessionMaker(session))
+    event_id = UUID("00000000-0000-0000-0000-000000000215")
+    await repo.mark_as_processing(event_id, session=session)
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_mark_as_published() -> None:
+    """mark_as_published executes update."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyOutboxRepository(session_factory=FakeAsyncSessionMaker(session))
+    event_id = UUID("00000000-0000-0000-0000-000000000216")
+    processed_at = datetime.now(timezone.utc)
+    await repo.mark_as_published(event_id, processed_at, session=session)
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_mark_as_failed() -> None:
+    """mark_as_failed executes update."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyOutboxRepository(session_factory=FakeAsyncSessionMaker(session))
+    event_id = UUID("00000000-0000-0000-0000-000000000217")
+    await repo.mark_as_failed(event_id, "error", 1, session=session)
+
+
+class FakeAsyncSessionCompat(FakeSession):
+    """FakeSession that passes isinstance(session, AsyncSession) when patched."""
+
+
+@pytest.mark.asyncio
+async def test_blogger_repository_list_confirmed_user_ids() -> None:
+    """list_confirmed_user_ids returns confirmed blogger user ids."""
+    user_id_1 = UUID("00000000-0000-0000-0000-000000000220")
+    session = FakeAsyncSessionCompat([user_id_1])
+    with patch(
+        "ugc_bot.infrastructure.db.repositories.AsyncSession",
+        FakeAsyncSessionCompat,
+    ):
+        repo = SqlAlchemyBloggerProfileRepository(
+            session_factory=lambda: session  # type: ignore[return-value]
+        )
+        result = await repo.list_confirmed_user_ids(session=session)
+    assert result == [user_id_1]
+
+
+@pytest.mark.asyncio
+async def test_interaction_repository_list_by_order() -> None:
+    """list_by_order returns interactions for order."""
+    order_id = UUID("00000000-0000-0000-0000-000000000221")
+    model = InteractionModel(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000222"),
+        order_id=order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000223"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000224"),
+        status=InteractionStatus.PENDING,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInteractionRepository(session_factory=_session_factory([model]))
+    interactions = list(await repo.list_by_order(order_id, session=_repo_session(repo)))
+    assert len(interactions) == 1
+    assert interactions[0].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_interaction_repository_save() -> None:
+    """save persists interaction via merge."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyInteractionRepository(
+        session_factory=FakeAsyncSessionMaker(session)
+    )
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000225"),
+        order_id=UUID("00000000-0000-0000-0000-000000000226"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000227"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000228"),
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    await repo.save(interaction, session=session)
+    assert session.merged is not None
+
+
+@pytest.mark.asyncio
+async def test_instagram_verification_repository_get_valid_code_mismatch() -> None:
+    """get_valid_code returns None when code or user_id does not match."""
+    user_id = UUID("00000000-0000-0000-0000-000000000228")
+    model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000229"),
+        user_id=user_id,
+        code="MATCH",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        used=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(model)
+    )
+    assert (
+        await repo.get_valid_code(user_id, "WRONG", session=_repo_session(repo)) is None
+    )
+    assert (
+        await repo.get_valid_code(
+            UUID("00000000-0000-0000-0000-000000000999"),
+            "MATCH",
+            session=_repo_session(repo),
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_instagram_verification_repository_mark_used_model_none() -> None:
+    """mark_used is no-op when model is not found."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=FakeAsyncSessionMaker(session)
+    )
+    code_id = UUID("00000000-0000-0000-0000-000000000229")
+    await repo.mark_used(code_id, session=session)
+    assert session.merged is None
+
+
+@pytest.mark.asyncio
+async def test_nps_repository_save() -> None:
+    """NpsRepository save adds model to session."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyNpsRepository(session_factory=FakeAsyncSessionMaker(session))
+    user_id = UUID("00000000-0000-0000-0000-000000000230")
+    await repo.save(user_id, 9, "Great!", session=session)
+
+
+@pytest.mark.asyncio
+async def test_nps_repository_exists_for_user() -> None:
+    """exists_for_user returns True when user has NPS response."""
+    repo = SqlAlchemyNpsRepository(session_factory=_session_factory(1))
+    user_id = UUID("00000000-0000-0000-0000-000000000231")
+    result = await repo.exists_for_user(user_id, session=_repo_session(repo))
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_get_pending_events() -> None:
+    """get_pending_events returns pending events."""
+    model = OutboxEventModel(
+        event_id=UUID("00000000-0000-0000-0000-000000000232"),
+        event_type="order_activation",
+        aggregate_id=UUID("00000000-0000-0000-0000-000000000233"),
+        aggregate_type="order",
+        payload={},
+        status=OutboxEventStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyOutboxRepository(session_factory=_session_factory([model]))
+    events = await repo.get_pending_events(limit=10, session=_repo_session(repo))
+    assert len(events) == 1
+    assert events[0].event_type == "order_activation"
+
+
+@pytest.mark.asyncio
+async def test_complaint_repository_save() -> None:
+    """save persists complaint via merge."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyComplaintRepository(session_factory=FakeAsyncSessionMaker(session))
+    complaint = Complaint(
+        complaint_id=UUID("00000000-0000-0000-0000-000000000234"),
+        reporter_id=UUID("00000000-0000-0000-0000-000000000235"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000236"),
+        order_id=UUID("00000000-0000-0000-0000-000000000237"),
+        reason="test",
+        status=ComplaintStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+        reviewed_at=None,
+    )
+    await repo.save(complaint, session=session)
+    assert session.merged is not None
+
+
+@pytest.mark.asyncio
+async def test_interaction_repository_get_by_participants() -> None:
+    """get_by_participants returns interaction by order/blogger/advertiser."""
+    order_id = UUID("00000000-0000-0000-0000-000000000238")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000239")
+    advertiser_id = UUID("00000000-0000-0000-0000-000000000240")
+    model = InteractionModel(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000241"),
+        order_id=order_id,
+        blogger_id=blogger_id,
+        advertiser_id=advertiser_id,
+        status=InteractionStatus.PENDING,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInteractionRepository(session_factory=_session_factory(model))
+    interaction = await repo.get_by_participants(
+        order_id, blogger_id, advertiser_id, session=_repo_session(repo)
+    )
+    assert interaction is not None
+    assert interaction.order_id == order_id
+    assert interaction.blogger_id == blogger_id
+    assert interaction.advertiser_id == advertiser_id
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_get_by_id() -> None:
+    """get_by_id returns outbox event when found."""
+    event_id = UUID("00000000-0000-0000-0000-000000000242")
+    model = OutboxEventModel(
+        event_id=event_id,
+        event_type="order_activation",
+        aggregate_id=UUID("00000000-0000-0000-0000-000000000243"),
+        aggregate_type="order",
+        payload={},
+        status=OutboxEventStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyOutboxRepository(session_factory=_session_factory(model))
+    event = await repo.get_by_id(event_id, session=_repo_session(repo))
+    assert event is not None
+    assert event.event_id == event_id
+
+
+@pytest.mark.asyncio
+async def test_complaint_repository_get_by_id() -> None:
+    """get_by_id returns complaint when found."""
+    complaint_id = UUID("00000000-0000-0000-0000-000000000244")
+    model = ComplaintModel(
+        complaint_id=complaint_id,
+        reporter_id=UUID("00000000-0000-0000-0000-000000000245"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000246"),
+        order_id=UUID("00000000-0000-0000-0000-000000000247"),
+        reason="test",
+        status=ComplaintStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyComplaintRepository(session_factory=_session_factory(model))
+    complaint = await repo.get_by_id(complaint_id, session=_repo_session(repo))
+    assert complaint is not None
+    assert complaint.complaint_id == complaint_id
+
+
+@pytest.mark.asyncio
+async def test_complaint_repository_list_by_order() -> None:
+    """list_by_order returns complaints for order."""
+    order_id = UUID("00000000-0000-0000-0000-000000000248")
+    model = ComplaintModel(
+        complaint_id=UUID("00000000-0000-0000-0000-000000000249"),
+        reporter_id=UUID("00000000-0000-0000-0000-000000000250"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000251"),
+        order_id=order_id,
+        reason="test",
+        status=ComplaintStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyComplaintRepository(session_factory=_session_factory([model]))
+    complaints = list(await repo.list_by_order(order_id, session=_repo_session(repo)))
+    assert len(complaints) == 1
+    assert complaints[0].order_id == order_id

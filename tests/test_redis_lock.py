@@ -87,3 +87,49 @@ async def test_lock_redis_failure_falls_back_to_memory() -> None:
             entered.append(1)
 
     assert entered == [1]
+
+
+@pytest.mark.asyncio
+async def test_get_redis_returns_none_on_import_error() -> None:
+    """When Redis import fails, _get_redis returns None."""
+    import builtins
+
+    original_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "redis.asyncio":
+            raise ImportError("No module named 'redis'")
+        return original_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=mock_import):
+        manager = IssueDescriptionLockManager(redis_url="redis://localhost")
+        result = manager._get_redis()
+        assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_redis_lazy_init_success() -> None:
+    """When Redis is available, _get_redis returns client and caches it."""
+    mock_redis = MagicMock()
+    mock_redis_class = MagicMock()
+    mock_redis_class.from_url = MagicMock(return_value=mock_redis)
+
+    fake_redis_asyncio = MagicMock()
+    fake_redis_asyncio.Redis = mock_redis_class
+    fake_redis = MagicMock()
+    fake_redis.asyncio = fake_redis_asyncio
+
+    with patch.dict(
+        "sys.modules",
+        {"redis": fake_redis, "redis.asyncio": fake_redis_asyncio},
+        clear=False,
+    ):
+        manager = IssueDescriptionLockManager(redis_url="redis://localhost:6379")
+        result1 = manager._get_redis()
+        result2 = manager._get_redis()
+        assert result1 is mock_redis
+        assert result2 is mock_redis
+        assert mock_redis_class.from_url.call_count == 1
+        mock_redis_class.from_url.assert_called_once_with(
+            "redis://localhost:6379", decode_responses=True
+        )

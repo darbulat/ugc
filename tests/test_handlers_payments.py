@@ -8,6 +8,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import (
     pay_order,
     pre_checkout_query_handler,
+    send_order_invoice,
     successful_payment_handler,
 )
 from ugc_bot.config import AppConfig
@@ -749,3 +750,257 @@ async def test_successful_payment_user_not_found(
     )
     await successful_payment_handler(message, user_service, payment_service)
     assert "Пользователь не найден" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_send_order_invoice_bot_none_returns_early() -> None:
+    """send_order_invoice returns when message.bot is None."""
+    message = FakeMessage(text="/pay", user=FakeUser(1), bot=None)
+    message.chat = type("Chat", (), {"id": 1})()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await send_order_invoice(
+        message, UUID("00000000-0000-0000-0000-000000000530"), "Offer", 1000.0, config
+    )
+    assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_send_order_invoice_price_too_large() -> None:
+    """send_order_invoice rejects price over 100M."""
+    bot = FakeBot()
+    message = FakeMessage(text="/pay", user=FakeUser(1), bot=bot)
+    message.chat = type("Chat", (), {"id": 1})()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await send_order_invoice(
+        message,
+        UUID("00000000-0000-0000-0000-000000000532"),
+        "Offer",
+        150_000_000.0,
+        config,
+    )
+    assert "слишком большая" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_successful_payment_handler_no_payment_returns(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
+    """successful_payment_handler returns when successful_payment is None."""
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+    )
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000522"),
+        external_id="22",
+    )
+    message = FakeMessage(text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot())
+    message.successful_payment = None
+
+    await successful_payment_handler(message, user_service, payment_service)
+
+    assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_send_order_invoice_invalid_price() -> None:
+    """send_order_invoice rejects invalid price (InvalidOperation)."""
+
+    class BadPrice:
+        def __str__(self) -> str:
+            return "not-a-number"
+
+    bot = FakeBot()
+    message = FakeMessage(text="/pay", user=FakeUser(1), bot=bot)
+    message.chat = type("Chat", (), {"id": 1})()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await send_order_invoice(
+        message,
+        UUID("00000000-0000-0000-0000-000000000533"),
+        "Offer",
+        BadPrice(),
+        config,
+    )
+    assert message.answers
+    assert "Некорректная сумма" in message.answers[0]
+
+
+class FakeBotRaisingInvoice(FakeBot):
+    """Fake bot that raises when send_invoice is called."""
+
+    async def send_invoice(self, **kwargs: object) -> None:
+        raise RuntimeError("send_invoice failed")
+
+
+@pytest.mark.asyncio
+async def test_send_order_invoice_send_fails() -> None:
+    """send_order_invoice handles send_invoice exception."""
+    bot = FakeBotRaisingInvoice()
+    message = FakeMessage(text="/pay", user=FakeUser(1), bot=bot)
+    message.chat = type("Chat", (), {"id": 1})()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await send_order_invoice(
+        message,
+        UUID("00000000-0000-0000-0000-000000000534"),
+        "Offer",
+        1000.0,
+        config,
+    )
+    assert message.answers
+    assert "Не удалось создать счет" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_pay_order_contact_price_not_configured(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
+    """Reject when contact pricing is not configured for bloggers count."""
+
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+    )
+    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    contact_pricing_service = await build_contact_pricing_service(
+        {3: 100.0}, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000535"),
+        external_id="23",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="23",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000536"),
+        price=1000.0,
+        bloggers_needed=99,
+        status=OrderStatus.NEW,
+    )
+
+    message = FakeMessage(
+        text=f"/pay_order {order.order_id}",
+        user=FakeUser(23, "adv", "Adv"),
+        bot=FakeBot(),
+    )
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await pay_order(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+    )
+    assert message.answers
+    assert (
+        "Стоимость доступа" in message.answers[0] or "настроена" in message.answers[0]
+    )
+
+
+@pytest.mark.asyncio
+async def test_successful_payment_handler_confirmation_error_with_metrics(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+) -> None:
+    """successful_payment_handler records metric when confirm raises OrderCreationError."""
+
+    from ugc_bot.application.errors import OrderCreationError
+
+    class FakeMetricsCollector:
+        def __init__(self) -> None:
+            self.recorded: list[dict] = []
+
+        def record_payment_failed(self, order_id: str, reason: str) -> None:
+            self.recorded.append({"order_id": order_id, "reason": reason})
+
+    class FailingPaymentService:
+        def __init__(self, metrics_collector: FakeMetricsCollector) -> None:
+            self.metrics_collector = metrics_collector
+
+        async def confirm_telegram_payment(self, **kwargs: object) -> None:
+            raise OrderCreationError("Order not found.")
+
+    user_service = UserRoleService(user_repo=user_repo)
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000537"),
+        external_id="24",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+
+    metrics = FakeMetricsCollector()
+    payment_service = FailingPaymentService(metrics_collector=metrics)
+
+    message = FakeMessage(text=None, user=FakeUser(24, "adv", "Adv"), bot=FakeBot())
+    message.successful_payment = FakeSuccessfulPayment(
+        payload="00000000-0000-0000-0000-000000000538", charge_id="charge_1"
+    )
+
+    with pytest.raises(OrderCreationError):
+        await successful_payment_handler(message, user_service, payment_service)
+
+    assert len(metrics.recorded) == 1
+    assert metrics.recorded[0]["order_id"] == "00000000-0000-0000-0000-000000000538"
+    assert "Order not found" in metrics.recorded[0]["reason"]
