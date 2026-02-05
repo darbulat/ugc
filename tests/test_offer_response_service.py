@@ -231,6 +231,60 @@ async def test_offer_response_transaction_manager(fake_tm: object) -> None:
 
     assert result.order.order_id == order.order_id
     assert result.response_count == 1
+    assert result.order.completed_at is None
+    assert result.order.status == OrderStatus.ACTIVE
+
+    updated = await order_repo.get_by_id(order.order_id)
+    assert updated is not None
+    assert updated.completed_at is None
+
+
+@pytest.mark.asyncio
+async def test_offer_response_completed_at_set_only_when_last_blogger_responds(
+    fake_tm: object,
+) -> None:
+    """completed_at is set only when the last blogger responds."""
+
+    order_repo = InMemoryOrderRepository()
+    response_repo = InMemoryOrderResponseRepository()
+    service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=response_repo,
+        transaction_manager=fake_tm,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000900"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000901"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+
+    result1 = await service.respond_and_finalize(
+        order_id=order.order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000902"),
+    )
+    assert result1.order.completed_at is None
+    assert result1.order.status == OrderStatus.ACTIVE
+
+    result2 = await service.respond_and_finalize(
+        order_id=order.order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000903"),
+    )
+    assert result2.order.completed_at is not None
+    assert result2.order.status == OrderStatus.CLOSED
+
+    updated = await order_repo.get_by_id(order.order_id)
+    assert updated is not None
+    assert updated.completed_at is not None
 
 
 @pytest.mark.asyncio

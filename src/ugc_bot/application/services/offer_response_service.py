@@ -23,7 +23,7 @@ class OfferResponseResult:
     response: OrderResponse
     response_count: int
     order_closed: bool
-    completed_at: datetime
+    completed_at: Optional[datetime]
 
 
 @dataclass(slots=True)
@@ -120,7 +120,7 @@ class OfferResponseService:
             response=response,
             response_count=response_count,
             order_closed=order_closed,
-            completed_at=now,
+            completed_at=updated.completed_at,
         )
 
 
@@ -131,6 +131,9 @@ def _update_order_after_response(
 
     new_status = (
         OrderStatus.CLOSED if response_count >= order.bloggers_needed else order.status
+    )
+    completed_at = (
+        now if response_count >= order.bloggers_needed else order.completed_at
     )
     return Order(
         order_id=order.order_id,
@@ -144,7 +147,7 @@ def _update_order_after_response(
         bloggers_needed=order.bloggers_needed,
         status=new_status,
         created_at=order.created_at,
-        completed_at=now,
+        completed_at=completed_at,
         content_usage=order.content_usage,
         deadlines=order.deadlines,
         geography=order.geography,
