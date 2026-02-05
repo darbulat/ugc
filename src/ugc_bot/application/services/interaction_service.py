@@ -13,6 +13,7 @@ from ugc_bot.application.feedback_utils import (
 )
 from ugc_bot.application.ports import InteractionRepository, TransactionManager
 from ugc_bot.config import FeedbackConfig
+from ugc_bot.infrastructure.db.session import with_optional_tx
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
 
@@ -33,11 +34,10 @@ class InteractionService:
     async def _save(self, interaction: Interaction) -> None:
         """Persist interaction using an optional transaction boundary."""
 
-        if self.transaction_manager is None:
-            await self.interaction_repo.save(interaction)
-            return
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             await self.interaction_repo.save(interaction, session=session)
+
+        await with_optional_tx(self.transaction_manager, _run)
 
     async def get_interaction(self, interaction_id: UUID) -> Interaction | None:
         """Fetch interaction by id within a transaction boundary."""
@@ -47,23 +47,19 @@ class InteractionService:
     async def _get_by_id(self, interaction_id: UUID) -> Interaction | None:
         """Fetch interaction by id using an optional transaction boundary."""
 
-        if self.transaction_manager is None:
-            return await self.interaction_repo.get_by_id(interaction_id)
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.interaction_repo.get_by_id(
                 interaction_id, session=session
             )
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def _get_by_participants(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Interaction | None:
         """Fetch interaction by participants using an optional transaction boundary."""
 
-        if self.transaction_manager is None:
-            return await self.interaction_repo.get_by_participants(
-                order_id=order_id, blogger_id=blogger_id, advertiser_id=advertiser_id
-            )
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.interaction_repo.get_by_participants(
                 order_id=order_id,
                 blogger_id=blogger_id,
@@ -71,15 +67,17 @@ class InteractionService:
                 session=session,
             )
 
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def list_interactions_by_order(self, order_id: UUID) -> list[Interaction]:
         """List interactions for order within a transaction boundary."""
 
-        if self.transaction_manager is None:
-            return list(await self.interaction_repo.list_by_order(order_id))
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return list(
                 await self.interaction_repo.list_by_order(order_id, session=session)
             )
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def create_for_contacts_sent(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID

@@ -14,6 +14,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.domain.entities import AdvertiserProfile
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
 @dataclass(slots=True)
@@ -46,8 +47,8 @@ class AdvertiserRegistrationService:
         if not brand:
             raise AdvertiserRegistrationError("Brand is required.")
 
-        if self.transaction_manager is None:
-            user = await self.user_repo.get_by_id(user_id)
+        async def _run(session: object | None) -> AdvertiserProfile:
+            user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
                 raise UserNotFoundError("User not found for advertiser registration.")
 
@@ -59,37 +60,22 @@ class AdvertiserRegistrationService:
                 city=city,
                 company_activity=company_activity,
             )
-            await self.advertiser_repo.save(profile)
-        else:
-            async with self.transaction_manager.transaction() as session:
-                user = await self.user_repo.get_by_id(user_id, session=session)
-                if user is None:
-                    raise UserNotFoundError(
-                        "User not found for advertiser registration."
-                    )
+            await self.advertiser_repo.save(profile, session=session)
 
-                profile = AdvertiserProfile(
-                    user_id=user.user_id,
-                    phone=phone,
-                    brand=brand,
-                    site_link=site_link,
-                    city=city,
-                    company_activity=company_activity,
-                )
-                await self.advertiser_repo.save(profile, session=session)
+            if self.metrics_collector:
+                self.metrics_collector.record_advertiser_registration(str(user.user_id))
 
-        if self.metrics_collector:
-            self.metrics_collector.record_advertiser_registration(str(user.user_id))
+            return profile
 
-        return profile
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def get_profile(self, user_id: UUID) -> Optional[AdvertiserProfile]:
         """Fetch advertiser profile by user id."""
 
-        if self.transaction_manager is None:
-            return await self.advertiser_repo.get_by_user_id(user_id)
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.advertiser_repo.get_by_user_id(user_id, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def update_advertiser_profile(
         self,
@@ -103,31 +89,26 @@ class AdvertiserRegistrationService:
     ) -> Optional[AdvertiserProfile]:
         """Update advertiser profile fields. Returns updated profile or None if not found."""
 
-        if self.transaction_manager is None:
-            profile = await self.advertiser_repo.get_by_user_id(user_id)
-        else:
-            async with self.transaction_manager.transaction() as session:
-                profile = await self.advertiser_repo.get_by_user_id(
-                    user_id, session=session
-                )
-        if profile is None:
-            return None
+        async def _run(session: object | None) -> Optional[AdvertiserProfile]:
+            profile = await self.advertiser_repo.get_by_user_id(
+                user_id, session=session
+            )
+            if profile is None:
+                return None
 
-        updated = AdvertiserProfile(
-            user_id=profile.user_id,
-            phone=phone.strip() if phone is not None else profile.phone,
-            brand=brand.strip() if brand is not None else profile.brand,
-            site_link=(site_link or "").strip() or None
-            if site_link is not None
-            else profile.site_link,
-            city=(city or "").strip() or None if city is not None else profile.city,
-            company_activity=(company_activity or "").strip() or None
-            if company_activity is not None
-            else profile.company_activity,
-        )
-        if self.transaction_manager is None:
-            await self.advertiser_repo.save(updated)
-        else:
-            async with self.transaction_manager.transaction() as session:
-                await self.advertiser_repo.save(updated, session=session)
-        return updated
+            updated = AdvertiserProfile(
+                user_id=profile.user_id,
+                phone=phone.strip() if phone is not None else profile.phone,
+                brand=brand.strip() if brand is not None else profile.brand,
+                site_link=(site_link or "").strip() or None
+                if site_link is not None
+                else profile.site_link,
+                city=(city or "").strip() or None if city is not None else profile.city,
+                company_activity=(company_activity or "").strip() or None
+                if company_activity is not None
+                else profile.company_activity,
+            )
+            await self.advertiser_repo.save(updated, session=session)
+            return updated
+
+        return await with_optional_tx(self.transaction_manager, _run)

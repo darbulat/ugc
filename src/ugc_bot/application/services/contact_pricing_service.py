@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from ugc_bot.application.ports import ContactPricingRepository, TransactionManager
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
 @dataclass(slots=True)
@@ -15,11 +16,10 @@ class ContactPricingService:
     async def get_price(self, bloggers_count: int) -> float | None:
         """Get price for bloggers count."""
 
-        if self.transaction_manager is None:
-            pricing = await self.pricing_repo.get_by_bloggers_count(bloggers_count)
-        else:
-            async with self.transaction_manager.transaction() as session:
-                pricing = await self.pricing_repo.get_by_bloggers_count(
-                    bloggers_count, session=session
-                )
-        return pricing.price if pricing else None
+        async def _run(session: object | None):
+            pricing = await self.pricing_repo.get_by_bloggers_count(
+                bloggers_count, session=session
+            )
+            return pricing.price if pricing else None
+
+        return await with_optional_tx(self.transaction_manager, _run)

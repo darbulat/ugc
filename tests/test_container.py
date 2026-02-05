@@ -66,7 +66,7 @@ def test_container_build_outbox_deps_creates_kafka_publisher_when_enabled(
             self.topic = topic
 
     monkeypatch.setattr(
-        "ugc_bot.container.KafkaOrderActivationPublisher",
+        "ugc_bot.container.service_factory.KafkaOrderActivationPublisher",
         DummyKafkaPublisher,
     )
 

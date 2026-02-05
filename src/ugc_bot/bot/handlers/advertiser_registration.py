@@ -16,8 +16,10 @@ from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
     get_user_and_ensure_allowed,
     handle_draft_choice,
+    handle_role_choice,
     parse_user_id_from_state,
 )
 from ugc_bot.bot.handlers.keyboards import (
@@ -39,7 +41,6 @@ from ugc_bot.bot.validators import (
     validate_site_link,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.enums import MessengerType
 
 
 router = Router()
@@ -64,41 +65,16 @@ async def choose_advertiser_role(
 ) -> None:
     """Handle 'Мне нужны UGC‑креаторы': persist role and show menu or registration prompt."""
 
-    if message.from_user is None:
-        return
-    await state.clear()
-    external_id = str(message.from_user.id)
-    user = await user_role_service.get_user(
-        external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+    await handle_role_choice(
+        message,
+        user_role_service,
+        state,
+        profile_getter=profile_service.get_advertiser_profile,
+        choose_action_text=ADVERTISER_CHOOSE_ACTION_TEXT,
+        intro_text=ADVERTISER_INTRO_TEXT,
+        menu_keyboard=advertiser_menu_keyboard,
+        start_keyboard=advertiser_start_keyboard,
     )
-    username = user.username if user else ""
-
-    await user_role_service.set_user(
-        external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
-        username=username,
-        role_chosen=True,
-        telegram_username=message.from_user.username,
-    )
-
-    user = await user_role_service.get_user(
-        external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
-    )
-    advertiser_profile = (
-        await profile_service.get_advertiser_profile(user.user_id) if user else None
-    )
-    if advertiser_profile is not None:
-        await message.answer(
-            ADVERTISER_CHOOSE_ACTION_TEXT,
-            reply_markup=advertiser_menu_keyboard(),
-        )
-    else:
-        await message.answer(
-            ADVERTISER_INTRO_TEXT,
-            reply_markup=advertiser_start_keyboard(),
-        )
 
 
 class AdvertiserRegistrationStates(StatesGroup):
@@ -287,28 +263,6 @@ def _agreements_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def _format_agreements_message(config: AppConfig) -> str:
-    """Build agreements text with clickable document links (HTML)."""
-    parts = [
-        "Профиль создан. Остался последний шаг — ознакомьтесь с документами "
-        "и подтвердите согласие.",
-        "",
-    ]
-    if config.docs.docs_offer_url:
-        parts.append(f'<a href="{config.docs.docs_offer_url}">Оферта</a>')
-    if config.docs.docs_privacy_url:
-        parts.append(
-            f'<a href="{config.docs.docs_privacy_url}">Политика конфиденциальности</a>'
-        )
-    if config.docs.docs_consent_url:
-        parts.append(
-            f'<a href="{config.docs.docs_consent_url}">Согласие на обработку ПД</a>'
-        )
-    if len(parts) == 2:
-        parts.append("Подтвердите согласие с документами платформы.")
-    return "\n".join(parts)
-
-
 @router.message(AdvertiserRegistrationStates.site_link)
 async def handle_site_link(
     message: Message,
@@ -324,7 +278,7 @@ async def handle_site_link(
         return
     await state.update_data(site_link=site_link)
 
-    text = _format_agreements_message(config)
+    text = format_agreements_message(config)
     await message.answer(
         text,
         reply_markup=_agreements_keyboard(),

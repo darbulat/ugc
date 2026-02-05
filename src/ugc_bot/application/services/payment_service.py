@@ -17,6 +17,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.domain.entities import Order, Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +57,10 @@ class PaymentService:
     async def get_order(self, order_id: UUID) -> Order | None:
         """Fetch order by id within a transaction boundary."""
 
-        if self.transaction_manager is None:
-            return await self.order_repo.get_by_id(order_id)
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.order_repo.get_by_id(order_id, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def _confirm_telegram_payment_impl(
         self,

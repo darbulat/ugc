@@ -13,6 +13,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import Order, OrderResponse
 from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
 @dataclass(slots=True)
@@ -44,30 +45,30 @@ class OfferResponseService:
     async def list_by_order(self, order_id: UUID) -> list[OrderResponse]:
         """List responses for an order within a transaction boundary."""
 
-        if self.transaction_manager is None:
-            return list(await self.response_repo.list_by_order(order_id))
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return list(
                 await self.response_repo.list_by_order(order_id, session=session)
             )
 
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def list_by_blogger(self, blogger_id: UUID) -> list[OrderResponse]:
         """List responses by blogger (orders the blogger responded to)."""
 
-        if self.transaction_manager is None:
-            return list(await self.response_repo.list_by_blogger(blogger_id))
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return list(
                 await self.response_repo.list_by_blogger(blogger_id, session=session)
             )
 
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def count_by_order(self, order_id: UUID) -> int:
         """Count responses for an order."""
 
-        if self.transaction_manager is None:
-            return await self.response_repo.count_by_order(order_id)
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.response_repo.count_by_order(order_id, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID

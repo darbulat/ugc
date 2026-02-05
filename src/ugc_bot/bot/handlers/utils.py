@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any, Callable
 from uuid import UUID
 
 from aiogram.fsm.context import FSMContext
+
+from ugc_bot.config import AppConfig
 from aiogram.fsm.state import State
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardMarkup
 
@@ -78,6 +81,86 @@ async def send_with_retry(
             if attempt < retries:
                 await asyncio.sleep(delay_seconds)
     return False
+
+
+def format_agreements_message(
+    config: AppConfig,
+    intro: str = "Профиль создан. Остался последний шаг — ознакомьтесь с документами "
+    "и подтвердите согласие.",
+) -> str:
+    """Build agreements text with clickable document links (HTML).
+
+    Args:
+        config: Application config with docs URLs.
+        intro: Introductory text before document links.
+        use_emoji: If True, add emoji prefixes to link labels.
+
+    Returns:
+        Formatted HTML string with document links.
+    """
+    parts = [intro, ""]
+    offer_label = "📄 Оферта"
+    privacy_label = "🔒 Политика конфиденциальности"
+    consent_label = "🧾 Согласие на обработку персональных данных"
+    if config.docs.docs_offer_url:
+        parts.append(f'<a href="{config.docs.docs_offer_url}">{offer_label}</a>')
+    if config.docs.docs_privacy_url:
+        parts.append(f'<a href="{config.docs.docs_privacy_url}">{privacy_label}</a>')
+    if config.docs.docs_consent_url:
+        parts.append(f'<a href="{config.docs.docs_consent_url}">{consent_label}</a>')
+    if len(parts) == 2:
+        parts.append("Подтвердите согласие с документами платформы.")
+    return "\n".join(parts)
+
+
+async def handle_role_choice(
+    message: Message,
+    user_role_service: Any,
+    state: FSMContext,
+    *,
+    profile_getter: Callable[[UUID], Awaitable[object | None]],
+    choose_action_text: str,
+    intro_text: str,
+    menu_keyboard: Callable[[], ReplyKeyboardMarkup],
+    start_keyboard: Callable[[], ReplyKeyboardMarkup],
+) -> None:
+    """Handle role selection: persist role, show menu if profile exists else intro.
+
+    Use for both creator and advertiser role choice handlers.
+    """
+    if message.from_user is None:
+        return
+    await state.clear()
+    external_id = str(message.from_user.id)
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    username = user.username if user else ""
+
+    await user_role_service.set_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username=username,
+        role_chosen=True,
+        telegram_username=message.from_user.username,
+    )
+
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    profile = await profile_getter(user.user_id) if user else None
+    if profile is not None:
+        await message.answer(
+            choose_action_text,
+            reply_markup=menu_keyboard(),
+        )
+    else:
+        await message.answer(
+            intro_text,
+            reply_markup=start_keyboard(),
+        )
 
 
 def parse_user_id_from_state(data: dict, key: str = "user_id") -> UUID | None:

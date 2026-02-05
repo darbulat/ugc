@@ -12,6 +12,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import OrderStatus, UserStatus
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
 @dataclass(slots=True)
@@ -28,16 +29,7 @@ class OfferDispatchService:
     ) -> tuple[Order | None, User | None]:
         """Fetch order and its advertiser in one transaction."""
 
-        if self.transaction_manager is None:
-            order = await self.order_repo.get_by_id(order_id, session=None)
-            if order is None:
-                return (None, None)
-            advertiser = await self.user_repo.get_by_id(
-                order.advertiser_id, session=None
-            )
-            return (order, advertiser)
-
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             order = await self.order_repo.get_by_id(order_id, session=session)
             if order is None:
                 return (None, None)
@@ -46,14 +38,15 @@ class OfferDispatchService:
             )
             return (order, advertiser)
 
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def dispatch(self, order_id: UUID) -> list[User]:
         """Return eligible bloggers for an active order."""
 
-        if self.transaction_manager is None:
-            return await self._dispatch(order_id, session=None)
-
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self._dispatch(order_id, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def _dispatch(self, order_id: UUID, session: object | None) -> list[User]:
         order = await self.order_repo.get_by_id(order_id, session=session)

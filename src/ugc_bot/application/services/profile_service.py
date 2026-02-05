@@ -11,6 +11,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import MessengerType
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
 @dataclass(slots=True)
@@ -27,25 +28,25 @@ class ProfileService:
     ) -> User | None:
         """Fetch user by external id."""
 
-        if self.transaction_manager is None:
-            return await self.user_repo.get_by_external(external_id, messenger_type)
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.user_repo.get_by_external(
                 external_id, messenger_type, session=session
             )
 
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def get_blogger_profile(self, user_id: UUID) -> BloggerProfile | None:
         """Fetch blogger profile by user id."""
 
-        if self.transaction_manager is None:
-            return await self.blogger_repo.get_by_user_id(user_id)
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.blogger_repo.get_by_user_id(user_id, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def get_advertiser_profile(self, user_id: UUID) -> AdvertiserProfile | None:
         """Fetch advertiser profile by user id."""
 
-        if self.transaction_manager is None:
-            return await self.advertiser_repo.get_by_user_id(user_id)
-        async with self.transaction_manager.transaction() as session:
+        async def _run(session: object | None):
             return await self.advertiser_repo.get_by_user_id(user_id, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)

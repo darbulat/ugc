@@ -17,8 +17,10 @@ from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
     get_user_and_ensure_allowed,
     handle_draft_choice,
+    handle_role_choice,
     parse_user_id_from_state,
 )
 from ugc_bot.bot.handlers.keyboards import (
@@ -91,41 +93,16 @@ async def choose_creator_role(
 ) -> None:
     """Handle 'Я креатор': persist role and show menu or registration prompt."""
 
-    if message.from_user is None:
-        return
-    await state.clear()
-    external_id = str(message.from_user.id)
-    user = await user_role_service.get_user(
-        external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+    await handle_role_choice(
+        message,
+        user_role_service,
+        state,
+        profile_getter=profile_service.get_blogger_profile,
+        choose_action_text=CREATOR_CHOOSE_ACTION_TEXT,
+        intro_text=CREATOR_INTRO_NOT_REGISTERED,
+        menu_keyboard=creator_filled_profile_keyboard,
+        start_keyboard=creator_start_keyboard,
     )
-    username = user.username if user else ""
-
-    await user_role_service.set_user(
-        external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
-        username=username,
-        role_chosen=True,
-        telegram_username=message.from_user.username,
-    )
-
-    user = await user_role_service.get_user(
-        external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
-    )
-    blogger_profile = (
-        await profile_service.get_blogger_profile(user.user_id) if user else None
-    )
-    if blogger_profile is not None:
-        await message.answer(
-            CREATOR_CHOOSE_ACTION_TEXT,
-            reply_markup=creator_filled_profile_keyboard(),
-        )
-    else:
-        await message.answer(
-            CREATOR_INTRO_NOT_REGISTERED,
-            reply_markup=creator_start_keyboard(),
-        )
 
 
 async def _start_registration_flow(
@@ -469,23 +446,10 @@ async def handle_work_format(
 
     await state.update_data(work_format=work_format)
 
-    parts = [
-        "Пожалуйста, ознакомьтесь с документами и подтвердите согласие.",
-        "",
-    ]
-    if config.docs.docs_offer_url:
-        parts.append(f'<a href="{config.docs.docs_offer_url}">📄 Оферта</a>')
-    if config.docs.docs_privacy_url:
-        parts.append(
-            f'<a href="{config.docs.docs_privacy_url}">🔒 Политика конфиденциальности</a>'
-        )
-    if config.docs.docs_consent_url:
-        parts.append(
-            f'<a href="{config.docs.docs_consent_url}">🧾 Согласие на обработку персональных данных</a>'
-        )
-    if len(parts) == 2:
-        parts.append("Подтвердите согласие с документами платформы.")
-    agreements_text = "\n".join(parts)
+    agreements_text = format_agreements_message(
+        config,
+        intro="Пожалуйста, ознакомьтесь с документами и подтвердите согласие.",
+    )
     await message.answer(
         agreements_text,
         parse_mode="HTML",

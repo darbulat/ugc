@@ -5,6 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from ugc_bot.application.ports import NpsRepository, TransactionManager
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
 @dataclass(slots=True)
@@ -25,11 +26,12 @@ class NpsService:
 
         if session is not None:
             await self.nps_repo.save(user_id, score, comment, session=session)
-        elif self.transaction_manager is None:
-            await self.nps_repo.save(user_id, score, comment)
-        else:
-            async with self.transaction_manager.transaction() as tx_session:
-                await self.nps_repo.save(user_id, score, comment, session=tx_session)
+            return
+
+        async def _run(s: object | None):
+            await self.nps_repo.save(user_id, score, comment, session=s)
+
+        await with_optional_tx(self.transaction_manager, _run)
 
     async def exists_for_user(
         self, user_id: UUID, session: object | None = None
@@ -38,7 +40,8 @@ class NpsService:
 
         if session is not None:
             return await self.nps_repo.exists_for_user(user_id, session=session)
-        if self.transaction_manager is None:
-            return await self.nps_repo.exists_for_user(user_id)
-        async with self.transaction_manager.transaction() as tx_session:
-            return await self.nps_repo.exists_for_user(user_id, session=tx_session)
+
+        async def _run(s: object | None):
+            return await self.nps_repo.exists_for_user(user_id, session=s)
+
+        return await with_optional_tx(self.transaction_manager, _run)
