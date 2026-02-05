@@ -214,6 +214,7 @@ async def test_offer_response_handler_success(
     )
 
     message = FakeMessage()
+    message.reply_markup = object()
     callback = FakeCallback(
         data=f"offer:{order.order_id}", user=FakeUser(10), message=message
     )
@@ -224,6 +225,8 @@ async def test_offer_response_handler_success(
     assert callback.answers
     responses = await order_response_repo.list_by_order(order.order_id)
     assert list(responses)
+    assert len(message.edit_reply_markup_calls) == 1
+    assert message.edit_reply_markup_calls[0] is None
 
 
 @pytest.mark.asyncio

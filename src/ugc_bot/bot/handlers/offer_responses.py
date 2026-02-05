@@ -92,6 +92,16 @@ async def handle_offer_response(
     result = await offer_response_service.respond_and_finalize(order_id, user.user_id)
 
     await callback.answer("Отклик принят! Ожидайте связи от рекламодателя.")
+
+    # Remove inline keyboard so buttons can no longer be pressed
+    msg = callback.message
+    edit_reply_markup = getattr(msg, "edit_reply_markup", None) if msg else None
+    if msg and getattr(msg, "reply_markup", None) and callable(edit_reply_markup):
+        try:
+            await edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
     if callback.message and callback.message.bot:
         if result.order.product_link:
             await callback.message.answer(result.order.product_link)
