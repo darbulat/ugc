@@ -45,22 +45,28 @@ def test_migrations_upgrade_downgrade_upgrade() -> None:
     """Ensure upgrade/downgrade/upgrade completes without errors."""
 
     database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        pytest.skip("DATABASE_URL is required for migration tests.")
+    if not database_url or "postgresql" not in database_url:
+        pytest.skip("DATABASE_URL with PostgreSQL is required for migration tests.")
+    try:
+        conninfo = _psycopg_conninfo(database_url)
+    except Exception:
+        pytest.skip("DATABASE_URL is not a valid PostgreSQL URL.")
 
     schema_name = "migration_test"
-    conninfo = _psycopg_conninfo(database_url)
-
-    with psycopg.connect(conninfo, autocommit=True) as connection:
-        connection.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
-
-    config = _alembic_config()
-    os.environ["DATABASE_URL"] = database_url
 
     try:
-        command.upgrade(config, "head")
-        command.downgrade(config, "base")
-        command.upgrade(config, "head")
-    finally:
         with psycopg.connect(conninfo, autocommit=True) as connection:
-            connection.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
+            connection.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
+
+        config = _alembic_config()
+        os.environ["DATABASE_URL"] = database_url
+
+        try:
+            command.upgrade(config, "head")
+            command.downgrade(config, "base")
+            command.upgrade(config, "head")
+        finally:
+            with psycopg.connect(conninfo, autocommit=True) as connection:
+                connection.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
+    except psycopg.OperationalError:
+        pytest.skip("PostgreSQL is not available for migration tests.")

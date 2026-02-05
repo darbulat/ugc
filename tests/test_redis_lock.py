@@ -53,8 +53,9 @@ async def test_lock_redis_path_when_redis_available() -> None:
     mock_redis = MagicMock()
     mock_redis.lock = MagicMock(return_value=mock_lock)
 
-    with patch("redis.asyncio.Redis") as mock_redis_class:
-        mock_redis_class.from_url.return_value = mock_redis
+    with patch.object(
+        IssueDescriptionLockManager, "_get_redis", return_value=mock_redis
+    ):
         manager = IssueDescriptionLockManager(redis_url="redis://localhost")
         async with manager.lock("user99"):
             pass
@@ -77,8 +78,9 @@ async def test_lock_redis_failure_falls_back_to_memory() -> None:
     mock_redis = MagicMock()
     mock_redis.lock = MagicMock(return_value=mock_lock)
 
-    with patch("redis.asyncio.Redis") as mock_redis_class:
-        mock_redis_class.from_url.return_value = mock_redis
+    with patch.object(
+        IssueDescriptionLockManager, "_get_redis", return_value=mock_redis
+    ):
         manager = IssueDescriptionLockManager(redis_url="redis://localhost")
         entered = []
         async with manager.lock("user1"):

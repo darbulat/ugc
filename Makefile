@@ -4,7 +4,7 @@ export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
 
 install-dev:
-	python3 -m pip install -e ".[dev]"
+	uv run pip install -e ".[dev]"
 
 lint:
 	uv run ruff check src tests

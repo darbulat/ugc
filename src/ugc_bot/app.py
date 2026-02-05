@@ -5,7 +5,6 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.redis import RedisStorage
 
 # Services are built via Container.build_bot_services()
 from ugc_bot.bot.handlers.start import router as start_router
@@ -67,6 +66,7 @@ async def create_storage(config: AppConfig):
     """Create FSM storage based on configuration."""
     if config.redis.use_redis_storage:
         try:
+            from aiogram.fsm.storage.redis import RedisStorage
             from redis.asyncio import Redis
 
             redis = Redis.from_url(config.redis.redis_url, decode_responses=True)

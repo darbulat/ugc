@@ -1,5 +1,14 @@
 """Global pytest configuration and fixtures."""
 
+# Set env vars before any imports that might trigger config loading (e.g. admin app)
+import os
+
+os.environ.setdefault("BOT_TOKEN", "test-token")
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+os.environ.setdefault("ADMIN_USERNAME", "test_admin")
+os.environ.setdefault("ADMIN_PASSWORD", "test_pass")
+os.environ.setdefault("ADMIN_SECRET", "test_secret")
+
 import asyncio
 import sys
 import threading

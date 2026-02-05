@@ -166,6 +166,16 @@ def test_json_dumps_default_raises_for_other_types() -> None:
         _json_dumps({"bad": object()})
 
 
+def _redis_import_works() -> bool:
+    """Check if redis can be imported (avoids cffi/cryptography issues in some envs)."""
+    try:
+        from redis.asyncio import Redis  # noqa: F401
+
+        return True
+    except BaseException:
+        return False
+
+
 @pytest.mark.asyncio
 async def test_create_storage_returns_redis_storage_when_redis_enabled(
     monkeypatch: pytest.MonkeyPatch,
@@ -175,6 +185,8 @@ async def test_create_storage_returns_redis_storage_when_redis_enabled(
 
     if importlib.util.find_spec("redis") is None:
         pytest.skip("redis not installed")
+    if not _redis_import_works():
+        pytest.skip("redis import failed (cffi/cryptography may be broken)")
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "t",

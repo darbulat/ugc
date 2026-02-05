@@ -18,7 +18,18 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 
 @dataclass(slots=True)
 class OutboxPublisher:
-    """Service for publishing events via outbox pattern."""
+    """Service for publishing events via outbox pattern.
+
+    Two usage modes:
+
+    1. Write-only (e.g. from PaymentService): transaction_manager can be None.
+       Caller passes session explicitly to publish_order_activation(order, session=session)
+       within its own transaction. The event is saved in the same tx as the payment.
+
+    2. Read+process (e.g. outbox_processor worker): transaction_manager is required.
+       process_pending_events() manages its own transactions via with_optional_tx().
+       There is no parent transaction—the processor opens transactions itself.
+    """
 
     outbox_repo: OutboxRepository
     order_repo: OrderRepository

@@ -166,7 +166,14 @@ class Container:
     def build_outbox_deps(
         self,
     ) -> tuple[OutboxPublisher, KafkaOrderActivationPublisher | None]:
-        """OutboxPublisher and optional KafkaOrderActivationPublisher for outbox processor."""
+        """OutboxPublisher and optional KafkaOrderActivationPublisher for outbox processor.
+
+        The OutboxPublisher here MUST have transaction_manager because the outbox
+        processor runs as a standalone worker and calls process_pending_events(),
+        which manages its own transactions (fetch pending, mark processing, publish
+        to Kafka, mark published). Unlike the bot's OutboxPublisher, there is no
+        parent transaction—the processor opens transactions itself.
+        """
         repos = self.build_repos()
         outbox_publisher = OutboxPublisher(
             outbox_repo=repos["outbox_repo"],
@@ -227,6 +234,9 @@ class Container:
         repos = self.build_repos()
         metrics_collector = self.build_metrics_collector()
         instagram_api_client = self.build_instagram_api_client()
+        # OutboxPublisher for PaymentService: no transaction_manager needed.
+        # PaymentService passes session explicitly to publish_order_activation()
+        # within its own transaction—the event is saved in the same tx as the payment.
         outbox_publisher = OutboxPublisher(
             outbox_repo=repos["outbox_repo"], order_repo=repos["order_repo"]
         )
