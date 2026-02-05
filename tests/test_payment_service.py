@@ -18,7 +18,6 @@ from ugc_bot.domain.enums import (
     PaymentStatus,
     UserStatus,
 )
-from ugc_bot.infrastructure.memory_repositories import NoopOfferBroadcaster
 from tests.helpers.factories import create_test_advertiser, create_test_order
 from tests.helpers.services import build_payment_service
 
@@ -116,7 +115,6 @@ async def test_confirm_payment_requires_transaction_manager(
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
-        broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
         transaction_manager=None,
     )
@@ -238,7 +236,6 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
-        broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
         transaction_manager=transaction_manager,
     )
@@ -363,7 +360,6 @@ async def test_get_order_without_transaction_manager(
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
-        broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
         transaction_manager=None,
     )

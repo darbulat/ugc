@@ -337,14 +337,6 @@ class ContactPricingRepository(ABC):
         """Fetch pricing by bloggers count."""
 
 
-class OfferBroadcaster(ABC):
-    """Port for broadcasting offers to bloggers."""
-
-    @abstractmethod
-    async def broadcast_order(self, order: Order) -> None:
-        """Broadcast offer to eligible bloggers."""
-
-
 class OrderActivationPublisher(ABC):
     """Port for publishing order activation events."""
 

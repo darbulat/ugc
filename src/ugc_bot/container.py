@@ -24,7 +24,6 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
-from ugc_bot.infrastructure.db.repositories import NoopOfferBroadcaster
 from ugc_bot.metrics.collector import MetricsCollector
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
@@ -298,7 +297,6 @@ class Container:
                 advertiser_repo=repos["advertiser_repo"],
                 order_repo=repos["order_repo"],
                 payment_repo=repos["payment_repo"],
-                broadcaster=NoopOfferBroadcaster(),
                 outbox_publisher=outbox_publisher,
                 metrics_collector=metrics_collector,
                 transaction_manager=self._transaction_manager,

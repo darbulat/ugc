@@ -126,7 +126,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         SqlAlchemyBloggerProfileRepository,
         SqlAlchemyAdvertiserProfileRepository,
         SqlAlchemyInstagramVerificationRepository,
-        NoopOfferBroadcaster,
     )
 
     # Replace session factories in all services
@@ -248,7 +247,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
-        broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
         transaction_manager=transaction_manager,
     )

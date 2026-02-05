@@ -17,7 +17,6 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOutboxRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
-    NoopOfferBroadcaster,
 )
 
 
@@ -123,7 +122,6 @@ def build_payment_service(
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
-        broadcaster=NoopOfferBroadcaster(),
         outbox_publisher=outbox_publisher,
         transaction_manager=transaction_manager,
     )

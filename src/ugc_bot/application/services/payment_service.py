@@ -9,7 +9,6 @@ from uuid import UUID, uuid4
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
-    OfferBroadcaster,
     OrderRepository,
     PaymentRepository,
     TransactionManager,
@@ -30,7 +29,6 @@ class PaymentService:
     advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
     payment_repo: PaymentRepository
-    broadcaster: OfferBroadcaster
     outbox_publisher: OutboxPublisher
     provider: str = "yookassa_telegram"
     metrics_collector: Optional[Any] = None
@@ -146,5 +144,4 @@ class PaymentService:
             geography=order.geography,
         )
         await self.order_repo.save(activated)
-        await self.broadcaster.broadcast_order(activated)
         await self.outbox_publisher.publish_order_activation(activated)

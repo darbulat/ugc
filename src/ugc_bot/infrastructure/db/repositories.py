@@ -18,7 +18,6 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     InteractionRepository,
     NpsRepository,
-    OfferBroadcaster,
     OrderRepository,
     OrderResponseRepository,
     OutboxRepository,
@@ -694,16 +693,6 @@ class SqlAlchemyNpsRepository(NpsRepository):
         )
         count = exec_result.scalar_one()
         return int(count) > 0
-
-
-@dataclass(slots=True)
-class NoopOfferBroadcaster(OfferBroadcaster):
-    """No-op broadcaster for MVP."""
-
-    async def broadcast_order(self, order: Order) -> None:
-        """No-op implementation."""
-
-        return None
 
 
 def _to_user_entity(model: UserModel) -> User:

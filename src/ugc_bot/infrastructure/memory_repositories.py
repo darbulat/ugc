@@ -15,7 +15,6 @@ from ugc_bot.application.ports import (
     InstagramGraphApiClient,
     InstagramVerificationRepository,
     NpsRepository,
-    OfferBroadcaster,
     OrderRepository,
     OrderResponseRepository,
     OutboxRepository,
@@ -691,13 +690,3 @@ class InMemoryComplaintRepository(ComplaintRepository):
             for complaint in self.complaints.values()
             if complaint.status == status
         ]
-
-
-@dataclass
-class NoopOfferBroadcaster(OfferBroadcaster):
-    """No-op broadcaster for MVP."""
-
-    async def broadcast_order(self, order: Order) -> None:
-        """No-op implementation."""
-
-        return None
