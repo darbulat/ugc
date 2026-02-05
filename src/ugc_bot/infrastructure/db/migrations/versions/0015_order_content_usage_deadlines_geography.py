@@ -21,11 +21,17 @@ def upgrade() -> None:
     """Add nullable columns for content usage, deadlines, geography."""
     conn = op.get_bind()
     if not _orders_has_column(conn, "content_usage"):
-        op.add_column("orders", sa.Column("content_usage", sa.String(), nullable=True))
+        op.add_column(
+            "orders", sa.Column("content_usage", sa.String(), nullable=True)
+        )
     if not _orders_has_column(conn, "deadlines"):
-        op.add_column("orders", sa.Column("deadlines", sa.String(), nullable=True))
+        op.add_column(
+            "orders", sa.Column("deadlines", sa.String(), nullable=True)
+        )
     if not _orders_has_column(conn, "geography"):
-        op.add_column("orders", sa.Column("geography", sa.String(), nullable=True))
+        op.add_column(
+            "orders", sa.Column("geography", sa.String(), nullable=True)
+        )
 
 
 def downgrade() -> None:

@@ -1,27 +1,29 @@
 """Application entrypoint."""
 
 import asyncio
+import contextlib
 import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-# Services are built via Container.build_bot_services()
-from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.handlers.advertiser_registration import (
     router as advertiser_router,
 )
 from ugc_bot.bot.handlers.blogger_registration import router as blogger_router
+from ugc_bot.bot.handlers.complaints import router as complaints_router
+from ugc_bot.bot.handlers.feedback import router as feedback_router
 from ugc_bot.bot.handlers.instagram_verification import (
     router as instagram_router,
 )
 from ugc_bot.bot.handlers.my_orders import router as my_orders_router
-from ugc_bot.bot.handlers.profile import router as profile_router
 from ugc_bot.bot.handlers.offer_responses import router as offer_response_router
 from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
-from ugc_bot.bot.handlers.feedback import router as feedback_router
-from ugc_bot.bot.handlers.complaints import router as complaints_router
+from ugc_bot.bot.handlers.profile import router as profile_router
+
+# Services are built via Container.build_bot_services()
+from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
@@ -69,7 +71,9 @@ async def create_storage(config: AppConfig):
             from aiogram.fsm.storage.redis import RedisStorage
             from redis.asyncio import Redis
 
-            redis = Redis.from_url(config.redis.redis_url, decode_responses=True)
+            redis = Redis.from_url(
+                config.redis.redis_url, decode_responses=True
+            )
             return RedisStorage(
                 redis=redis,
                 json_dumps=_json_dumps,
@@ -136,30 +140,30 @@ async def _handle_health_connection(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
 ) -> None:
-    """Handle a single connection to the health server; respond to GET /health."""
+    """Handle health server connection; respond to GET /health."""
     try:
         data = await asyncio.wait_for(reader.read(1024), timeout=2.0)
         if data.startswith(b"GET /health") or data.startswith(b"GET /health "):
             writer.write(HEALTH_RESPONSE)
         else:
             writer.write(
-                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                b"HTTP/1.1 404 Not Found\r\n"
+                b"Content-Length: 0\r\nConnection: close\r\n\r\n"
             )
     except asyncio.TimeoutError:
         writer.write(
-            b"HTTP/1.1 408 Request Timeout\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            b"HTTP/1.1 408 Request Timeout\r\n"
+            b"Content-Length: 0\r\nConnection: close\r\n\r\n"
         )
     finally:
         await writer.drain()
         writer.close()
-        try:  # pragma: no cover
+        with contextlib.suppress(OSError):  # pragma: no cover
             await writer.wait_closed()  # pragma: no cover
-        except OSError:  # pragma: no cover
-            pass  # pragma: no cover
 
 
 async def _run_health_server() -> None:
-    """Run a minimal HTTP server on BOT_HEALTH_PORT that responds to GET /health."""
+    """Run minimal HTTP server on BOT_HEALTH_PORT for GET /health."""
     server = await asyncio.start_server(
         _handle_health_connection, "0.0.0.0", BOT_HEALTH_PORT
     )
@@ -177,7 +181,9 @@ async def run_bot() -> None:
     )
 
     log_startup_info(
-        logger=logging.getLogger(__name__), service_name="ugc-bot", config=config
+        logger=logging.getLogger(__name__),
+        service_name="ugc-bot",
+        config=config,
     )
     storage = await create_storage(config)
     dispatcher = build_dispatcher(config, storage=storage)
@@ -187,10 +193,8 @@ async def run_bot() -> None:
         await dispatcher.start_polling(bot)
     finally:
         health_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await health_task
-        except asyncio.CancelledError:
-            pass
         if hasattr(storage, "close"):
             await storage.close()
 

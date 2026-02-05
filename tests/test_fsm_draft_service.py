@@ -22,7 +22,9 @@ class FakeDraftRepo:
     ) -> None:
         self.save_calls.append((user_id, flow_type, state_key, data))
 
-    async def get(self, user_id, flow_type: str, session=None) -> FsmDraft | None:
+    async def get(
+        self, user_id, flow_type: str, session=None
+    ) -> FsmDraft | None:
         self.get_calls.append((user_id, flow_type))
         return self._draft
 
@@ -59,7 +61,9 @@ async def test_fsm_draft_service_get_draft_returns_none() -> None:
     service = FsmDraftService(draft_repo=repo, transaction_manager=None)
     user_id = uuid4()
 
-    result = await service.get_draft(user_id=user_id, flow_type="order_creation")
+    result = await service.get_draft(
+        user_id=user_id, flow_type="order_creation"
+    )
 
     assert result is None
     assert repo.get_calls == [(user_id, "order_creation")]
@@ -81,7 +85,9 @@ async def test_fsm_draft_service_get_draft_returns_draft() -> None:
     repo = FakeDraftRepo(draft=draft)
     service = FsmDraftService(draft_repo=repo, transaction_manager=None)
 
-    result = await service.get_draft(user_id=user_id, flow_type="order_creation")
+    result = await service.get_draft(
+        user_id=user_id, flow_type="order_creation"
+    )
 
     assert result is not None
     assert result.state_key == "OrderCreationStates:price"

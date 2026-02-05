@@ -5,8 +5,17 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.factories import (
+    create_test_blogger_profile,
+    create_test_order,
+    create_test_user,
+)
+from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
+from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.interaction_service import InteractionService
-from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
     _send_contact_immediately,
@@ -15,7 +24,12 @@ from ugc_bot.bot.handlers.offer_responses import (
 )
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.domain.entities import Order, OrderResponse, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType, UserStatus
+from ugc_bot.domain.enums import (
+    MessengerType,
+    OrderStatus,
+    OrderType,
+    UserStatus,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInteractionRepository,
@@ -24,13 +38,6 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.metrics.collector import MetricsCollector
-from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
-from tests.helpers.factories import (
-    create_test_blogger_profile,
-    create_test_order,
-    create_test_user,
-)
-from tests.helpers.services import build_profile_service
 
 
 async def _call_handler_with_middleware(handler, *args, **kwargs):
@@ -72,7 +79,9 @@ async def test_contact_sent_immediately(
         external_id="10",
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, blogger.user_id, confirmed=True
+    )
 
     order = await create_test_order(
         order_repo,
@@ -101,11 +110,14 @@ async def test_contact_sent_immediately(
         bot=bot,
     )
 
-    # Check contact was sent (TZ format: "Новый отклик по вашему заказу", Креатор, Профиль креатора)
+    # Check contact sent (TZ: "Новый отклик", Креатор, Профиль креатора)
     assert any("Новый отклик" in answer for answer in bot.answers)
-    assert any("blogger" in answer or "Креатор" in answer for answer in bot.answers)
     assert any(
-        "Профиль креатора" in answer or "instagram" in answer for answer in bot.answers
+        "blogger" in answer or "Креатор" in answer for answer in bot.answers
+    )
+    assert any(
+        "Профиль креатора" in answer or "instagram" in answer
+        for answer in bot.answers
     )
 
     # Check interaction was created
@@ -121,7 +133,7 @@ async def test_contact_sent_immediately(
 
 @pytest.mark.asyncio
 async def test_offer_skip_handler() -> None:
-    """Blogger pressing 'Пропустить' on offer answers without recording response and removes keyboard."""
+    """Blogger 'Пропустить' on offer: no response recorded, keyboard removed."""
 
     order_id = UUID("00000000-0000-0000-0000-000000000748")
     message = FakeMessage()
@@ -203,7 +215,9 @@ async def test_offer_response_handler_success(
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     order = await create_test_order(
         order_repo,
@@ -220,7 +234,11 @@ async def test_offer_response_handler_success(
     )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
     assert callback.answers
     responses = await order_response_repo.list_by_order(order.order_id)
@@ -261,10 +279,16 @@ async def test_offer_response_handler_blocked_user(
     profile_service = build_profile_service(user_repo, blogger_repo)
 
     message = FakeMessage()
-    callback = FakeCallback(data="offer:123", user=FakeUser(11), message=message)
+    callback = FakeCallback(
+        data="offer:123", user=FakeUser(11), message=message
+    )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -304,7 +328,9 @@ async def test_offer_response_handler_order_not_active(fake_tm: object) -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000712"),
@@ -366,7 +392,9 @@ async def test_offer_response_handler_order_not_found(fake_tm: object) -> None:
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     message = FakeMessage()
     callback = FakeCallback(
@@ -390,7 +418,9 @@ async def test_offer_response_handler_order_not_found(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_already_responded(fake_tm: object) -> None:
+async def test_offer_response_handler_already_responded(
+    fake_tm: object,
+) -> None:
     """Reject duplicate responses."""
 
     user_repo = InMemoryUserRepository()
@@ -422,7 +452,9 @@ async def test_offer_response_handler_already_responded(fake_tm: object) -> None
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000716"),
@@ -500,7 +532,9 @@ async def test_offer_response_handler_limit_reached(fake_tm: object) -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000720"),
@@ -562,11 +596,17 @@ async def test_offer_response_handler_no_from_user(fake_tm: object) -> None:
     user_service = UserRoleService(user_repo=user_repo)
 
     message = FakeMessage()
-    callback = FakeCallback(data="offer:123", user=FakeUser(999), message=message)
+    callback = FakeCallback(
+        data="offer:123", user=FakeUser(999), message=message
+    )
     callback.from_user = None
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert not callback.answers
@@ -589,10 +629,16 @@ async def test_offer_response_handler_user_not_found(fake_tm: object) -> None:
     user_service = UserRoleService(user_repo=user_repo)
 
     message = FakeMessage()
-    callback = FakeCallback(data="offer:123", user=FakeUser(999), message=message)
+    callback = FakeCallback(
+        data="offer:123", user=FakeUser(999), message=message
+    )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -626,10 +672,16 @@ async def test_offer_response_handler_paused_user(fake_tm: object) -> None:
     user_service = UserRoleService(user_repo=user_repo)
 
     message = FakeMessage()
-    callback = FakeCallback(data="offer:123", user=FakeUser(16), message=message)
+    callback = FakeCallback(
+        data="offer:123", user=FakeUser(16), message=message
+    )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -637,7 +689,9 @@ async def test_offer_response_handler_paused_user(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_no_blogger_profile(fake_tm: object) -> None:
+async def test_offer_response_handler_no_blogger_profile(
+    fake_tm: object,
+) -> None:
     """Reject when blogger profile is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -663,10 +717,16 @@ async def test_offer_response_handler_no_blogger_profile(fake_tm: object) -> Non
     user_service = UserRoleService(user_repo=user_repo)
 
     message = FakeMessage()
-    callback = FakeCallback(data="offer:123", user=FakeUser(17), message=message)
+    callback = FakeCallback(
+        data="offer:123", user=FakeUser(17), message=message
+    )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -674,7 +734,9 @@ async def test_offer_response_handler_no_blogger_profile(fake_tm: object) -> Non
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_unconfirmed_profile(fake_tm: object) -> None:
+async def test_offer_response_handler_unconfirmed_profile(
+    fake_tm: object,
+) -> None:
     """Reject when Instagram is not confirmed."""
 
     user_repo = InMemoryUserRepository()
@@ -698,13 +760,21 @@ async def test_offer_response_handler_unconfirmed_profile(fake_tm: object) -> No
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=False)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=False
+    )
 
     message = FakeMessage()
-    callback = FakeCallback(data="offer:123", user=FakeUser(18), message=message)
+    callback = FakeCallback(
+        data="offer:123", user=FakeUser(18), message=message
+    )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -736,13 +806,21 @@ async def test_offer_response_handler_invalid_uuid(fake_tm: object) -> None:
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     message = FakeMessage()
-    callback = FakeCallback(data="offer:not-a-uuid", user=FakeUser(19), message=message)
+    callback = FakeCallback(
+        data="offer:not-a-uuid", user=FakeUser(19), message=message
+    )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -782,7 +860,9 @@ async def test_offer_response_handler_exception(fake_tm: object) -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000735"),
@@ -891,7 +971,9 @@ async def test_send_contact_order_not_active(fake_tm: object) -> None:
         created_at=datetime.now(timezone.utc),
     )
     await user_repo.save(blogger)
-    await create_test_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, blogger.user_id, confirmed=True
+    )
 
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000800"),
@@ -923,7 +1005,9 @@ async def test_send_contact_order_not_active(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_maybe_send_contacts_missing_user_or_profile(fake_tm: object) -> None:
+async def test_maybe_send_contacts_missing_user_or_profile(
+    fake_tm: object,
+) -> None:
     """Skip sending contacts when user or profile is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -1029,7 +1113,9 @@ async def test_offer_response_handler_rate_limited(
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     advertiser = await create_test_user(
         user_repo,
@@ -1076,7 +1162,7 @@ async def test_offer_response_sends_product_link_and_what_next(
     order_response_repo,
     interaction_repo,
 ) -> None:
-    """When response succeeds, product_link and BLOGGER_AFTER_RESPONSE_WHAT_NEXT are sent."""
+    """Response succeeds: product_link and WHAT_NEXT sent."""
 
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
@@ -1098,7 +1184,9 @@ async def test_offer_response_sends_product_link_and_what_next(
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     order = await create_test_order(
         order_repo,
@@ -1120,7 +1208,11 @@ async def test_offer_response_sends_product_link_and_what_next(
     )
 
     await handle_offer_response(
-        callback, user_service, profile_service, response_service, interaction_service
+        callback,
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
     )
 
     assert callback.answers
@@ -1140,7 +1232,7 @@ async def test_send_contact_ugc_plus_placement_format(
     order_response_repo,
     interaction_repo,
 ) -> None:
-    """_send_contact_immediately shows UGC + размещение for ugc_plus_placement order."""
+    """_send_contact_immediately shows UGC+размещение for ugc_plus_placement."""
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1158,7 +1250,9 @@ async def test_send_contact_ugc_plus_placement_format(
         external_id="781",
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, blogger.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, blogger.user_id, confirmed=True
+    )
 
     order = await create_test_order(
         order_repo,
@@ -1200,7 +1294,7 @@ async def test_send_contact_empty_instagram_url(
     order_response_repo,
     interaction_repo,
 ) -> None:
-    """_send_contact_immediately works when instagram_url is empty (no profile button)."""
+    """_send_contact when instagram_url empty (no profile button)."""
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1261,7 +1355,7 @@ async def test_send_contact_instagram_url_without_http(
     order_response_repo,
     interaction_repo,
 ) -> None:
-    """_send_contact_immediately adds https:// when instagram_url has no scheme."""
+    """_send_contact adds https:// when instagram_url has no scheme."""
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)

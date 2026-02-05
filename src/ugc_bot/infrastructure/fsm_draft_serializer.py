@@ -7,7 +7,7 @@ from ugc_bot.domain.enums import AudienceGender, WorkFormat
 
 
 def serialize_fsm_data(data: dict) -> dict:
-    """Convert FSM data to JSON-serializable dict (UUID -> str, enum -> value)."""
+    """Convert FSM data to JSON-serializable dict (UUID->str, enum->value)."""
 
     result: dict = {}
     for key, value in data.items():
@@ -30,12 +30,12 @@ def _serialize_value(value: object) -> object:
     if hasattr(value, "value") and not isinstance(
         value, (str, int, float, bool, type(None))
     ):  # pragma: no cover
-        return getattr(value, "value")
+        return value.value
     return value  # pragma: no cover
 
 
 def deserialize_fsm_data(data: dict, flow_type: str) -> dict:
-    """Convert stored JSON-like data back to FSM-ready types for the given flow."""
+    """Convert stored JSON back to FSM-ready types for the given flow."""
 
     result: dict = {}
     uuid_keys = _uuid_keys_for_flow(flow_type)

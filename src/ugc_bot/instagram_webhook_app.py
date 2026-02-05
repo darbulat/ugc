@@ -32,7 +32,9 @@ async def _log_startup() -> None:
     """
 
     config = load_config()
-    log_startup_info(logger=logger, service_name="instagram-webhook", config=config)
+    log_startup_info(
+        logger=logger, service_name="instagram-webhook", config=config
+    )
 
 
 def _verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:
@@ -40,7 +42,9 @@ def _verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:
     if not signature.startswith("sha256="):
         return False
     expected_signature = signature[7:]  # Remove "sha256=" prefix
-    computed = hmac.new(app_secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    computed = hmac.new(
+        app_secret.encode("utf-8"), payload, hashlib.sha256
+    ).hexdigest()
     return hmac.compare_digest(computed, expected_signature)
 
 
@@ -56,7 +60,7 @@ async def verify_webhook(request: Request) -> Response:
     """Handle webhook verification request from Meta."""
     config = load_config()
 
-    # FastAPI doesn't handle query params with dots well, so we use request.query_params
+    # FastAPI: query params with dots; use request.query_params
     hub_mode = request.query_params.get("hub.mode")
     hub_challenge = request.query_params.get("hub.challenge")
     hub_verify_token = request.query_params.get("hub.verify_token")
@@ -92,10 +96,14 @@ async def handle_webhook(
     if config.instagram.instagram_app_secret:
         if not x_hub_signature_256:
             logger.warning("Missing X-Hub-Signature-256 header")
-            raise HTTPException(status_code=400, detail="Missing signature header")
+            raise HTTPException(
+                status_code=400, detail="Missing signature header"
+            )
 
         if not _verify_signature(
-            payload_bytes, x_hub_signature_256, config.instagram.instagram_app_secret
+            payload_bytes,
+            x_hub_signature_256,
+            config.instagram.instagram_app_secret,
         ):
             logger.warning("Invalid webhook signature")
             raise HTTPException(status_code=403, detail="Invalid signature")
@@ -133,9 +141,10 @@ async def _notify_user_verification_success(
 
         from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
 
-        user, blogger_profile = await verification_service.get_notification_recipient(
-            user_id
-        )
+        (
+            user,
+            blogger_profile,
+        ) = await verification_service.get_notification_recipient(user_id)
         if user is None:
             logger.warning(
                 "User not found for verification notification",
@@ -156,7 +165,10 @@ async def _notify_user_verification_success(
         try:
             await bot.send_message(
                 chat_id=int(user.external_id),
-                text="Instagram подтверждён ✅. Теперь бренды могут отправлять вам предложения.",
+                text=(
+                    "Instagram подтверждён ✅. "
+                    "Бренды могут отправлять предложения."
+                ),
                 reply_markup=blogger_menu_keyboard(confirmed=confirmed),
             )
         finally:
@@ -167,6 +179,50 @@ async def _notify_user_verification_success(
             extra={"user_id": user_id},
             exc_info=exc,
         )
+
+
+async def _process_single_messaging_event(
+    event: dict[str, Any],
+    verification_service: InstagramVerificationService,
+    config: AppConfig,
+) -> bool:
+    """Process one messaging event. Returns True if processed."""
+    is_echo = event.get("is_echo", False)
+    is_self = event.get("is_self", False)
+    if is_echo or is_self:
+        return False
+
+    sender = event.get("sender", {})
+    sender_id = sender.get("id")
+    if not sender_id:
+        return False
+
+    message = event.get("message", {})
+    if not message:
+        return False
+
+    text = message.get("text", "").strip()
+    if not text:
+        return False
+
+    try:
+        verify = verification_service.verify_code_by_instagram_sender
+        user_id = await verify(
+            instagram_sender_id=sender_id,
+            code=text,
+            admin_instagram_username=config.instagram.admin_instagram_username,
+        )
+        if user_id:
+            await _notify_user_verification_success(
+                user_id, verification_service, config
+            )
+    except Exception as exc:
+        logger.warning(
+            "Error verifying code from Instagram webhook",
+            extra={"sender_id": sender_id, "error": str(exc)},
+            exc_info=exc,
+        )
+    return True
 
 
 async def _process_webhook_events(
@@ -221,89 +277,15 @@ async def _process_webhook_events(
         # Process messaging events (messages field)
         messaging = entry.get("messaging", [])
         if not messaging:
-            logger.debug("No messaging events in entry", extra={"page_id": page_id})
+            logger.debug(
+                "No messaging events in entry", extra={"page_id": page_id}
+            )
             continue
 
         for event in messaging:
-            # Skip echo messages (messages sent via API)
-            is_echo = event.get("is_echo", False)
-            is_self = event.get("is_self", False)
-
-            if is_echo or is_self:
-                logger.debug(
-                    "Skipping echo/self message",
-                    extra={"is_echo": is_echo, "is_self": is_self},
-                )
-                continue
-
-            sender = event.get("sender", {})
-            sender_id = sender.get("id")
-            if not sender_id:
-                logger.debug("No sender ID in messaging event")
-                continue
-
-            recipient = event.get("recipient", {})
-            recipient_id = recipient.get("id")
-
-            message = event.get("message", {})
-            if not message:
-                logger.debug(
-                    "No message object in event", extra={"sender_id": sender_id}
-                )
-                continue
-
-            # Extract message text
-            text = message.get("text", "").strip()
-            if not text:
-                logger.debug("Message has no text", extra={"sender_id": sender_id})
-                continue
-
-            message_id = message.get("mid")
-            timestamp = event.get("timestamp")
-
-            logger.info(
-                "Processing Instagram message",
-                extra={
-                    "sender_id": sender_id,
-                    "recipient_id": recipient_id,
-                    "message_id": message_id,
-                    "timestamp": timestamp,
-                    "text_preview": text[:20],
-                },
+            await _process_single_messaging_event(
+                event, verification_service, config
             )
-
-            # Verify code by Instagram sender ID
-            # This will check if the code matches and the Instagram URL matches
-            try:
-                user_id = await verification_service.verify_code_by_instagram_sender(
-                    instagram_sender_id=sender_id,
-                    code=text,
-                    admin_instagram_username=config.instagram.admin_instagram_username,
-                )
-                if user_id:
-                    logger.info(
-                        "Instagram verification successful via webhook",
-                        extra={
-                            "sender_id": sender_id,
-                            "user_id": str(user_id),
-                            "message_id": message_id,
-                        },
-                    )
-                    # Send notification to user in Telegram
-                    await _notify_user_verification_success(
-                        user_id, verification_service, config
-                    )
-                else:
-                    logger.debug(
-                        "Instagram verification failed - code not found or expired",
-                        extra={"sender_id": sender_id, "text_preview": text[:10]},
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "Error verifying code from Instagram webhook",
-                    extra={"sender_id": sender_id, "error": str(exc)},
-                    exc_info=exc,
-                )
 
 
 def main() -> None:
@@ -313,7 +295,9 @@ def main() -> None:
         config.log.log_level,
         json_format=config.log.log_format.lower() == "json",
     )
-    log_startup_info(logger=logger, service_name="instagram-webhook", config=config)
+    log_startup_info(
+        logger=logger, service_name="instagram-webhook", config=config
+    )
 
     import uvicorn
 

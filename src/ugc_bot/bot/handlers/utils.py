@@ -11,8 +11,6 @@ from typing import Any, Callable
 from uuid import UUID
 
 from aiogram.fsm.context import FSMContext
-
-from ugc_bot.config import AppConfig
 from aiogram.fsm.state import State
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardMarkup
 
@@ -24,6 +22,7 @@ from ugc_bot.bot.handlers.keyboards import (
     START_OVER_BUTTON_TEXT,
     draft_choice_keyboard,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
@@ -85,8 +84,7 @@ async def send_with_retry(
 
 def format_agreements_message(
     config: AppConfig,
-    intro: str = "Профиль создан. Остался последний шаг — ознакомьтесь с документами "
-    "и подтвердите согласие.",
+    intro: str = "Профиль создан. Ознакомьтесь с документами и подтвердите.",
 ) -> str:
     """Build agreements text with clickable document links (HTML).
 
@@ -103,11 +101,17 @@ def format_agreements_message(
     privacy_label = "🔒 Политика конфиденциальности"
     consent_label = "🧾 Согласие на обработку персональных данных"
     if config.docs.docs_offer_url:
-        parts.append(f'<a href="{config.docs.docs_offer_url}">{offer_label}</a>')
+        parts.append(
+            f'<a href="{config.docs.docs_offer_url}">{offer_label}</a>'
+        )
     if config.docs.docs_privacy_url:
-        parts.append(f'<a href="{config.docs.docs_privacy_url}">{privacy_label}</a>')
+        parts.append(
+            f'<a href="{config.docs.docs_privacy_url}">{privacy_label}</a>'
+        )
     if config.docs.docs_consent_url:
-        parts.append(f'<a href="{config.docs.docs_consent_url}">{consent_label}</a>')
+        parts.append(
+            f'<a href="{config.docs.docs_consent_url}">{consent_label}</a>'
+        )
     if len(parts) == 2:
         parts.append("Подтвердите согласие с документами платформы.")
     return "\n".join(parts)
@@ -124,7 +128,7 @@ async def handle_role_choice(
     menu_keyboard: Callable[[], ReplyKeyboardMarkup],
     start_keyboard: Callable[[], ReplyKeyboardMarkup],
 ) -> None:
-    """Handle role selection: persist role, show menu if profile exists else intro.
+    """Handle role selection: persist role, show menu or intro.
 
     Use for both creator and advertiser role choice handlers.
     """
@@ -189,7 +193,7 @@ async def get_user_and_ensure_allowed(
     blocked_msg: str,
     pause_msg: str,
 ) -> User | None:
-    """Resolve user from message, check not blocked/pause; send reply and return None if not allowed."""
+    """Resolve user, check blocked/pause; return None if not allowed."""
     if message.from_user is None:
         return None
     external_id = str(message.from_user.id)
@@ -217,7 +221,7 @@ async def get_user_and_ensure_allowed_callback(
     blocked_msg: str,
     pause_msg: str,
 ) -> User | None:
-    """Resolve user from callback, check not blocked/pause; answer and return None if not allowed."""
+    """Resolve user from callback; return None if blocked/pause."""
     if callback.from_user is None:
         return None
     external_id = str(callback.from_user.id)
@@ -248,20 +252,11 @@ async def handle_draft_choice(
     first_prompt: str,
     first_keyboard: ReplyKeyboardMarkup,
     session_expired_msg: str,
-    draft_used_msg: str = "Черновик уже использован. Начинаем с начала.",
+    draft_used_msg: str = "Черновик использован. Начинаем с начала.",
     keyboard_for_restored_state: Callable[[str, dict], ReplyKeyboardMarkup]
     | None = None,
 ) -> None:
-    """Handle draft restore choice: resume draft, start over, or ask to choose.
-
-    Call from handlers for state choosing_draft_restore. Uses parse_user_id_from_state
-    with user_id_key (e.g. 'user_id' or 'edit_user_id'), then RESUME_DRAFT / START_OVER
-    or invalid choice.
-
-    If keyboard_for_restored_state is provided, it is called with (draft.state_key,
-    draft.data) when restoring a draft; the returned keyboard is used instead of
-    first_keyboard so the restored step shows the correct buttons.
-    """
+    """Handle draft restore: resume, start over, or ask to choose."""
     text = (message.text or "").strip()
     data = await state.get_data()
     user_id = parse_user_id_from_state(data, key=user_id_key)

@@ -1,24 +1,24 @@
 """SQLAlchemy ORM models for persistence."""
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Optional
 from uuid import UUID
 
-from enum import StrEnum
-
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
-    JSON,
     Numeric,
     String,
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ugc_bot.domain.enums import (
@@ -34,7 +34,6 @@ from ugc_bot.domain.enums import (
     WorkFormat,
 )
 from ugc_bot.infrastructure.db.base import Base
-
 
 _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     MessengerType: "messenger_type",
@@ -78,7 +77,9 @@ class UserModel(Base):
         nullable=False,
     )
     username: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[UserStatus] = mapped_column(_enum_column(UserStatus), nullable=False)
+    status: Mapped[UserStatus] = mapped_column(
+        _enum_column(UserStatus), nullable=False
+    )
     issue_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
@@ -107,11 +108,15 @@ class BloggerProfileModel(Base):
         ForeignKey("users.user_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    instagram_url: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    instagram_url: Mapped[str] = mapped_column(
+        String, nullable=False, unique=True
+    )
     confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
-    city: Mapped[str] = mapped_column(String, nullable=False, server_default=text("''"))
+    city: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=text("''")
+    )
     topics: Mapped[dict] = mapped_column(JSONB, nullable=False)
     audience_gender: Mapped[AudienceGender] = mapped_column(
         _enum_column(AudienceGender), nullable=False
@@ -124,7 +129,9 @@ class BloggerProfileModel(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     work_format: Mapped[WorkFormat] = mapped_column(
-        _enum_column(WorkFormat), nullable=False, server_default=text("'ugc_only'")
+        _enum_column(WorkFormat),
+        nullable=False,
+        server_default=text("'ugc_only'"),
     )
     wanted_to_change_terms_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
@@ -144,11 +151,15 @@ class AdvertiserProfileModel(Base):
         ForeignKey("users.user_id", ondelete="CASCADE"),
         primary_key=True,
     )
-    contact: Mapped[str] = mapped_column(String, nullable=False)  # phone for contact
+    contact: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # phone for contact
     brand: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     site_link: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    company_activity: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    company_activity: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
 
 
 class OrderModel(Base):
@@ -174,7 +185,9 @@ class OrderModel(Base):
     product_link: Mapped[str] = mapped_column(String, nullable=False)
     offer_text: Mapped[str] = mapped_column(Text, nullable=False)
     ugc_requirements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    barter_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    barter_description: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     bloggers_needed: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[OrderStatus] = mapped_column(
@@ -189,7 +202,9 @@ class OrderModel(Base):
     content_usage: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     deadlines: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     geography: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    product_photo_file_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    product_photo_file_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
 
 
 class ContactPricingModel(Base):
@@ -372,7 +387,7 @@ class PaymentModel(Base):
 
 
 class FsmDraftModel(Base):
-    """FSM draft ORM model for saving partial form data when user clicks Support."""
+    """FSM draft ORM model for partial form data when user clicks Support."""
 
     __tablename__ = "fsm_drafts"
 
@@ -423,7 +438,9 @@ class OutboxEventModel(Base):
         server_default=text("uuid_generate_v4()"),
     )
     event_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    aggregate_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    aggregate_id: Mapped[str] = mapped_column(
+        String, nullable=False, index=True
+    )
     aggregate_type: Mapped[str] = mapped_column(String, nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     status: Mapped[OutboxEventStatus] = mapped_column(

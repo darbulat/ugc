@@ -34,7 +34,7 @@ def test_reminder_cutoff_returns_utc_datetime() -> None:
 
 @pytest.mark.asyncio
 async def test_run_once_sends_reminder_and_updates_timestamp(fake_tm) -> None:
-    """run_once sends reminder to pending user and updates last_role_reminder_at."""
+    """run_once sends reminder to pending user, updates last_role_reminder."""
 
     repo = InMemoryUserRepository()
     user = User(
@@ -104,12 +104,14 @@ def test_main_disabled_exits_early() -> None:
         config = MagicMock()
         config.role_reminder.role_reminder_enabled = False
         mock_load.return_value = config
-        with patch("ugc_bot.role_reminder_scheduler.configure_logging"):
-            with patch("ugc_bot.role_reminder_scheduler.log_startup_info"):
-                from ugc_bot.role_reminder_scheduler import main
+        with (
+            patch("ugc_bot.role_reminder_scheduler.configure_logging"),
+            patch("ugc_bot.role_reminder_scheduler.log_startup_info"),
+        ):
+            from ugc_bot.role_reminder_scheduler import main
 
-                main()
-                mock_load.assert_called_once()
+            main()
+            mock_load.assert_called_once()
 
 
 def test_main_exits_when_no_database_url() -> None:
@@ -120,12 +122,14 @@ def test_main_exits_when_no_database_url() -> None:
         config.role_reminder.role_reminder_enabled = True
         config.db.database_url = ""
         mock_load.return_value = config
-        with patch("ugc_bot.role_reminder_scheduler.configure_logging"):
-            with patch("ugc_bot.role_reminder_scheduler.log_startup_info"):
-                from ugc_bot.role_reminder_scheduler import main
+        with (
+            patch("ugc_bot.role_reminder_scheduler.configure_logging"),
+            patch("ugc_bot.role_reminder_scheduler.log_startup_info"),
+        ):
+            from ugc_bot.role_reminder_scheduler import main
 
-                main()
-                mock_load.assert_called_once()
+            main()
+            mock_load.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -37,7 +37,9 @@ class ComplaintService:
         """Create a new complaint."""
 
         async def _run(session: object | None) -> Complaint:
-            if await self.complaint_repo.exists(order_id, reporter_id, session=session):
+            if await self.complaint_repo.exists(
+                order_id, reporter_id, session=session
+            ):
                 raise ComplaintAlreadyExistsError(
                     "Вы уже подали жалобу по этому заказу."
                 )
@@ -84,7 +86,9 @@ class ComplaintService:
         """Get complaint by ID."""
 
         async def _run(session: object | None):
-            return await self.complaint_repo.get_by_id(complaint_id, session=session)
+            return await self.complaint_repo.get_by_id(
+                complaint_id, session=session
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)
 
@@ -93,7 +97,9 @@ class ComplaintService:
 
         async def _run(session: object | None):
             return list(
-                await self.complaint_repo.list_by_order(order_id, session=session)
+                await self.complaint_repo.list_by_order(
+                    order_id, session=session
+                )
             )
 
         return await with_optional_tx(self.transaction_manager, _run)
@@ -103,7 +109,9 @@ class ComplaintService:
 
         async def _run(session: object | None):
             return list(
-                await self.complaint_repo.list_by_reporter(reporter_id, session=session)
+                await self.complaint_repo.list_by_reporter(
+                    reporter_id, session=session
+                )
             )
 
         return await with_optional_tx(self.transaction_manager, _run)
@@ -113,7 +121,9 @@ class ComplaintService:
 
         async def _run(session: object | None):
             return list(
-                await self.complaint_repo.list_by_status(status, session=session)
+                await self.complaint_repo.list_by_status(
+                    status, session=session
+                )
             )
 
         return await with_optional_tx(self.transaction_manager, _run)
@@ -163,7 +173,9 @@ class ComplaintService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def resolve_complaint_with_action(self, complaint_id: UUID) -> Complaint:
+    async def resolve_complaint_with_action(
+        self, complaint_id: UUID
+    ) -> Complaint:
         """Resolve complaint by taking action (blocking user)."""
 
         async def _run(session: object | None) -> Complaint:

@@ -9,7 +9,6 @@ from aiokafka import AIOKafkaProducer  # type: ignore[import-untyped]
 from ugc_bot.application.ports import OrderActivationPublisher
 from ugc_bot.domain.entities import Order
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -70,4 +69,4 @@ class NoopOrderActivationPublisher(OrderActivationPublisher):
     async def publish(self, order: Order) -> None:
         """Skip publishing."""
 
-        return None
+        return

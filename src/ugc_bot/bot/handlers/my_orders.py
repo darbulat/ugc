@@ -13,18 +13,19 @@ from aiogram.types import (
     Message,
 )
 
-from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
-from ugc_bot.domain.entities import Order, OrderResponse
-from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
 )
-
+from ugc_bot.domain.entities import Order, OrderResponse
+from ugc_bot.domain.enums import OrderStatus, OrderType
 
 router = Router()
 ORDER_STATUS_LABELS = {
@@ -77,14 +78,14 @@ async def show_my_orders(
     order_service: OrderService,
     offer_response_service: OfferResponseService,
 ) -> None:
-    """Show orders: advertiser's created orders or blogger's responded orders."""
+    """Show orders: advertiser's created or blogger's responded."""
 
     user = await get_user_and_ensure_allowed(
         message,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут просматривать заказы.",
-        pause_msg="Пользователи на паузе не могут просматривать заказы.",
+        blocked_msg="Заблокированные не могут просматривать заказы.",
+        pause_msg="На паузе не могут просматривать заказы.",
     )
     if user is None:
         return
@@ -99,7 +100,7 @@ async def show_my_orders(
             reverse=True,
         )
         if not orders:
-            await message.answer("У вас пока нет заказов. Создать заказ: /create_order")
+            await message.answer("У вас пока нет заказов. /create_order")
             return
         text, keyboard = await _render_page(
             orders, page=1, offer_response_service=offer_response_service
@@ -110,13 +111,15 @@ async def show_my_orders(
     if blogger is not None:
         responses = await offer_response_service.list_by_blogger(user.user_id)
         order_responses = []
-        for resp in sorted(responses, key=lambda r: r.responded_at, reverse=True):
+        for resp in sorted(
+            responses, key=lambda r: r.responded_at, reverse=True
+        ):
             order = await order_service.get_order(resp.order_id)
             if order is not None:
                 order_responses.append((order, resp))
         if not order_responses:
             await message.answer(
-                "Вы пока не откликались на заказы. Предложения приходят в бот."
+                "Вы пока не откликались. Предложения приходят в бот."
             )
             return
         text, keyboard = _render_blogger_orders_page(order_responses, page=1)
@@ -124,8 +127,8 @@ async def show_my_orders(
         return
 
     await message.answer(
-        "Заполните профиль рекламодателя (/register_advertiser) или "
-        "создайте профиль блогера (/register), чтобы видеть заказы."
+        "Заполните профиль (/register_advertiser или /register), "
+        "чтобы видеть заказы."
     )
 
 
@@ -143,13 +146,13 @@ async def paginate_orders(
     order_service: OrderService,
     offer_response_service: OfferResponseService,
 ) -> None:
-    """Handle pagination for advertiser and blogger orders list."""
+    """Handle pagination for advertiser and blogger orders."""
 
     user = await get_user_and_ensure_allowed_callback(
         callback,
         user_role_service,
         user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные пользователи не могут просматривать заказы.",
+        blocked_msg="Заблокированные не могут просматривать заказы.",
         pause_msg="Пользователи на паузе не могут просматривать заказы.",
     )
     if user is None:
@@ -168,7 +171,9 @@ async def paginate_orders(
             page = 1
         responses = await offer_response_service.list_by_blogger(user.user_id)
         order_responses = []
-        for resp in sorted(responses, key=lambda r: r.responded_at, reverse=True):
+        for resp in sorted(
+            responses, key=lambda r: r.responded_at, reverse=True
+        ):
             order = await order_service.get_order(resp.order_id)
             if order is not None:
                 order_responses.append((order, resp))
@@ -215,7 +220,9 @@ async def _render_page(
     for idx, order in enumerate(slice_orders):
         # Нумерация по дате создания: 1 = первый созданный (самый старый)
         creation_number = len(orders) - start - idx
-        matched_count = await offer_response_service.count_by_order(order.order_id)
+        matched_count = await offer_response_service.count_by_order(
+            order.order_id
+        )
         status_label = ORDER_STATUS_LABELS.get(order.status, order.status.value)
         order_lines = [
             f"№ {creation_number}",
@@ -283,7 +290,9 @@ def _render_blogger_orders_page(
         for idx, (order, _) in enumerate(orders_sorted_by_created)
     }
 
-    lines = [f"Заказы, на которые вы откликнулись (страница {page}/{total_pages}):"]
+    lines = [
+        f"Заказы, на которые вы откликнулись (страница {page}/{total_pages}):"
+    ]
     buttons_rows: list[list[InlineKeyboardButton]] = []
 
     for order, _response in slice_pairs:

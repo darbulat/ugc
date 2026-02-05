@@ -1,7 +1,7 @@
 """Add contact pricing table."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0006_add_contact_pricing"
 down_revision = "0005_remove_user_role"

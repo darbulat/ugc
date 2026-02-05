@@ -7,7 +7,9 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError
-from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.infrastructure.memory_repositories import (
@@ -288,7 +290,9 @@ async def test_offer_response_completed_at_set_only_when_last_blogger_responds(
 
 
 @pytest.mark.asyncio
-async def test_offer_response_records_metrics_when_enabled(fake_tm: object) -> None:
+async def test_offer_response_records_metrics_when_enabled(
+    fake_tm: object,
+) -> None:
     """Record metrics when collector is provided."""
 
     order_repo = InMemoryOrderRepository()
@@ -318,7 +322,9 @@ async def test_offer_response_records_metrics_when_enabled(fake_tm: object) -> N
     await order_repo.save(order)
 
     blogger_id = UUID("00000000-0000-0000-0000-000000000862")
-    await service.respond_and_finalize(order_id=order.order_id, blogger_id=blogger_id)
+    await service.respond_and_finalize(
+        order_id=order.order_id, blogger_id=blogger_id
+    )
 
     metrics.record_blogger_response.assert_called_once_with(
         order_id=str(order.order_id),
@@ -414,4 +420,6 @@ async def test_offer_response_tx_duplicate_response_is_rejected(
 
     await service.respond_and_finalize(order_id=order_id, blogger_id=blogger_id)
     with pytest.raises(OrderCreationError):
-        await service.respond_and_finalize(order_id=order_id, blogger_id=blogger_id)
+        await service.respond_and_finalize(
+            order_id=order_id, blogger_id=blogger_id
+        )

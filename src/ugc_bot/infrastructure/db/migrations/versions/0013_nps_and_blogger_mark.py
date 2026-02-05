@@ -1,7 +1,7 @@
-"""Add nps_responses table and wanted_to_change_terms_count to blogger_profiles."""
+"""Add nps_responses and wanted_to_change_terms_count to blogger_profiles."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0013_nps_and_blogger_mark"

@@ -1,7 +1,7 @@
 """Add user_id and comment to nps_responses, remove interaction_id."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0024_nps_user_id_comment"

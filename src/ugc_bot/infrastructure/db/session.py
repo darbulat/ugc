@@ -103,13 +103,12 @@ async def with_optional_tx(
 ) -> T:
     """Run an async function with optional transaction/session.
 
-    If transaction_manager is not None, opens a transaction and calls fn(session).
-    Otherwise calls fn(None). Use this to avoid duplicating "if tm is None / else
-    async with tm.transaction()" branches in services.
+    If tm is not None, opens transaction and calls fn(session).
+    Otherwise calls fn(None). Avoids duplicating tm.transaction() branches.
 
     Args:
         transaction_manager: SessionTransactionManager or None.
-        fn: Async callable that accepts session (or None) and returns a result.
+        fn: Async callable(session|None) -> result.
 
     Returns:
         The result of fn(session) or fn(None).
@@ -123,7 +122,9 @@ async def with_optional_tx(
 class SessionTransactionManager:
     """Transaction manager for Async SQLAlchemy sessions."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self, session_factory: async_sessionmaker[AsyncSession]
+    ) -> None:
         self._session_factory = session_factory
 
     @asynccontextmanager

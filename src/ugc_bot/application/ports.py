@@ -66,7 +66,9 @@ class UserRepository(ABC):
         raise NotImplementedError  # pragma: no cover
 
     async def list_admins(
-        self, messenger_type: MessengerType | None = None, session: object | None = None
+        self,
+        messenger_type: MessengerType | None = None,
+        session: object | None = None,
     ) -> Iterable[User]:
         """List users with admin=True. Optionally filter by messenger_type."""
 
@@ -133,7 +135,9 @@ class OrderRepository(ABC):
         """Fetch order by ID with a row lock when supported."""
 
     @abstractmethod
-    async def list_active(self, session: object | None = None) -> Iterable[Order]:
+    async def list_active(
+        self, session: object | None = None
+    ) -> Iterable[Order]:
         """List active orders."""
 
     @abstractmethod
@@ -222,7 +226,7 @@ class InteractionRepository(ABC):
     async def list_due_for_feedback(
         self, cutoff: datetime, session: object | None = None
     ) -> Iterable[Interaction]:
-        """List interactions due for feedback (next_check_at <= cutoff and status=PENDING)."""
+        """List interactions due for feedback (PENDING)."""
 
     @abstractmethod
     async def list_by_status(
@@ -243,7 +247,7 @@ class InteractionRepository(ABC):
         next_check_at: datetime,
         session: object | None = None,
     ) -> None:
-        """Update next_check_at for an interaction (e.g. after sending feedback request)."""
+        """Update next_check_at (e.g. after sending feedback request)."""
 
 
 class NpsRepository(ABC):
@@ -282,14 +286,16 @@ class InstagramVerificationRepository(ABC):
         """Fetch a valid, unexpired verification code."""
 
     @abstractmethod
-    async def mark_used(self, code_id: UUID, session: object | None = None) -> None:
+    async def mark_used(
+        self, code_id: UUID, session: object | None = None
+    ) -> None:
         """Mark verification code as used."""
 
     @abstractmethod
     async def get_valid_code_by_code(
         self, code: str, session: object | None = None
     ) -> Optional[InstagramVerificationCode]:
-        """Fetch a valid, unexpired verification code by code string (for webhook processing)."""
+        """Fetch valid unexpired verification code by string (for webhook)."""
 
 
 class InstagramGraphApiClient(ABC):
@@ -323,7 +329,9 @@ class PaymentRepository(ABC):
         """Fetch payment by provider external id."""
 
     @abstractmethod
-    async def save(self, payment: Payment, session: object | None = None) -> None:
+    async def save(
+        self, payment: Payment, session: object | None = None
+    ) -> None:
         """Persist payment."""
 
 
@@ -349,7 +357,9 @@ class OutboxRepository(ABC):
     """Port for outbox event persistence."""
 
     @abstractmethod
-    async def save(self, event: OutboxEvent, session: object | None = None) -> None:
+    async def save(
+        self, event: OutboxEvent, session: object | None = None
+    ) -> None:
         """Persist outbox event."""
 
     @abstractmethod
@@ -366,7 +376,10 @@ class OutboxRepository(ABC):
 
     @abstractmethod
     async def mark_as_published(
-        self, event_id: UUID, processed_at: datetime, session: object | None = None
+        self,
+        event_id: UUID,
+        processed_at: datetime,
+        session: object | None = None,
     ) -> None:
         """Mark event as published."""
 
@@ -391,7 +404,9 @@ class ComplaintRepository(ABC):
     """Port for complaint persistence."""
 
     @abstractmethod
-    async def save(self, complaint: Complaint, session: object | None = None) -> None:
+    async def save(
+        self, complaint: Complaint, session: object | None = None
+    ) -> None:
         """Persist complaint."""
 
     @abstractmethod

@@ -4,6 +4,15 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.factories import create_test_user
+from tests.helpers.fakes import (
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakeUser,
+    RecordingFsmDraftService,
+)
+from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -29,15 +38,6 @@ from ugc_bot.bot.handlers.keyboards import (
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.domain.enums import MessengerType, UserStatus
-from tests.helpers.fakes import (
-    FakeFSMContext,
-    FakeFsmDraftService,
-    FakeMessage,
-    FakeUser,
-    RecordingFsmDraftService,
-)
-from tests.helpers.factories import create_test_user
-from tests.helpers.services import build_profile_service
 
 
 @pytest.mark.asyncio
@@ -49,7 +49,9 @@ async def test_start_advertiser_registration_requires_user(
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     await handle_advertiser_start(
         message,
@@ -78,7 +80,9 @@ async def test_start_advertiser_registration_sets_state(
     )
     message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
     state = FakeFSMContext()
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     await handle_advertiser_start(
         message,
@@ -111,7 +115,9 @@ async def test_start_advertiser_registration_skips_name_when_username_set(
     )
     message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
     state = FakeFSMContext()
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     await handle_advertiser_start(
         message,
@@ -126,7 +132,9 @@ async def test_start_advertiser_registration_skips_name_when_username_set(
     assert state.state is not None
     assert message.answers
     first_ans = message.answers[0]
-    assert "телефона" in (first_ans if isinstance(first_ans, str) else first_ans[0])
+    assert "телефона" in (
+        first_ans if isinstance(first_ans, str) else first_ans[0]
+    )
 
 
 @pytest.mark.asyncio
@@ -148,7 +156,9 @@ async def test_start_advertiser_registration_blocked_user(
     message = FakeMessage(text=None, user=FakeUser(11, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     await handle_advertiser_start(
         message,
@@ -182,7 +192,9 @@ async def test_start_advertiser_registration_paused_user(
     message = FakeMessage(text=None, user=FakeUser(12, "paused", "Paused"))
     state = FakeFSMContext()
 
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     await handle_advertiser_start(
         message,
@@ -247,7 +259,9 @@ async def test_handle_advertiser_start_user_not_found(
     """When user not in repo, 'Начать' asks to start with /start."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
     message = FakeMessage(text="Начать", user=FakeUser(999, "x", "X"))
     state = FakeFSMContext()
 
@@ -281,7 +295,9 @@ async def test_handle_advertiser_start_shows_menu_when_profile_exists(
             brand="B",
         )
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
     message = FakeMessage(text="Начать", user=FakeUser(30, "adv", "Adv"))
     state = FakeFSMContext()
 
@@ -308,7 +324,9 @@ async def test_handle_name_success_asks_phone(user_repo) -> None:
 
     assert message.answers
     first_ans = message.answers[0]
-    assert "телефона" in (first_ans if isinstance(first_ans, str) else first_ans[0])
+    assert "телефона" in (
+        first_ans if isinstance(first_ans, str) else first_ans[0]
+    )
     assert state._data.get("name") == "Иван"
 
 
@@ -325,7 +343,9 @@ async def test_handle_phone_success_asks_city(user_repo) -> None:
 
     assert message.answers
     first_ans = message.answers[0]
-    assert "города" in (first_ans if isinstance(first_ans, str) else first_ans[0])
+    assert "города" in (
+        first_ans if isinstance(first_ans, str) else first_ans[0]
+    )
     assert state._data.get("phone") == "89001110777"
 
 
@@ -359,12 +379,16 @@ async def test_handle_city_success_asks_brand(user_repo) -> None:
 
     assert message.answers
     first_ans = message.answers[0]
-    assert "бренда" in (first_ans if isinstance(first_ans, str) else first_ans[0])
+    assert "бренда" in (
+        first_ans if isinstance(first_ans, str) else first_ans[0]
+    )
     assert state._data.get("city") == "Казань"
 
 
 @pytest.mark.asyncio
-async def test_handle_company_activity_success_asks_site_link(user_repo) -> None:
+async def test_handle_company_activity_success_asks_site_link(
+    user_repo,
+) -> None:
     """Valid company activity leads to site link prompt."""
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -373,7 +397,9 @@ async def test_handle_company_activity_success_asks_site_link(user_repo) -> None
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    message = FakeMessage(text="Продажа одежды", user=FakeUser(20, "adv", "Adv"))
+    message = FakeMessage(
+        text="Продажа одежды", user=FakeUser(20, "adv", "Adv")
+    )
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:company_activity"
     await state.update_data(
@@ -405,7 +431,9 @@ async def test_handle_brand_requires_value(user_repo) -> None:
     message = FakeMessage(text=" ", user=FakeUser(40, "adv", "Adv"))
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:brand"
-    await state.update_data(user_id=user.user_id, name="N", phone="+79001234567")
+    await state.update_data(
+        user_id=user.user_id, name="N", phone="+79001234567"
+    )
 
     await handle_brand(message, state)
 
@@ -418,7 +446,7 @@ async def test_handle_brand_requires_value(user_repo) -> None:
 async def test_handle_advertiser_start_with_draft_shows_draft_question(
     user_repo, advertiser_repo
 ) -> None:
-    """When draft exists, show DRAFT_QUESTION_TEXT and set choosing_draft_restore."""
+    """When draft exists, show DRAFT_QUESTION_TEXT and set choosing_draft."""
     service = UserRoleService(user_repo=user_repo)
     user = await service.set_user(
         external_id="50",
@@ -427,7 +455,9 @@ async def test_handle_advertiser_start_with_draft_shows_draft_question(
     )
     draft = {"user_id": user.user_id, "name": "Draft"}
     draft_service = RecordingFsmDraftService(draft_to_return=draft)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
     message = FakeMessage(text="Начать", user=FakeUser(50, "", "User"))
     state = FakeFSMContext()
 
@@ -446,8 +476,9 @@ async def test_handle_advertiser_start_with_draft_shows_draft_question(
 @pytest.mark.asyncio
 async def test_advertiser_draft_choice_resume_restores(user_repo) -> None:
     """RESUME_DRAFT restores draft and shows first prompt."""
-    from ugc_bot.domain.entities import FsmDraft
     from datetime import datetime, timezone
+
+    from ugc_bot.domain.entities import FsmDraft
 
     service = UserRoleService(user_repo=user_repo)
     user = await service.set_user(
@@ -490,7 +521,9 @@ async def test_advertiser_draft_choice_start_over(user_repo) -> None:
         username="adv",
     )
     draft_service = RecordingFsmDraftService(draft_to_return=None)
-    message = FakeMessage(text=START_OVER_BUTTON_TEXT, user=FakeUser(52, "adv", "Adv"))
+    message = FakeMessage(
+        text=START_OVER_BUTTON_TEXT, user=FakeUser(52, "adv", "Adv")
+    )
     state = FakeFSMContext()
     state._data = {"user_id": user.user_id}
     state.state = AdvertiserRegistrationStates.choosing_draft_restore
@@ -597,7 +630,9 @@ async def test_handle_site_link_shows_agreements(user_repo) -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
-    message = FakeMessage(text="https://mysite.com", user=FakeUser(53, "adv", "Adv"))
+    message = FakeMessage(
+        text="https://mysite.com", user=FakeUser(53, "adv", "Adv")
+    )
     state = FakeFSMContext()
     state.state = "AdvertiserRegistrationStates:site_link"
     await state.update_data(
@@ -625,7 +660,7 @@ async def test_handle_site_link_shows_agreements(user_repo) -> None:
 async def test_handle_agreements_confirm_session_expired(
     user_repo, advertiser_repo
 ) -> None:
-    """handle_agreements_confirm clears state when user_id missing from state."""
+    """handle_agreements_confirm clears state when user_id missing."""
     message = FakeMessage(
         text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(57, "adv", "Adv")
     )
@@ -655,7 +690,9 @@ async def test_handle_agreements_confirm_wrong_button(
     message = FakeMessage(text="Wrong", user=FakeUser(54, "adv", "Adv"))
     state = FakeFSMContext()
     state.state = AdvertiserRegistrationStates.agreements
-    await state.update_data(user_id=UUID("00000000-0000-0000-0000-000000000054"))
+    await state.update_data(
+        user_id=UUID("00000000-0000-0000-0000-000000000054")
+    )
     adv_service = AdvertiserRegistrationService(
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
@@ -669,7 +706,9 @@ async def test_handle_agreements_confirm_wrong_button(
 
 
 @pytest.mark.asyncio
-async def test_handle_agreements_confirm_success(user_repo, advertiser_repo) -> None:
+async def test_handle_agreements_confirm_success(
+    user_repo, advertiser_repo
+) -> None:
     """handle_agreements_confirm creates profile on confirm."""
     from tests.helpers.factories import create_test_user
 

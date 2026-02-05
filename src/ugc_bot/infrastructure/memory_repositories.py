@@ -1,19 +1,18 @@
 """In-memory repository implementations."""
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
-
-from datetime import datetime, timezone
 
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
     ComplaintRepository,
     ContactPricingRepository,
-    InteractionRepository,
     InstagramGraphApiClient,
     InstagramVerificationRepository,
+    InteractionRepository,
     NpsRepository,
     OrderRepository,
     OrderResponseRepository,
@@ -26,8 +25,8 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
-    Interaction,
     InstagramVerificationCode,
+    Interaction,
     Order,
     OrderResponse,
     OutboxEvent,
@@ -48,7 +47,9 @@ class InMemoryUserRepository(UserRepository):
     """In-memory implementation of user repository."""
 
     users: Dict[UUID, User] = field(default_factory=dict)
-    external_index: Dict[Tuple[str, MessengerType], UUID] = field(default_factory=dict)
+    external_index: Dict[Tuple[str, MessengerType], UUID] = field(
+        default_factory=dict
+    )
 
     async def get_by_id(
         self, user_id: UUID, session: object | None = None
@@ -73,7 +74,9 @@ class InMemoryUserRepository(UserRepository):
         """Persist a user in memory."""
 
         self.users[user.user_id] = user
-        self.external_index[(user.external_id, user.messenger_type)] = user.user_id
+        self.external_index[(user.external_id, user.messenger_type)] = (
+            user.user_id
+        )
 
     async def list_pending_role_reminders(
         self, reminder_cutoff: datetime, session: object | None = None
@@ -144,7 +147,9 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
         """List confirmed blogger user ids."""
 
         return [
-            profile.user_id for profile in self.profiles.values() if profile.confirmed
+            profile.user_id
+            for profile in self.profiles.values()
+            if profile.confirmed
         ]
 
 
@@ -201,7 +206,7 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
     async def get_valid_code_by_code(
         self, code: str, session: object | None = None
     ) -> Optional[InstagramVerificationCode]:
-        """Fetch a valid, unexpired verification code by code string (for webhook processing)."""
+        """Fetch valid unexpired verification code by string (for webhook)."""
 
         now = datetime.now(timezone.utc)
         for item in self.codes.values():
@@ -209,7 +214,9 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
                 return item
         return None
 
-    async def mark_used(self, code_id: UUID, session: object | None = None) -> None:
+    async def mark_used(
+        self, code_id: UUID, session: object | None = None
+    ) -> None:
         """Mark verification code as used."""
 
         if code_id not in self.codes:
@@ -256,7 +263,9 @@ class InMemoryOrderRepository(OrderRepository):
 
         return self.orders.get(order_id)
 
-    async def list_active(self, session: object | None = None) -> Iterable[Order]:
+    async def list_active(
+        self, session: object | None = None
+    ) -> Iterable[Order]:
         """List active orders."""
 
         return [
@@ -331,7 +340,9 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
     ) -> list[OrderResponse]:
         """List responses by blogger (orders the blogger responded to)."""
 
-        return [resp for resp in self.responses if resp.blogger_id == blogger_id]
+        return [
+            resp for resp in self.responses if resp.blogger_id == blogger_id
+        ]
 
     async def exists(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
@@ -348,7 +359,9 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
     ) -> int:
         """Count responses by order."""
 
-        return len([resp for resp in self.responses if resp.order_id == order_id])
+        return len(
+            [resp for resp in self.responses if resp.order_id == order_id]
+        )
 
 
 @dataclass
@@ -388,7 +401,9 @@ class InMemoryInteractionRepository(InteractionRepository):
         """List interactions for order."""
 
         return [
-            item for item in self.interactions.values() if item.order_id == order_id
+            item
+            for item in self.interactions.values()
+            if item.order_id == order_id
         ]
 
     async def list_due_for_feedback(
@@ -409,7 +424,9 @@ class InMemoryInteractionRepository(InteractionRepository):
     ) -> Iterable[Interaction]:
         """List interactions by status."""
 
-        return [item for item in self.interactions.values() if item.status == status]
+        return [
+            item for item in self.interactions.values() if item.status == status
+        ]
 
     async def save(
         self, interaction: Interaction, session: object | None = None
@@ -497,7 +514,9 @@ class InMemoryPaymentRepository(PaymentRepository):
                 return payment
         return None
 
-    async def save(self, payment: Payment, session: object | None = None) -> None:
+    async def save(
+        self, payment: Payment, session: object | None = None
+    ) -> None:
         """Persist payment in memory."""
 
         self.payments[payment.payment_id] = payment
@@ -516,10 +535,18 @@ class InMemoryContactPricingRepository(ContactPricingRepository):
             now = datetime.now(timezone.utc)
             self.prices = {
                 3: ContactPricing(bloggers_count=3, price=0.0, updated_at=now),
-                10: ContactPricing(bloggers_count=10, price=0.0, updated_at=now),
-                20: ContactPricing(bloggers_count=20, price=0.0, updated_at=now),
-                30: ContactPricing(bloggers_count=30, price=0.0, updated_at=now),
-                50: ContactPricing(bloggers_count=50, price=0.0, updated_at=now),
+                10: ContactPricing(
+                    bloggers_count=10, price=0.0, updated_at=now
+                ),
+                20: ContactPricing(
+                    bloggers_count=20, price=0.0, updated_at=now
+                ),
+                30: ContactPricing(
+                    bloggers_count=30, price=0.0, updated_at=now
+                ),
+                50: ContactPricing(
+                    bloggers_count=50, price=0.0, updated_at=now
+                ),
             }
 
     async def get_by_bloggers_count(
@@ -541,7 +568,9 @@ class InMemoryOutboxRepository(OutboxRepository):
 
     events: Dict[UUID, OutboxEvent] = field(default_factory=dict)
 
-    async def save(self, event: OutboxEvent, session: object | None = None) -> None:
+    async def save(
+        self, event: OutboxEvent, session: object | None = None
+    ) -> None:
         """Persist outbox event."""
 
         self.events[event.event_id] = event
@@ -579,7 +608,10 @@ class InMemoryOutboxRepository(OutboxRepository):
             )
 
     async def mark_as_published(
-        self, event_id: UUID, processed_at: datetime, session: object | None = None
+        self,
+        event_id: UUID,
+        processed_at: datetime,
+        session: object | None = None,
     ) -> None:
         """Mark event as published."""
 
@@ -636,7 +668,9 @@ class InMemoryComplaintRepository(ComplaintRepository):
 
     complaints: Dict[UUID, Complaint] = field(default_factory=dict)
 
-    async def save(self, complaint: Complaint, session: object | None = None) -> None:
+    async def save(
+        self, complaint: Complaint, session: object | None = None
+    ) -> None:
         """Persist complaint."""
 
         self.complaints[complaint.complaint_id] = complaint
@@ -676,7 +710,8 @@ class InMemoryComplaintRepository(ComplaintRepository):
         """Check if reporter already filed a complaint for this order."""
 
         return any(
-            complaint.order_id == order_id and complaint.reporter_id == reporter_id
+            complaint.order_id == order_id
+            and complaint.reporter_id == reporter_id
             for complaint in self.complaints.values()
         )
 

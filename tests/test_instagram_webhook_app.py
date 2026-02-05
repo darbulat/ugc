@@ -14,17 +14,22 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
-from ugc_bot.instagram_webhook_app import (
-    _notify_user_verification_success,
-    _verify_signature,
-    app,
-    main,
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
+)
+from ugc_bot.instagram_webhook_app import (
+    _notify_user_verification_success,
+    _verify_signature,
+    app,
+    main,
 )
 
 
@@ -50,7 +55,9 @@ def client() -> TestClient:
 
 def _create_signature(payload: bytes, secret: str) -> str:
     """Create webhook signature for testing."""
-    computed = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    computed = hmac.new(
+        secret.encode("utf-8"), payload, hashlib.sha256
+    ).hexdigest()
     return f"sha256={computed}"
 
 
@@ -69,7 +76,9 @@ def test_verify_signature_rejects_non_prefixed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_user_verification_user_missing(test_config: AppConfig) -> None:
+async def test_notify_user_verification_user_missing(
+    test_config: AppConfig,
+) -> None:
     """No notification when user is missing."""
 
     service = InstagramVerificationService(
@@ -161,7 +170,9 @@ async def test_notify_user_verification_success(test_config: AppConfig) -> None:
     )
 
     with patch("aiogram.Bot", DummyBot):
-        await _notify_user_verification_success(user.user_id, service, test_config)
+        await _notify_user_verification_success(
+            user.user_id, service, test_config
+        )
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
@@ -294,7 +305,10 @@ async def test_webhook_event_processing_success(
     )
     verification = await verification_service.generate_code(user.user_id)
 
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = verification_service
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = verification_service
 
     # Create webhook payload
     payload = {
@@ -447,7 +461,10 @@ def test_webhook_event_no_app_secret(
         verification_repo=InMemoryInstagramVerificationRepository(),
         instagram_api_client=None,
     )
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = verification_service
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = verification_service
 
     payload = {"object": "instagram", "entry": []}
     payload_bytes = json.dumps(payload).encode("utf-8")
@@ -534,7 +551,10 @@ def test_main_logs_startup_info(
     main()
 
     mock_log_startup_info.assert_called_once()
-    assert mock_log_startup_info.call_args.kwargs["service_name"] == "instagram-webhook"
+    assert (
+        mock_log_startup_info.call_args.kwargs["service_name"]
+        == "instagram-webhook"
+    )
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
@@ -564,7 +584,10 @@ async def test_webhook_entry_empty_messaging(
 ) -> None:
     """Entry with empty messaging is skipped."""
     mock_load_config.return_value = test_config
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
@@ -597,7 +620,10 @@ async def test_webhook_echo_and_self_messages_skipped(
 ) -> None:
     """Echo and self messages are skipped."""
     mock_load_config.return_value = test_config
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
@@ -645,7 +671,10 @@ async def test_webhook_no_sender_id_skipped(
 ) -> None:
     """Message with no sender id is skipped."""
     mock_load_config.return_value = test_config
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
@@ -690,7 +719,10 @@ async def test_webhook_no_message_object_skipped(
 ) -> None:
     """Message with no message object is skipped."""
     mock_load_config.return_value = test_config
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
@@ -734,7 +766,10 @@ async def test_webhook_empty_text_skipped(
 ) -> None:
     """Message with empty text is skipped."""
     mock_load_config.return_value = test_config
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = InstagramVerificationService(
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
@@ -785,7 +820,10 @@ async def test_webhook_verification_exception_logged(
     verification_service.verify_code_by_instagram_sender = MagicMock(
         side_effect=RuntimeError("Verification failed")
     )
-    mock_container_cls.return_value.build_instagram_verification_service.return_value = verification_service
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = verification_service
     payload = {
         "object": "instagram",
         "entry": [

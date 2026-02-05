@@ -3,7 +3,6 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
@@ -14,8 +13,8 @@ from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.config import load_config
 from ugc_bot.infrastructure.db.repositories import SqlAlchemyUserRepository
 from ugc_bot.infrastructure.db.session import (
-    create_session_factory,
     SessionTransactionManager,
+    create_session_factory,
 )
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
@@ -26,7 +25,7 @@ _send_retry_delay_seconds = 0.5
 
 
 def _reminder_cutoff(config) -> datetime:
-    """Return today at role_reminder hour:minute in configured timezone, as UTC."""
+    """Return today at role_reminder time in configured timezone, as UTC."""
 
     tz = ZoneInfo(config.role_reminder.role_reminder_timezone)
     now_local = datetime.now(tz)
@@ -78,7 +77,8 @@ def main() -> None:  # pragma: no cover
     """Run role reminder once (invoke from cron at 10:00)."""
     config = load_config()
     configure_logging(
-        config.log.log_level, json_format=config.log.log_format.lower() == "json"
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
     )
     log_startup_info(
         logger=logger, service_name="Role reminder scheduler", config=config

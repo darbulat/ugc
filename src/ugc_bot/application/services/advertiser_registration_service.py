@@ -50,7 +50,9 @@ class AdvertiserRegistrationService:
         async def _run(session: object | None) -> AdvertiserProfile:
             user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
-                raise UserNotFoundError("User not found for advertiser registration.")
+                raise UserNotFoundError(
+                    "User not found for advertiser registration."
+                )
 
             profile = AdvertiserProfile(
                 user_id=user.user_id,
@@ -63,7 +65,9 @@ class AdvertiserRegistrationService:
             await self.advertiser_repo.save(profile, session=session)
 
             if self.metrics_collector:
-                self.metrics_collector.record_advertiser_registration(str(user.user_id))
+                self.metrics_collector.record_advertiser_registration(
+                    str(user.user_id)
+                )
 
             return profile
 
@@ -73,7 +77,9 @@ class AdvertiserRegistrationService:
         """Fetch advertiser profile by user id."""
 
         async def _run(session: object | None):
-            return await self.advertiser_repo.get_by_user_id(user_id, session=session)
+            return await self.advertiser_repo.get_by_user_id(
+                user_id, session=session
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)
 
@@ -87,7 +93,7 @@ class AdvertiserRegistrationService:
         city: Optional[str] = None,
         company_activity: Optional[str] = None,
     ) -> Optional[AdvertiserProfile]:
-        """Update advertiser profile fields. Returns updated profile or None if not found."""
+        """Update advertiser profile. Returns profile or None if not found."""
 
         async def _run(session: object | None) -> Optional[AdvertiserProfile]:
             profile = await self.advertiser_repo.get_by_user_id(
@@ -103,7 +109,9 @@ class AdvertiserRegistrationService:
                 site_link=(site_link or "").strip() or None
                 if site_link is not None
                 else profile.site_link,
-                city=(city or "").strip() or None if city is not None else profile.city,
+                city=(city or "").strip() or None
+                if city is not None
+                else profile.city,
                 company_activity=(company_activity or "").strip() or None
                 if company_activity is not None
                 else profile.company_activity,

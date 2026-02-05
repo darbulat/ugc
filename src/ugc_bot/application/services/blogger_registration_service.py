@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+from ugc_bot.application.errors import (
+    BloggerRegistrationError,
+    UserNotFoundError,
+)
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     TransactionManager,
@@ -14,6 +17,38 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import AudienceGender, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
+
+
+def _validate_blogger_input(
+    instagram_url: str,
+    city: str,
+    audience_geo: str,
+    audience_age_min: int,
+    audience_age_max: int,
+    price: float,
+) -> tuple[str, str, str]:
+    """Validate blogger input. Returns (instagram_url, city, geo)."""
+    instagram_url_clean = instagram_url.strip()
+    if not instagram_url_clean:
+        raise BloggerRegistrationError("Instagram URL is required.")
+
+    city_clean = city.strip()
+    if not city_clean:
+        raise BloggerRegistrationError("City is required.")
+
+    audience_geo_clean = audience_geo.strip()
+    if not audience_geo_clean:
+        raise BloggerRegistrationError("Audience geo is required.")
+
+    if audience_age_min <= 0 or audience_age_max <= 0:
+        raise BloggerRegistrationError("Audience age must be positive.")
+    if audience_age_max < audience_age_min:
+        raise BloggerRegistrationError("Age max must be >= age min.")
+
+    if price <= 0:
+        raise BloggerRegistrationError("Price must be positive.")
+
+    return instagram_url_clean, city_clean, audience_geo_clean
 
 
 @dataclass(slots=True)
@@ -28,7 +63,7 @@ class BloggerRegistrationService:
     async def get_profile_by_instagram_url(
         self, instagram_url: str
     ) -> BloggerProfile | None:
-        """Fetch blogger profile by Instagram URL within a transaction boundary."""
+        """Fetch blogger profile by Instagram URL in a transaction."""
 
         async def _run(session: object | None):
             return await self.blogger_repo.get_by_instagram_url(
@@ -56,11 +91,20 @@ class BloggerRegistrationService:
         async def _run(session: object | None) -> BloggerProfile:
             user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
-                raise UserNotFoundError("User not found for blogger registration.")
+                raise UserNotFoundError(
+                    "User not found for blogger registration."
+                )
 
-            instagram_url_clean = instagram_url.strip()
-            if not instagram_url_clean:
-                raise BloggerRegistrationError("Instagram URL is required.")
+            instagram_url_clean, city_clean, audience_geo_clean = (
+                _validate_blogger_input(
+                    instagram_url,
+                    city,
+                    audience_geo,
+                    audience_age_min,
+                    audience_age_max,
+                    price,
+                )
+            )
 
             existing_profile = await self.blogger_repo.get_by_instagram_url(
                 instagram_url_clean, session=session
@@ -70,22 +114,6 @@ class BloggerRegistrationService:
                     "Этот Instagram аккаунт уже зарегистрирован. "
                     "Пожалуйста, используйте другой аккаунт."
                 )
-
-            city_clean = city.strip()
-            if not city_clean:
-                raise BloggerRegistrationError("City is required.")
-
-            audience_geo_clean = audience_geo.strip()
-            if not audience_geo_clean:
-                raise BloggerRegistrationError("Audience geo is required.")
-
-            if audience_age_min <= 0 or audience_age_max <= 0:
-                raise BloggerRegistrationError("Audience age must be positive.")
-            if audience_age_max < audience_age_min:
-                raise BloggerRegistrationError("Age max must be >= age min.")
-
-            if price <= 0:
-                raise BloggerRegistrationError("Price must be positive.")
 
             profile = BloggerProfile(
                 user_id=user.user_id,
@@ -105,7 +133,9 @@ class BloggerRegistrationService:
             await self.blogger_repo.save(profile, session=session)
 
             if self.metrics_collector:
-                self.metrics_collector.record_blogger_registration(str(user.user_id))
+                self.metrics_collector.record_blogger_registration(
+                    str(user.user_id)
+                )
 
             return profile
 
@@ -126,10 +156,12 @@ class BloggerRegistrationService:
         barter: Optional[bool] = None,
         work_format: Optional[WorkFormat] = None,
     ) -> BloggerProfile | None:
-        """Update blogger profile with provided fields. Returns updated profile or None if not found."""
+        """Update blogger profile. Returns profile or None if not found."""
 
         async def _run(session: object | None) -> BloggerProfile | None:
-            profile = await self.blogger_repo.get_by_user_id(user_id, session=session)
+            profile = await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
             if profile is None:
                 return None
 
@@ -139,7 +171,8 @@ class BloggerRegistrationService:
                 else profile.instagram_url
             )
             instagram_changed = (
-                instagram_url is not None and new_instagram_url != profile.instagram_url
+                instagram_url is not None
+                and new_instagram_url != profile.instagram_url
             )
             updated = BloggerProfile(
                 user_id=profile.user_id,
@@ -174,11 +207,15 @@ class BloggerRegistrationService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def increment_wanted_to_change_terms_count(self, user_id: UUID) -> None:
-        """Increment wanted_to_change_terms_count for a blogger (when advertiser selects that reason)."""
+    async def increment_wanted_to_change_terms_count(
+        self, user_id: UUID
+    ) -> None:
+        """Increment wanted_to_change_terms_count (advertiser reason)."""
 
         async def _run(session: object | None) -> None:
-            profile = await self.blogger_repo.get_by_user_id(user_id, session=session)
+            profile = await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
             if profile is None:
                 return
             updated = BloggerProfile(
@@ -194,7 +231,8 @@ class BloggerRegistrationService:
                 price=profile.price,
                 barter=profile.barter,
                 work_format=profile.work_format,
-                wanted_to_change_terms_count=profile.wanted_to_change_terms_count + 1,
+                wanted_to_change_terms_count=profile.wanted_to_change_terms_count
+                + 1,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(updated, session=session)

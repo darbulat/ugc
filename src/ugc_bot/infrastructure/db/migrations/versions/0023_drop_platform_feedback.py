@@ -11,8 +11,12 @@ depends_on = None
 def upgrade() -> None:
     """Drop platform_feedback table."""
 
-    op.drop_index("ix_platform_feedback_user_id", table_name="platform_feedback")
-    op.drop_index("ix_platform_feedback_order_id", table_name="platform_feedback")
+    op.drop_index(
+        "ix_platform_feedback_user_id", table_name="platform_feedback"
+    )
+    op.drop_index(
+        "ix_platform_feedback_order_id", table_name="platform_feedback"
+    )
     op.drop_table("platform_feedback")
 
 

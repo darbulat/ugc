@@ -26,7 +26,9 @@ def test_container_requires_database_url_for_db_dependent_methods() -> None:
     assert container.session_factory is None
     assert container.transaction_manager is None
 
-    with pytest.raises(ValueError, match="DATABASE_URL is required for admin\\."):
+    with pytest.raises(
+        ValueError, match="DATABASE_URL is required for admin\\."
+    ):
         container.get_admin_engine()
 
     with pytest.raises(

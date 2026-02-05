@@ -11,8 +11,10 @@ from sqlalchemy import create_engine
 
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.db.base import Base
-from ugc_bot.infrastructure.db.session import create_session_factory
-from ugc_bot.infrastructure.db.session import SessionTransactionManager
+from ugc_bot.infrastructure.db.session import (
+    SessionTransactionManager,
+    create_session_factory,
+)
 
 
 @pytest.fixture(scope="session")
@@ -31,7 +33,7 @@ def engine(test_database_url: str):
 
     engine = create_engine(test_database_url, echo=False)
 
-    # Create all tables except those with JSONB fields (not compatible with SQLite)
+    # Exclude tables with JSONB (not compatible with SQLite)
     tables_to_exclude = {"outbox_events", "blogger_profiles", "fsm_drafts"}
     tables_to_create = [
         table
@@ -51,7 +53,7 @@ def session_factory(
     async_engine = session_factory.kw["bind"]
 
     def _dispose_engine() -> None:
-        # Ensure any `aiosqlite` worker threads are stopped before interpreter shutdown.
+        # Stop aiosqlite worker threads before interpreter shutdown.
         loop = asyncio.new_event_loop()
         try:
             loop.run_until_complete(async_engine.dispose())
@@ -116,21 +118,23 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
 
     # Provide repositories/services wired to the test `session_factory`
     from ugc_bot.infrastructure.db.repositories import (
-        SqlAlchemyUserRepository,
+        SqlAlchemyAdvertiserProfileRepository,
+        SqlAlchemyBloggerProfileRepository,
+        SqlAlchemyComplaintRepository,
+        SqlAlchemyContactPricingRepository,
+        SqlAlchemyInstagramVerificationRepository,
+        SqlAlchemyInteractionRepository,
         SqlAlchemyOrderRepository,
         SqlAlchemyOrderResponseRepository,
-        SqlAlchemyInteractionRepository,
         SqlAlchemyPaymentRepository,
-        SqlAlchemyContactPricingRepository,
-        SqlAlchemyComplaintRepository,
-        SqlAlchemyBloggerProfileRepository,
-        SqlAlchemyAdvertiserProfileRepository,
-        SqlAlchemyInstagramVerificationRepository,
+        SqlAlchemyUserRepository,
     )
 
     # Replace session factories in all services
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
+    blogger_repo = SqlAlchemyBloggerProfileRepository(
+        session_factory=session_factory
+    )
     advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
         session_factory=session_factory
     )
@@ -141,34 +145,46 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     order_response_repo = SqlAlchemyOrderResponseRepository(
         session_factory=session_factory
     )
-    interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
+    interaction_repo = SqlAlchemyInteractionRepository(
+        session_factory=session_factory
+    )
     payment_repo = SqlAlchemyPaymentRepository(session_factory=session_factory)
-    pricing_repo = SqlAlchemyContactPricingRepository(session_factory=session_factory)
-    complaint_repo = SqlAlchemyComplaintRepository(session_factory=session_factory)
+    pricing_repo = SqlAlchemyContactPricingRepository(
+        session_factory=session_factory
+    )
+    complaint_repo = SqlAlchemyComplaintRepository(
+        session_factory=session_factory
+    )
 
     transaction_manager = SessionTransactionManager(session_factory)
     dispatcher["transaction_manager"] = transaction_manager
 
-    from ugc_bot.application.services.user_role_service import UserRoleService
+    from ugc_bot.application.services.advertiser_registration_service import (
+        AdvertiserRegistrationService,
+    )
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.application.services.advertiser_registration_service import (
-        AdvertiserRegistrationService,
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.application.services.contact_pricing_service import (
+        ContactPricingService,
     )
     from ugc_bot.application.services.instagram_verification_service import (
         InstagramVerificationService,
     )
-    from ugc_bot.application.services.order_service import OrderService
-    from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
-    from ugc_bot.application.services.offer_response_service import OfferResponseService
-    from ugc_bot.application.services.interaction_service import InteractionService
-    from ugc_bot.application.services.payment_service import PaymentService
-    from ugc_bot.application.services.contact_pricing_service import (
-        ContactPricingService,
+    from ugc_bot.application.services.interaction_service import (
+        InteractionService,
     )
+    from ugc_bot.application.services.offer_dispatch_service import (
+        OfferDispatchService,
+    )
+    from ugc_bot.application.services.offer_response_service import (
+        OfferResponseService,
+    )
+    from ugc_bot.application.services.order_service import OrderService
+    from ugc_bot.application.services.payment_service import PaymentService
     from ugc_bot.application.services.profile_service import ProfileService
-    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.application.services.user_role_service import UserRoleService
 
     dispatcher["user_role_service"] = UserRoleService(
         user_repo=user_repo, transaction_manager=transaction_manager
@@ -178,10 +194,12 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         blogger_repo=blogger_repo,
         transaction_manager=transaction_manager,
     )
-    dispatcher["advertiser_registration_service"] = AdvertiserRegistrationService(
-        user_repo=user_repo,
-        advertiser_repo=advertiser_repo,
-        transaction_manager=transaction_manager,
+    dispatcher["advertiser_registration_service"] = (
+        AdvertiserRegistrationService(
+            user_repo=user_repo,
+            advertiser_repo=advertiser_repo,
+            transaction_manager=transaction_manager,
+        )
     )
     dispatcher["instagram_verification_service"] = InstagramVerificationService(
         user_repo=user_repo,
@@ -211,13 +229,13 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         postpone_delay_minutes=config.feedback.feedback_delay_minutes,
         transaction_manager=transaction_manager,
     )
-    # Use sync-activation outbox so order becomes ACTIVE without outbox_events table
-    # (outbox_events uses JSONB, not compatible with SQLite in integration tests)
+    # Sync-activation outbox: order becomes ACTIVE without outbox_events table
+    # (outbox_events uses JSONB, not compatible with SQLite)
     from ugc_bot.domain.entities import Order
     from ugc_bot.domain.enums import OrderStatus
 
     class SyncActivationOutboxPublisher:
-        """Activates order immediately without persisting to outbox (SQLite-friendly)."""
+        """Activates order immediately without persisting to outbox."""
 
         def __init__(self, order_repo: object) -> None:
             self.order_repo = order_repo
@@ -289,13 +307,13 @@ def create_test_user(session):
     """Helper to create test user."""
 
     def _create_user(external_id: str, messenger_type: str = "telegram"):
+        from datetime import datetime, timezone
         from uuid import uuid4
 
         from ugc_bot.domain.entities import User
         from ugc_bot.domain.enums import MessengerType, UserStatus
-        from datetime import datetime, timezone
 
-        user = User(
+        return User(
             user_id=uuid4(),
             external_id=external_id,
             messenger_type=MessengerType.TELEGRAM,
@@ -304,7 +322,6 @@ def create_test_user(session):
             issue_count=0,
             created_at=datetime.now(timezone.utc),
         )
-        return user
 
     return _create_user
 
@@ -314,9 +331,10 @@ def create_test_blogger_profile(session):
     """Helper to create test blogger profile."""
 
     def _create_profile(user_id, **kwargs):
+        from datetime import datetime, timezone
+
         from ugc_bot.domain.entities import BloggerProfile
         from ugc_bot.domain.enums import AudienceGender, WorkFormat
-        from datetime import datetime, timezone
 
         defaults = {
             "instagram_url": "https://instagram.com/test_blogger",
@@ -335,8 +353,7 @@ def create_test_blogger_profile(session):
         defaults.update(kwargs)
         defaults.pop("confirmation_code", None)  # not a BloggerProfile field
 
-        profile = BloggerProfile(user_id=user_id, **defaults)
-        return profile
+        return BloggerProfile(user_id=user_id, **defaults)
 
     return _create_profile
 
@@ -346,10 +363,11 @@ def create_test_order(session):
     """Helper to create test order."""
 
     def _create_order(advertiser_id, **kwargs):
-        from ugc_bot.domain.entities import Order
-        from ugc_bot.domain.enums import OrderStatus, OrderType
         from datetime import datetime, timezone
         from uuid import uuid4
+
+        from ugc_bot.domain.entities import Order
+        from ugc_bot.domain.enums import OrderStatus, OrderType
 
         defaults = {
             "order_id": uuid4(),
@@ -367,7 +385,6 @@ def create_test_order(session):
         }
         defaults.update(kwargs)
 
-        order = Order(**defaults)
-        return order
+        return Order(**defaults)
 
     return _create_order

@@ -1,6 +1,7 @@
 """Background processor for outbox events."""
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -51,10 +52,8 @@ class OutboxProcessor:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         logger.info("Outbox processor stopped")
 
     async def _process_loop(self) -> None:
@@ -75,7 +74,9 @@ class OutboxProcessor:
         await self.outbox_publisher.process_pending_events(
             self.kafka_publisher, self.max_retries
         )
-        processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+        processing_time = (
+            datetime.now(timezone.utc) - start_time
+        ).total_seconds()
 
         logger.debug(f"Processed pending events in {processing_time:.2f}s")
 
@@ -92,9 +93,12 @@ async def run_processor() -> None:
 
     config = load_config()
     configure_logging(
-        config.log.log_level, json_format=config.log.log_format.lower() == "json"
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
     )
-    log_startup_info(logger=logger, service_name="outbox-processor", config=config)
+    log_startup_info(
+        logger=logger, service_name="outbox-processor", config=config
+    )
 
     if not config.db.database_url:
         logger.error("DATABASE_URL is required for outbox processor")

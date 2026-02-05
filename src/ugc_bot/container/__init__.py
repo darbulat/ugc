@@ -1,7 +1,6 @@
 """Shared dependency container for entrypoints.
 
-Container is a facade that delegates to RepositoryFactory, InfrastructureFactory,
-and ServiceFactory for creating repositories, infrastructure components, and services.
+Container delegates to RepositoryFactory, InfrastructureFactory, ServiceFactory.
 """
 
 from sqlalchemy.engine import Engine
@@ -11,18 +10,19 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
-from ugc_bot.infrastructure.db.session import SessionTransactionManager
-from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
-
 from ugc_bot.container import (
     infrastructure_factory,
     repository_factory,
     service_factory,
 )
+from ugc_bot.infrastructure.db.session import SessionTransactionManager
+from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
 
 
 class Container:
@@ -37,8 +37,10 @@ class Container:
         self._session_factory = (
             infrastructure_factory.create_session_factory_from_config(config)
         )
-        self._transaction_manager = infrastructure_factory.create_transaction_manager(
-            self._session_factory
+        self._transaction_manager = (
+            infrastructure_factory.create_transaction_manager(
+                self._session_factory
+            )
         )
         self._repos: dict | None = None
 
@@ -80,13 +82,15 @@ class Container:
     def build_outbox_deps(
         self,
     ) -> tuple[OutboxPublisher, KafkaOrderActivationPublisher | None]:
-        """OutboxPublisher and optional KafkaOrderActivationPublisher for outbox processor."""
+        """OutboxPublisher and optional KafkaOrderActivationPublisher."""
         repos = self.build_repos()
         return service_factory.build_outbox_deps(
             self._config, repos, self._transaction_manager
         )
 
-    def build_instagram_verification_service(self) -> InstagramVerificationService:
+    def build_instagram_verification_service(
+        self,
+    ) -> InstagramVerificationService:
         """InstagramVerificationService for webhook."""
         repos = self.build_repos()
         instagram_api_client = self.build_instagram_api_client()

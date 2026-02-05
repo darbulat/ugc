@@ -70,15 +70,14 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                         },
                     )
                     return username
-                else:
-                    logger.warning(
-                        "Username not found in API response",
-                        extra={
-                            "instagram_user_id": instagram_user_id,
-                            "response": data,
-                        },
-                    )
-                    return None
+                logger.warning(
+                    "Username not found in API response",
+                    extra={
+                        "instagram_user_id": instagram_user_id,
+                        "response": data,
+                    },
+                )
+                return None
 
         except httpx.HTTPStatusError as exc:
             logger.warning(
@@ -93,7 +92,10 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
         except httpx.RequestError as exc:
             logger.warning(
                 "Instagram API request error",
-                extra={"instagram_user_id": instagram_user_id, "error": str(exc)},
+                extra={
+                    "instagram_user_id": instagram_user_id,
+                    "error": str(exc),
+                },
             )
             return None
         except Exception as exc:  # pragma: no cover

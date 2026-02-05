@@ -6,6 +6,18 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.factories import (
+    create_test_blogger_profile,
+    create_test_user,
+)
+from tests.helpers.fakes import (
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakeUser,
+    RecordingFsmDraftService,
+)
+from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -15,8 +27,8 @@ from ugc_bot.bot.handlers.blogger_registration import (
     _start_registration_flow,
     blogger_draft_choice,
     choose_creator_role,
-    handle_agreements,
     handle_age,
+    handle_agreements,
     handle_barter,
     handle_city,
     handle_gender,
@@ -40,19 +52,14 @@ from ugc_bot.bot.handlers.keyboards import (
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
 )
-from ugc_bot.domain.entities import FsmDraft
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
-from tests.helpers.fakes import (
-    FakeFSMContext,
-    FakeFsmDraftService,
-    FakeMessage,
-    FakeUser,
-    RecordingFsmDraftService,
-)
 from ugc_bot.config import AppConfig
-
-from tests.helpers.factories import create_test_blogger_profile, create_test_user
-from tests.helpers.services import build_profile_service
+from ugc_bot.domain.entities import FsmDraft
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 
 
 @pytest.mark.asyncio
@@ -63,7 +70,9 @@ async def test_start_registration_requires_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service, FakeFsmDraftService())
+    await _start_registration_flow(
+        message, state, service, FakeFsmDraftService()
+    )
 
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
@@ -82,7 +91,9 @@ async def test_start_registration_sets_state(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(7, "alice", "Alice"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service, FakeFsmDraftService())
+    await _start_registration_flow(
+        message, state, service, FakeFsmDraftService()
+    )
 
     assert state._data["external_id"] == "7"
     assert state.state is not None
@@ -105,7 +116,9 @@ async def test_start_registration_blocked_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(8, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service, FakeFsmDraftService())
+    await _start_registration_flow(
+        message, state, service, FakeFsmDraftService()
+    )
 
     assert message.answers
     assert "Заблокированные" in message.answers[0]
@@ -128,7 +141,9 @@ async def test_start_registration_paused_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(9, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service, FakeFsmDraftService())
+    await _start_registration_flow(
+        message, state, service, FakeFsmDraftService()
+    )
 
     assert message.answers
     assert "паузе" in message.answers[0]
@@ -280,7 +295,9 @@ async def test_geo_empty_and_price_negative() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_agreements_creates_profile(user_repo, blogger_repo) -> None:
+async def test_handle_agreements_creates_profile(
+    user_repo, blogger_repo
+) -> None:
     """Agreement step persists blogger profile."""
 
     user_role_service = UserRoleService(user_repo=user_repo)
@@ -328,7 +345,9 @@ async def test_handle_agreements_creates_profile(user_repo, blogger_repo) -> Non
 
 
 @pytest.mark.asyncio
-async def test_handle_agreements_requires_consent(user_repo, blogger_repo) -> None:
+async def test_handle_agreements_requires_consent(
+    user_repo, blogger_repo
+) -> None:
     """Require explicit consent."""
 
     user_role_service = UserRoleService(user_repo=user_repo)
@@ -355,6 +374,7 @@ async def test_handle_instagram_duplicate_url(user_repo, blogger_repo) -> None:
     """Reject duplicate Instagram URL."""
     from datetime import datetime, timezone
     from uuid import UUID
+
     from ugc_bot.domain.entities import BloggerProfile
 
     registration_service = BloggerRegistrationService(
@@ -500,7 +520,9 @@ async def test_blogger_draft_choice_continue_restores(user_repo) -> None:
         updated_at=datetime.now(timezone.utc),
     )
     draft_service = RecordingFsmDraftService(draft_to_return=draft)
-    message = FakeMessage(text=RESUME_DRAFT_BUTTON_TEXT, user=FakeUser(8, "bob", "Bob"))
+    message = FakeMessage(
+        text=RESUME_DRAFT_BUTTON_TEXT, user=FakeUser(8, "bob", "Bob")
+    )
     state = FakeFSMContext()
     state._data = {"user_id": user.user_id}
     state.state = BloggerRegistrationStates.choosing_draft_restore
@@ -520,7 +542,9 @@ async def test_blogger_draft_choice_continue_restores(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_blogger_draft_choice_start_over_deletes_and_starts(user_repo) -> None:
+async def test_blogger_draft_choice_start_over_deletes_and_starts(
+    user_repo,
+) -> None:
     """START_OVER_BUTTON deletes draft and shows first step."""
 
     service = UserRoleService(user_repo=user_repo)
@@ -561,7 +585,9 @@ async def test_start_registration_no_username_asks_name(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(10, "", "User"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service, FakeFsmDraftService())
+    await _start_registration_flow(
+        message, state, service, FakeFsmDraftService()
+    )
 
     ans = message.answers[0]
     assert "ваше имя" in (ans if isinstance(ans, str) else ans[0]).lower()
@@ -665,7 +691,9 @@ def _blogger_test_config() -> AppConfig:
 @pytest.mark.asyncio
 async def test_handle_work_format_valid_ads(user_repo) -> None:
     """handle_work_format accepts ADS_IN_ACCOUNT."""
-    message = FakeMessage(text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(1, "u", "U"))
+    message = FakeMessage(
+        text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(1, "u", "U")
+    )
     state = FakeFSMContext()
     state.state = BloggerRegistrationStates.work_format
     await state.update_data(
@@ -708,7 +736,9 @@ async def test_handle_work_format_invalid_rejects(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_agreements_session_expired(user_repo, blogger_repo) -> None:
+async def test_handle_agreements_session_expired(
+    user_repo, blogger_repo
+) -> None:
     """handle_agreements clears when user_id missing from state."""
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
@@ -727,7 +757,9 @@ async def test_handle_agreements_session_expired(user_repo, blogger_repo) -> Non
 
 
 @pytest.mark.asyncio
-async def test_choose_creator_role_no_from_user(user_repo, blogger_repo) -> None:
+async def test_choose_creator_role_no_from_user(
+    user_repo, blogger_repo
+) -> None:
     """choose_creator_role returns early when message.from_user is None."""
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
@@ -741,7 +773,9 @@ async def test_choose_creator_role_no_from_user(user_repo, blogger_repo) -> None
 
 
 @pytest.mark.asyncio
-async def test_choose_creator_role_with_profile(user_repo, blogger_repo) -> None:
+async def test_choose_creator_role_with_profile(
+    user_repo, blogger_repo
+) -> None:
     """choose_creator_role shows action menu when blogger profile exists."""
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
@@ -750,8 +784,12 @@ async def test_choose_creator_role_with_profile(user_repo, blogger_repo) -> None
         messenger_type=MessengerType.TELEGRAM,
         username="creator",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
-    message = FakeMessage(text="Я креатор", user=FakeUser(50, "creator", "Creator"))
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
+    message = FakeMessage(
+        text="Я креатор", user=FakeUser(50, "creator", "Creator")
+    )
     state = FakeFSMContext()
 
     await choose_creator_role(message, user_service, profile_service, state)
@@ -776,7 +814,9 @@ async def test_start_registration_button(user_repo) -> None:
     )
     state = FakeFSMContext()
 
-    await start_registration_button(message, state, user_service, FakeFsmDraftService())
+    await start_registration_button(
+        message, state, user_service, FakeFsmDraftService()
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -800,12 +840,16 @@ async def test_handle_instagram_empty_url(user_repo, blogger_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_instagram_no_instagram_domain(user_repo, blogger_repo) -> None:
+async def test_handle_instagram_no_instagram_domain(
+    user_repo, blogger_repo
+) -> None:
     """handle_instagram rejects URL without instagram.com/."""
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
-    message = FakeMessage(text="https://facebook.com/user", user=FakeUser(1, "u", "U"))
+    message = FakeMessage(
+        text="https://facebook.com/user", user=FakeUser(1, "u", "U")
+    )
     state = FakeFSMContext()
 
     await handle_instagram(message, state, registration_service)
@@ -816,7 +860,7 @@ async def test_handle_instagram_no_instagram_domain(user_repo, blogger_repo) -> 
 
 @pytest.mark.asyncio
 async def test_handle_instagram_invalid_regex(user_repo, blogger_repo) -> None:
-    """handle_instagram rejects URL with instagram.com but invalid format (regex)."""
+    """handle_instagram rejects URL with instagram.com but invalid format."""
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
@@ -947,8 +991,10 @@ async def test_handle_work_format_no_docs(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_agreements_from_user_none(user_repo, blogger_repo) -> None:
-    """handle_agreements works when message.from_user is None (telegram_username=None)."""
+async def test_handle_agreements_from_user_none(
+    user_repo, blogger_repo
+) -> None:
+    """handle_agreements works when message.from_user is None."""
     user_role_service = UserRoleService(user_repo=user_repo)
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
@@ -992,7 +1038,9 @@ async def test_handle_agreements_from_user_none(user_repo, blogger_repo) -> None
 
 
 @pytest.mark.asyncio
-async def test_handle_agreements_unique_violation(user_repo, blogger_repo) -> None:
+async def test_handle_agreements_unique_violation(
+    user_repo, blogger_repo
+) -> None:
     """handle_agreements handles UniqueViolation on instagram_url gracefully."""
     user_role_service = UserRoleService(user_repo=user_repo)
     registration_service = BloggerRegistrationService(

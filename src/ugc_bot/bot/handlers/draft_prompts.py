@@ -3,20 +3,24 @@
 DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     # BloggerRegistrationStates
     "BloggerRegistrationStates:name": "Введите ваше имя:",
-    "BloggerRegistrationStates:instagram": "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
+    "BloggerRegistrationStates:instagram": (
+        "Прикрепите ссылку в формате instagram.com/name"
+    ),
     "BloggerRegistrationStates:city": (
         "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург"
     ),
     "BloggerRegistrationStates:topics": (
         "О чём ваш контент?\n"
-        "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, питание, "
-        "бьюти, уход за кожей, путешествия, еда, рестораны, мода, стиль, дети, семья, "
-        "технологии, гаджеты, лайфстайл, повседневная жизнь, другое"
+        "Напишите 1–3 тематики: бизнес, инвестиции, фитнес, питание, "
+        "бьюти, уход за кожей, путешествия, еда, мода, стиль, дети, "
+        "технологии, гаджеты, лайфстайл, другое"
     ),
     "BloggerRegistrationStates:audience_gender": (
-        "Кто в основном смотрит ваш контент? По вашим наблюдениям или статистике"
+        "Кто смотрит ваш контент? По наблюдениям или статистике"
     ),
-    "BloggerRegistrationStates:audience_age": "Основной возраст вашей аудитории?",
+    "BloggerRegistrationStates:audience_age": (
+        "Основной возраст вашей аудитории?"
+    ),
     "BloggerRegistrationStates:audience_geo": (
         "Где находится основная аудитория? Укажите до 3 городов через запятую: "
         "Москва, Казань, Санкт‑Петербург"
@@ -36,8 +40,7 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     # AdvertiserRegistrationStates
     "AdvertiserRegistrationStates:name": "Как вас зовут?",
     "AdvertiserRegistrationStates:phone": (
-        "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
-        "Пример: 89001110777"
+        "Укажите номер телефона для связи по заказу.\nПример: 89001110777"
     ),
     "AdvertiserRegistrationStates:city": (
         "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург"
@@ -45,7 +48,9 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     "AdvertiserRegistrationStates:brand": (
         "Название вашего бренда / компании / бизнеса:"
     ),
-    "AdvertiserRegistrationStates:company_activity": ("Чем занимается ваша компания?"),
+    "AdvertiserRegistrationStates:company_activity": (
+        "Чем занимается ваша компания?"
+    ),
     "AdvertiserRegistrationStates:site_link": (
         "Ссылка на сайт, продукт или соцсети бренда:"
     ),
@@ -57,12 +62,14 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
     "OrderCreationStates:order_type": "Что вам нужно?",
     "OrderCreationStates:offer_text": (
         "Кратко опишите задачу для креаторов.\n"
-        "Что нужно снять и в каком формате. Пример: Видео с распаковкой продукта и личным отзывом."
+        "Что снять и в каком формате. Пример: Видео с распаковкой."
     ),
     "OrderCreationStates:cooperation_format": "Какой формат сотрудничества?",
-    "OrderCreationStates:price": "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
+    "OrderCreationStates:price": (
+        "Бюджет за 1 UGC-видео? Укажите цену: 500, 1000, 2000"
+    ),
     "OrderCreationStates:barter_description": (
-        "Что вы предлагаете по бартеру?\nПродукт бренда (опишите коротко) + доставка"
+        "Что предлагаете по бартеру?\nПродукт бренда + доставка"
     ),
     "OrderCreationStates:bloggers_needed": "Сколько креаторов вам нужно?",
     "OrderCreationStates:product_link": (
@@ -73,7 +80,9 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
         "Фотография поможет креатору быстрее понять заказ и повысит отклик "
         "на ваше предложение"
     ),
-    "OrderCreationStates:content_usage": ("Где вы планируете использовать UGC-видео?"),
+    "OrderCreationStates:content_usage": (
+        "Где вы планируете использовать UGC-видео?"
+    ),
     "OrderCreationStates:deadlines": (
         "В какие сроки вам нужен контент? Укажите, через сколько дней после "
         "согласования вы ожидаете превью."
@@ -100,7 +109,9 @@ EDIT_FIELD_PROMPTS: dict[str, str] = {
     "work_format": "Как готовы работать с брендами?",
     # Advertiser profile fields
     "name": "Введите имя:",
-    "phone": "Укажите номер телефона, по которому с вами можно связаться по заказу. Пример: 89001110777",
+    "phone": (
+        "Укажите номер телефона для связи по заказу. Пример: 89001110777"
+    ),
     "brand": "Название вашего бренда / компании / бизнеса:",
     "site_link": "Ссылка на сайт, продукт или соцсети бренда:",
     "company_activity": "Чем занимается ваша компания?",

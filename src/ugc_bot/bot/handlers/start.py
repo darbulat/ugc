@@ -1,7 +1,7 @@
 """Start and role selection handlers."""
 
 from aiogram import Router
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
@@ -16,7 +16,9 @@ from ugc_bot.domain.enums import MessengerType
 
 router = Router()
 
-START_TEXT = "UMC — сервис для UGC.\n" "Бизнесу — подбор креаторов, креаторам — заказы."
+START_TEXT = (
+    "UMC — сервис для UGC.\n" "Бизнесу — подбор креаторов, креаторам — заказы."
+)
 
 SUPPORT_RESPONSE_TEXT = (
     "Служба поддержки: @usemycontent\n" "Обращайтесь по любым вопросам!"
@@ -27,7 +29,9 @@ ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
 
 
 @router.message(CommandStart())
-async def start_command(message: Message, user_role_service: UserRoleService) -> None:
+async def start_command(
+    message: Message, user_role_service: UserRoleService
+) -> None:
     """Handle the /start command."""
 
     if message.from_user is None:
@@ -53,7 +57,7 @@ async def start_command(message: Message, user_role_service: UserRoleService) ->
 @router.message(Command("role"))
 @router.message(lambda msg: msg.text == CHANGE_ROLE_BUTTON_TEXT)
 async def change_role_button(message: Message, state: FSMContext) -> None:
-    """Handle /role command and 'Смена роли' button — show start screen again."""
+    """Handle /role and 'Смена роли' — show start screen again."""
     await state.clear()
     await message.answer(START_TEXT, reply_markup=_role_keyboard())
 
@@ -81,7 +85,7 @@ async def support_button(
     state: FSMContext,
     fsm_draft_service: FsmDraftService,
 ) -> None:
-    """Handle Support button: save draft if in a flow, clear FSM, send support text."""
+    """Handle Support: save draft if in flow, clear FSM, send support text."""
 
     if message.from_user is None:
         return

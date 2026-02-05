@@ -37,21 +37,29 @@ def build_repos(session_factory):
         "instagram_repo": SqlAlchemyInstagramVerificationRepository(
             session_factory=session_factory
         ),
-        "order_repo": SqlAlchemyOrderRepository(session_factory=session_factory),
+        "order_repo": SqlAlchemyOrderRepository(
+            session_factory=session_factory
+        ),
         "order_response_repo": SqlAlchemyOrderResponseRepository(
             session_factory=session_factory
         ),
         "interaction_repo": SqlAlchemyInteractionRepository(
             session_factory=session_factory
         ),
-        "payment_repo": SqlAlchemyPaymentRepository(session_factory=session_factory),
+        "payment_repo": SqlAlchemyPaymentRepository(
+            session_factory=session_factory
+        ),
         "pricing_repo": SqlAlchemyContactPricingRepository(
             session_factory=session_factory
         ),
         "complaint_repo": SqlAlchemyComplaintRepository(
             session_factory=session_factory
         ),
-        "outbox_repo": SqlAlchemyOutboxRepository(session_factory=session_factory),
-        "draft_repo": SqlAlchemyFsmDraftRepository(session_factory=session_factory),
+        "outbox_repo": SqlAlchemyOutboxRepository(
+            session_factory=session_factory
+        ),
+        "draft_repo": SqlAlchemyFsmDraftRepository(
+            session_factory=session_factory
+        ),
         "nps_repo": SqlAlchemyNpsRepository(session_factory=session_factory),
     }

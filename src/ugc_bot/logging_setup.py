@@ -7,13 +7,14 @@ from typing import Any
 
 
 class EnvLevelFilter(logging.Filter):
-    """Filter log records below LOG_LEVEL environment threshold.
+    """Filter log records below LOG_LEVEL env threshold.
 
-    This is used by Uvicorn `--log-config` to keep a single JSON formatter for all
-    logs while still respecting LOG_LEVEL.
+    Used by Uvicorn --log-config for JSON formatter respecting LOG_LEVEL.
     """
 
-    def __init__(self, env_var: str = "LOG_LEVEL", default: str = "INFO") -> None:
+    def __init__(
+        self, env_var: str = "LOG_LEVEL", default: str = "INFO"
+    ) -> None:
         super().__init__()
         raw = os.getenv(env_var, default).strip().upper()
         self._min_level = logging._nameToLevel.get(raw, logging.INFO)
@@ -80,7 +81,7 @@ def configure_logging(log_level: str, json_format: bool | None = None) -> None:
 
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        json_format: If True, use JSON format. If None, auto-detect from LOG_FORMAT env var.
+        json_format: If True, JSON. If None, auto-detect from LOG_FORMAT.
     """
 
     if json_format is None:

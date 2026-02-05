@@ -180,7 +180,9 @@ class TestOutboxIntegration:
         await order_repo.save(test_order)
 
         # Process events
-        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(
+            kafka_publisher, max_retries=3
+        )
 
         # Get the processed event
         pending_events = await outbox_repo.get_pending_events()
@@ -199,7 +201,9 @@ class TestOutboxIntegration:
         # Verify Kafka was called
         assert len(kafka_publisher.published_events) == 1
         published_order = kafka_publisher.published_events[0]
-        assert published_order.order_id == UUID("00000000-0000-0000-0000-000000000001")
+        assert published_order.order_id == UUID(
+            "00000000-0000-0000-0000-000000000001"
+        )
 
     @pytest.mark.asyncio
     async def test_outbox_publisher_handles_processing_failure(self) -> None:
@@ -238,7 +242,9 @@ class TestOutboxIntegration:
         await order_repo.save(test_order)
 
         # Process events (should fail and retry)
-        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(
+            kafka_publisher, max_retries=3
+        )
 
         # Get the failed event
         failed_events = [
@@ -255,7 +261,7 @@ class TestOutboxIntegration:
 
     @pytest.mark.asyncio
     async def test_outbox_publisher_handles_max_retries_exceeded(self) -> None:
-        """Outbox publisher marks event as permanently failed after max retries."""
+        """Outbox publisher marks event failed after max retries."""
 
         # Setup repositories
         outbox_repo = InMemoryOutboxRepository()
@@ -309,7 +315,9 @@ class TestOutboxIntegration:
         await order_repo.save(test_order)
 
         # Process events (should mark as permanently failed)
-        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(
+            kafka_publisher, max_retries=3
+        )
 
         # Get the permanently failed event
         failed_events = [
@@ -399,7 +407,9 @@ class TestOutboxIntegration:
         )
 
         # 2. Process outbox events (activates order and publishes to Kafka)
-        await outbox_publisher.process_pending_events(kafka_publisher, max_retries=3)
+        await outbox_publisher.process_pending_events(
+            kafka_publisher, max_retries=3
+        )
 
         # Verify complete flow
         # Order should be activated after outbox processing

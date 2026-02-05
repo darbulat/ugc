@@ -43,11 +43,15 @@ ERROR_MESSAGES = {
     OrderCreationError: {
         "Order not found.": "Заказ не найден.",
         "Order is not active.": "Заказ не активен.",
-        "You already responded to this order.": "Вы уже откликались на этот заказ.",
+        "You already responded to this order.": "Вы уже откликались на заказ.",
         "Order response limit reached.": "Лимит откликов по заказу достигнут.",
         "Order is not in NEW status.": "Заказ не в статусе NEW.",
-        "Order does not belong to advertiser.": "Заказ не принадлежит рекламодателю.",
-        "Price exceeds maximum (99,999,999).": "Сумма превышает максимально допустимую (99 999 999 ₽).",
+        "Order does not belong to advertiser.": (
+            "Заказ не принадлежит рекламодателю."
+        ),
+        "Price exceeds maximum (99,999,999).": (
+            "Сумма превышает максимум (99 999 999 ₽)."
+        ),
         "default": "Ошибка создания заказа.",
     },
     InteractionNotFoundError: {
@@ -55,16 +59,20 @@ ERROR_MESSAGES = {
     },
     InteractionError: {
         "Interaction not found.": "Взаимодействие не найдено.",
-        "Interaction is not in ISSUE status.": "Взаимодействие не в статусе ISSUE.",
-        "Final status must be OK or NO_DEAL for manual resolution.": "Некорректный статус для ручного разрешения.",
+        "Interaction is not in ISSUE status.": "Взаимодействие не в ISSUE.",
+        "Final status must be OK or NO_DEAL for manual resolution.": (
+            "Некорректный статус для ручного разрешения."
+        ),
         "default": "Ошибка взаимодействия.",
     },
     ComplaintAlreadyExistsError: {
-        "Вы уже подали жалобу по этому заказу.": "Вы уже подали жалобу по этому заказу.",
+        "Вы уже подали жалобу по этому заказу.": (
+            "Вы уже подали жалобу по этому заказу."
+        ),
         "default": "Вы уже подали жалобу по этому заказу.",
     },
     ComplaintNotFoundError: {
-        "Complaint not found.": "Жалоба не найдена.",
+        "Complaint not found.": ("Жалоба не найдена."),
         "default": "Жалоба не найдена.",
     },
 }
@@ -102,19 +110,20 @@ async def _send_error_message(event: TelegramObject, message: str) -> None:
         await event.answer(message, show_alert=False)
     elif hasattr(event, "answer"):
         # Support test fixtures and other objects with answer method
-        answer_method = getattr(event, "answer")
+        answer_method = event.answer
         if callable(answer_method):
-            # Try with show_alert=False for callback-like objects, fallback to no args
             try:
                 await answer_method(message, show_alert=False)
-            except TypeError:  # pragma: no cover - answer() does not accept show_alert
+            except TypeError:  # pragma: no cover
                 await answer_method(message)
 
 
 class ErrorHandlerMiddleware(BaseMiddleware):
     """Middleware for handling application errors consistently."""
 
-    def __init__(self, metrics_collector: MetricsCollector | None = None) -> None:
+    def __init__(
+        self, metrics_collector: MetricsCollector | None = None
+    ) -> None:
         """Initialize error handler middleware.
 
         Args:
@@ -156,13 +165,14 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 },
             )
 
-            if self.metrics_collector:
-                if hasattr(self.metrics_collector, "record_error"):
-                    self.metrics_collector.record_error(
-                        error_type=error_type,
-                        error_message=error_message,
-                        user_id=user_id or "unknown",
-                    )
+            if self.metrics_collector and hasattr(
+                self.metrics_collector, "record_error"
+            ):
+                self.metrics_collector.record_error(
+                    error_type=error_type,
+                    error_message=error_message,
+                    user_id=user_id or "unknown",
+                )
 
             user_message = _get_user_message(exc)
             await _send_error_message(event, user_message)
@@ -182,13 +192,14 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 },
             )
 
-            if self.metrics_collector:
-                if hasattr(self.metrics_collector, "record_error"):
-                    self.metrics_collector.record_error(
-                        error_type=type(exc).__name__,
-                        error_message=str(exc),
-                        user_id=user_id or "unknown",
-                    )
+            if self.metrics_collector and hasattr(
+                self.metrics_collector, "record_error"
+            ):
+                self.metrics_collector.record_error(
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    user_id=user_id or "unknown",
+                )
 
             await _send_error_message(
                 event, "Произошла неожиданная ошибка. Попробуйте позже."

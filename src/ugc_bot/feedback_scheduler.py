@@ -1,8 +1,8 @@
 """Scheduler for feedback requests after contacts sharing."""
 
 import asyncio
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 from uuid import UUID
 
@@ -14,11 +14,11 @@ from ugc_bot.application.feedback_utils import (
     next_reminder_datetime,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.config import FeedbackConfig, load_config
 from ugc_bot.domain.entities import Interaction, Order
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
@@ -27,8 +27,8 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
 )
 from ugc_bot.infrastructure.db.session import (
-    create_session_factory,
     SessionTransactionManager,
+    create_session_factory,
     with_optional_tx,
 )
 from ugc_bot.logging_setup import configure_logging
@@ -80,7 +80,9 @@ async def _iter_due_interactions(
     """List interactions due for feedback within a transaction."""
 
     async def _run(session: object | None):
-        return await interaction_repo.list_due_for_feedback(cutoff, session=session)
+        return await interaction_repo.list_due_for_feedback(
+            cutoff, session=session
+        )
 
     interactions = await with_optional_tx(transaction_manager, _run)
     interactions_list = list(interactions)
@@ -110,7 +112,9 @@ async def _send_feedback_requests(
         },
     )
     blogger = await user_role_service.get_user_by_id(interaction.blogger_id)
-    advertiser = await user_role_service.get_user_by_id(interaction.advertiser_id)
+    advertiser = await user_role_service.get_user_by_id(
+        interaction.advertiser_id
+    )
     if not blogger:
         logger.debug(
             "Skipping blogger feedback: user not found",
@@ -130,38 +134,41 @@ async def _send_feedback_requests(
     sent_to_adv = False
     sent_to_blog = False
 
-    if advertiser and needs_feedback_reminder(interaction.from_advertiser):
-        if advertiser.external_id.isdigit():
-            creator_link = ""
-            if blogger_profile and blogger_profile.instagram_url:
-                url = blogger_profile.instagram_url.strip()
-                if url and not url.startswith("http"):
-                    url = "https://" + url
-                creator_link = f" [{url}]({url})"
-            text = (
-                "Хотим убедиться, что всё прошло корректно 🙌\n"
-                f"Удалось ли вам связаться с креатором{creator_link}?\n"
-                "Выберите подходящий вариант:"
-            )
-            await send_with_retry(
-                bot,
-                chat_id=int(advertiser.external_id),
-                text=text,
-                parse_mode="Markdown",
-                reply_markup=_feedback_keyboard("adv", interaction.interaction_id),
-                retries=_send_retries,
-                delay_seconds=_send_retry_delay_seconds,
-                logger=logger,
-                extra={"interaction_id": str(interaction.interaction_id)},
-            )
-            sent_to_adv = True
-            logger.info(
-                "Sent interaction feedback request to advertiser",
-                extra={
-                    "interaction_id": str(interaction.interaction_id),
-                    "advertiser_id": str(advertiser.user_id),
-                },
-            )
+    if (
+        advertiser
+        and needs_feedback_reminder(interaction.from_advertiser)
+        and advertiser.external_id.isdigit()
+    ):
+        creator_link = ""
+        if blogger_profile and blogger_profile.instagram_url:
+            url = blogger_profile.instagram_url.strip()
+            if url and not url.startswith("http"):
+                url = "https://" + url
+            creator_link = f" [{url}]({url})"
+        text = (
+            "Хотим убедиться, что всё прошло корректно 🙌\n"
+            f"Удалось ли вам связаться с креатором{creator_link}?\n"
+            "Выберите подходящий вариант:"
+        )
+        await send_with_retry(
+            bot,
+            chat_id=int(advertiser.external_id),
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=_feedback_keyboard("adv", interaction.interaction_id),
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={"interaction_id": str(interaction.interaction_id)},
+        )
+        sent_to_adv = True
+        logger.info(
+            "Sent interaction feedback request to advertiser",
+            extra={
+                "interaction_id": str(interaction.interaction_id),
+                "advertiser_id": str(advertiser.user_id),
+            },
+        )
 
     if (
         blogger
@@ -206,7 +213,9 @@ async def _send_feedback_requests(
             "Scheduled next reminder for interaction",
             extra={
                 "interaction_id": str(interaction.interaction_id),
-                "next_reminder": next_reminder.isoformat() if next_reminder else None,
+                "next_reminder": next_reminder.isoformat()
+                if next_reminder
+                else None,
             },
         )
 
@@ -249,7 +258,9 @@ async def run_once(
                 order,
                 feedback_config,
             )
-        except Exception as exc:  # pragma: no cover - depends on transport failures
+        except (
+            Exception
+        ) as exc:  # pragma: no cover - depends on transport failures
             logger.warning(
                 "Feedback request failed",
                 extra={
@@ -286,7 +297,9 @@ async def run_loop(
         while True:
             iterations += 1
             cutoff = datetime.now(timezone.utc)
-            logger.debug("Feedback loop iteration", extra={"iteration": iterations})
+            logger.debug(
+                "Feedback loop iteration", extra={"iteration": iterations}
+            )
             await run_once(
                 bot,
                 interaction_repo,
@@ -316,9 +329,12 @@ def main() -> None:
 
     config = load_config()
     configure_logging(
-        config.log.log_level, json_format=config.log.log_format.lower() == "json"
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
     )
-    log_startup_info(logger=logger, service_name="Feedback scheduler", config=config)
+    log_startup_info(
+        logger=logger, service_name="Feedback scheduler", config=config
+    )
 
     if not config.feedback.feedback_enabled:
         logger.info("Feedback scheduler disabled by config")
@@ -328,7 +344,9 @@ def main() -> None:
         "Initializing feedback scheduler",
         extra={
             "feedback_delay_minutes": config.feedback.feedback_delay_minutes,
-            "poll_interval_seconds": config.feedback.feedback_poll_interval_seconds,
+            "poll_interval_seconds": (
+                config.feedback.feedback_poll_interval_seconds
+            ),
         },
     )
     session_factory = create_session_factory(
@@ -339,9 +357,13 @@ def main() -> None:
     )
     transaction_manager = SessionTransactionManager(session_factory)
     user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    interaction_repo = SqlAlchemyInteractionRepository(session_factory=session_factory)
+    interaction_repo = SqlAlchemyInteractionRepository(
+        session_factory=session_factory
+    )
     order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
-    blogger_repo = SqlAlchemyBloggerProfileRepository(session_factory=session_factory)
+    blogger_repo = SqlAlchemyBloggerProfileRepository(
+        session_factory=session_factory
+    )
     advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
         session_factory=session_factory
     )

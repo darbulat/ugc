@@ -1,7 +1,7 @@
 """Add role_chosen_at and last_role_reminder_at to users."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0008_add_role_chosen_reminder"
 down_revision = "0007_interaction_postpone"

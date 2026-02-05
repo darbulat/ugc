@@ -1,7 +1,7 @@
 """add_outbox_events_table"""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "7b07c4b86f09"
@@ -25,7 +25,9 @@ def upgrade() -> None:
         sa.Column("aggregate_id", sa.String(), nullable=False),
         sa.Column("aggregate_type", sa.String(), nullable=False),
         sa.Column("payload", postgresql.JSONB(), nullable=False),
-        sa.Column("status", sa.String(), nullable=False, server_default="pending"),
+        sa.Column(
+            "status", sa.String(), nullable=False, server_default="pending"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -33,7 +35,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("retry_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column(
+            "retry_count", sa.Integer(), nullable=False, server_default="0"
+        ),
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint("event_id"),
         sa.Index("ix_outbox_events_event_type", "event_type"),

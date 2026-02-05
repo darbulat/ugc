@@ -53,9 +53,9 @@ def validate_barter_description(value: str, required: bool) -> str | None:
     if required and not v:
         return "Опишите бартерное предложение."
     if v and len(v) < BARTER_DESCRIPTION_MIN:
-        return f"Опишите бартер подробнее (минимум {BARTER_DESCRIPTION_MIN} символов)."
+        return f"Опишите бартер (мин. {BARTER_DESCRIPTION_MIN} символов)."
     if len(v) > BARTER_DESCRIPTION_MAX:
-        return f"Текст слишком длинный (максимум {BARTER_DESCRIPTION_MAX} символов)."
+        return f"Текст длинный (макс. {BARTER_DESCRIPTION_MAX} символов)."
     return None
 
 
@@ -68,7 +68,7 @@ def validate_url(value: str, max_len: int = URL_MAX) -> str | None:
         return f"Ссылка слишком длинная (максимум {max_len} символов)."
     parsed = urlparse(v)
     if not parsed.scheme or parsed.scheme not in ("http", "https"):
-        return "Введите корректную ссылку (начинается с http:// или https://)."
+        return "Введите ссылку (http:// или https://)."
     if not parsed.netloc:
         return "Введите корректную ссылку."
     return None
@@ -116,11 +116,13 @@ def validate_phone(value: str) -> str | None:
         return "Введите корректный номер (10–11 цифр). Пример: 89001110777"
     if len(digits) > PHONE_DIGITS_MAX:
         return "Слишком много цифр. Пример: 89001110777"
-    if digits[0] == "8" and len(digits) == 11:
-        pass
-    elif digits[0] == "7" and len(digits) == 11:
-        pass
-    elif len(digits) == 10:
+    if (
+        digits[0] == "8"
+        and len(digits) == 11
+        or digits[0] == "7"
+        and len(digits) == 11
+        or len(digits) == 10
+    ):
         pass
     else:
         return "Введите корректный номер. Пример: 89001110777"

@@ -1,7 +1,7 @@
 """Add site_link to advertiser_profiles and order_type to orders."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0012_site_link_order_type"

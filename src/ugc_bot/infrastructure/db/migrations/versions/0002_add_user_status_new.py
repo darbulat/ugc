@@ -2,7 +2,6 @@
 
 from alembic import op
 
-
 revision = "0002_add_user_status_new"
 down_revision = "0001_initial"
 branch_labels = None
@@ -18,5 +17,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade database schema."""
 
-    # Enum values cannot be removed safely; no-op. The type is dropped in 0001 downgrade.
-    return None
+    # Enum values cannot be removed safely; no-op. Dropped in 0001 downgrade.
+    return

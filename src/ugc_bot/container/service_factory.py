@@ -7,15 +7,21 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.complaint_service import ComplaintService
-from ugc_bot.application.services.contact_pricing_service import ContactPricingService
+from ugc_bot.application.services.contact_pricing_service import (
+    ContactPricingService,
+)
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.nps_service import NpsService
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
-from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService

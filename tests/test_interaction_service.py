@@ -5,11 +5,16 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.errors import InteractionError, InteractionNotFoundError
+from ugc_bot.application.errors import (
+    InteractionError,
+    InteractionNotFoundError,
+)
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
-from ugc_bot.infrastructure.memory_repositories import InMemoryInteractionRepository
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryInteractionRepository,
+)
 
 
 @pytest.mark.asyncio
@@ -145,7 +150,7 @@ async def test_record_feedback_missing_interaction() -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_next_reminder_when_interaction_not_found() -> None:
-    """schedule_next_reminder returns without error when interaction does not exist."""
+    """schedule_next_reminder returns without error when interaction missing."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
@@ -153,7 +158,10 @@ async def test_schedule_next_reminder_when_interaction_not_found() -> None:
     await service.schedule_next_reminder(
         UUID("00000000-0000-0000-0000-000000000941"), next_at
     )
-    assert await repo.get_by_id(UUID("00000000-0000-0000-0000-000000000941")) is None
+    assert (
+        await repo.get_by_id(UUID("00000000-0000-0000-0000-000000000941"))
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -254,7 +262,7 @@ async def test_record_blogger_feedback_pending() -> None:
 
 @pytest.mark.asyncio
 async def test_postpone_with_feedback_config_uses_24h_reminder() -> None:
-    """When other side has not responded, use next_reminder_datetime (24h) not 72h."""
+    """Other side not responded: use next_reminder_datetime (24h) not 72h."""
 
     from ugc_bot.config import FeedbackConfig
 
@@ -528,13 +536,15 @@ async def test_manually_resolve_issue_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_record_feedback_issue_with_metrics() -> None:
-    """Record ISSUE feedback triggers metrics_collector.record_interaction_issue."""
+    """Record ISSUE feedback triggers metrics.record_interaction_issue."""
 
     from ugc_bot.metrics.collector import MetricsCollector
 
     repo = InMemoryInteractionRepository()
     metrics = MetricsCollector()
-    service = InteractionService(interaction_repo=repo, metrics_collector=metrics)
+    service = InteractionService(
+        interaction_repo=repo, metrics_collector=metrics
+    )
     interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000951"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000952"),
@@ -551,13 +561,15 @@ async def test_record_feedback_issue_with_metrics() -> None:
 
 @pytest.mark.asyncio
 async def test_record_blogger_feedback_issue_with_metrics() -> None:
-    """Record ISSUE from blogger triggers metrics_collector.record_interaction_issue."""
+    """Record ISSUE from blogger triggers metrics.record_interaction_issue."""
 
     from ugc_bot.metrics.collector import MetricsCollector
 
     repo = InMemoryInteractionRepository()
     metrics = MetricsCollector()
-    service = InteractionService(interaction_repo=repo, metrics_collector=metrics)
+    service = InteractionService(
+        interaction_repo=repo, metrics_collector=metrics
+    )
     interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000961"),
         blogger_id=UUID("00000000-0000-0000-0000-000000000962"),
@@ -574,7 +586,7 @@ async def test_record_blogger_feedback_issue_with_metrics() -> None:
 
 @pytest.mark.asyncio
 async def test_record_one_side_keeps_next_check_for_other() -> None:
-    """When one side responds with ok/no_deal, keep status=PENDING and next_check_at for other side."""
+    """One side ok/no_deal: keep status=PENDING and next_check_at for other."""
 
     from ugc_bot.config import FeedbackConfig
 
@@ -605,7 +617,7 @@ async def test_record_one_side_keeps_next_check_for_other() -> None:
 
 @pytest.mark.asyncio
 async def test_record_both_sides_sets_next_check_none() -> None:
-    """When both sides have responded, next_check_at is None and status from aggregate."""
+    """Both sides responded: next_check_at None, status from aggregate."""
 
     repo = InMemoryInteractionRepository()
     service = InteractionService(interaction_repo=repo)
@@ -639,10 +651,12 @@ async def test_record_both_sides_sets_next_check_none() -> None:
 
 @pytest.mark.asyncio
 async def test_get_or_create_with_transaction_manager(fake_tm: object) -> None:
-    """Cover transaction_manager path for get_or_create (save and get_by_participants)."""
+    """Cover tm path for get_or_create (save and get_by_participants)."""
 
     repo = InMemoryInteractionRepository()
-    service = InteractionService(interaction_repo=repo, transaction_manager=fake_tm)
+    service = InteractionService(
+        interaction_repo=repo, transaction_manager=fake_tm
+    )
     interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000001101"),
         blogger_id=UUID("00000000-0000-0000-0000-000000001102"),

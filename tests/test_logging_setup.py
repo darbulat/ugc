@@ -5,7 +5,11 @@ import logging
 
 import pytest
 
-from ugc_bot.logging_setup import EnvLevelFilter, JSONFormatter, configure_logging
+from ugc_bot.logging_setup import (
+    EnvLevelFilter,
+    JSONFormatter,
+    configure_logging,
+)
 
 
 def test_configure_logging_sets_level() -> None:
@@ -64,7 +68,9 @@ def test_json_formatter_with_extra_dict() -> None:
     assert payload["user_id"] == "user-1"
 
 
-def test_env_level_filter_respects_log_level(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_level_filter_respects_log_level(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """EnvLevelFilter drops records below LOG_LEVEL."""
 
     monkeypatch.setenv("LOG_LEVEL", "WARNING")

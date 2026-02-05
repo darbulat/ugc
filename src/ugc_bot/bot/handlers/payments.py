@@ -1,28 +1,32 @@
 """Telegram payment handlers."""
 
 import logging
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
 
-from ugc_bot.application.errors import OrderCreationError, UserNotFoundError  # noqa: F401 - used in except
-from ugc_bot.application.services.contact_pricing_service import ContactPricingService
+from ugc_bot.application.errors import (  # noqa: F401 - used in except
+    OrderCreationError,
+    UserNotFoundError,
+)
+from ugc_bot.application.services.contact_pricing_service import (
+    ContactPricingService,
+)
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
 from ugc_bot.bot.handlers.keyboards import advertiser_after_payment_keyboard
 from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_AFTER_PAYMENT_IMPORTANT,
     ADVERTISER_AFTER_PAYMENT_SUCCESS,
     ADVERTISER_AFTER_PAYMENT_WHAT_NEXT,
 )
+from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderStatus
-
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -128,10 +132,12 @@ async def pay_order(
         await message.answer("Заказ не в статусе NEW.")
         return
 
-    contact_price = await contact_pricing_service.get_price(order.bloggers_needed)
+    contact_price = await contact_pricing_service.get_price(
+        order.bloggers_needed
+    )
     if contact_price is None:
         await message.answer(
-            "Стоимость доступа к контактам не настроена. Свяжитесь с поддержкой."
+            "Стоимость доступа не настроена. Свяжитесь с поддержкой."
         )
         return
 
@@ -149,7 +155,9 @@ async def pay_order(
 
 
 @router.pre_checkout_query()
-async def pre_checkout_query_handler(pre_checkout_query: PreCheckoutQuery) -> None:
+async def pre_checkout_query_handler(
+    pre_checkout_query: PreCheckoutQuery,
+) -> None:
     """Confirm pre-checkout query from Telegram."""
 
     if pre_checkout_query.bot is None:
@@ -191,12 +199,14 @@ async def successful_payment_handler(
         await payment_service.confirm_telegram_payment(
             user_id=user.user_id,
             order_id=order_id,
-            provider_payment_charge_id=message.successful_payment.provider_payment_charge_id,
+            provider_payment_charge_id=(
+                message.successful_payment.provider_payment_charge_id
+            ),
             total_amount=message.successful_payment.total_amount,
             currency=message.successful_payment.currency,
         )
     except (OrderCreationError, UserNotFoundError) as exc:
-        # Record failed payment metric (middleware handles logging and user message)
+        # Record failed payment metric (middleware logs and shows user message)
         metrics_collector = None
         if hasattr(payment_service, "metrics_collector"):
             metrics_collector = payment_service.metrics_collector
@@ -209,7 +219,9 @@ async def successful_payment_handler(
         raise
 
     await message.answer(ADVERTISER_AFTER_PAYMENT_SUCCESS)
-    await message.answer(ADVERTISER_AFTER_PAYMENT_WHAT_NEXT, parse_mode="Markdown")
+    await message.answer(
+        ADVERTISER_AFTER_PAYMENT_WHAT_NEXT, parse_mode="Markdown"
+    )
     await message.answer(
         ADVERTISER_AFTER_PAYMENT_IMPORTANT,
         parse_mode="Markdown",

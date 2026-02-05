@@ -1,7 +1,8 @@
 """Tests for NPS service."""
 
-import pytest
 from uuid import UUID
+
+import pytest
 
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.infrastructure.memory_repositories import InMemoryNpsRepository

@@ -8,11 +8,17 @@ from uuid import UUID
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # type: ignore[import-untyped]
+from aiokafka import (  # type: ignore[import-untyped]
+    AIOKafkaConsumer,
+    AIOKafkaProducer,
+)
 
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
+from ugc_bot.domain.entities import Order, User
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -32,6 +38,84 @@ def _parse_order_id(data: dict[str, Any]) -> UUID | None:
         return None
 
 
+async def _send_offer_to_blogger(
+    blogger: User,
+    order: Order,
+    advertisers_status: str,
+    bot: Bot,
+    offer_dispatch_service: OfferDispatchService,
+    retries: int,
+    retry_delay_seconds: float,
+    dlq_producer: AIOKafkaProducer | None,
+    dlq_topic: str,
+) -> None:
+    """Send offer to one blogger with retries."""
+    if blogger.user_id == order.advertiser_id:
+        return
+    if not blogger.external_id.isdigit():
+        return
+
+    for attempt in range(1, retries + 1):
+        try:
+            offer_text = offer_dispatch_service.format_offer(
+                order, advertisers_status
+            )
+            reply_markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Готов снять UGC",
+                            callback_data=f"offer:{order.order_id}",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="Пропустить",
+                            callback_data=f"offer_skip:{order.order_id}",
+                        )
+                    ],
+                ]
+            )
+            if order.product_photo_file_id:
+                await bot.send_photo(
+                    chat_id=int(blogger.external_id),
+                    photo=order.product_photo_file_id,
+                    caption=offer_text,
+                    reply_markup=reply_markup,
+                )
+            else:
+                await bot.send_message(
+                    chat_id=int(blogger.external_id),
+                    text=offer_text,
+                    reply_markup=reply_markup,
+                )
+            return
+        except Exception as exc:
+            logger.warning(
+                "Failed to send offer message",
+                extra={
+                    "order_id": order.order_id,
+                    "blogger_id": blogger.user_id,
+                    "attempt": attempt,
+                    "error": str(exc),
+                },
+            )
+            if attempt >= retries:
+                await _publish_dlq(
+                    dlq_producer,
+                    dlq_topic,
+                    {
+                        "event": "offer_send_failed",
+                        "order_id": str(order.order_id),
+                        "blogger_id": str(blogger.user_id),
+                        "external_id": blogger.external_id,
+                        "error": str(exc),
+                    },
+                )
+            else:
+                await asyncio.sleep(retry_delay_seconds)
+
+
 async def _send_offers(
     order_id: UUID,
     bot: Bot,
@@ -41,7 +125,9 @@ async def _send_offers(
     retries: int,
     retry_delay_seconds: float,
 ) -> None:
-    order, advertiser = await offer_dispatch_service.get_order_and_advertiser(order_id)
+    order, advertiser = await offer_dispatch_service.get_order_and_advertiser(
+        order_id
+    )
     if order is None:
         logger.warning(
             "Order not found for activation event", extra={"order_id": order_id}
@@ -49,81 +135,31 @@ async def _send_offers(
         return
     if advertiser is None:
         logger.warning(
-            "Advertiser not found for activation event", extra={"order_id": order_id}
+            "Advertiser not found for activation event",
+            extra={"order_id": order_id},
         )
         return
 
     advertisers_status = advertiser.status.value.upper()
     bloggers = await offer_dispatch_service.dispatch(order_id)
     if not bloggers:
-        logger.info("No verified bloggers for offer", extra={"order_id": order_id})
+        logger.info(
+            "No verified bloggers for offer", extra={"order_id": order_id}
+        )
         return
 
     for blogger in bloggers:
-        if not blogger.external_id.isdigit():  # pragma: no cover
-            continue
-        # Skip sending order to its author
-        if blogger.user_id == order.advertiser_id:  # pragma: no cover
-            continue
-        for attempt in range(1, retries + 1):
-            try:
-                offer_text = offer_dispatch_service.format_offer(
-                    order, advertisers_status
-                )
-                reply_markup = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="Готов снять UGC",
-                                callback_data=f"offer:{order.order_id}",
-                            )
-                        ],
-                        [
-                            InlineKeyboardButton(
-                                text="Пропустить",
-                                callback_data=f"offer_skip:{order.order_id}",
-                            )
-                        ],
-                    ]
-                )
-                if order.product_photo_file_id:
-                    await bot.send_photo(
-                        chat_id=int(blogger.external_id),
-                        photo=order.product_photo_file_id,
-                        caption=offer_text,
-                        reply_markup=reply_markup,
-                    )
-                else:
-                    await bot.send_message(
-                        chat_id=int(blogger.external_id),
-                        text=offer_text,
-                        reply_markup=reply_markup,
-                    )
-                break
-            except Exception as exc:
-                logger.warning(
-                    "Failed to send offer message",
-                    extra={
-                        "order_id": order.order_id,
-                        "blogger_id": blogger.user_id,
-                        "attempt": attempt,
-                        "error": str(exc),
-                    },
-                )
-                if attempt >= retries:
-                    await _publish_dlq(
-                        dlq_producer,
-                        dlq_topic,
-                        {
-                            "event": "offer_send_failed",
-                            "order_id": str(order.order_id),
-                            "blogger_id": str(blogger.user_id),
-                            "external_id": blogger.external_id,
-                            "error": str(exc),
-                        },
-                    )
-                else:
-                    await asyncio.sleep(retry_delay_seconds)
+        await _send_offer_to_blogger(
+            blogger,
+            order,
+            advertisers_status,
+            bot,
+            offer_dispatch_service,
+            retries,
+            retry_delay_seconds,
+            dlq_producer,
+            dlq_topic,
+        )
 
 
 async def _publish_dlq(
@@ -201,13 +237,16 @@ async def _consume_forever(
 
 
 async def run_consumer() -> None:
-    """Run Kafka consumer in a single event loop, processing messages asynchronously."""
+    """Run Kafka consumer in single event loop, process messages async."""
 
     config = load_config()
     configure_logging(
-        config.log.log_level, json_format=config.log.log_format.lower() == "json"
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
     )
-    log_startup_info(logger=logger, service_name="kafka-consumer", config=config)
+    log_startup_info(
+        logger=logger, service_name="kafka-consumer", config=config
+    )
     if not config.kafka.kafka_enabled:
         logger.info("Kafka consumer disabled by config")
         return
@@ -219,7 +258,9 @@ async def run_consumer() -> None:
     offer_dispatch_service = container.build_offer_dispatch_service()
 
     dlq_producer, consumer = _create_kafka_clients(config)
-    logger.info("Kafka consumer started", extra={"topic": config.kafka.kafka_topic})
+    logger.info(
+        "Kafka consumer started", extra={"topic": config.kafka.kafka_topic}
+    )
 
     bot = Bot(token=config.bot.bot_token)
     await _consume_forever(

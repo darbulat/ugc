@@ -34,7 +34,9 @@ class TestMetricsCollector:
         assert call_args[1]["extra"]["metric_type"] == "blogger_registration"
         assert call_args[1]["extra"]["user_id"] == user_id
 
-    def test_record_advertiser_registration(self, metrics_collector, mock_logger):
+    def test_record_advertiser_registration(
+        self, metrics_collector, mock_logger
+    ):
         """Test advertiser registration metric."""
         user_id = "660e8400-e29b-41d4-a716-446655440001"
         metrics_collector.record_advertiser_registration(user_id)
@@ -93,7 +95,9 @@ class TestMetricsCollector:
         assert extra["amount"] == amount
         assert extra["time_to_payment_seconds"] == time_to_payment
 
-    def test_record_order_paid_without_time(self, metrics_collector, mock_logger):
+    def test_record_order_paid_without_time(
+        self, metrics_collector, mock_logger
+    ):
         """Test order paid metric without time to payment."""
         order_id = "bb0e8400-e29b-41d4-a716-446655440006"
         payment_id = "cc0e8400-e29b-41d4-a716-446655440007"
@@ -115,7 +119,9 @@ class TestMetricsCollector:
         order_id = "dd0e8400-e29b-41d4-a716-446655440008"
         reason = "Insufficient funds"
 
-        metrics_collector.record_payment_failed(order_id=order_id, reason=reason)
+        metrics_collector.record_payment_failed(
+            order_id=order_id, reason=reason
+        )
 
         mock_logger.warning.assert_called_once()
         call_args = mock_logger.warning.call_args
@@ -143,7 +149,9 @@ class TestMetricsCollector:
         assert extra["order_id"] == order_id
         assert extra["blogger_id"] == blogger_id
 
-    def test_record_contacts_sent_with_time(self, metrics_collector, mock_logger):
+    def test_record_contacts_sent_with_time(
+        self, metrics_collector, mock_logger
+    ):
         """Test contacts sent metric with time."""
         order_id = "110e8400-e29b-41d4-a716-446655440011"
         blogger_id = "220e8400-e29b-41d4-a716-446655440012"
@@ -167,7 +175,9 @@ class TestMetricsCollector:
         assert extra["advertiser_id"] == advertiser_id
         assert extra["time_to_contacts_seconds"] == float(time_to_contacts)
 
-    def test_record_contacts_sent_without_time(self, metrics_collector, mock_logger):
+    def test_record_contacts_sent_without_time(
+        self, metrics_collector, mock_logger
+    ):
         """Test contacts sent metric without time."""
         order_id = "440e8400-e29b-41d4-a716-446655440014"
         blogger_id = "550e8400-e29b-41d4-a716-446655440015"
@@ -226,7 +236,9 @@ class TestMetricsCollector:
         assert extra["order_id"] == order_id
         assert extra["reason"] == reason
 
-    def test_record_complaint_status_change(self, metrics_collector, mock_logger):
+    def test_record_complaint_status_change(
+        self, metrics_collector, mock_logger
+    ):
         """Test complaint status change metric."""
         complaint_id = "cc0e8400-e29b-41d4-a716-446655440022"
         old_status = "PENDING"
@@ -310,7 +322,9 @@ class TestMetricsCollector:
         assert extra["duration_seconds"] == float(duration)
         assert extra["success"] == success
 
-    def test_record_request_latency_failed(self, metrics_collector, mock_logger):
+    def test_record_request_latency_failed(
+        self, metrics_collector, mock_logger
+    ):
         """Test request latency metric for failed operation."""
         operation = "payment_processing"
         duration = 1.2

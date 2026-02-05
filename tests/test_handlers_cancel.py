@@ -2,14 +2,14 @@
 
 import pytest
 
-from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.start import support_button
 from tests.helpers.fakes import (
     FakeFSMContext,
     FakeFsmDraftService,
     FakeMessage,
     FakeUser,
 )
+from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.start import support_button
 
 
 @pytest.mark.asyncio

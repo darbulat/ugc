@@ -9,16 +9,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 # Application errors are handled by ErrorHandlerMiddleware
-from ugc_bot.application.services.contact_pricing_service import ContactPricingService
+from ugc_bot.application.services.contact_pricing_service import (
+    ContactPricingService,
+)
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE, OrderService
+from ugc_bot.application.services.order_service import (
+    MAX_ORDER_PRICE,
+    OrderService,
+)
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import (
-    get_user_and_ensure_allowed,
-    handle_draft_choice,
-    parse_user_id_from_state,
-)
 from ugc_bot.bot.handlers.keyboards import (
     CREATE_ORDER_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
@@ -28,6 +28,11 @@ from ugc_bot.bot.handlers.keyboards import (
 )
 from ugc_bot.bot.handlers.payments import send_order_invoice
 from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
+from ugc_bot.bot.handlers.utils import (
+    get_user_and_ensure_allowed,
+    handle_draft_choice,
+    parse_user_id_from_state,
+)
 from ugc_bot.bot.validators import (
     validate_barter_description,
     validate_geography,
@@ -37,7 +42,6 @@ from ugc_bot.bot.validators import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderType
-
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -151,8 +155,10 @@ def _deadlines_keyboard() -> list[list[KeyboardButton]]:
     ]
 
 
-def _keyboard_for_order_state(state_key: str, data: dict) -> ReplyKeyboardMarkup:
-    """Return the reply keyboard for the given order creation state (draft restore)."""
+def _keyboard_for_order_state(
+    state_key: str, data: dict
+) -> ReplyKeyboardMarkup:
+    """Return reply keyboard for order creation state (draft restore)."""
     keyboards: dict[str, ReplyKeyboardMarkup] = {
         "OrderCreationStates:order_type": with_support_keyboard(
             keyboard=_order_type_keyboard()
@@ -185,7 +191,9 @@ def _keyboard_for_order_state(state_key: str, data: dict) -> ReplyKeyboardMarkup
 
 
 @router.message(Command("create_order"))
-@router.message(lambda msg: (msg.text or "").strip() == CREATE_ORDER_BUTTON_TEXT)
+@router.message(
+    lambda msg: (msg.text or "").strip() == CREATE_ORDER_BUTTON_TEXT
+)
 async def start_order_creation(
     message: Message,
     state: FSMContext,
@@ -200,8 +208,8 @@ async def start_order_creation(
         message,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут создавать заказы.",
-        pause_msg="Пользователи на паузе не могут создавать заказы.",
+        blocked_msg="Заблокированные не могут создавать заказы.",
+        pause_msg="На паузе не могут создавать заказы.",
     )
     if user is None:
         return
@@ -216,7 +224,9 @@ async def start_order_creation(
     await state.update_data(user_id=user.user_id)
     draft = await fsm_draft_service.get_draft(user.user_id, ORDER_FLOW_TYPE)
     if draft is not None:
-        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await message.answer(
+            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
+        )
         await state.set_state(OrderCreationStates.choosing_draft_restore)
         return
     await message.answer(
@@ -242,7 +252,7 @@ async def order_draft_choice(
         first_state=OrderCreationStates.order_type,
         first_prompt="Что вам нужно?",
         first_keyboard=with_support_keyboard(keyboard=_order_type_keyboard()),
-        session_expired_msg="Сессия истекла. Начните снова с «Создать заказ».",
+        session_expired_msg="Сессия истекла. Начните с «Создать заказ».",
         keyboard_for_restored_state=_keyboard_for_order_state,
     )
 
@@ -266,7 +276,7 @@ async def handle_order_type(message: Message, state: FSMContext) -> None:
     await state.update_data(order_type=order_type.value)
     await message.answer(
         "Кратко опишите задачу для креаторов.\n"
-        "Что нужно снять и в каком формате. Пример: Видео с распаковкой продукта и личным отзывом.",
+        "Что снять и в каком формате. Пример: Видео с распаковкой.",
         reply_markup=support_keyboard(),
     )
     await state.set_state(OrderCreationStates.offer_text)
@@ -293,7 +303,9 @@ async def handle_offer_text(message: Message, state: FSMContext) -> None:
 
 
 @router.message(OrderCreationStates.cooperation_format)
-async def handle_cooperation_format(message: Message, state: FSMContext) -> None:
+async def handle_cooperation_format(
+    message: Message, state: FSMContext
+) -> None:
     """Store format and ask price and/or barter description."""
 
     text = (message.text or "").strip()
@@ -358,13 +370,17 @@ async def handle_price(message: Message, state: FSMContext) -> None:
         return
     await message.answer(
         "Сколько креаторов вам нужно?",
-        reply_markup=with_support_keyboard(keyboard=_bloggers_needed_keyboard()),
+        reply_markup=with_support_keyboard(
+            keyboard=_bloggers_needed_keyboard()
+        ),
     )
     await state.set_state(OrderCreationStates.bloggers_needed)
 
 
 @router.message(OrderCreationStates.barter_description)
-async def handle_barter_description(message: Message, state: FSMContext) -> None:
+async def handle_barter_description(
+    message: Message, state: FSMContext
+) -> None:
     """Handle barter description and ask bloggers needed."""
 
     barter_description = (message.text or "").strip()
@@ -377,7 +393,9 @@ async def handle_barter_description(message: Message, state: FSMContext) -> None
     await state.update_data(barter_description=barter_description or None)
     await message.answer(
         "Сколько креаторов вам нужно?",
-        reply_markup=with_support_keyboard(keyboard=_bloggers_needed_keyboard()),
+        reply_markup=with_support_keyboard(
+            keyboard=_bloggers_needed_keyboard()
+        ),
     )
     await state.set_state(OrderCreationStates.bloggers_needed)
 
@@ -390,7 +408,9 @@ async def handle_bloggers_needed(message: Message, state: FSMContext) -> None:
     if raw not in ("3", "5", "10"):
         await message.answer(
             "Выберите одно из значений: 3, 5 или 10.",
-            reply_markup=with_support_keyboard(keyboard=_bloggers_needed_keyboard()),
+            reply_markup=with_support_keyboard(
+                keyboard=_bloggers_needed_keyboard()
+            ),
         )
         return
 
@@ -441,7 +461,9 @@ async def handle_order_photo(message: Message, state: FSMContext) -> None:
     if text == ORDER_PHOTO_ADD:
         await message.answer(
             "Отправьте фото продукта:",
-            reply_markup=with_support_keyboard(keyboard=_order_photo_keyboard()),
+            reply_markup=with_support_keyboard(
+                keyboard=_order_photo_keyboard()
+            ),
         )
         return
 
@@ -469,10 +491,16 @@ async def handle_content_usage(message: Message, state: FSMContext) -> None:
     """Store content usage and ask deadlines."""
 
     text = (message.text or "").strip()
-    if text not in (CONTENT_USAGE_SOCIAL, CONTENT_USAGE_ADS, CONTENT_USAGE_BOTH):
+    if text not in (
+        CONTENT_USAGE_SOCIAL,
+        CONTENT_USAGE_ADS,
+        CONTENT_USAGE_BOTH,
+    ):
         await message.answer(
             "Выберите один из вариантов на клавиатуре.",
-            reply_markup=with_support_keyboard(keyboard=_content_usage_keyboard()),
+            reply_markup=with_support_keyboard(
+                keyboard=_content_usage_keyboard()
+            ),
         )
         return
 
@@ -528,7 +556,9 @@ async def handle_geography(
     data = await state.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
-        await message.answer("Сессия истекла. Начните заново с «Создать заказ».")
+        await message.answer(
+            "Сессия истекла. Начните заново с «Создать заказ»."
+        )
         await state.clear()
         return
 
@@ -571,7 +601,7 @@ async def handle_geography(
     contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
         await message.answer(
-            "Стоимость доступа к контактам не настроена. Свяжитесь с поддержкой."
+            "Стоимость доступа не настроена. Свяжитесь с поддержкой."
         )
         return
     await send_order_invoice(

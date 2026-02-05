@@ -1,9 +1,9 @@
 """Tests for outbox processor."""
 
 import asyncio
+from unittest.mock import AsyncMock, Mock
 
 import pytest
-from unittest.mock import AsyncMock, Mock
 
 from ugc_bot.outbox_processor import OutboxProcessor
 
@@ -140,7 +140,9 @@ class TestOutboxProcessor:
         kafka_publisher = Mock()
 
         # Make process_pending_events raise an exception
-        outbox_publisher.process_pending_events.side_effect = Exception("Test error")
+        outbox_publisher.process_pending_events.side_effect = Exception(
+            "Test error"
+        )
 
         processor = OutboxProcessor(
             outbox_publisher=outbox_publisher,
@@ -167,7 +169,9 @@ class TestRunProcessor:
     """Test run_processor function."""
 
     @pytest.mark.asyncio
-    async def test_run_processor_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_run_processor_success(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """run_processor successfully starts and runs processor."""
 
         # Mock config
@@ -207,8 +211,12 @@ class TestRunProcessor:
             return mock_processor
 
         # Patch all dependencies
-        monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
-        monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.load_config", lambda: mock_config
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.configure_logging", Mock()
+        )
         fake_container = Mock()
         fake_container.build_outbox_deps.return_value = (
             mock_outbox_publisher,
@@ -263,8 +271,12 @@ class TestRunProcessor:
         fake_container = Mock()
         fake_container.build_outbox_deps.return_value = (Mock(), None)
 
-        monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
-        monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.load_config", lambda: mock_config
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.configure_logging", Mock()
+        )
         startup_called: dict[str, object] = {}
 
         def _fake_startup_log(**kwargs):  # type: ignore[no-untyped-def]
@@ -303,8 +315,12 @@ class TestRunProcessor:
 
         mock_logger = Mock()
 
-        monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
-        monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.load_config", lambda: mock_config
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.configure_logging", Mock()
+        )
 
         from ugc_bot.outbox_processor import run_processor
 
@@ -351,8 +367,12 @@ class TestRunProcessor:
             mock_kafka_publisher,
         )
 
-        monkeypatch.setattr("ugc_bot.outbox_processor.load_config", lambda: mock_config)
-        monkeypatch.setattr("ugc_bot.outbox_processor.configure_logging", Mock())
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.load_config", lambda: mock_config
+        )
+        monkeypatch.setattr(
+            "ugc_bot.outbox_processor.configure_logging", Mock()
+        )
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.Container",
             lambda _: fake_container,
@@ -391,7 +411,9 @@ class TestRunProcessor:
 class TestMain:
     """Test main function."""
 
-    def test_main_calls_run_processor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_main_calls_run_processor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """main function calls run_processor via asyncio.run."""
 
         run_processor_called = False
@@ -427,5 +449,5 @@ class TestMain:
         # Verify asyncio.run was called with run_processor coroutine
         assert asyncio_run_called
         assert coro_passed is not None
-        # Verify run_processor was called (it's called when creating the coroutine)
-        # The coroutine is created when passed to asyncio.run
+        # Verify run_processor was called when creating the coroutine
+        # Coroutine created when passed to asyncio.run

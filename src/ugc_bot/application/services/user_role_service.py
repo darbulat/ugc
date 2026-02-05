@@ -38,7 +38,7 @@ class UserRoleService:
             messenger_type: Messenger type.
             username: Display username (name shown to advertisers).
             role_chosen: If True, set role_chosen_at to now when still unset.
-            telegram_username: Telegram alias (@username), stored for admin only.
+            telegram_username: Telegram alias (@username), admin-only.
         """
 
         async def _run(session: object | None) -> User:

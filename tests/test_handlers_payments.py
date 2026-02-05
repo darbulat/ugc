@@ -4,6 +4,23 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.factories import (
+    create_test_advertiser_profile,
+    create_test_order,
+    create_test_user,
+)
+from tests.helpers.fakes import (
+    FakeBot,
+    FakeMessage,
+    FakePreCheckoutQuery,
+    FakeSuccessfulPayment,
+    FakeUser,
+)
+from tests.helpers.services import (
+    build_contact_pricing_service,
+    build_payment_service,
+    build_profile_service,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import (
     pay_order,
@@ -13,23 +30,6 @@ from ugc_bot.bot.handlers.payments import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderStatus
-from tests.helpers.fakes import (
-    FakeBot,
-    FakeMessage,
-    FakePreCheckoutQuery,
-    FakeSuccessfulPayment,
-    FakeUser,
-)
-from tests.helpers.factories import (
-    create_test_advertiser_profile,
-    create_test_order,
-    create_test_user,
-)
-from tests.helpers.services import (
-    build_contact_pricing_service,
-    build_payment_service,
-    build_profile_service,
-)
 
 
 class FakeConfig(AppConfig):
@@ -50,14 +50,24 @@ async def test_pay_order_success(
     """Invoice is sent when order is valid."""
 
     from uuid import UUID
+
     from ugc_bot.domain.enums import MessengerType
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     user = await create_test_user(
         user_repo,
@@ -121,15 +131,25 @@ async def test_pay_order_missing_provider_token(
 
     from datetime import datetime, timezone
     from uuid import UUID
+
     from ugc_bot.domain.entities import ContactPricing
     from ugc_bot.domain.enums import MessengerType
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     # Override price for 3 bloggers to be positive so provider check is needed
     await contact_pricing_service.pricing_repo.save(
@@ -198,10 +218,19 @@ async def test_pay_order_invalid_args(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     user = await create_test_user(
         user_repo,
@@ -209,7 +238,9 @@ async def test_pay_order_invalid_args(
         external_id="10",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    message = FakeMessage(text="/pay_order", user=FakeUser(10, "adv", "Adv"), bot=None)
+    message = FakeMessage(
+        text="/pay_order", user=FakeUser(10, "adv", "Adv"), bot=None
+    )
     config = FakeConfig.model_validate(
         {
             "BOT_TOKEN": "token",
@@ -243,10 +274,19 @@ async def test_pay_order_invalid_uuid(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     user = await create_test_user(
         user_repo,
@@ -290,10 +330,19 @@ async def test_pay_order_order_not_found(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     user = await create_test_user(
         user_repo,
@@ -339,10 +388,19 @@ async def test_pay_order_wrong_owner(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     user = await create_test_user(
         user_repo,
@@ -403,10 +461,19 @@ async def test_pay_order_not_new_status(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     user = await create_test_user(
         user_repo,
@@ -460,10 +527,19 @@ async def test_pay_order_blocked_user(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     from ugc_bot.domain.enums import UserStatus
 
@@ -512,10 +588,19 @@ async def test_pay_order_paused_user(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     from ugc_bot.domain.enums import UserStatus
 
@@ -564,10 +649,19 @@ async def test_pay_order_missing_profile(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
-    contact_pricing_service = await build_contact_pricing_service(None, pricing_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
 
     await create_test_user(
         user_repo,
@@ -646,7 +740,12 @@ async def test_successful_payment_handler(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
 
     user = await create_test_user(
@@ -685,7 +784,9 @@ async def test_successful_payment_handler(
     assert fetched_order.status == OrderStatus.NEW
 
     # Process outbox events to activate order
-    from ugc_bot.infrastructure.kafka.publisher import NoopOrderActivationPublisher
+    from ugc_bot.infrastructure.kafka.publisher import (
+        NoopOrderActivationPublisher,
+    )
 
     kafka_publisher = NoopOrderActivationPublisher()
     await payment_service.outbox_publisher.process_pending_events(
@@ -712,7 +813,12 @@ async def test_successful_payment_invalid_payload(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
     user = await create_test_user(
         user_repo,
@@ -721,8 +827,12 @@ async def test_successful_payment_invalid_payload(
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
 
-    message = FakeMessage(text=None, user=FakeUser(20, "adv", "Adv"), bot=FakeBot())
-    message.successful_payment = FakeSuccessfulPayment(payload="bad", charge_id="c")
+    message = FakeMessage(
+        text=None, user=FakeUser(20, "adv", "Adv"), bot=FakeBot()
+    )
+    message.successful_payment = FakeSuccessfulPayment(
+        payload="bad", charge_id="c"
+    )
     await successful_payment_handler(message, user_service, payment_service)
     assert "Не удалось определить заказ" in message.answers[0]
 
@@ -741,10 +851,17 @@ async def test_successful_payment_user_not_found(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
 
-    message = FakeMessage(text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot())
+    message = FakeMessage(
+        text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot()
+    )
     message.successful_payment = FakeSuccessfulPayment(
         payload="00000000-0000-0000-0000-000000000600", charge_id="c"
     )
@@ -765,7 +882,11 @@ async def test_send_order_invoice_bot_none_returns_early() -> None:
         }
     )
     await send_order_invoice(
-        message, UUID("00000000-0000-0000-0000-000000000530"), "Offer", 1000.0, config
+        message,
+        UUID("00000000-0000-0000-0000-000000000530"),
+        "Offer",
+        1000.0,
+        config,
     )
     assert not message.answers
 
@@ -806,14 +927,21 @@ async def test_successful_payment_handler_no_payment_returns(
     """successful_payment_handler returns when successful_payment is None."""
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
     await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000522"),
         external_id="22",
     )
-    message = FakeMessage(text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot())
+    message = FakeMessage(
+        text=None, user=FakeUser(22, "adv", "Adv"), bot=FakeBot()
+    )
     message.successful_payment = None
 
     await successful_payment_handler(message, user_service, payment_service)
@@ -897,9 +1025,16 @@ async def test_pay_order_contact_price_not_configured(
 
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
-        user_repo, advertiser_repo, order_repo, payment_repo, fake_tm, outbox_repo
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        fake_tm,
+        outbox_repo,
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
     contact_pricing_service = await build_contact_pricing_service(
         {3: 100.0}, pricing_repo
     )
@@ -949,7 +1084,8 @@ async def test_pay_order_contact_price_not_configured(
     )
     assert message.answers
     assert (
-        "Стоимость доступа" in message.answers[0] or "настроена" in message.answers[0]
+        "Стоимость доступа" in message.answers[0]
+        or "настроена" in message.answers[0]
     )
 
 
@@ -963,7 +1099,7 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
     outbox_repo,
     pricing_repo,
 ) -> None:
-    """successful_payment_handler records metric when confirm raises OrderCreationError."""
+    """Payment handler records metric when confirm raises OrderCreationError."""
 
     from ugc_bot.application.errors import OrderCreationError
 
@@ -993,7 +1129,9 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
     metrics = FakeMetricsCollector()
     payment_service = FailingPaymentService(metrics_collector=metrics)
 
-    message = FakeMessage(text=None, user=FakeUser(24, "adv", "Adv"), bot=FakeBot())
+    message = FakeMessage(
+        text=None, user=FakeUser(24, "adv", "Adv"), bot=FakeBot()
+    )
     message.successful_payment = FakeSuccessfulPayment(
         payload="00000000-0000-0000-0000-000000000538", charge_id="charge_1"
     )
@@ -1002,5 +1140,8 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
         await successful_payment_handler(message, user_service, payment_service)
 
     assert len(metrics.recorded) == 1
-    assert metrics.recorded[0]["order_id"] == "00000000-0000-0000-0000-000000000538"
+    assert (
+        metrics.recorded[0]["order_id"]
+        == "00000000-0000-0000-0000-000000000538"
+    )
     assert "Order not found" in metrics.recorded[0]["reason"]

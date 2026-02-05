@@ -47,11 +47,15 @@ class PaymentService:
 
         if self.transaction_manager is None:
             raise ValueError(
-                "PaymentService requires transaction_manager for atomic payment+outbox."
+                "PaymentService needs transaction_manager for atomic payment."
             )
 
         return await self._confirm_telegram_payment_impl(
-            user_id, order_id, provider_payment_charge_id, total_amount, currency
+            user_id,
+            order_id,
+            provider_payment_charge_id,
+            total_amount,
+            currency,
         )
 
     async def get_order(self, order_id: UUID) -> Order | None:
@@ -70,7 +74,7 @@ class PaymentService:
         total_amount: int,
         currency: str,
     ) -> Payment:
-        """Confirm payment implementation (assumes transaction_manager is set)."""
+        """Confirm payment (assumes transaction_manager is set)."""
 
         assert self.transaction_manager is not None
         async with self.transaction_manager.transaction() as session:
@@ -78,7 +82,9 @@ class PaymentService:
             if user is None:
                 raise UserNotFoundError("Advertiser not found.")
             if (
-                await self.advertiser_repo.get_by_user_id(user_id, session=session)
+                await self.advertiser_repo.get_by_user_id(
+                    user_id, session=session
+                )
                 is None
             ):
                 raise OrderCreationError("Advertiser profile is not set.")
@@ -92,7 +98,9 @@ class PaymentService:
             if order.status != OrderStatus.NEW:
                 raise OrderCreationError("Order is not in NEW status.")
 
-            existing = await self.payment_repo.get_by_order(order_id, session=session)
+            existing = await self.payment_repo.get_by_order(
+                order_id, session=session
+            )
             if existing and existing.status == PaymentStatus.PAID:
                 return existing
 
@@ -109,7 +117,9 @@ class PaymentService:
                 paid_at=now,
             )
             await self.payment_repo.save(payment, session=session)
-            await self.outbox_publisher.publish_order_activation(order, session=session)
+            await self.outbox_publisher.publish_order_activation(
+                order, session=session
+            )
 
         logger.info(
             "Payment confirmed",

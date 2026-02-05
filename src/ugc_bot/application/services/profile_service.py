@@ -39,14 +39,20 @@ class ProfileService:
         """Fetch blogger profile by user id."""
 
         async def _run(session: object | None):
-            return await self.blogger_repo.get_by_user_id(user_id, session=session)
+            return await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def get_advertiser_profile(self, user_id: UUID) -> AdvertiserProfile | None:
+    async def get_advertiser_profile(
+        self, user_id: UUID
+    ) -> AdvertiserProfile | None:
         """Fetch advertiser profile by user id."""
 
         async def _run(session: object | None):
-            return await self.advertiser_repo.get_by_user_id(user_id, session=session)
+            return await self.advertiser_repo.get_by_user_id(
+                user_id, session=session
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)

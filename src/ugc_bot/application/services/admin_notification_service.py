@@ -25,15 +25,21 @@ async def notify_admins_about_complaint(
         bot: Telegram Bot instance for sending messages.
         user_role_service: Service to fetch admin list and usernames.
     """
-    admins = await user_role_service.list_admins(messenger_type=MessengerType.TELEGRAM)
+    admins = await user_role_service.list_admins(
+        messenger_type=MessengerType.TELEGRAM
+    )
     if not admins:
         logger.debug("No Telegram admins to notify about complaint")
         return
 
     reporter = await user_role_service.get_user_by_id(complaint.reporter_id)
     reported = await user_role_service.get_user_by_id(complaint.reported_id)
-    reporter_name = reporter.username if reporter else str(complaint.reporter_id)
-    reported_name = reported.username if reported else str(complaint.reported_id)
+    reporter_name = (
+        reporter.username if reporter else str(complaint.reporter_id)
+    )
+    reported_name = (
+        reported.username if reported else str(complaint.reported_id)
+    )
 
     text = (
         "🔔 *Новая жалоба*\n\n"

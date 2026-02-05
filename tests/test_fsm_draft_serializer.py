@@ -21,7 +21,10 @@ def test_serialize_fsm_data_uuid_to_str() -> None:
 
 def test_serialize_fsm_data_enum_to_value() -> None:
     """Enum values are serialized to .value."""
-    data = {"audience_gender": AudienceGender.ALL, "work_format": WorkFormat.UGC_ONLY}
+    data = {
+        "audience_gender": AudienceGender.ALL,
+        "work_format": WorkFormat.UGC_ONLY,
+    }
     result = serialize_fsm_data(data)
     assert result["audience_gender"] == "all"
     assert result["work_format"] == "ugc_only"
@@ -35,7 +38,7 @@ def test_serialize_fsm_data_nested_dict() -> None:
 
 
 def test_deserialize_fsm_data_blogger_flow() -> None:
-    """Deserialize blogger_registration flow: user_id -> UUID, enums restored."""
+    """Deserialize blogger_registration: user_id -> UUID, enums restored."""
     data = {
         "user_id": str(uuid4()),
         "audience_gender": "all",
@@ -126,7 +129,7 @@ def test_deserialize_fsm_data_edit_profile_flow_hits_edit_user_id() -> None:
 
 
 def test_deserialize_fsm_data_unknown_flow_passes_through() -> None:
-    """Unknown flow_type uses empty uuid_keys and enum_keys, passes values through."""
+    """Unknown flow_type: empty uuid_keys/enum_keys, passes values through."""
     data = {"foo": "bar", "num": 42}
     result = deserialize_fsm_data(data, "unknown_flow")
     assert result == {"foo": "bar", "num": 42}

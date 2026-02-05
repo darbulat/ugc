@@ -1,13 +1,12 @@
 """SQLAlchemy repository implementations."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable, Iterable, List, Optional
 from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from datetime import datetime, timezone
 
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
@@ -167,7 +166,9 @@ class SqlAlchemyUserRepository(UserRepository):
         db_session = _get_async_session(session)
         query = select(UserModel).where(UserModel.admin.is_(True))
         if messenger_type is not None:
-            query = query.where(UserModel.messenger_type == messenger_type.value)
+            query = query.where(
+                UserModel.messenger_type == messenger_type.value
+            )
         exec_result = await db_session.execute(query)
         results = exec_result.scalars().all()
         return [_to_user_entity(row) for row in results]
@@ -186,7 +187,9 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(BloggerProfileModel).where(BloggerProfileModel.user_id == user_id)
+            select(BloggerProfileModel).where(
+                BloggerProfileModel.user_id == user_id
+            )
         )
         result = exec_result.scalar_one_or_none()
         return _to_blogger_profile_entity(result) if result else None
@@ -262,7 +265,9 @@ class SqlAlchemyAdvertiserProfileRepository(AdvertiserProfileRepository):
 
 
 @dataclass(slots=True)
-class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository):
+class SqlAlchemyInstagramVerificationRepository(
+    InstagramVerificationRepository
+):
     """SQLAlchemy-backed Instagram verification repository."""
 
     session_factory: async_sessionmaker[AsyncSession]
@@ -300,7 +305,9 @@ class SqlAlchemyInstagramVerificationRepository(InstagramVerificationRepository)
             return None
         return _to_verification_entity(result)
 
-    async def mark_used(self, code_id: UUID, session: object | None = None) -> None:
+    async def mark_used(
+        self, code_id: UUID, session: object | None = None
+    ) -> None:
         """Mark verification code as used."""
 
         db_session = _get_async_session(session)
@@ -355,14 +362,18 @@ class SqlAlchemyOrderRepository(OrderRepository):
         """Fetch order by ID with row lock."""
 
         stmt = (
-            select(OrderModel).where(OrderModel.order_id == order_id).with_for_update()
+            select(OrderModel)
+            .where(OrderModel.order_id == order_id)
+            .with_for_update()
         )
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(stmt)
         result = exec_result.scalar_one_or_none()
         return _to_order_entity(result) if result else None
 
-    async def list_active(self, session: object | None = None) -> Iterable[Order]:
+    async def list_active(
+        self, session: object | None = None
+    ) -> Iterable[Order]:
         """List active orders."""
 
         db_session = _get_async_session(session)
@@ -451,7 +462,9 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
         result = exec_result.scalar_one_or_none()
         return _to_payment_entity(result) if result else None
 
-    async def save(self, payment: Payment, session: object | None = None) -> None:
+    async def save(
+        self, payment: Payment, session: object | None = None
+    ) -> None:
         """Persist payment."""
 
         model = _to_payment_model(payment)
@@ -502,7 +515,9 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(OrderResponseModel).where(OrderResponseModel.order_id == order_id)
+            select(OrderResponseModel).where(
+                OrderResponseModel.order_id == order_id
+            )
         )
         results = exec_result.scalars()
         return [_to_order_response_entity(item) for item in results]
@@ -600,7 +615,9 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(InteractionModel).where(InteractionModel.order_id == order_id)
+            select(InteractionModel).where(
+                InteractionModel.order_id == order_id
+            )
         )
         results = exec_result.scalars()
         return [_to_interaction_entity(item) for item in results]
@@ -752,7 +769,9 @@ def _to_blogger_profile_entity(
         price=float(model.price),
         barter=model.barter,
         work_format=work_format,
-        wanted_to_change_terms_count=getattr(model, "wanted_to_change_terms_count", 0),
+        wanted_to_change_terms_count=getattr(
+            model, "wanted_to_change_terms_count", 0
+        ),
         updated_at=model.updated_at,
     )
 
@@ -996,7 +1015,9 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
     def __init__(self, session_factory: Callable[[], AsyncSession]) -> None:
         self.session_factory = session_factory
 
-    async def save(self, event: OutboxEvent, session: object | None = None) -> None:
+    async def save(
+        self, event: OutboxEvent, session: object | None = None
+    ) -> None:
         """Persist outbox event."""
 
         model = _to_outbox_event_model(event)
@@ -1031,7 +1052,10 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         )
 
     async def mark_as_published(
-        self, event_id: UUID, processed_at: datetime, session: object | None = None
+        self,
+        event_id: UUID,
+        processed_at: datetime,
+        session: object | None = None,
     ) -> None:
         """Mark event as published."""
 
@@ -1039,7 +1063,9 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         await db_session.execute(
             update(OutboxEventModel)
             .where(OutboxEventModel.event_id == event_id)
-            .values(status=OutboxEventStatus.PUBLISHED, processed_at=processed_at)
+            .values(
+                status=OutboxEventStatus.PUBLISHED, processed_at=processed_at
+            )
         )
 
     async def mark_as_failed(
@@ -1069,7 +1095,9 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(OutboxEventModel).where(OutboxEventModel.event_id == event_id)
+            select(OutboxEventModel).where(
+                OutboxEventModel.event_id == event_id
+            )
         )
         model = exec_result.scalar_one_or_none()
         return _to_outbox_event_entity(model) if model else None
@@ -1115,7 +1143,9 @@ class SqlAlchemyComplaintRepository(ComplaintRepository):
 
     session_factory: async_sessionmaker[AsyncSession]
 
-    async def save(self, complaint: Complaint, session: object | None = None) -> None:
+    async def save(
+        self, complaint: Complaint, session: object | None = None
+    ) -> None:
         """Persist complaint."""
 
         db_session = _get_async_session(session)
@@ -1129,7 +1159,9 @@ class SqlAlchemyComplaintRepository(ComplaintRepository):
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(ComplaintModel).where(ComplaintModel.complaint_id == complaint_id)
+            select(ComplaintModel).where(
+                ComplaintModel.complaint_id == complaint_id
+            )
         )
         result = exec_result.scalar_one_or_none()
         return _to_complaint_entity(result) if result else None
@@ -1153,7 +1185,9 @@ class SqlAlchemyComplaintRepository(ComplaintRepository):
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(ComplaintModel).where(ComplaintModel.reporter_id == reporter_id)
+            select(ComplaintModel).where(
+                ComplaintModel.reporter_id == reporter_id
+            )
         )
         results = exec_result.scalars()
         return [_to_complaint_entity(item) for item in results]

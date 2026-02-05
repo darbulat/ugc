@@ -16,12 +16,13 @@ from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
 )
 from ugc_bot.application.services.complaint_service import ComplaintService
-from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed_callback
-
 
 router = Router()
 
@@ -42,7 +43,8 @@ _COMPLAINT_REASONS = [
 
 
 @router.callback_query(
-    lambda callback: callback.data and callback.data.startswith("complaint_select:")
+    lambda callback: callback.data
+    and callback.data.startswith("complaint_select:")
 )
 async def select_complaint_target(
     callback: CallbackQuery,
@@ -95,7 +97,9 @@ async def select_complaint_target(
 
         buttons = []
         for response in responses:
-            blogger = await user_role_service.get_user_by_id(response.blogger_id)
+            blogger = await user_role_service.get_user_by_id(
+                response.blogger_id
+            )
             blogger_name = (
                 blogger.username
                 if blogger
@@ -117,7 +121,9 @@ async def select_complaint_target(
     else:
         # Blogger: complain about advertiser
         responses = await offer_response_service.list_by_order(order_id)
-        if not any(response.blogger_id == user.user_id for response in responses):
+        if not any(
+            response.blogger_id == user.user_id for response in responses
+        ):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
 
@@ -196,14 +202,18 @@ async def start_complaint(
     if order.advertiser_id != user.user_id:
         # Check if user is a blogger who responded to this order
         responses = await offer_response_service.list_by_order(order_id)
-        if not any(response.blogger_id == user.user_id for response in responses):
+        if not any(
+            response.blogger_id == user.user_id for response in responses
+        ):
             await callback.answer("У вас нет доступа к этому заказу.")
             return
 
     # Verify reported_id is valid (either advertiser or blogger from this order)
     if reported_id != order.advertiser_id:
         responses = await offer_response_service.list_by_order(order_id)
-        if not any(response.blogger_id == reported_id for response in responses):
+        if not any(
+            response.blogger_id == reported_id for response in responses
+        ):
             await callback.answer("Неверный идентификатор пользователя.")
             return
 
@@ -216,7 +226,11 @@ async def start_complaint(
 
     # Show reason selection keyboard
     buttons = [
-        [InlineKeyboardButton(text=reason, callback_data=f"complaint_reason:{reason}")]
+        [
+            InlineKeyboardButton(
+                text=reason, callback_data=f"complaint_reason:{reason}"
+            )
+        ]
         for reason in _COMPLAINT_REASONS
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -230,7 +244,8 @@ async def start_complaint(
 
 
 @router.callback_query(
-    lambda callback: callback.data and callback.data.startswith("complaint_reason:")
+    lambda callback: callback.data
+    and callback.data.startswith("complaint_reason:")
 )
 async def handle_complaint_reason(
     callback: CallbackQuery,
@@ -284,7 +299,8 @@ async def handle_complaint_reason(
                 complaint, callback.bot, user_role_service
             )
         await callback.message.answer(  # type: ignore[union-attr]
-            "Жалоба успешно подана. Администратор рассмотрит её в ближайшее время."
+            "Жалоба успешно подана. "
+            "Администратор рассмотрит её в ближайшее время."
         )
         await state.clear()
     except ValueError as e:
@@ -328,10 +344,9 @@ async def handle_complaint_reason_text(
 
     # Use "Другое: " prefix if "Другое" was selected
     base_reason = data.get("reason", "Другое")
-    if base_reason == "Другое":
-        full_reason = f"Другое: {reason_text}"
-    else:
-        full_reason = reason_text
+    full_reason = (
+        f"Другое: {reason_text}" if base_reason == "Другое" else reason_text
+    )
 
     try:
         complaint = await complaint_service.create_complaint(
@@ -345,7 +360,8 @@ async def handle_complaint_reason_text(
                 complaint, message.bot, user_role_service
             )
         await message.answer(
-            "Жалоба успешно подана. Администратор рассмотрит её в ближайшее время."
+            "Жалоба успешно подана. "
+            "Администратор рассмотрит её в ближайшее время."
         )
         await state.clear()
     except ValueError as e:

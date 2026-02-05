@@ -35,13 +35,12 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed_callback
 from ugc_bot.domain.enums import MessengerType
 
-
 router = Router()
 logger = logging.getLogger(__name__)
 
 
 class FeedbackStates(StatesGroup):
-    """FSM states for feedback follow-up (no_deal other text, issue, NPS comment)."""
+    """FSM states for feedback (no_deal text, issue, NPS comment)."""
 
     waiting_no_deal_other = State()
     waiting_issue_description = State()
@@ -55,7 +54,7 @@ _FEEDBACK_TEXT_MAP = {
     "issue": "⚠️ Проблема / подозрение на мошенничество",
 }
 
-# No-deal reason keys and labels (blogger: 4; advertiser: 4, different third option)
+# No-deal reason keys (blogger: 4; advertiser: 4, different third)
 # Short codes for callback_data (Telegram limit 64 bytes)
 _NO_DEAL_REASONS_BLOGGER = [
     ("conditions", "💰 Не сошлись по условиям", "c"),
@@ -96,9 +95,15 @@ def _parse_uuid_hex(hex_str: str) -> UUID:
     return UUID(hex=hex_str)
 
 
-def _no_deal_reason_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
+def _no_deal_reason_keyboard(
+    kind: str, interaction_id: UUID
+) -> InlineKeyboardMarkup:
     """Build inline keyboard for no_deal reason (blogger or advertiser)."""
-    reasons = _NO_DEAL_REASONS_ADVERTISER if kind == "adv" else _NO_DEAL_REASONS_BLOGGER
+    reasons = (
+        _NO_DEAL_REASONS_ADVERTISER
+        if kind == "adv"
+        else _NO_DEAL_REASONS_BLOGGER
+    )
     id_hex = _uuid_hex(interaction_id)
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -126,25 +131,29 @@ def _issue_send_keyboard() -> ReplyKeyboardMarkup:
 
 _NPS_DONE_BUTTON = "Готово"
 _NPS_THANK = (
-    "Благодарю! 🙌\n" "Ваш отзыв сохранён, он помогает нам делать платформу UMC лучше🙏"
+    "Благодарю! 🙌\n"
+    "Ваш отзыв сохранён, он помогает нам делать платформу UMC лучше🙏"
 )
 
 # 1. Вопрос оценки
-_NPS_QUESTION = "Оцените, пожалуйста, работу с платформой UMC по шкале от 1 до 5 ⭐"
+_NPS_QUESTION = (
+    "Оцените, пожалуйста, работу с платформой UMC по шкале от 1 до 5 ⭐"
+)
 
 # 2. Ветка «5 ⭐» — всё супер
 _NPS_PROMPT_5_ADV = (
-    "Спасибо за оценку 5 ⭐ — очень рады, что вам было удобно работать с платформой UMC! 🙌\n"
-    "Если есть 1–2 идеи, как сделать сервис ещё удобнее (интерфейс, подбор креаторов, "
-    "уведомления и т. д.) — пожалуйста, напишите в ответ одним сообщением.\n"
-    "Мы внимательно читаем каждое предложение и используем его для развития платформы."
+    "Спасибо за оценку 5 ⭐ — очень рады, что вам было удобно работать "
+    "с платформой UMC! 🙌\n"
+    "Если есть 1–2 идеи, как сделать сервис ещё удобнее (интерфейс, "
+    "подбор креаторов, уведомления и т. д.) — напишите в ответ.\n"
+    "Мы внимательно читаем каждое предложение для развития платформы."
 )
 _NPS_PROMPT_5_BLOG = (
-    "Спасибо за оценку 5 ⭐ — очень рады, что вам комфортно работать с заказчиками "
-    "через платформу UMC! 🙌\n"
-    "Если есть 1–2 идеи, как улучшить сервис (личный кабинет, подбор заказов, условия, "
-    "поддержка) — напишите, пожалуйста, в ответ одним сообщением.\n"
-    "Мы внимательно читаем каждое предложение и используем его для развития платформы."
+    "Спасибо за оценку 5 ⭐ — очень рады, что вам комфортно работать "
+    "с заказчиками через платформу UMC! 🙌\n"
+    "Если есть 1–2 идеи, как улучшить сервис (личный кабинет, подбор "
+    "заказов, условия, поддержка) — напишите в ответ.\n"
+    "Мы внимательно читаем каждое предложение для развития платформы."
 )
 
 # 3. Ветка «2–4 ⭐» — в целом ок, но есть вопросы
@@ -152,8 +161,7 @@ _NPS_PROMPT_34_ADV = (
     "Спасибо за вашу оценку 🙏\n"
     "Нам важно понять, что именно можно улучшить в работе с UMC.\n"
     "Пожалуйста, в одном сообщении напишите:\n"
-    "– что не устроило или было неудобно (подбор креаторов, скорость, интерфейс, "
-    "коммуникация и т. д.)."
+    "– что не устроило (подбор, скорость, интерфейс, коммуникация)."
 )
 _NPS_PROMPT_34_BLOG = (
     "Спасибо за вашу оценку 🙏\n"
@@ -223,15 +231,216 @@ async def _advertiser_has_feedback_for_bloggers_needed(
     interaction_service: InteractionService,
     order_service: OrderService,
 ) -> bool:
-    """Check if advertiser has given feedback for order.bloggers_needed interactions."""
+    """Check if advertiser gave feedback for bloggers_needed interactions."""
     order = await order_service.get_order(interaction.order_id)
     if order is None:
         return False
     interactions = await interaction_service.list_interactions_by_order(
         interaction.order_id
     )
-    count_with_feedback = sum(1 for i in interactions if i.from_advertiser is not None)
+    count_with_feedback = sum(
+        1 for i in interactions if i.from_advertiser is not None
+    )
     return count_with_feedback >= order.bloggers_needed
+
+
+def _can_access_interaction(
+    kind: str, interaction: "Interaction", user_id: UUID
+) -> bool:
+    """Check if user can access interaction for feedback."""
+    if kind == "adv":
+        return interaction.advertiser_id == user_id
+    return interaction.blogger_id == user_id
+
+
+async def _record_reason_feedback(
+    kind: str,
+    reason_key: str,
+    interaction_id: UUID,
+    feedback_text: str,
+    interaction: "Interaction",
+    callback: CallbackQuery,
+    blogger_registration_service: BloggerRegistrationService,
+    interaction_service: InteractionService,
+    nps_service: NpsService,
+    order_service: OrderService,
+) -> None:
+    """Record feedback for selected reason and send NPS if applicable."""
+    if kind == "adv":
+        await interaction_service.record_advertiser_feedback(
+            interaction_id, feedback_text
+        )
+        if reason_key == "creator_wanted_to_change":
+            svc = blogger_registration_service
+            await svc.increment_wanted_to_change_terms_count(
+                interaction.blogger_id
+            )
+    else:
+        await interaction_service.record_blogger_feedback(
+            interaction_id, feedback_text
+        )
+    await _remove_inline_keyboard(callback)
+    await callback.answer("Спасибо, ответ сохранен.")
+    if callback.message:
+        await callback.message.answer("Спасибо за обратную связь.")
+        if callback.bot:
+            await _maybe_send_nps(
+                kind,
+                interaction,
+                callback.message.chat.id,
+                callback.bot,
+                nps_service,
+                interaction_service,
+                order_service,
+            )
+
+
+async def _handle_feedback_no_deal(
+    callback: CallbackQuery,
+    kind: str,
+    interaction_id: UUID,
+    user_role_service: UserRoleService,
+    interaction_service: InteractionService,
+) -> bool:
+    """Show no_deal reason keyboard. Returns True if handled."""
+    user = await get_user_and_ensure_allowed_callback(
+        callback,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные не могут оставлять отзыв.",
+        pause_msg="На паузе не могут оставлять отзыв.",
+    )
+    if user is None:
+        return True
+    interaction = await interaction_service.get_interaction(interaction_id)
+    if interaction is None:
+        await callback.answer("Взаимодействие не найдено.")
+        return True
+    if kind == "adv" and interaction.advertiser_id != user.user_id:
+        await callback.answer("Недостаточно прав.")
+        return True
+    if kind == "blog" and interaction.blogger_id != user.user_id:
+        await callback.answer("Недостаточно прав.")
+        return True
+    await _remove_inline_keyboard(callback)
+    await callback.answer()
+    if callback.message:
+        question = (
+            "Подскажите, по какой причине не удалось договориться?"
+            if kind == "blog"
+            else "По какой причине не удалось договориться?"
+        )
+        await callback.message.answer(
+            question,
+            reply_markup=_no_deal_reason_keyboard(kind, interaction_id),
+        )
+    return True
+
+
+async def _handle_feedback_issue(
+    callback: CallbackQuery,
+    state: FSMContext,
+    kind: str,
+    interaction_id: UUID,
+) -> None:
+    """Transition to issue description state."""
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(interaction_id),
+        feedback_kind=kind,
+        issue_description_parts=[],
+        issue_file_ids=[],
+    )
+    await _remove_inline_keyboard(callback)
+    await callback.answer("Спасибо.")
+    if callback.message:
+        await callback.message.answer(
+            "Опишите проблему и приложите скриншоты переписки или "
+            "другие подтверждения. Это поможет разобраться.\n"
+            "👉 Напишите текст, прикрепите фото и нажмите «Отправить».",
+            reply_markup=_issue_send_keyboard(),
+        )
+
+
+async def _handle_feedback_reply(
+    callback: CallbackQuery,
+    kind: str,
+    status_raw: str,
+    updated_interaction: "Interaction",
+    interaction_service: InteractionService,
+    nps_service: NpsService,
+    order_service: OrderService,
+) -> None:
+    """Send reply message for ok/postpone/other status."""
+    await _remove_inline_keyboard(callback)
+    if status_raw == "postpone":
+        max_reached = (
+            updated_interaction.postpone_count
+            >= interaction_service.max_postpone_count
+        )
+        if max_reached:
+            await callback.answer(
+                "Достигнут максимум переносов. "
+                "Статус зафиксирован как 'Не договорились'."
+            )
+            if callback.message:
+                await callback.message.answer("Спасибо за обратную связь.")
+        else:
+            cnt = updated_interaction.postpone_count
+            max_cnt = interaction_service.max_postpone_count
+            await callback.answer(
+                f"Проверка перенесена на 72 ч. Переносов: {cnt}/{max_cnt}"
+            )
+            if callback.message:
+                msg = (
+                    "Хорошо, вернёмся к этому позже 👍 "
+                    "Если заказчик напишет — просто ответьте ему."
+                    if kind == "blog"
+                    else (
+                        "Поняли, вернёмся к этому позже 👍\n"
+                        "ℹ️ Креатор не видит контакты. "
+                        "Связь начинается с вашей стороны."
+                    )
+                )
+                await callback.message.answer(msg)
+        if callback.message and callback.bot:
+            await _maybe_send_nps(
+                kind,
+                updated_interaction,
+                callback.message.chat.id,
+                callback.bot,
+                nps_service,
+                interaction_service,
+                order_service,
+            )
+        return
+
+    if status_raw == "ok":
+        await callback.answer("Спасибо, ответ сохранен.")
+        if callback.message:
+            msg = (
+                "Спасибо за обратную связь 👍 "
+                "Если понадобится помощь — мы на связи."
+                if kind == "blog"
+                else "Спасибо за обратную связь 👍 "
+                "Желаем удачной работы с креатором."
+            )
+            await callback.message.answer(msg)
+    else:
+        await callback.answer("Спасибо, ответ сохранен.")
+        if callback.message:
+            await callback.message.answer("Спасибо за обратную связь.")
+
+    if callback.message and callback.bot:
+        await _maybe_send_nps(
+            kind,
+            updated_interaction,
+            callback.message.chat.id,
+            callback.bot,
+            nps_service,
+            interaction_service,
+            order_service,
+        )
 
 
 async def _maybe_send_nps(
@@ -243,7 +452,7 @@ async def _maybe_send_nps(
     interaction_service: InteractionService,
     order_service: OrderService,
 ) -> None:
-    """Send NPS request if applicable: blogger after first feedback, advertiser after bloggers_needed."""
+    """Send NPS: blogger after first feedback, adv after bloggers_needed."""
     if kind == "blog":
         if await nps_service.exists_for_user(interaction.blogger_id):
             return
@@ -262,6 +471,13 @@ async def _maybe_send_nps(
         )
 
 
+def _get_reason_labels() -> dict[str, str]:
+    """Build reason_key -> label map for no_deal reasons."""
+    labels = {k: label for k, label, _ in _NO_DEAL_REASONS_BLOGGER}
+    labels.update({k: label for k, label, _ in _NO_DEAL_REASONS_ADVERTISER})
+    return labels
+
+
 @router.callback_query(lambda c: c.data and c.data.startswith("fb_r:"))
 async def handle_feedback_reason(
     callback: CallbackQuery,
@@ -272,7 +488,7 @@ async def handle_feedback_reason(
     nps_service: NpsService,
     order_service: OrderService,
 ) -> None:
-    """Handle no_deal reason selection: record feedback or ask for text (Другое)."""
+    """Handle no_deal reason: record feedback or ask for text (Другое)."""
 
     if not callback.data:
         return
@@ -305,10 +521,7 @@ async def handle_feedback_reason(
     if interaction is None:
         await callback.answer("Взаимодействие не найдено.")
         return
-    if kind == "adv" and interaction.advertiser_id != user.user_id:
-        await callback.answer("Недостаточно прав.")
-        return
-    if kind == "blog" and interaction.blogger_id != user.user_id:
+    if not _can_access_interaction(kind, interaction, user.user_id):
         await callback.answer("Недостаточно прав.")
         return
 
@@ -324,36 +537,41 @@ async def handle_feedback_reason(
             await callback.message.answer("Напишите, пожалуйста, причину:")
         return
 
-    reason_labels = {k: label for k, label, _ in _NO_DEAL_REASONS_BLOGGER}
-    reason_labels.update({k: label for k, label, _ in _NO_DEAL_REASONS_ADVERTISER})
+    reason_labels = _get_reason_labels()
     reason_label = reason_labels.get(reason_key, reason_key)
     feedback_text = "❌ Не договорились: " + reason_label
 
+    await _record_reason_feedback(
+        kind,
+        reason_key,
+        interaction_id,
+        feedback_text,
+        interaction,
+        callback,
+        blogger_registration_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+
+
+async def _record_no_deal_other_feedback(
+    kind: str,
+    interaction_id: UUID,
+    text: str,
+    interaction: "Interaction",
+    interaction_service: InteractionService,
+) -> None:
+    """Record no_deal 'other' feedback and send thank you."""
+    feedback_text = "❌ Не договорились: Другое: " + text
     if kind == "adv":
         await interaction_service.record_advertiser_feedback(
             interaction_id, feedback_text
         )
-        if reason_key == "creator_wanted_to_change":
-            await blogger_registration_service.increment_wanted_to_change_terms_count(
-                interaction.blogger_id
-            )
     else:
-        await interaction_service.record_blogger_feedback(interaction_id, feedback_text)
-
-    await _remove_inline_keyboard(callback)
-    await callback.answer("Спасибо, ответ сохранен.")
-    if callback.message:
-        await callback.message.answer("Спасибо за обратную связь.")
-        if callback.bot:
-            await _maybe_send_nps(
-                kind,
-                interaction,
-                callback.message.chat.id,
-                callback.bot,
-                nps_service,
-                interaction_service,
-                order_service,
-            )
+        await interaction_service.record_blogger_feedback(
+            interaction_id, feedback_text
+        )
 
 
 @router.message(FeedbackStates.waiting_no_deal_other)
@@ -365,7 +583,7 @@ async def handle_no_deal_other_text(
     nps_service: NpsService,
     order_service: OrderService,
 ) -> None:
-    """Handle free-text reason for no_deal 'Другое': record feedback and clear state."""
+    """Handle no_deal 'Другое': record feedback and clear state."""
 
     if message.from_user is None:
         return
@@ -387,7 +605,9 @@ async def handle_no_deal_other_text(
     interaction_id_raw = data.get("feedback_interaction_id")
     kind = data.get("feedback_kind")
     if not interaction_id_raw or kind not in ("adv", "blog"):
-        await message.answer("Сессия истекла. Ответьте на вопрос обратной связи снова.")
+        await message.answer(
+            "Сессия истекла. Ответьте на вопрос обратной связи снова."
+        )
         return
 
     try:
@@ -400,20 +620,13 @@ async def handle_no_deal_other_text(
     if interaction is None:
         await message.answer("Взаимодействие не найдено.")
         return
-    if kind == "adv" and interaction.advertiser_id != user.user_id:
-        await message.answer("Недостаточно прав.")
-        return
-    if kind == "blog" and interaction.blogger_id != user.user_id:
+    if not _can_access_interaction(kind, interaction, user.user_id):
         await message.answer("Недостаточно прав.")
         return
 
-    feedback_text = "❌ Не договорились: Другое: " + text
-    if kind == "adv":
-        await interaction_service.record_advertiser_feedback(
-            interaction_id, feedback_text
-        )
-    else:
-        await interaction_service.record_blogger_feedback(interaction_id, feedback_text)
+    await _record_no_deal_other_feedback(
+        kind, interaction_id, text, interaction, interaction_service
+    )
     await message.answer("Спасибо за обратную связь.")
     if message.bot:
         await _maybe_send_nps(
@@ -427,6 +640,105 @@ async def handle_no_deal_other_text(
         )
 
 
+async def _handle_issue_send_button(
+    message: Message,
+    state: FSMContext,
+    interaction_id_raw: str,
+    kind: str,
+    user_role_service: UserRoleService,
+    interaction_service: InteractionService,
+    complaint_service: ComplaintService,
+    nps_service: NpsService,
+    order_service: OrderService,
+) -> bool:
+    """Handle 'Отправить' button: validate and create complaint."""
+    try:
+        interaction_id = UUID(interaction_id_raw)
+    except ValueError:
+        await state.clear()
+        await message.answer("Ошибка. Попробуйте снова.")
+        return True
+    user = await user_role_service.get_user(
+        external_id=str(message.from_user.id) if message.from_user else "",
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await state.clear()
+        return True
+    interaction = await interaction_service.get_interaction(interaction_id)
+    if interaction is None:
+        await state.clear()
+        await message.answer("Взаимодействие не найдено.")
+        return True
+    if not _can_access_interaction(kind, interaction, user.user_id):
+        await state.clear()
+        await message.answer("Недостаточно прав.")
+        return True
+    await _create_complaint_from_issue(
+        message,
+        state,
+        interaction_id,
+        kind,
+        user,
+        interaction,
+        user_role_service,
+        interaction_service,
+        complaint_service,
+        nps_service,
+        order_service,
+    )
+    return True
+
+
+async def _handle_issue_append_content(
+    message: Message,
+    state: FSMContext,
+    text: str,
+    new_file_ids: list[str],
+    interaction_id_raw: str,
+    kind: str,
+    user_role_service: UserRoleService,
+    interaction_service: InteractionService,
+    issue_lock_manager: "IssueDescriptionLockManager",
+) -> None:
+    """Append text/photos to issue and confirm."""
+    user = await user_role_service.get_user(
+        external_id=str(message.from_user.id) if message.from_user else "",
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await state.clear()
+        return
+    try:
+        interaction_id = UUID(interaction_id_raw)
+    except ValueError:
+        await state.clear()
+        await message.answer("Ошибка. Попробуйте снова.")
+        return
+    interaction = await interaction_service.get_interaction(interaction_id)
+    if interaction is None:
+        await state.clear()
+        await message.answer("Взаимодействие не найдено.")
+        return
+    if not _can_access_interaction(kind, interaction, user.user_id):
+        await state.clear()
+        await message.answer("Недостаточно прав.")
+        return
+    user_key = str(message.from_user.id) if message.from_user else ""
+    async with issue_lock_manager.lock(user_key):
+        data = await state.get_data()
+        parts = list(data.get("issue_description_parts") or [])
+        file_ids = list(data.get("issue_file_ids") or [])
+        if text:
+            parts.append(text)
+        file_ids.extend(new_file_ids)
+        await state.update_data(
+            issue_description_parts=parts,
+            issue_file_ids=file_ids,
+        )
+    await message.answer("\u200b", reply_markup=_issue_send_keyboard())
+
+
 @router.message(FeedbackStates.waiting_issue_description)
 async def handle_issue_description(
     message: Message,
@@ -438,13 +750,12 @@ async def handle_issue_description(
     nps_service: NpsService,
     order_service: OrderService,
 ) -> None:
-    """Collect issue description and photos; complaint created on 'Отправить' button."""
+    """Collect issue description/photos; complaint on 'Отправить' button."""
 
     if message.from_user is None:
         return
     text = (message.text or message.caption or "").strip()
     photos = getattr(message, "photo", None)
-    # Telegram sends multiple sizes (smallest to largest); take the largest only
     new_file_ids = [photos[-1].file_id] if photos else []
 
     data = await state.get_data()
@@ -452,43 +763,17 @@ async def handle_issue_description(
     kind = data.get("feedback_kind")
     if not interaction_id_raw or kind not in ("adv", "blog"):
         await state.clear()
-        await message.answer("Сессия истекла. Ответьте на вопрос обратной связи снова.")
+        await message.answer(
+            "Сессия истекла. Ответьте на вопрос обратной связи снова."
+        )
         return
 
     if text == _ISSUE_SEND_BUTTON_TEXT:
-        try:
-            interaction_id = UUID(interaction_id_raw)
-        except ValueError:
-            await state.clear()
-            await message.answer("Ошибка. Попробуйте снова.")
-            return
-        user = await user_role_service.get_user(
-            external_id=str(message.from_user.id),
-            messenger_type=MessengerType.TELEGRAM,
-        )
-        if user is None:
-            await state.clear()
-            return
-        interaction = await interaction_service.get_interaction(interaction_id)
-        if interaction is None:
-            await state.clear()
-            await message.answer("Взаимодействие не найдено.")
-            return
-        if kind == "adv" and interaction.advertiser_id != user.user_id:
-            await state.clear()
-            await message.answer("Недостаточно прав.")
-            return
-        if kind == "blog" and interaction.blogger_id != user.user_id:
-            await state.clear()
-            await message.answer("Недостаточно прав.")
-            return
-        await _create_complaint_from_issue(
+        await _handle_issue_send_button(
             message,
             state,
-            interaction_id,
+            interaction_id_raw,
             kind,
-            user,
-            interaction,
             user_role_service,
             interaction_service,
             complaint_service,
@@ -498,66 +783,22 @@ async def handle_issue_description(
         return
 
     if not text and not new_file_ids:
-        try:
-            interaction_id = UUID(interaction_id_raw)
-            await message.answer(
-                "Добавьте описание или фото, затем нажмите «Отправить».",
-                reply_markup=_issue_send_keyboard(),
-            )
-        except ValueError:
-            await message.answer(
-                "Добавьте описание или фото, затем нажмите «Отправить»."
-            )
-        return
-
-    user = await user_role_service.get_user(
-        external_id=str(message.from_user.id),
-        messenger_type=MessengerType.TELEGRAM,
-    )
-    if user is None:
-        await state.clear()
-        return
-
-    try:
-        interaction_id = UUID(interaction_id_raw)
-    except ValueError:
-        await state.clear()
-        await message.answer("Ошибка. Попробуйте снова.")
-        return
-
-    interaction = await interaction_service.get_interaction(interaction_id)
-    if interaction is None:
-        await state.clear()
-        await message.answer("Взаимодействие не найдено.")
-        return
-    if kind == "adv" and interaction.advertiser_id != user.user_id:
-        await state.clear()
-        await message.answer("Недостаточно прав.")
-        return
-    if kind == "blog" and interaction.blogger_id != user.user_id:
-        await state.clear()
-        await message.answer("Недостаточно прав.")
-        return
-
-    user_key = str(message.from_user.id)
-    async with issue_lock_manager.lock(user_key):
-        # Re-read state so we see updates from other parallel messages (e.g. media group)
-        data = await state.get_data()
-        parts = list(data.get("issue_description_parts") or [])
-        file_ids = list(data.get("issue_file_ids") or [])
-
-        if text:
-            parts.append(text)
-        file_ids.extend(new_file_ids)
-
-        await state.update_data(
-            issue_description_parts=parts,
-            issue_file_ids=file_ids,
+        await message.answer(
+            "Добавьте описание или фото, затем нажмите «Отправить».",
+            reply_markup=_issue_send_keyboard(),
         )
+        return
 
-    await message.answer(
-        "\u200b",
-        reply_markup=_issue_send_keyboard(),
+    await _handle_issue_append_content(
+        message,
+        state,
+        text,
+        new_file_ids,
+        interaction_id_raw,
+        kind,
+        user_role_service,
+        interaction_service,
+        issue_lock_manager,
     )
 
 
@@ -591,7 +832,9 @@ async def _create_complaint_from_issue(
     reason += " [из фидбека: проблема/мошенничество]"
 
     reporter_id = user.user_id
-    reported_id = interaction.blogger_id if kind == "adv" else interaction.advertiser_id
+    reported_id = (
+        interaction.blogger_id if kind == "adv" else interaction.advertiser_id
+    )
 
     try:
         complaint = await complaint_service.create_complaint(
@@ -617,7 +860,7 @@ async def _create_complaint_from_issue(
         )
         await state.clear()
         await message.answer(
-            "Произошла ошибка при создании заявки. Пожалуйста, попробуйте снова "
+            "Произошла ошибка при создании заявки. Попробуйте снова "
             "или обратитесь в поддержку через меню.",
             reply_markup=ReplyKeyboardRemove(),
         )
@@ -629,7 +872,9 @@ async def _create_complaint_from_issue(
             interaction_id, feedback_text
         )
     else:
-        await interaction_service.record_blogger_feedback(interaction_id, feedback_text)
+        await interaction_service.record_blogger_feedback(
+            interaction_id, feedback_text
+        )
 
     await state.clear()
     await message.answer(
@@ -657,7 +902,7 @@ async def handle_nps(
     user_role_service: UserRoleService,
     nps_service: NpsService,
 ) -> None:
-    """Handle NPS score selection (1-5); show branch-specific prompt, transition to comment."""
+    """Handle NPS score (1-5); show branch prompt, transition to comment."""
 
     if not callback.data:
         return
@@ -756,6 +1001,88 @@ async def handle_nps_comment(
     )
 
 
+async def _handle_feedback_status_flow(
+    callback: CallbackQuery,
+    state: FSMContext,
+    kind: str,
+    interaction_id: UUID,
+    status_raw: str,
+    feedback_text: str,
+    user_role_service: UserRoleService,
+    interaction_service: InteractionService,
+    nps_service: NpsService,
+    order_service: OrderService,
+) -> None:
+    """Get user, validate access, then handle ok/postpone/issue."""
+    user = await get_user_and_ensure_allowed_callback(
+        callback,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные пользователи не могут оставлять отзыв.",
+        pause_msg="Пользователи на паузе не могут оставлять отзыв.",
+    )
+    if user is None:
+        return
+    try:
+        interaction = await interaction_service.get_interaction(interaction_id)
+        if interaction is None:
+            await callback.answer("Взаимодействие не найдено.")
+            return
+        if not _can_access_interaction(kind, interaction, user.user_id):
+            await callback.answer("Недостаточно прав.")
+            return
+        await _handle_feedback_ok_postpone_issue(
+            callback,
+            state,
+            kind,
+            interaction_id,
+            status_raw,
+            feedback_text,
+            user,
+            interaction_service,
+            nps_service,
+            order_service,
+        )
+    except Exception:
+        await callback.answer("Произошла ошибка. Попробуйте позже.")
+        return
+
+
+async def _handle_feedback_ok_postpone_issue(
+    callback: CallbackQuery,
+    state: FSMContext,
+    kind: str,
+    interaction_id: UUID,
+    status_raw: str,
+    feedback_text: str,
+    user: "User",
+    interaction_service: InteractionService,
+    nps_service: NpsService,
+    order_service: OrderService,
+) -> None:
+    """Handle ok/postpone/issue: record or transition to issue flow."""
+    if status_raw == "issue":
+        await _handle_feedback_issue(callback, state, kind, interaction_id)
+        return
+    if kind == "adv":
+        updated = await interaction_service.record_advertiser_feedback(
+            interaction_id, feedback_text
+        )
+    else:
+        updated = await interaction_service.record_blogger_feedback(
+            interaction_id, feedback_text
+        )
+    await _handle_feedback_reply(
+        callback,
+        kind,
+        status_raw,
+        updated,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+
+
 @router.callback_query(
     lambda callback: callback.data and callback.data.startswith("feedback:")
 )
@@ -785,37 +1112,13 @@ async def handle_feedback(
         except ValueError:
             await callback.answer("Неверный идентификатор.")
             return
-        user = await get_user_and_ensure_allowed_callback(
+        await _handle_feedback_no_deal(
             callback,
+            kind,
+            interaction_id,
             user_role_service,
-            user_not_found_msg="Пользователь не найден.",
-            blocked_msg="Заблокированные пользователи не могут оставлять отзыв.",
-            pause_msg="Пользователи на паузе не могут оставлять отзыв.",
+            interaction_service,
         )
-        if user is None:
-            return
-        interaction = await interaction_service.get_interaction(interaction_id)
-        if interaction is None:
-            await callback.answer("Взаимодействие не найдено.")
-            return
-        if kind == "adv" and interaction.advertiser_id != user.user_id:
-            await callback.answer("Недостаточно прав.")
-            return
-        if kind == "blog" and interaction.blogger_id != user.user_id:
-            await callback.answer("Недостаточно прав.")
-            return
-        await _remove_inline_keyboard(callback)
-        await callback.answer()
-        if callback.message:
-            question = (
-                "Подскажите, пожалуйста, по какой причине не удалось договориться?"
-                if kind == "blog"
-                else "По какой причине не удалось договориться?"
-            )
-            await callback.message.answer(
-                question,
-                reply_markup=_no_deal_reason_keyboard(kind, interaction_id),
-            )
         return
 
     feedback_text = _FEEDBACK_TEXT_MAP.get(status_raw)
@@ -829,144 +1132,15 @@ async def handle_feedback(
         await callback.answer("Неверный идентификатор.")
         return
 
-    user = await get_user_and_ensure_allowed_callback(
+    await _handle_feedback_status_flow(
         callback,
+        state,
+        kind,
+        interaction_id,
+        status_raw,
+        feedback_text,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные пользователи не могут оставлять отзыв.",
-        pause_msg="Пользователи на паузе не могут оставлять отзыв.",
+        interaction_service,
+        nps_service,
+        order_service,
     )
-    if user is None:
-        return
-
-    try:
-        interaction = await interaction_service.get_interaction(interaction_id)
-        if interaction is None:
-            await callback.answer("Взаимодействие не найдено.")
-            return
-
-        if kind == "adv" and interaction.advertiser_id != user.user_id:
-            await callback.answer("Недостаточно прав.")
-            return
-        if kind == "blog" and interaction.blogger_id != user.user_id:
-            await callback.answer("Недостаточно прав.")
-            return
-
-        if status_raw == "issue":
-            await state.set_state(FeedbackStates.waiting_issue_description)
-            await state.update_data(
-                feedback_interaction_id=str(interaction_id),
-                feedback_kind=kind,
-                issue_description_parts=[],
-                issue_file_ids=[],
-            )
-            await _remove_inline_keyboard(callback)
-            await callback.answer("Спасибо.")
-            if callback.message:
-                await callback.message.answer(
-                    "Опишите, пожалуйста, проблему и приложите скриншоты переписки или "
-                    "другие подтверждения. Это поможет нам разобраться в ситуации и принять меры.\n"
-                    "👉 Напишите текст, прикрепите фото и нажмите «Отправить».",
-                    reply_markup=_issue_send_keyboard(),
-                )
-            return
-
-        if kind == "adv":
-            updated_interaction = await interaction_service.record_advertiser_feedback(
-                interaction_id, feedback_text
-            )
-        else:
-            updated_interaction = await interaction_service.record_blogger_feedback(
-                interaction_id, feedback_text
-            )
-
-        if status_raw == "postpone":
-            await _remove_inline_keyboard(callback)
-            if (
-                updated_interaction.postpone_count
-                >= interaction_service.max_postpone_count
-            ):
-                await callback.answer(
-                    "Достигнут максимум переносов. Статус зафиксирован как 'Не договорились'."
-                )
-                if callback.message:
-                    await callback.message.answer("Спасибо за обратную связь.")
-                    if callback.bot:
-                        await _maybe_send_nps(
-                            kind,
-                            updated_interaction,
-                            callback.message.chat.id,
-                            callback.bot,
-                            nps_service,
-                            interaction_service,
-                            order_service,
-                        )
-            else:
-                await callback.answer(
-                    f"Проверка перенесена на 72 часа. "
-                    f"Переносов: {updated_interaction.postpone_count}/{interaction_service.max_postpone_count}"
-                )
-                if callback.message:
-                    if kind == "blog":
-                        await callback.message.answer(
-                            "Хорошо, вернёмся к этому позже 👍 "
-                            "Если заказчик напишет — просто ответьте ему."
-                        )
-                    else:
-                        await callback.message.answer(
-                            "Поняли, вернёмся к этому позже 👍\n"
-                            "ℹ️ Напоминаем: креатор не видит ваши контакты и не может "
-                            "написать первым. Связь всегда начинается с вашей стороны."
-                        )
-                    if callback.bot:
-                        await _maybe_send_nps(
-                            kind,
-                            updated_interaction,
-                            callback.message.chat.id,
-                            callback.bot,
-                            nps_service,
-                            interaction_service,
-                            order_service,
-                        )
-        elif status_raw == "ok":
-            await _remove_inline_keyboard(callback)
-            await callback.answer("Спасибо, ответ сохранен.")
-            if callback.message:
-                if kind == "blog":
-                    await callback.message.answer(
-                        "Спасибо за обратную связь 👍 "
-                        "Если понадобится помощь — мы на связи."
-                    )
-                else:
-                    await callback.message.answer(
-                        "Спасибо за обратную связь 👍 "
-                        "Желаем удачной работы с креатором."
-                    )
-                if callback.bot:
-                    await _maybe_send_nps(
-                        kind,
-                        updated_interaction,
-                        callback.message.chat.id,
-                        callback.bot,
-                        nps_service,
-                        interaction_service,
-                        order_service,
-                    )
-        else:
-            await _remove_inline_keyboard(callback)
-            await callback.answer("Спасибо, ответ сохранен.")
-            if callback.message:
-                await callback.message.answer("Спасибо за обратную связь.")
-                if callback.bot:
-                    await _maybe_send_nps(
-                        kind,
-                        updated_interaction,
-                        callback.message.chat.id,
-                        callback.bot,
-                        nps_service,
-                        interaction_service,
-                        order_service,
-                    )
-    except Exception:
-        await callback.answer("Произошла ошибка. Попробуйте позже.")
-        return

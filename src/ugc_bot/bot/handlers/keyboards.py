@@ -60,7 +60,7 @@ def with_support_keyboard(
 
 
 def creator_start_keyboard() -> ReplyKeyboardMarkup:
-    """Keyboard for creator right after role selection: single Create profile button."""
+    """Keyboard for creator after role: single Create profile button."""
 
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=CREATE_PROFILE_BUTTON_TEXT)]],
@@ -72,7 +72,7 @@ def creator_start_keyboard() -> ReplyKeyboardMarkup:
 def creator_filled_profile_keyboard(
     one_time_keyboard: bool = False,
 ) -> ReplyKeyboardMarkup:
-    """Keyboard for creator with filled profile: Edit profile, My profile, My orders."""
+    """Keyboard for creator with filled profile: Edit, Profile, Orders."""
 
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -87,7 +87,7 @@ def creator_filled_profile_keyboard(
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Build a persistent main menu keyboard (Support, Change role)."""
+    """Build persistent main menu (Support, Change role)."""
 
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -120,7 +120,9 @@ def advertiser_start_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def advertiser_menu_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
+def advertiser_menu_keyboard(
+    one_time_keyboard: bool = True,
+) -> ReplyKeyboardMarkup:
     """Build a reply keyboard for advertiser actions."""
 
     return ReplyKeyboardMarkup(
@@ -159,7 +161,7 @@ def blogger_menu_keyboard(
     Args:
         confirmed: Whether Instagram account is verified
         one_time_keyboard: Whether to hide keyboard after use
-        verification_started: If True, do not show verification button (user already requested code)
+        verification_started: If True, no verification btn (already requested)
     """
     keyboard = []
 
@@ -176,7 +178,7 @@ def blogger_menu_keyboard(
 
 
 def blogger_after_registration_keyboard() -> ReplyKeyboardMarkup:
-    """Keyboard shown right after profile creation: Confirm Instagram + My profile."""
+    """Keyboard after profile creation: Confirm Instagram + My profile."""
 
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -189,7 +191,7 @@ def blogger_after_registration_keyboard() -> ReplyKeyboardMarkup:
 
 
 def blogger_verification_sent_keyboard() -> ReplyKeyboardMarkup:
-    """Keyboard after verification code sent: only My profile (no verification button)."""
+    """Keyboard after code sent: only My profile (no verification button)."""
 
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=MY_PROFILE_BUTTON_TEXT)]],
@@ -199,7 +201,7 @@ def blogger_verification_sent_keyboard() -> ReplyKeyboardMarkup:
 
 
 def blogger_profile_view_keyboard(confirmed: bool) -> ReplyKeyboardMarkup:
-    """Keyboard when viewing My profile: Edit profile + My profile, and Confirm Instagram if not confirmed."""
+    """Keyboard for My profile: Edit, Confirm Instagram if not confirmed."""
 
     keyboard = [[KeyboardButton(text=EDIT_PROFILE_BUTTON_TEXT)]]
     if not confirmed:

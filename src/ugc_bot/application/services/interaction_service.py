@@ -6,16 +6,19 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from ugc_bot.application.errors import InteractionError, InteractionNotFoundError
+from ugc_bot.application.errors import (
+    InteractionError,
+    InteractionNotFoundError,
+)
 from ugc_bot.application.feedback_utils import (
     needs_feedback_reminder,
     next_reminder_datetime,
 )
 from ugc_bot.application.ports import InteractionRepository, TransactionManager
 from ugc_bot.config import FeedbackConfig
-from ugc_bot.infrastructure.db.session import with_optional_tx
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,7 @@ class InteractionService:
     async def _get_by_participants(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Interaction | None:
-        """Fetch interaction by participants using an optional transaction boundary."""
+        """Fetch interaction by participants (optional transaction boundary)."""
 
         async def _run(session: object | None):
             return await self.interaction_repo.get_by_participants(
@@ -69,12 +72,16 @@ class InteractionService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def list_interactions_by_order(self, order_id: UUID) -> list[Interaction]:
+    async def list_interactions_by_order(
+        self, order_id: UUID
+    ) -> list[Interaction]:
         """List interactions for order within a transaction boundary."""
 
         async def _run(session: object | None):
             return list(
-                await self.interaction_repo.list_by_order(order_id, session=session)
+                await self.interaction_repo.list_by_order(
+                    order_id, session=session
+                )
             )
 
         return await with_optional_tx(self.transaction_manager, _run)
@@ -82,7 +89,7 @@ class InteractionService:
     async def create_for_contacts_sent(
         self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
     ) -> Interaction:
-        """Create interaction when contacts are sent, with initial next_check_at."""
+        """Create interaction when contacts sent, with initial next_check_at."""
 
         now = datetime.now(timezone.utc)
         next_check = now + timedelta(minutes=self.postpone_delay_minutes)
@@ -106,7 +113,7 @@ class InteractionService:
     async def schedule_next_reminder(
         self, interaction_id: UUID, next_check_at: datetime
     ) -> None:
-        """Set next_check_at for an interaction (e.g. next 10:00 after sending feedback request)."""
+        """Set next_check_at (e.g. next 10:00 after feedback request)."""
 
         interaction = await self._get_by_id(interaction_id)
         if interaction is None:
@@ -132,7 +139,9 @@ class InteractionService:
         """Fetch existing interaction or create a new one."""
 
         existing = await self._get_by_participants(
-            order_id=order_id, blogger_id=blogger_id, advertiser_id=advertiser_id
+            order_id=order_id,
+            blogger_id=blogger_id,
+            advertiser_id=advertiser_id,
         )
         if existing is not None:
             return existing
@@ -230,8 +239,12 @@ class InteractionService:
         if interaction.postpone_count >= self.max_postpone_count:
             outcome = InteractionStatus.NO_DEAL
 
-        final_status = self._aggregate(interaction.from_advertiser, feedback_text)
-        other_needs_reminder = needs_feedback_reminder(interaction.from_advertiser)
+        final_status = self._aggregate(
+            interaction.from_advertiser, feedback_text
+        )
+        other_needs_reminder = needs_feedback_reminder(
+            interaction.from_advertiser
+        )
         if other_needs_reminder:
             effective_status = InteractionStatus.PENDING
             next_check = (
@@ -273,7 +286,7 @@ class InteractionService:
     async def _postpone_interaction(
         self, interaction: Interaction, side: str, feedback_text: str
     ) -> Interaction:
-        """Postpone interaction check by configured delay (postpone_delay_minutes).
+        """Postpone check by configured delay (postpone_delay_minutes).
 
         When the other side has not responded yet, use next 24h reminder time
         so they continue receiving reminders. Only use 72h delay when both
@@ -373,19 +386,24 @@ class InteractionService:
             else None
         )
         blog = (
-            InteractionService._parse_feedback(from_blogger) if from_blogger else None
+            InteractionService._parse_feedback(from_blogger)
+            if from_blogger
+            else None
         )
 
-        # If either side has ISSUE, result is ISSUE (even if other side hasn't responded)
+        # ISSUE from either side => ISSUE (even if other hasn't responded)
         if adv == InteractionStatus.ISSUE or blog == InteractionStatus.ISSUE:
             return InteractionStatus.ISSUE
 
-        # If either side has OK, result is OK (even if other side hasn't responded)
+        # OK from either side => OK (even if other hasn't responded)
         if adv == InteractionStatus.OK or blog == InteractionStatus.OK:
             return InteractionStatus.OK
 
         # If either side chose PENDING (explicit postpone), result is PENDING
-        if adv == InteractionStatus.PENDING or blog == InteractionStatus.PENDING:
+        if (
+            adv == InteractionStatus.PENDING
+            or blog == InteractionStatus.PENDING
+        ):
             return InteractionStatus.PENDING
 
         # If only one side responded with NO_DEAL, wait for other side (PENDING)
@@ -395,7 +413,10 @@ class InteractionService:
             return InteractionStatus.PENDING
 
         # If both sides have NO_DEAL, result is NO_DEAL
-        if adv == InteractionStatus.NO_DEAL and blog == InteractionStatus.NO_DEAL:
+        if (
+            adv == InteractionStatus.NO_DEAL
+            and blog == InteractionStatus.NO_DEAL
+        ):
             return InteractionStatus.NO_DEAL
 
         # Default to PENDING if neither side responded
@@ -409,7 +430,10 @@ class InteractionService:
     ) -> Interaction:
         """Manually resolve ISSUE interaction with final status."""
 
-        if final_status not in (InteractionStatus.OK, InteractionStatus.NO_DEAL):
+        if final_status not in (
+            InteractionStatus.OK,
+            InteractionStatus.NO_DEAL,
+        ):
             raise InteractionError(
                 "Final status must be OK or NO_DEAL for manual resolution."
             )

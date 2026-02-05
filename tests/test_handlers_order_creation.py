@@ -5,17 +5,32 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.services.user_role_service import UserRoleService
+from tests.helpers.factories import create_test_advertiser_profile
+from tests.helpers.fakes import (
+    FakeBot,
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakePhotoSize,
+    FakeUser,
+    RecordingFsmDraftService,
+)
+from tests.helpers.services import (
+    build_contact_pricing_service,
+    build_order_service,
+    build_profile_service,
+)
 from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     RESUME_DRAFT_BUTTON_TEXT,
     START_OVER_BUTTON_TEXT,
 )
 from ugc_bot.bot.handlers.order_creation import (
+    CONTENT_USAGE_BOTH,
     COOP_BARTER,
     COOP_BOTH,
     COOP_PAYMENT,
-    CONTENT_USAGE_BOTH,
     DEADLINES_7,
     ORDER_PHOTO_ADD,
     ORDER_PHOTO_SKIP,
@@ -39,21 +54,6 @@ from ugc_bot.bot.handlers.order_creation import (
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import FsmDraft
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
-from tests.helpers.fakes import (
-    FakeBot,
-    FakeFSMContext,
-    FakeFsmDraftService,
-    FakeMessage,
-    FakePhotoSize,
-    FakeUser,
-    RecordingFsmDraftService,
-)
-from tests.helpers.factories import create_test_advertiser_profile
-from tests.helpers.services import (
-    build_contact_pricing_service,
-    build_order_service,
-    build_profile_service,
-)
 
 # Valid offer text: min 20 chars per validator
 VALID_OFFER_TEXT = "Видео с распаковкой продукта и личным отзывом."
@@ -67,7 +67,9 @@ async def test_start_order_creation_requires_role(
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
@@ -86,7 +88,10 @@ async def test_start_order_creation_requires_role(
 async def test_order_creation_flow_new_advertiser(
     user_repo, advertiser_repo, order_repo, pricing_repo
 ) -> None:
-    """Full flow: order_type -> offer_text -> cooperation (Оплата) -> price -> bloggers -> product_link -> content_usage -> deadlines -> geography."""
+    """Flow: order_type -> offer_text -> cooperation -> price -> product_link.
+
+    Then content_usage, deadlines, geography.
+    """
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
@@ -96,7 +101,9 @@ async def test_order_creation_flow_new_advertiser(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     message = FakeMessage(text=None, user=FakeUser(5, "adv", "Adv"))
     state = FakeFSMContext()
@@ -110,19 +117,28 @@ async def test_order_creation_flow_new_advertiser(
     )
     assert "Что вам нужно?" in message.answers[0]
 
-    await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
-    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
-    await handle_cooperation_format(FakeMessage(text=COOP_PAYMENT, user=None), state)
+    await handle_order_type(
+        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state
+    )
+    await handle_offer_text(
+        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+    )
+    await handle_cooperation_format(
+        FakeMessage(text=COOP_PAYMENT, user=None), state
+    )
     await handle_price(FakeMessage(text="1000", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
     await handle_product_link(
-        FakeMessage(text="https://example.com", user=FakeUser(5, "adv", "Adv")), state
+        FakeMessage(text="https://example.com", user=FakeUser(5, "adv", "Adv")),
+        state,
     )
     await handle_order_photo(
-        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(5, "adv", "Adv")), state
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(5, "adv", "Adv")),
+        state,
     )
     await handle_content_usage(
-        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(5, "adv", "Adv")), state
+        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(5, "adv", "Adv")),
+        state,
     )
     await handle_deadlines(
         FakeMessage(text=DEADLINES_7, user=FakeUser(5, "adv", "Adv")), state
@@ -136,9 +152,13 @@ async def test_order_creation_flow_new_advertiser(
         }
     )
     bot = FakeBot()
-    pricing_service = await build_contact_pricing_service({3: 1500.0}, pricing_repo)
+    pricing_service = await build_contact_pricing_service(
+        {3: 1500.0}, pricing_repo
+    )
     await handle_geography(
-        FakeMessage(text="Казань, Москва", user=FakeUser(5, "adv", "Adv"), bot=bot),
+        FakeMessage(
+            text="Казань, Москва", user=FakeUser(5, "adv", "Adv"), bot=bot
+        ),
         state,
         order_service,
         config,
@@ -152,7 +172,7 @@ async def test_order_creation_flow_new_advertiser(
 async def test_order_creation_flow_with_barter(
     user_repo, advertiser_repo, order_repo, pricing_repo
 ) -> None:
-    """Flow with barter: order_type -> offer_text -> cooperation (Бартер) -> barter -> bloggers -> product_link."""
+    """Flow with barter: order_type -> offer_text -> cooperation -> barter."""
 
     from tests.helpers.factories import create_test_order
 
@@ -164,7 +184,9 @@ async def test_order_creation_flow_with_barter(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
     await create_test_order(
         order_repo,
         user.user_id,
@@ -187,21 +209,30 @@ async def test_order_creation_flow_with_barter(
         FakeFsmDraftService(),
     )
 
-    await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
-    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
-    await handle_cooperation_format(FakeMessage(text=COOP_BARTER, user=None), state)
+    await handle_order_type(
+        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state
+    )
+    await handle_offer_text(
+        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+    )
+    await handle_cooperation_format(
+        FakeMessage(text=COOP_BARTER, user=None), state
+    )
     await handle_barter_description(
         FakeMessage(text="Barter product with delivery", user=None), state
     )
     await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
     await handle_product_link(
-        FakeMessage(text="https://example.com", user=FakeUser(6, "adv", "Adv")), state
+        FakeMessage(text="https://example.com", user=FakeUser(6, "adv", "Adv")),
+        state,
     )
     await handle_order_photo(
-        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(6, "adv", "Adv")), state
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(6, "adv", "Adv")),
+        state,
     )
     await handle_content_usage(
-        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(6, "adv", "Adv")), state
+        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(6, "adv", "Adv")),
+        state,
     )
     await handle_deadlines(
         FakeMessage(text=DEADLINES_7, user=FakeUser(6, "adv", "Adv")), state
@@ -215,7 +246,9 @@ async def test_order_creation_flow_with_barter(
         }
     )
     bot = FakeBot()
-    pricing_service = await build_contact_pricing_service({5: 2500.0}, pricing_repo)
+    pricing_service = await build_contact_pricing_service(
+        {5: 2500.0}, pricing_repo
+    )
     await handle_geography(
         FakeMessage(text="РФ", user=FakeUser(6, "adv", "Adv"), bot=bot),
         state,
@@ -240,7 +273,9 @@ async def test_start_order_creation_no_advertiser_profile(
         messenger_type=MessengerType.TELEGRAM,
         username="no_adv",
     )
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     message = FakeMessage(text=None, user=FakeUser(8, "no_adv", "User"))
     state = FakeFSMContext()
@@ -269,7 +304,9 @@ async def test_start_order_creation_blocked_user(
     from tests.helpers.factories import create_test_user
 
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
     await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000701"),
@@ -337,13 +374,19 @@ async def test_start_order_creation_with_draft(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     draft = FsmDraft(
         user_id=user.user_id,
         flow_type="order_creation",
         state_key="OrderCreationStates:cooperation_format",
-        data={"user_id": user.user_id, "order_type": "ugc_only", "offer_text": "Draft"},
+        data={
+            "user_id": user.user_id,
+            "order_type": "ugc_only",
+            "offer_text": "Draft",
+        },
         updated_at=datetime.now(timezone.utc),
     )
     draft_service = RecordingFsmDraftService(draft_to_return=draft)
@@ -352,7 +395,12 @@ async def test_start_order_creation_with_draft(
     state = FakeFSMContext()
 
     await start_order_creation(
-        message, state, user_service, profile_service, order_service, draft_service
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        draft_service,
     )
 
     assert message.answers
@@ -422,7 +470,9 @@ async def test_order_draft_choice_start_over(
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
 
     draft_service = RecordingFsmDraftService(draft_to_return=None)
-    message = FakeMessage(text=START_OVER_BUTTON_TEXT, user=FakeUser(12, "adv", "Adv"))
+    message = FakeMessage(
+        text=START_OVER_BUTTON_TEXT, user=FakeUser(12, "adv", "Adv")
+    )
     state = FakeFSMContext()
     state._data = {"user_id": user.user_id}
     state.state = OrderCreationStates.choosing_draft_restore
@@ -505,7 +555,9 @@ async def test_order_creation_flow_coop_both(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     message = FakeMessage(text=None, user=FakeUser(13, "adv", "Adv"))
     state = FakeFSMContext()
@@ -518,22 +570,33 @@ async def test_order_creation_flow_coop_both(
         FakeFsmDraftService(),
     )
 
-    await handle_order_type(FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state)
-    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
-    await handle_cooperation_format(FakeMessage(text=COOP_BOTH, user=None), state)
+    await handle_order_type(
+        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state
+    )
+    await handle_offer_text(
+        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+    )
+    await handle_cooperation_format(
+        FakeMessage(text=COOP_BOTH, user=None), state
+    )
     await handle_price(FakeMessage(text="1500", user=None), state)
     await handle_barter_description(
         FakeMessage(text="Product + delivery", user=None), state
     )
     await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
     await handle_product_link(
-        FakeMessage(text="https://example.com", user=FakeUser(13, "adv", "Adv")), state
+        FakeMessage(
+            text="https://example.com", user=FakeUser(13, "adv", "Adv")
+        ),
+        state,
     )
     await handle_order_photo(
-        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(13, "adv", "Adv")), state
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(13, "adv", "Adv")),
+        state,
     )
     await handle_content_usage(
-        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(13, "adv", "Adv")), state
+        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(13, "adv", "Adv")),
+        state,
     )
     await handle_deadlines(
         FakeMessage(text=DEADLINES_7, user=FakeUser(13, "adv", "Adv")), state
@@ -547,7 +610,9 @@ async def test_order_creation_flow_coop_both(
         }
     )
     bot = FakeBot()
-    pricing_service = await build_contact_pricing_service({5: 2500.0}, pricing_repo)
+    pricing_service = await build_contact_pricing_service(
+        {5: 2500.0}, pricing_repo
+    )
     await handle_geography(
         FakeMessage(text="Москва", user=FakeUser(13, "adv", "Adv"), bot=bot),
         state,
@@ -611,7 +676,7 @@ async def test_handle_order_photo_skip() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_order_photo_add_then_photo() -> None:
-    """When user sends photo after Add, save file_id and proceed to content_usage."""
+    """User sends photo after Add: save file_id, proceed to content_usage."""
     state = FakeFSMContext()
     state._data = {"product_link": "https://example.com"}
     state.state = OrderCreationStates.order_photo
@@ -690,7 +755,9 @@ async def test_handle_geography_empty(
             "TELEGRAM_PROVIDER_TOKEN": "provider",
         }
     )
-    pricing_service = await build_contact_pricing_service({3: 1500.0}, pricing_repo)
+    pricing_service = await build_contact_pricing_service(
+        {3: 1500.0}, pricing_repo
+    )
 
     state = FakeFSMContext()
     state._data = {
@@ -706,7 +773,9 @@ async def test_handle_geography_empty(
     }
     message = FakeMessage(text="   ", user=FakeUser(1))
 
-    await handle_geography(message, state, order_service, config, pricing_service)
+    await handle_geography(
+        message, state, order_service, config, pricing_service
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -750,11 +819,17 @@ async def test_handle_geography_invalid_order_type(
         }
     )
     bot = FakeBot()
-    pricing_service = await build_contact_pricing_service({3: 1500.0}, pricing_repo)
+    pricing_service = await build_contact_pricing_service(
+        {3: 1500.0}, pricing_repo
+    )
 
-    message = FakeMessage(text="Москва", user=FakeUser(15, "adv", "Adv"), bot=bot)
+    message = FakeMessage(
+        text="Москва", user=FakeUser(15, "adv", "Adv"), bot=bot
+    )
 
-    await handle_geography(message, state, order_service, config, pricing_service)
+    await handle_geography(
+        message, state, order_service, config, pricing_service
+    )
 
     assert len(order_repo.orders) == 1
     order = list(order_repo.orders.values())[0]
@@ -777,7 +852,9 @@ async def test_order_creation_flow_ugc_plus_placement(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    profile_service = build_profile_service(user_repo, advertiser_repo=advertiser_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     message = FakeMessage(text=None, user=FakeUser(16, "adv", "Adv"))
     state = FakeFSMContext()
@@ -792,18 +869,27 @@ async def test_order_creation_flow_ugc_plus_placement(
     await handle_order_type(
         FakeMessage(text=ORDER_TYPE_UGC_PLUS_PLACEMENT, user=None), state
     )
-    await handle_offer_text(FakeMessage(text=VALID_OFFER_TEXT, user=None), state)
-    await handle_cooperation_format(FakeMessage(text=COOP_PAYMENT, user=None), state)
+    await handle_offer_text(
+        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+    )
+    await handle_cooperation_format(
+        FakeMessage(text=COOP_PAYMENT, user=None), state
+    )
     await handle_price(FakeMessage(text="1000", user=None), state)
     await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
     await handle_product_link(
-        FakeMessage(text="https://example.com", user=FakeUser(16, "adv", "Adv")), state
+        FakeMessage(
+            text="https://example.com", user=FakeUser(16, "adv", "Adv")
+        ),
+        state,
     )
     await handle_order_photo(
-        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(16, "adv", "Adv")), state
+        FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(16, "adv", "Adv")),
+        state,
     )
     await handle_content_usage(
-        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(16, "adv", "Adv")), state
+        FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(16, "adv", "Adv")),
+        state,
     )
     await handle_deadlines(
         FakeMessage(text=DEADLINES_7, user=FakeUser(16, "adv", "Adv")), state
@@ -817,7 +903,9 @@ async def test_order_creation_flow_ugc_plus_placement(
         }
     )
     bot = FakeBot()
-    pricing_service = await build_contact_pricing_service({3: 1500.0}, pricing_repo)
+    pricing_service = await build_contact_pricing_service(
+        {3: 1500.0}, pricing_repo
+    )
     await handle_geography(
         FakeMessage(text="Казань", user=FakeUser(16, "adv", "Adv"), bot=bot),
         state,
@@ -847,7 +935,9 @@ async def test_handle_geography_session_expired(
             "TELEGRAM_PROVIDER_TOKEN": "provider",
         }
     )
-    pricing_service = await build_contact_pricing_service({3: 1500.0}, pricing_repo)
+    pricing_service = await build_contact_pricing_service(
+        {3: 1500.0}, pricing_repo
+    )
 
     state = FakeFSMContext()
     state._data = {
@@ -862,7 +952,9 @@ async def test_handle_geography_session_expired(
     }
     message = FakeMessage(text="Москва", user=FakeUser(1))
 
-    await handle_geography(message, state, order_service, config, pricing_service)
+    await handle_geography(
+        message, state, order_service, config, pricing_service
+    )
 
     assert message.answers
     assert "Сессия истекла" in message.answers[0]
@@ -907,10 +999,13 @@ async def test_handle_geography_contact_price_not_configured(
 
     message = FakeMessage(text="Москва", user=FakeUser(14, "adv", "Adv"))
 
-    await handle_geography(message, state, order_service, config, pricing_service)
+    await handle_geography(
+        message, state, order_service, config, pricing_service
+    )
 
     assert len(order_repo.orders) == 1
     assert len(message.answers) >= 2
     assert (
-        "Стоимость доступа" in message.answers[1] or "настроена" in message.answers[1]
+        "Стоимость доступа" in message.answers[1]
+        or "настроена" in message.answers[1]
     )

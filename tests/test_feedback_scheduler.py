@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.fakes import FakeBot, FakeBotWithSession
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -43,13 +44,14 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.startup_logging import log_startup_info, safe_config_for_logging
-from tests.helpers.fakes import FakeBot, FakeBotWithSession
 
 
 def test_feedback_keyboard() -> None:
     """Ensure feedback keyboard contains callback data and TZ button labels."""
 
-    markup_adv = _feedback_keyboard("adv", UUID("00000000-0000-0000-0000-000000000950"))
+    markup_adv = _feedback_keyboard(
+        "adv", UUID("00000000-0000-0000-0000-000000000950")
+    )
     first_adv = markup_adv.inline_keyboard[0][0]
     assert "feedback:adv:" in first_adv.callback_data
     assert first_adv.text == "✅ Всё прошло нормально"
@@ -165,7 +167,9 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_once_blogger_message_adds_https_to_product_link(fake_tm) -> None:
+async def test_run_once_blogger_message_adds_https_to_product_link(
+    fake_tm,
+) -> None:
     """When order product_link has no scheme, scheduler prepends https://."""
 
     user_repo = InMemoryUserRepository()
@@ -263,14 +267,16 @@ async def test_run_once_blogger_message_adds_https_to_product_link(fake_tm) -> N
     )
 
     blogger_chat_id = 13
-    blogger_texts = [text for cid, text, _ in bot.messages if cid == blogger_chat_id]
+    blogger_texts = [
+        text for cid, text, _ in bot.messages if cid == blogger_chat_id
+    ]
     assert blogger_texts
     assert any("example.com" in t for t in blogger_texts)
 
 
 @pytest.mark.asyncio
 async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
-    """For blogger second order, old feedback includes product link with https."""
+    """Blogger second order: old feedback includes product link with https."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
@@ -386,7 +392,8 @@ async def test_run_once_skips_active_orders() -> None:
             from_advertiser=None,
             from_blogger=None,
             postpone_count=0,
-            next_check_at=datetime.now(timezone.utc) + timedelta(hours=1),  # Future
+            next_check_at=datetime.now(timezone.utc)
+            + timedelta(hours=1),  # Future
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -525,7 +532,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
 
 @pytest.mark.asyncio
 async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
-    """When advertiser chose postpone, scheduler sends reminder again when due."""
+    """When advertiser postpones, scheduler sends reminder again when due."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
@@ -623,7 +630,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
 
 @pytest.mark.asyncio
 async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
-    """Skip blogger feedback when blogger user not found; still send to advertiser."""
+    """Skip blogger feedback when user not found; still send to advertiser."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
@@ -711,7 +718,7 @@ async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
 
 @pytest.mark.asyncio
 async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
-    """Skip advertiser feedback when advertiser user not found; still send to blogger."""
+    """Skip advertiser feedback when user not found; still send to blogger."""
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
@@ -790,7 +797,9 @@ async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
     )
     blog_messages = [m for m in bot.messages if m[0] == 989]
     assert len(blog_messages) == 1
-    assert "заказчик" in blog_messages[0][1] or "связаться" in blog_messages[0][1]
+    assert (
+        "заказчик" in blog_messages[0][1] or "связаться" in blog_messages[0][1]
+    )
 
 
 @pytest.mark.asyncio
@@ -859,7 +868,9 @@ def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("FEEDBACK_ENABLED", "true")
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF1234567890abcdef1234567890")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://user:pass@localhost:5432/db"
+    )
     monkeypatch.setattr(
         "ugc_bot.feedback_scheduler.create_session_factory",
         lambda _, **__: object(),
@@ -878,14 +889,18 @@ def test_safe_config_for_logging_masks_sensitive_fields(
     """Ensure sensitive config values are masked before logging."""
 
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://user:pass@localhost:5432/db"
+    )
     monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass")
     monkeypatch.setenv("ADMIN_SECRET", "admin-secret")
     monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "ig-secret-token")
     monkeypatch.setenv("INSTAGRAM_APP_SECRET", "ig-app-secret")
     monkeypatch.setenv("INSTAGRAM_WEBHOOK_VERIFY_TOKEN", "verify-token")
     monkeypatch.setenv("REDIS_URL", "redis://user:pass@localhost:6379/0")
-    monkeypatch.setenv("INSTAGRAM_API_BASE_URL", "https://user:pass@example.com/api")
+    monkeypatch.setenv(
+        "INSTAGRAM_API_BASE_URL", "https://user:pass@example.com/api"
+    )
 
     config = load_config()
     safe = safe_config_for_logging(config)
@@ -907,11 +922,13 @@ def test_safe_config_for_logging_masks_sensitive_fields(
 def test_log_startup_info_includes_config_in_text_logs(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """In text log format, startup log must include version and sanitized config."""
+    """Text log format: startup log includes version and sanitized config."""
 
     monkeypatch.setenv("LOG_FORMAT", "text")
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://user:pass@localhost:5432/db"
+    )
 
     config = load_config()
     with caplog.at_level("INFO"):
@@ -929,7 +946,7 @@ def test_log_startup_info_includes_config_in_text_logs(
 async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     fake_tm,
 ) -> None:
-    """Advertiser feedback message includes creator link when profile has instagram_url without http."""
+    """Advertiser feedback includes creator link when profile has instagram."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
@@ -1055,12 +1072,16 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     assert "https://instagram.com/creator" in adv_text
 
 
-def test_main_feedback_disabled_returns_early(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_feedback_disabled_returns_early(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Main returns without creating session when feedback is disabled."""
 
     monkeypatch.setenv("FEEDBACK_ENABLED", "false")
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF1234567890abcdef1234567890")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://user:pass@localhost:5432/db"
+    )
     create_session_factory_mock = Mock()
     monkeypatch.setattr(
         "ugc_bot.feedback_scheduler.create_session_factory",

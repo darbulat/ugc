@@ -7,9 +7,9 @@ class Scheduler:
     def start(self) -> None:
         """Start background scheduling."""
 
-        return None
+        return
 
     def shutdown(self) -> None:
         """Stop background scheduling."""
 
-        return None
+        return

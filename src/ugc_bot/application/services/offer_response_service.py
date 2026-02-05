@@ -47,7 +47,9 @@ class OfferResponseService:
 
         async def _run(session: object | None):
             return list(
-                await self.response_repo.list_by_order(order_id, session=session)
+                await self.response_repo.list_by_order(
+                    order_id, session=session
+                )
             )
 
         return await with_optional_tx(self.transaction_manager, _run)
@@ -57,7 +59,9 @@ class OfferResponseService:
 
         async def _run(session: object | None):
             return list(
-                await self.response_repo.list_by_blogger(blogger_id, session=session)
+                await self.response_repo.list_by_blogger(
+                    blogger_id, session=session
+                )
             )
 
         return await with_optional_tx(self.transaction_manager, _run)
@@ -66,7 +70,9 @@ class OfferResponseService:
         """Count responses for an order."""
 
         async def _run(session: object | None):
-            return await self.response_repo.count_by_order(order_id, session=session)
+            return await self.response_repo.count_by_order(
+                order_id, session=session
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)
 
@@ -77,7 +83,7 @@ class OfferResponseService:
 
         if self.transaction_manager is None:
             raise ValueError(
-                "OfferResponseService requires transaction_manager for atomic operations."
+                "OfferResponseService needs transaction_manager for atomic ops."
             )
 
         now = datetime.now(timezone.utc)
@@ -89,7 +95,9 @@ class OfferResponseService:
                 raise OrderCreationError("Order not found.")
             if order.status != OrderStatus.ACTIVE:
                 raise OrderCreationError("Order is not active.")
-            if await self.response_repo.exists(order_id, blogger_id, session=session):
+            if await self.response_repo.exists(
+                order_id, blogger_id, session=session
+            ):
                 raise OrderCreationError("You already responded to this order.")
 
             response_count = await self.response_repo.count_by_order(
@@ -106,7 +114,9 @@ class OfferResponseService:
             )
             await self.response_repo.save(response, session=session)
             response_count += 1
-            updated = _update_order_after_response(order, response_count, now=now)
+            updated = _update_order_after_response(
+                order, response_count, now=now
+            )
             await self.order_repo.save(updated, session=session)
 
         if self.metrics_collector:
@@ -131,7 +141,9 @@ def _update_order_after_response(
     """Return updated order after a response is accepted."""
 
     new_status = (
-        OrderStatus.CLOSED if response_count >= order.bloggers_needed else order.status
+        OrderStatus.CLOSED
+        if response_count >= order.bloggers_needed
+        else order.status
     )
     completed_at = (
         now if response_count >= order.bloggers_needed else order.completed_at

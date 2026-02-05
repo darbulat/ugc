@@ -6,9 +6,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db import models  # noqa: F401
-
+from ugc_bot.infrastructure.db.base import Base
 
 config = context.config
 if config.config_file_name is not None:

@@ -99,7 +99,9 @@ async def test_transaction_manager_rollback(session_factory) -> None:
 
     with pytest.raises(RuntimeError):
         async with manager.transaction() as session:
-            await session.execute(text("INSERT INTO items (value) VALUES ('a')"))
+            await session.execute(
+                text("INSERT INTO items (value) VALUES ('a')")
+            )
             raise RuntimeError("boom")
 
     async with session_factory() as session:

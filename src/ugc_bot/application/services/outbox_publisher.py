@@ -22,13 +22,13 @@ class OutboxPublisher:
 
     Two usage modes:
 
-    1. Write-only (e.g. from PaymentService): transaction_manager can be None.
-       Caller passes session explicitly to publish_order_activation(order, session=session)
-       within its own transaction. The event is saved in the same tx as the payment.
+    1. Write-only (e.g. PaymentService): transaction_manager can be None.
+       Caller passes session to publish_order_activation(order, session=session)
+       in its own transaction. Event saved in same tx as payment.
 
-    2. Read+process (e.g. outbox_processor worker): transaction_manager is required.
-       process_pending_events() manages its own transactions via with_optional_tx().
-       There is no parent transaction—the processor opens transactions itself.
+    2. Read+process (e.g. outbox_processor): transaction_manager required.
+       process_pending_events() manages transactions via with_optional_tx().
+       No parent transaction—processor opens transactions itself.
     """
 
     outbox_repo: OutboxRepository
@@ -105,11 +105,17 @@ class OutboxPublisher:
                 continue
 
             try:
-                await self._process_one_event(event, kafka_publisher, max_retries)
+                await self._process_one_event(
+                    event, kafka_publisher, max_retries
+                )
             except Exception as e:
-                await self._mark_failed(event.event_id, str(e), event.retry_count + 1)
+                await self._mark_failed(
+                    event.event_id, str(e), event.retry_count + 1
+                )
 
-    async def _mark_failed(self, event_id: UUID, error: str, retry_count: int) -> None:
+    async def _mark_failed(
+        self, event_id: UUID, error: str, retry_count: int
+    ) -> None:
         """Mark event as failed within a transaction."""
 
         async def _run(session: object | None) -> None:
@@ -128,7 +134,9 @@ class OutboxPublisher:
         """Process a single event in one transaction."""
 
         async def _run(session: object | None) -> None:
-            await self.outbox_repo.mark_as_processing(event.event_id, session=session)
+            await self.outbox_repo.mark_as_processing(
+                event.event_id, session=session
+            )
             if event.event_type == "order.activated":
                 await self._process_order_activation(
                     event, kafka_publisher, session=session

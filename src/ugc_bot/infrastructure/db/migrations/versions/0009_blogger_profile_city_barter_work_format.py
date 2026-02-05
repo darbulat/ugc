@@ -1,7 +1,7 @@
 """Add city, barter, work_format to blogger_profiles."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0009_blogger_city_barter_fmt"
@@ -28,7 +28,10 @@ def upgrade() -> None:
     op.add_column(
         "blogger_profiles",
         sa.Column(
-            "barter", sa.Boolean(), nullable=False, server_default=sa.text("false")
+            "barter",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
         ),
     )
     op.add_column(

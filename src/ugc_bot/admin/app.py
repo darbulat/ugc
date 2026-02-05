@@ -7,8 +7,8 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from sqladmin import Admin, ModelView
-from starlette.requests import Request
 from sqlalchemy import text
+from starlette.requests import Request
 
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.application.services.complaint_service import ComplaintService
@@ -49,7 +49,7 @@ async def _get_obj_by_pk(
     model_cls: type[T],
     pk: UUID,
 ) -> T | None:
-    """Get model instance by pk, supporting both sync and async session makers."""
+    """Get model by pk, supporting both sync and async session makers."""
     if view.is_async:
         async with view.session_maker(expire_on_commit=False) as session:
             return await session.get(model_cls, pk)
@@ -229,7 +229,9 @@ class InteractionAdmin(ModelView, model=InteractionModel):
         return result
 
 
-class InstagramVerificationAdmin(ModelView, model=InstagramVerificationCodeModel):
+class InstagramVerificationAdmin(
+    ModelView, model=InstagramVerificationCodeModel
+):
     """Admin view for Instagram verification codes."""
 
     column_list = [
@@ -281,9 +283,13 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
             try:
                 container = getattr(self, "_container", None)  # type: ignore[attr-defined]
                 if container:
-                    user_role_service, complaint_service, _ = _get_services(container)
+                    user_role_service, complaint_service, _ = _get_services(
+                        container
+                    )
                     # Update complaint status via service (sets reviewed_at)
-                    await complaint_service.resolve_complaint_with_action(UUID(pk))
+                    await complaint_service.resolve_complaint_with_action(
+                        UUID(pk)
+                    )
                     # Block the reported user
                     await user_role_service.update_status(
                         reported_id, UserStatus.BLOCKED
@@ -291,7 +297,9 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
             except Exception:
                 # If service call fails, the status change is already saved
                 pass
-        elif old_status != new_status and new_status == ComplaintStatus.DISMISSED:
+        elif (
+            old_status != new_status and new_status == ComplaintStatus.DISMISSED
+        ):
             try:
                 container = getattr(self, "_container", None)  # type: ignore[attr-defined]
                 if container:

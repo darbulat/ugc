@@ -14,7 +14,7 @@ def test_db_engine():
     """Create in-memory SQLite engine for admin tests."""
     engine = create_engine("sqlite:///:memory:", echo=False)
 
-    # Create all tables except those with JSONB fields (not compatible with SQLite)
+    # Exclude tables with JSONB (not compatible with SQLite)
     tables_to_exclude = {"outbox_events", "blogger_profiles", "fsm_drafts"}
     tables_to_create = [
         table
@@ -52,7 +52,7 @@ def test_admin_app_creation(admin_config):
     """Test that admin app can be created without errors."""
     from ugc_bot.admin.app import create_admin_app
 
-    # Проверяем, что приложение создается без ошибок (включая SQLAdmin инициализацию)
+    # App creates without errors (including SQLAdmin init)
     app = create_admin_app()
 
     # Проверяем, что приложение создано
@@ -70,14 +70,14 @@ def test_admin_app_creation(admin_config):
 
 
 def test_sqladmin_models_initialization(admin_config):
-    """Test that SQLAdmin models can be initialized without column_filters errors."""
+    """Test SQLAdmin models init without column_filters errors."""
     from ugc_bot.admin.app import (
-        UserAdmin,
-        InteractionAdmin,
-        ComplaintAdmin,
-        BloggerProfileAdmin,
         AdvertiserProfileAdmin,
+        BloggerProfileAdmin,
+        ComplaintAdmin,
+        InteractionAdmin,
         OrderAdmin,
+        UserAdmin,
     )
 
     # Проверяем, что все админ-классы могут быть созданы без ошибок
@@ -97,7 +97,7 @@ def test_sqladmin_models_initialization(admin_config):
     assert hasattr(InteractionAdmin, "column_list")
     assert hasattr(ComplaintAdmin, "column_list")
 
-    # Проверяем, что column_filters не вызывает ошибок (мы убрали проблемные фильтры)
+    # column_filters should not raise (problematic filters removed)
     # Проверка что классы могут быть созданы - это главное
 
     print("✅ SQLAdmin models initialization test passed!")

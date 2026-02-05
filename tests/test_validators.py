@@ -58,7 +58,9 @@ class TestValidateBarterDescription:
         assert validate_barter_description("A" * 10, required=True) is None
 
     def test_over_max_returns_error(self) -> None:
-        assert validate_barter_description("A" * 501, required=False) is not None
+        assert (
+            validate_barter_description("A" * 501, required=False) is not None
+        )
 
 
 class TestValidateProductLink:

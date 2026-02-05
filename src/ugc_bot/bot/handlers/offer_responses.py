@@ -1,13 +1,20 @@
 """Handlers for offer responses."""
 
+import contextlib
 import logging
 from uuid import UUID
 
 from aiogram import Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 
 from ugc_bot.application.services.interaction_service import InteractionService
-from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.security_warnings import (
@@ -21,7 +28,6 @@ from ugc_bot.bot.handlers.utils import (
     send_with_retry,
 )
 from ugc_bot.domain.entities import Order
-
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -41,11 +47,13 @@ async def handle_offer_skip(callback: CallbackQuery) -> None:
     await callback.answer("Ок, пропущено.")
     msg = callback.message
     edit_reply_markup = getattr(msg, "edit_reply_markup", None) if msg else None
-    if msg and getattr(msg, "reply_markup", None) and callable(edit_reply_markup):
-        try:
+    if (
+        msg
+        and getattr(msg, "reply_markup", None)
+        and callable(edit_reply_markup)
+    ):
+        with contextlib.suppress(Exception):
             await edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
 
 
 @router.callback_query(
@@ -89,18 +97,22 @@ async def handle_offer_response(
         return
 
     # Middleware handles OrderCreationError and other exceptions
-    result = await offer_response_service.respond_and_finalize(order_id, user.user_id)
+    result = await offer_response_service.respond_and_finalize(
+        order_id, user.user_id
+    )
 
     await callback.answer("Отклик принят! Ожидайте связи от рекламодателя.")
 
     # Remove inline keyboard so buttons can no longer be pressed
     msg = callback.message
     edit_reply_markup = getattr(msg, "edit_reply_markup", None) if msg else None
-    if msg and getattr(msg, "reply_markup", None) and callable(edit_reply_markup):
-        try:
+    if (
+        msg
+        and getattr(msg, "reply_markup", None)
+        and callable(edit_reply_markup)
+    ):
+        with contextlib.suppress(Exception):
             await edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
 
     if callback.message and callback.message.bot:
         if result.order.product_link:
@@ -135,7 +147,7 @@ async def _send_contact_immediately(
     interaction_service: InteractionService | None,
     bot,
 ) -> None:
-    """Send contact to advertiser immediately after each response (TZ format)."""
+    """Send contact to advertiser after each response (TZ format)."""
 
     user = await user_role_service.get_user_by_id(blogger_id)
     profile = await profile_service.get_blogger_profile(blogger_id)
@@ -164,7 +176,11 @@ async def _send_contact_immediately(
     open_profile_kb = (
         InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🔗 Открыть профиль", url=profile_url)]
+                [
+                    InlineKeyboardButton(
+                        text="🔗 Открыть профиль", url=profile_url
+                    )
+                ]
             ]
         )
         if profile_url.startswith("http")

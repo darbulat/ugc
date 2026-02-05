@@ -5,8 +5,13 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.factories import create_test_order, create_test_user
+from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
+from tests.helpers.services import build_order_service
 from ugc_bot.application.services.complaint_service import ComplaintService
-from ugc_bot.application.services.offer_response_service import OfferResponseService
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.complaints import (
@@ -16,10 +21,12 @@ from ugc_bot.bot.handlers.complaints import (
     start_complaint,
 )
 from ugc_bot.domain.entities import Order, OrderResponse, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType, UserStatus
-from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
-from tests.helpers.factories import create_test_order, create_test_user
-from tests.helpers.services import build_order_service
+from ugc_bot.domain.enums import (
+    MessengerType,
+    OrderStatus,
+    OrderType,
+    UserStatus,
+)
 
 
 @pytest.mark.asyncio
@@ -29,15 +36,17 @@ async def test_start_complaint_invalid_format(
     """Reject malformed callback data."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -75,15 +84,17 @@ async def test_start_complaint_order_not_found(
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -130,15 +141,17 @@ async def test_start_complaint_no_access(
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -211,11 +224,13 @@ async def test_handle_complaint_reason_success(
         )
     )
 
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -226,7 +241,9 @@ async def test_handle_complaint_reason_success(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(2))
+    callback = FakeCallback(
+        data="complaint_reason:Мошенничество", user=FakeUser(2)
+    )
     await handle_complaint_reason(
         callback, state, complaint_service, order_service, user_role_service
     )
@@ -294,20 +311,24 @@ async def test_select_complaint_target_advertiser(
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    callback = FakeCallback(data=f"complaint_select:{order.order_id}", user=FakeUser(1))
+    callback = FakeCallback(
+        data=f"complaint_select:{order.order_id}", user=FakeUser(1)
+    )
     await select_complaint_target(
         callback,
         state,
@@ -323,7 +344,8 @@ async def test_select_complaint_target_advertiser(
         return a if isinstance(a, str) else a[0]
 
     assert any(
-        "Выберите блогера" in _answer_text(ans) for ans in callback.message.answers
+        "Выберите блогера" in _answer_text(ans)
+        for ans in callback.message.answers
     )
 
 
@@ -350,20 +372,24 @@ async def test_select_complaint_target_invalid_format(
     await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    callback = FakeCallback(data="complaint_select:bad:format", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_select:bad:format", user=FakeUser(1)
+    )
     await select_complaint_target(
         callback,
         state,
@@ -434,20 +460,24 @@ async def test_select_complaint_target_blogger(
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    callback = FakeCallback(data=f"complaint_select:{order.order_id}", user=FakeUser(2))
+    callback = FakeCallback(
+        data=f"complaint_select:{order.order_id}", user=FakeUser(2)
+    )
     await select_complaint_target(
         callback,
         state,
@@ -463,7 +493,8 @@ async def test_select_complaint_target_blogger(
         return a if isinstance(a, str) else a[0]
 
     assert any(
-        "Выберите причину" in _answer_text(ans) for ans in callback.message.answers
+        "Выберите причину" in _answer_text(ans)
+        for ans in callback.message.answers
     )
 
 
@@ -506,20 +537,24 @@ async def test_select_complaint_target_no_bloggers(
     await order_repo.save(order)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    callback = FakeCallback(data=f"complaint_select:{order.order_id}", user=FakeUser(1))
+    callback = FakeCallback(
+        data=f"complaint_select:{order.order_id}", user=FakeUser(1)
+    )
     await select_complaint_target(
         callback,
         state,
@@ -582,8 +617,8 @@ async def test_handle_complaint_reason_text(
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -666,10 +701,12 @@ async def test_handle_complaint_reason_other(
     )
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -702,14 +739,16 @@ async def test_handle_complaint_reason_no_state(
         order_repo=order_repo,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_reason:Мошенничество", user=FakeUser(1)
+    )
     await handle_complaint_reason(
         callback, state, complaint_service, order_service, user_role_service
     )
@@ -730,8 +769,8 @@ async def test_handle_complaint_reason_invalid_reason(
         order_repo=order_repo,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -742,7 +781,9 @@ async def test_handle_complaint_reason_invalid_reason(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:InvalidReason", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_reason:InvalidReason", user=FakeUser(1)
+    )
     await handle_complaint_reason(
         callback, state, complaint_service, order_service, user_role_service
     )
@@ -796,10 +837,12 @@ async def test_handle_complaint_reason_duplicate(
         reason="Мошенничество",
     )
 
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -810,7 +853,9 @@ async def test_handle_complaint_reason_duplicate(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_reason:Мошенничество", user=FakeUser(1)
+    )
     await handle_complaint_reason(
         callback, state, complaint_service, order_service, user_role_service
     )
@@ -826,8 +871,8 @@ async def test_handle_complaint_reason_text_no_state(
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -851,8 +896,8 @@ async def test_handle_complaint_reason_text_empty(
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -882,8 +927,8 @@ async def test_handle_complaint_reason_text_no_text(
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -906,15 +951,17 @@ async def test_start_complaint_no_data(
     """Handle callback without data."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -934,15 +981,17 @@ async def test_start_complaint_user_not_found(
     """Handle complaint when user is not found."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1011,15 +1060,17 @@ async def test_start_complaint_invalid_reported_id(
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1033,7 +1084,9 @@ async def test_start_complaint_invalid_reported_id(
         callback, state, user_service, order_service, offer_response_service
     )
 
-    assert any("Неверный идентификатор пользователя" in ans for ans in callback.answers)
+    assert any(
+        "Неверный идентификатор пользователя" in ans for ans in callback.answers
+    )
 
 
 @pytest.mark.asyncio
@@ -1054,15 +1107,17 @@ async def test_start_complaint_invalid_uuid(
     await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1075,7 +1130,9 @@ async def test_start_complaint_invalid_uuid(
         callback, state, user_service, order_service, offer_response_service
     )
 
-    assert any("Неверный формат идентификатора" in ans for ans in callback.answers)
+    assert any(
+        "Неверный формат идентификатора" in ans for ans in callback.answers
+    )
 
 
 @pytest.mark.asyncio
@@ -1090,15 +1147,17 @@ async def test_select_complaint_target_no_from_user(
     """Handle callback without from_user."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1141,20 +1200,24 @@ async def test_select_complaint_target_invalid_uuid(
     await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    callback = FakeCallback(data="complaint_select:not-a-uuid", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_select:not-a-uuid", user=FakeUser(1)
+    )
     await select_complaint_target(
         callback,
         state,
@@ -1164,7 +1227,9 @@ async def test_select_complaint_target_invalid_uuid(
         None,
     )
 
-    assert any("Неверный формат идентификатора" in ans for ans in callback.answers)
+    assert any(
+        "Неверный формат идентификатора" in ans for ans in callback.answers
+    )
 
 
 @pytest.mark.asyncio
@@ -1190,15 +1255,17 @@ async def test_select_complaint_target_no_data(
     await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1239,15 +1306,17 @@ async def test_select_complaint_target_order_not_found(
     await user_repo.save(user)
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1336,20 +1405,24 @@ async def test_select_complaint_target_blogger_no_access(
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    callback = FakeCallback(data=f"complaint_select:{order.order_id}", user=FakeUser(3))
+    callback = FakeCallback(
+        data=f"complaint_select:{order.order_id}", user=FakeUser(3)
+    )
     await select_complaint_target(
         callback,
         state,
@@ -1420,15 +1493,17 @@ async def test_start_complaint_advertiser_success(
     )
 
     user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1446,7 +1521,8 @@ async def test_start_complaint_advertiser_success(
 
     assert callback.message.answers
     assert any(
-        "Выберите причину" in _answer_text(ans) for ans in callback.message.answers
+        "Выберите причину" in _answer_text(ans)
+        for ans in callback.message.answers
     )
 
 
@@ -1463,8 +1539,8 @@ async def test_handle_complaint_reason_no_from_user(
         order_repo=order_repo,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1475,7 +1551,9 @@ async def test_handle_complaint_reason_no_from_user(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_reason:Мошенничество", user=FakeUser(1)
+    )
     callback.from_user = None
 
     await handle_complaint_reason(
@@ -1498,8 +1576,8 @@ async def test_handle_complaint_reason_no_data(
         order_repo=order_repo,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1510,7 +1588,9 @@ async def test_handle_complaint_reason_no_data(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_reason:Мошенничество", user=FakeUser(1)
+    )
     callback.data = None
 
     await handle_complaint_reason(
@@ -1533,8 +1613,8 @@ async def test_handle_complaint_reason_bad_state_data(
         order_repo=order_repo,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1545,7 +1625,9 @@ async def test_handle_complaint_reason_bad_state_data(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_reason:Мошенничество", user=FakeUser(1)
+    )
     await handle_complaint_reason(
         callback, state, complaint_service, order_service, user_role_service
     )
@@ -1602,10 +1684,12 @@ async def test_handle_complaint_reason_with_notify(
     await order_repo.save(order)
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1647,8 +1731,8 @@ async def test_handle_complaint_reason_generic_exception(
         order_repo=order_repo,
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1659,7 +1743,9 @@ async def test_handle_complaint_reason_generic_exception(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Мошенничество", user=FakeUser(1))
+    callback = FakeCallback(
+        data="complaint_reason:Мошенничество", user=FakeUser(1)
+    )
     await handle_complaint_reason(
         callback, state, complaint_service, order_service, user_role_service
     )
@@ -1675,8 +1761,8 @@ async def test_handle_complaint_reason_text_bad_state_data(
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1747,8 +1833,8 @@ async def test_handle_complaint_reason_text_base_reason_not_drugoe(
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1782,7 +1868,7 @@ async def test_handle_complaint_reason_text_with_bot(
     advertiser_repo,
     complaint_repo,
 ) -> None:
-    """Successfully create complaint and notify admins when message.bot is set."""
+    """Create complaint and notify admins when message.bot is set."""
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001100"),
@@ -1823,8 +1909,8 @@ async def test_handle_complaint_reason_text_with_bot(
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1860,8 +1946,8 @@ async def test_handle_complaint_reason_text_generic_exception(
 
     complaint_service = FailingComplaintService()
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
@@ -1939,8 +2025,8 @@ async def test_handle_complaint_reason_text_duplicate(
         reason="Другое: первая жалоба",
     )
 
-    from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")

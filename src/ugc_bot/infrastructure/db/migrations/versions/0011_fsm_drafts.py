@@ -1,7 +1,7 @@
 """Add fsm_drafts table for saving partial form data on Support."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision = "0011_fsm_drafts"

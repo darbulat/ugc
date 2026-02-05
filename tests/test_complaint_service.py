@@ -10,7 +10,9 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.domain.enums import ComplaintStatus
-from ugc_bot.infrastructure.memory_repositories import InMemoryComplaintRepository
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryComplaintRepository,
+)
 
 
 @pytest.mark.asyncio
@@ -85,7 +87,9 @@ async def test_get_by_id_not_found() -> None:
     repo = InMemoryComplaintRepository()
     service = ComplaintService(complaint_repo=repo)
 
-    found = await service.get_by_id(UUID("00000000-0000-0000-0000-000000000999"))
+    found = await service.get_by_id(
+        UUID("00000000-0000-0000-0000-000000000999")
+    )
     assert found is None
 
 
@@ -220,7 +224,9 @@ async def test_dismiss_complaint_not_found() -> None:
     service = ComplaintService(complaint_repo=repo)
 
     with pytest.raises(ComplaintNotFoundError, match="not found"):
-        await service.dismiss_complaint(UUID("00000000-0000-0000-0000-000000000999"))
+        await service.dismiss_complaint(
+            UUID("00000000-0000-0000-0000-000000000999")
+        )
 
 
 @pytest.mark.asyncio
@@ -237,7 +243,9 @@ async def test_resolve_complaint_with_action() -> None:
         reason="Мошенничество",
     )
 
-    resolved = await service.resolve_complaint_with_action(complaint.complaint_id)
+    resolved = await service.resolve_complaint_with_action(
+        complaint.complaint_id
+    )
 
     assert resolved.status == ComplaintStatus.ACTION_TAKEN
     assert resolved.reviewed_at is not None
@@ -276,8 +284,10 @@ async def test_create_and_get_with_transaction_manager(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_and_dismiss_with_transaction_manager(fake_tm: object) -> None:
-    """Cover transaction_manager path for list_by_order and dismiss_complaint."""
+async def test_list_and_dismiss_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """Cover tm path for list_by_order and dismiss_complaint."""
 
     repo = InMemoryComplaintRepository()
     service = ComplaintService(complaint_repo=repo, transaction_manager=fake_tm)
@@ -295,7 +305,9 @@ async def test_list_and_dismiss_with_transaction_manager(fake_tm: object) -> Non
 
 
 @pytest.mark.asyncio
-async def test_resolve_with_action_with_transaction_manager(fake_tm: object) -> None:
+async def test_resolve_with_action_with_transaction_manager(
+    fake_tm: object,
+) -> None:
     """Cover transaction_manager path for resolve_complaint_with_action."""
 
     repo = InMemoryComplaintRepository()
@@ -306,7 +318,9 @@ async def test_resolve_with_action_with_transaction_manager(fake_tm: object) -> 
         order_id=UUID("00000000-0000-0000-0000-000000000973"),
         reason="Мошенничество",
     )
-    resolved = await service.resolve_complaint_with_action(complaint.complaint_id)
+    resolved = await service.resolve_complaint_with_action(
+        complaint.complaint_id
+    )
     assert resolved.status == ComplaintStatus.ACTION_TAKEN
 
 
@@ -355,7 +369,7 @@ async def test_dismiss_complaint_with_metrics_collector() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_with_action_with_metrics_collector() -> None:
-    """Resolve complaint with action records metrics when metrics_collector provided."""
+    """Resolve complaint with action records metrics when collector provided."""
 
     from ugc_bot.metrics.collector import MetricsCollector
 
@@ -369,13 +383,17 @@ async def test_resolve_with_action_with_metrics_collector() -> None:
         order_id=UUID("00000000-0000-0000-0000-000000000973"),
         reason="Мошенничество",
     )
-    resolved = await service.resolve_complaint_with_action(complaint.complaint_id)
+    resolved = await service.resolve_complaint_with_action(
+        complaint.complaint_id
+    )
 
     assert resolved.status == ComplaintStatus.ACTION_TAKEN
 
 
 @pytest.mark.asyncio
-async def test_create_complaint_duplicate_with_transaction(fake_tm: object) -> None:
+async def test_create_complaint_duplicate_with_transaction(
+    fake_tm: object,
+) -> None:
     """Prevent duplicate complaints when transaction_manager is provided."""
 
     repo = InMemoryComplaintRepository()
@@ -401,7 +419,9 @@ async def test_create_complaint_duplicate_with_transaction(fake_tm: object) -> N
 
 
 @pytest.mark.asyncio
-async def test_list_by_reporter_with_transaction_manager(fake_tm: object) -> None:
+async def test_list_by_reporter_with_transaction_manager(
+    fake_tm: object,
+) -> None:
     """List complaints by reporter when transaction_manager is provided."""
 
     repo = InMemoryComplaintRepository()

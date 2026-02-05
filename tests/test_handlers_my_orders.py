@@ -5,9 +5,19 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from ugc_bot.application.services.offer_response_service import OfferResponseService
-from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
+from tests.helpers.factories import (
+    create_test_advertiser_profile,
+    create_test_blogger_profile,
+    create_test_order,
+    create_test_user,
+)
+from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
+from tests.helpers.services import build_order_service, build_profile_service
+from ugc_bot.application.services.offer_response_service import (
+    OfferResponseService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
 from ugc_bot.bot.handlers.my_orders import (
     _format_date,
     _format_order_type,
@@ -16,17 +26,8 @@ from ugc_bot.bot.handlers.my_orders import (
     paginate_orders,
     show_my_orders,
 )
-from ugc_bot.domain.entities import OrderResponse
-from ugc_bot.domain.entities import Order
+from ugc_bot.domain.entities import Order, OrderResponse
 from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType
-from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
-from tests.helpers.factories import (
-    create_test_advertiser_profile,
-    create_test_blogger_profile,
-    create_test_order,
-    create_test_user,
-)
-from tests.helpers.services import build_order_service, build_profile_service
 
 
 @pytest.mark.asyncio
@@ -38,11 +39,15 @@ async def test_show_my_orders_returns_early_when_no_from_user(
     blogger_repo,
     order_response_repo,
 ) -> None:
-    """show_my_orders returns without answering when message.from_user is None."""
+    """show_my_orders returns without answering when from_user is None."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -50,7 +55,11 @@ async def test_show_my_orders_returns_early_when_no_from_user(
     )
     message = FakeMessage(text="/my_orders", user=None)
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     assert not message.answers
 
@@ -67,8 +76,12 @@ async def test_show_my_orders_user_not_found(
     """Show hint when user is not in DB (get_user returns None)."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -76,7 +89,11 @@ async def test_show_my_orders_user_not_found(
     )
     message = FakeMessage(text="/my_orders", user=FakeUser(1))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
@@ -94,8 +111,12 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
     """Show hint when neither advertiser nor blogger profile exists."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -110,12 +131,16 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
     assert "Заполните профиль" in message.answers[0]
-    assert "рекламодателя" in message.answers[0] or "блогера" in message.answers[0]
+    assert "register" in message.answers[0] or "профиль" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -130,8 +155,12 @@ async def test_my_orders_blogger_no_responses(
     """Blogger with no responses sees hint."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -147,7 +176,11 @@ async def test_my_orders_blogger_no_responses(
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(5))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -166,8 +199,12 @@ async def test_my_orders_blogger_with_responses(
     """Blogger sees orders they responded to."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -207,7 +244,11 @@ async def test_my_orders_blogger_with_responses(
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(6))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -232,8 +273,12 @@ async def test_my_orders_empty(
     """Show hint when no orders exist."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -249,7 +294,11 @@ async def test_my_orders_empty(
 
     message = FakeMessage(text="/my_orders", user=FakeUser(1))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -268,8 +317,12 @@ async def test_my_orders_list(
     """List existing orders."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -296,7 +349,11 @@ async def test_my_orders_list(
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -324,19 +381,29 @@ async def test_paginate_orders_returns_early_when_no_from_user(
     blogger_repo,
     order_response_repo,
 ) -> None:
-    """paginate_orders returns without answering when callback.from_user is None."""
+    """paginate_orders returns without answering when from_user is None."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
         transaction_manager=fake_tm,
     )
-    callback = FakeCallback(data="my_orders:1", user=None, message=FakeMessage())
+    callback = FakeCallback(
+        data="my_orders:1", user=None, message=FakeMessage()
+    )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     assert not callback.answers or callback.answers == [""]
 
@@ -353,8 +420,12 @@ async def test_paginate_orders_user_not_found(
     """paginate_orders answers when user is not found."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -364,7 +435,11 @@ async def test_paginate_orders_user_not_found(
         data="my_orders:1", user=FakeUser(999), message=FakeMessage()
     )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     assert callback.answers
     assert "не найден" in callback.answers[0]
@@ -382,8 +457,12 @@ async def test_paginate_orders_no_advertiser_profile(
     """paginate_orders answers when advertiser profile is missing."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -396,9 +475,15 @@ async def test_paginate_orders_no_advertiser_profile(
         username="adv",
     )
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
-    callback = FakeCallback(data="my_orders:1", user=FakeUser(1), message=message)
+    callback = FakeCallback(
+        data="my_orders:1", user=FakeUser(1), message=message
+    )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     assert callback.answers
     assert "Профиль рекламодателя не заполнен" in callback.answers[0]
@@ -413,11 +498,15 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
     blogger_repo,
     order_response_repo,
 ) -> None:
-    """paginate_orders does not call edit_text when callback.message has no edit_text."""
+    """paginate_orders does not call edit_text when message has no edit_text."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -435,7 +524,11 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
         data="my_orders:1", user=FakeUser(1), message=message_without_edit
     )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     await callback.answer()
     assert callback.answers
@@ -453,8 +546,12 @@ async def test_paginate_orders_invalid_page_uses_one(
     """paginate_orders with invalid page string falls back to page 1."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -472,7 +569,11 @@ async def test_paginate_orders_invalid_page_uses_one(
         data="my_orders:not_a_number", user=FakeUser(1), message=message
     )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     await callback.answer()
     assert message.answers or callback.answers
@@ -487,11 +588,15 @@ async def test_my_orders_page_one_shows_forward_button(
     blogger_repo,
     order_response_repo,
 ) -> None:
-    """Page 1 with multiple pages shows 'Вперед' button (covers _render_page forward nav)."""
+    """Page 1 with multiple pages shows 'Вперед' (covers forward nav)."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -514,16 +619,24 @@ async def test_my_orders_page_one_shows_forward_button(
             status=OrderStatus.NEW,
         )
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
-    callback = FakeCallback(data="my_orders:1", user=FakeUser(1), message=message)
+    callback = FakeCallback(
+        data="my_orders:1", user=FakeUser(1), message=message
+    )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
     assert message.answers
     last = message.answers[-1]
     text = last[0] if isinstance(last, tuple) else last
     assert "страница 1/2" in text
     if isinstance(last, tuple) and last[1] is not None:
-        assert any(b.text == "Вперед ➡️" for row in last[1].inline_keyboard for b in row)
+        assert any(
+            b.text == "Вперед ➡️" for row in last[1].inline_keyboard for b in row
+        )
 
 
 @pytest.mark.asyncio
@@ -538,8 +651,12 @@ async def test_my_orders_pagination(
     """Paginate orders list."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -564,9 +681,15 @@ async def test_my_orders_pagination(
         )
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
-    callback = FakeCallback(data="my_orders:2", user=FakeUser(1), message=message)
+    callback = FakeCallback(
+        data="my_orders:2", user=FakeUser(1), message=message
+    )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -595,8 +718,12 @@ async def test_my_orders_with_complaint_button(
     from ugc_bot.domain.entities import OrderResponse
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -638,7 +765,11 @@ async def test_my_orders_with_complaint_button(
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -662,8 +793,12 @@ async def test_paginate_orders_blogger(
     """Paginate blogger's responded orders (my_orders_blogger:page)."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -707,7 +842,11 @@ async def test_paginate_orders_blogger(
         data="my_orders_blogger:1", user=FakeUser(11), message=message
     )
     await paginate_orders(
-        callback, user_service, profile_service, order_service, offer_response_service
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -842,8 +981,12 @@ async def test_my_orders_shows_active_status_and_matched_count(
     """Active order shows 'Активен' and dynamic matched count 2/10."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -895,9 +1038,15 @@ async def test_my_orders_shows_active_status_and_matched_count(
         )
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_active"))
+    message = FakeMessage(
+        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_active")
+    )
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -924,8 +1073,12 @@ async def test_my_orders_shows_completed_status_and_completion_date(
     """Completed order shows 'Завершён' and completion date."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -968,7 +1121,11 @@ async def test_my_orders_shows_completed_status_and_completion_date(
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_done"))
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -994,8 +1151,12 @@ async def test_my_orders_advertiser_shows_barter(
     """Advertiser order list shows barter when barter_description is set."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -1019,9 +1180,15 @@ async def test_my_orders_advertiser_shows_barter(
         status=OrderStatus.NEW,
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_barter"))
+    message = FakeMessage(
+        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_barter")
+    )
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers
@@ -1046,8 +1213,12 @@ async def test_my_orders_blogger_shows_barter(
     """Blogger order list shows barter when barter_description is set."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo, advertiser_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo, fake_tm)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
         response_repo=order_response_repo,
@@ -1087,9 +1258,15 @@ async def test_my_orders_blogger_shows_barter(
         )
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("blogger_b"))
+    message = FakeMessage(
+        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("blogger_b")
+    )
     await show_my_orders(
-        message, user_service, profile_service, order_service, offer_response_service
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
     )
 
     assert message.answers

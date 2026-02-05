@@ -7,9 +7,9 @@ from ugc_bot.config import FeedbackConfig
 
 
 def needs_feedback_reminder(feedback_text: str | None) -> bool:
-    """Return True if user should receive feedback request (not yet given final response).
+    """Return True if feedback reminder needed (no final response yet).
 
-    Users who chose postpone ("⏳ Ещё не связался") should receive reminders again.
+    Users who chose postpone ("⏳ Ещё не связался") get reminders again.
     """
     if feedback_text is None:
         return True

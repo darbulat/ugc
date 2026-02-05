@@ -1,18 +1,15 @@
 """Tests for feedback handler."""
 
 from datetime import datetime, timezone
-
-import pytest
 from uuid import UUID
 
-from ugc_bot.application.services.interaction_service import InteractionService
-from ugc_bot.application.services.nps_service import NpsService
-from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.feedback import handle_feedback
-from tests.helpers.services import build_order_service
-from ugc_bot.domain.entities import OrderResponse
-from ugc_bot.domain.enums import AudienceGender, InteractionStatus, UserStatus
-from ugc_bot.infrastructure.memory_repositories import InMemoryNpsRepository
+import pytest
+
+from tests.helpers.factories import (
+    create_test_interaction,
+    create_test_order,
+    create_test_user,
+)
 from tests.helpers.fakes import (
     FakeBot,
     FakeCallback,
@@ -20,11 +17,14 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeUser,
 )
-from tests.helpers.factories import (
-    create_test_interaction,
-    create_test_order,
-    create_test_user,
-)
+from tests.helpers.services import build_order_service
+from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.nps_service import NpsService
+from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.feedback import handle_feedback
+from ugc_bot.domain.entities import OrderResponse
+from ugc_bot.domain.enums import AudienceGender, InteractionStatus, UserStatus
+from ugc_bot.infrastructure.memory_repositories import InMemoryNpsRepository
 
 
 @pytest.fixture
@@ -141,7 +141,8 @@ async def test_feedback_handler_no_callback_data(
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(
-        data="feedback:adv:00000000-0000-0000-0000-000000000001:ok", user=FakeUser(1)
+        data="feedback:adv:00000000-0000-0000-0000-000000000001:ok",
+        user=FakeUser(1),
     )
     callback.data = None
     state = FakeFSMContext()
@@ -186,7 +187,8 @@ async def test_feedback_handler_invalid_status(
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(
-        data="feedback:adv:00000000-0000-0000-0000-000000000999:bad", user=FakeUser(1)
+        data="feedback:adv:00000000-0000-0000-0000-000000000999:bad",
+        user=FakeUser(1),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -326,7 +328,8 @@ async def test_feedback_handler_rejects_blocked_user(
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(
-        data=f"feedback:adv:{interaction.interaction_id}:ok", user=FakeUser(1025)
+        data=f"feedback:adv:{interaction.interaction_id}:ok",
+        user=FakeUser(1025),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -364,7 +367,8 @@ async def test_feedback_handler_rejects_paused_user(
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     callback = FakeCallback(
-        data=f"feedback:adv:{interaction.interaction_id}:ok", user=FakeUser(1029)
+        data=f"feedback:adv:{interaction.interaction_id}:ok",
+        user=FakeUser(1029),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -409,7 +413,8 @@ async def test_feedback_handler_blogger_wrong_user(
     )
 
     callback = FakeCallback(
-        data=f"feedback:blog:{interaction.interaction_id}:ok", user=FakeUser(9999)
+        data=f"feedback:blog:{interaction.interaction_id}:ok",
+        user=FakeUser(9999),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -448,7 +453,8 @@ async def test_feedback_handler_blogger_feedback(
     )
 
     callback = FakeCallback(
-        data=f"feedback:blog:{interaction.interaction_id}:ok", user=FakeUser(1030)
+        data=f"feedback:blog:{interaction.interaction_id}:ok",
+        user=FakeUser(1030),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -494,7 +500,8 @@ async def test_feedback_handler_postpone(
     )
 
     callback = FakeCallback(
-        data=f"feedback:adv:{interaction.interaction_id}:postpone", user=FakeUser(1040)
+        data=f"feedback:adv:{interaction.interaction_id}:postpone",
+        user=FakeUser(1040),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -538,7 +545,8 @@ async def test_feedback_handler_postpone_max_reached(
     )
 
     callback = FakeCallback(
-        data=f"feedback:adv:{interaction.interaction_id}:postpone", user=FakeUser(1050)
+        data=f"feedback:adv:{interaction.interaction_id}:postpone",
+        user=FakeUser(1050),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -591,7 +599,8 @@ async def test_feedback_handler_exception(
     interaction_service.interaction_repo.get_by_id = failing_get_by_id  # type: ignore[assignment]
 
     callback = FakeCallback(
-        data=f"feedback:adv:{interaction.interaction_id}:ok", user=FakeUser(1060)
+        data=f"feedback:adv:{interaction.interaction_id}:ok",
+        user=FakeUser(1060),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -630,7 +639,8 @@ async def test_feedback_handler_no_deal_shows_reason_keyboard(
     )
 
     callback = FakeCallback(
-        data=f"feedback:adv:{interaction.interaction_id}:no_deal", user=FakeUser(1070)
+        data=f"feedback:adv:{interaction.interaction_id}:no_deal",
+        user=FakeUser(1070),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -650,7 +660,7 @@ async def test_feedback_handler_no_deal_shows_reason_keyboard(
 async def test_feedback_handler_nps_saves_score(
     user_repo, interaction_repo, nps_service
 ) -> None:
-    """NPS callback transitions to comment step; handle_nps_comment saves score."""
+    """NPS callback to comment step; handle_nps_comment saves score."""
 
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
@@ -673,7 +683,9 @@ async def test_feedback_handler_nps_saves_score(
         interaction_id=UUID("00000000-0000-0000-0000-000000000004"),
     )
 
-    callback = FakeCallback(data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1080))
+    callback = FakeCallback(
+        data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1080)
+    )
     state = FakeFSMContext()
     await handle_nps(callback, state, user_service, nps_service)
 
@@ -816,7 +828,9 @@ async def test_handle_nps_comment_saves_text_comment(
     msg = FakeMessage(text=comment_text, user=FakeUser(1040))
     await handle_nps_comment(msg, state, user_service, nps_service)
 
-    assert nps_service.nps_repo.scores.get(blogger.user_id) == [(3, comment_text)]
+    assert nps_service.nps_repo.scores.get(blogger.user_id) == [
+        (3, comment_text)
+    ]
 
 
 @pytest.mark.asyncio
@@ -869,7 +883,7 @@ async def test_handle_nps_comment_invalid_user_id(
 async def test_handle_nps_comment_user_id_mismatch(
     user_repo, interaction_repo, nps_service
 ) -> None:
-    """NPS comment when logged-in user differs from nps_user_id shows insufficient rights."""
+    """NPS comment when user differs from nps_user_id: insufficient rights."""
 
     from ugc_bot.bot.handlers.feedback import handle_nps_comment
 
@@ -984,7 +998,9 @@ async def test_handle_nps_rejects_blocked_user(
         interaction_id=UUID("00000000-0000-0000-0000-000000001096"),
     )
     user_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1093))
+    callback = FakeCallback(
+        data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1093)
+    )
     state = FakeFSMContext()
     await handle_nps(callback, state, user_service, nps_service)
 
@@ -1015,7 +1031,9 @@ async def test_handle_nps_rejects_paused_user(
         interaction_id=UUID("00000000-0000-0000-0000-00000000109a"),
     )
     user_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1097))
+    callback = FakeCallback(
+        data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1097)
+    )
     state = FakeFSMContext()
     await handle_nps(callback, state, user_service, nps_service)
 
@@ -1077,7 +1095,8 @@ async def test_handle_nps_rejects_non_advertiser(
 
     assert "Недостаточно прав" in callback.answers[0]
     assert (
-        UUID("00000000-0000-0000-0000-000000001092") not in nps_service.nps_repo.scores
+        UUID("00000000-0000-0000-0000-000000001092")
+        not in nps_service.nps_repo.scores
     )
 
 
@@ -1090,19 +1109,18 @@ async def test_feedback_reason_records_and_marks_blogger(
     nps_service,
     order_response_repo,
 ) -> None:
-    """When advertiser selects 'Креатор хотел изменить условия', reason is recorded and blogger marked."""
+    """Advertiser 'Креатор хотел изменить условия': reason recorded."""
 
     from datetime import datetime, timezone
 
+    from ugc_bot.application.services.blogger_registration_service import (
+        BloggerRegistrationService,
+    )
     from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.domain.entities import BloggerProfile
     from ugc_bot.domain.enums import WorkFormat
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
-    )
-
-    from ugc_bot.application.services.blogger_registration_service import (
-        BloggerRegistrationService,
     )
 
     if not isinstance(blogger_repo, InMemoryBloggerProfileRepository):
@@ -1179,7 +1197,7 @@ async def test_feedback_reason_records_and_marks_blogger(
 async def test_feedback_handler_issue_sets_state_and_sends_prompt(
     user_repo, interaction_repo, nps_service, order_response_repo, order_service
 ) -> None:
-    """When user selects issue, set FSM state and send prompt for description."""
+    """User selects issue: set FSM state and send prompt for description."""
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1199,7 +1217,8 @@ async def test_feedback_handler_issue_sets_state_and_sends_prompt(
     )
 
     callback = FakeCallback(
-        data=f"feedback:adv:{interaction.interaction_id}:issue", user=FakeUser(1100)
+        data=f"feedback:adv:{interaction.interaction_id}:issue",
+        user=FakeUser(1100),
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -1229,14 +1248,14 @@ async def test_handle_feedback_reason_no_data(
 ) -> None:
     """When callback has no data, return without error."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
-        InMemoryUserRepository,
         InMemoryInteractionRepository,
+        InMemoryUserRepository,
     )
 
     if not isinstance(blogger_repo, InMemoryBloggerProfileRepository):
@@ -1272,14 +1291,14 @@ async def test_handle_feedback_reason_wrong_parts_count(
 ) -> None:
     """Reject callback with wrong number of parts."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
-        InMemoryUserRepository,
         InMemoryInteractionRepository,
+        InMemoryUserRepository,
     )
 
     if not isinstance(blogger_repo, InMemoryBloggerProfileRepository):
@@ -1316,10 +1335,10 @@ async def test_handle_feedback_reason_rejects_blocked_user(
 ) -> None:
     """Reject feedback_reason from blocked user."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1373,10 +1392,10 @@ async def test_handle_feedback_reason_rejects_paused_user(
 ) -> None:
     """Reject feedback_reason from paused user."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1430,10 +1449,10 @@ async def test_handle_feedback_reason_interaction_not_found(
 ) -> None:
     """Reject feedback_reason when interaction does not exist."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1479,12 +1498,12 @@ async def test_handle_feedback_reason_adv_wrong_user(
     order_response_repo,
     order_service,
 ) -> None:
-    """Reject feedback_reason when advertiser is not the interaction advertiser."""
+    """Reject feedback_reason when advertiser not interaction advertiser."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1549,10 +1568,10 @@ async def test_handle_feedback_reason_blog_wrong_user(
 ) -> None:
     """Reject feedback_reason when blogger is not the interaction blogger."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1611,10 +1630,10 @@ async def test_handle_feedback_reason_invalid_uuid(
 ) -> None:
     """Reject invalid UUID in feedback_reason callback."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1626,7 +1645,9 @@ async def test_handle_feedback_reason_invalid_uuid(
     blogger_registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
-    callback = FakeCallback(data="fb_r:adv:notauuid:terms_differed", user=FakeUser(1))
+    callback = FakeCallback(
+        data="fb_r:adv:notauuid:terms_differed", user=FakeUser(1)
+    )
     state = FakeFSMContext()
     await handle_feedback_reason(
         callback,
@@ -1651,10 +1672,10 @@ async def test_feedback_reason_other_sets_state(
 ) -> None:
     """When user selects no_deal reason 'Другое', set FSM and ask for text."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1699,7 +1720,9 @@ async def test_feedback_reason_other_sets_state(
     assert callback.message.answers
     assert any("причину" in str(a) for a in callback.message.answers)
     assert state.state is not None
-    assert state._data.get("feedback_interaction_id") == str(interaction.interaction_id)
+    assert state._data.get("feedback_interaction_id") == str(
+        interaction.interaction_id
+    )
     assert state._data.get("feedback_kind") == "blog"
 
 
@@ -1707,7 +1730,7 @@ async def test_feedback_reason_other_sets_state(
 async def test_handle_no_deal_other_text_records_feedback(
     user_repo, interaction_repo, nps_service, order_response_repo, order_service
 ) -> None:
-    """When user sends text in waiting_no_deal_other, record feedback and clear state."""
+    """User text in waiting_no_deal_other: record feedback, clear state."""
 
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
@@ -1824,7 +1847,9 @@ async def test_handle_no_deal_other_text_session_expired(
     state = FakeFSMContext()
     await state.set_state(FeedbackStates.waiting_no_deal_other)
     await state.update_data(
-        feedback_interaction_id=str(UUID("00000000-0000-0000-0000-00000000112b")),
+        feedback_interaction_id=str(
+            UUID("00000000-0000-0000-0000-00000000112b")
+        ),
         feedback_kind="invalid_kind",
     )
     message = FakeMessage(text="Причина", user=FakeUser(1129))
@@ -1845,7 +1870,7 @@ async def test_handle_no_deal_other_text_session_expired(
 async def test_handle_no_deal_other_text_adv_wrong_user(
     user_repo, interaction_repo, nps_service, order_response_repo, order_service
 ) -> None:
-    """Reject no_deal_other when advertiser is not the interaction advertiser."""
+    """Reject no_deal_other when advertiser not interaction advertiser."""
 
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
@@ -1955,7 +1980,7 @@ async def test_handle_no_deal_other_text_blog_wrong_user(
 async def test_handle_no_deal_other_text_empty_asks_again(
     user_repo, interaction_repo, nps_service, order_response_repo, order_service
 ) -> None:
-    """When user sends empty text in waiting_no_deal_other, ask again and keep state."""
+    """User sends empty in waiting_no_deal_other: ask again, keep state."""
 
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
@@ -1995,7 +2020,9 @@ async def test_handle_no_deal_other_text_empty_asks_again(
         order_service,
     )
 
-    assert any("причину" in str(a) or "текстом" in str(a) for a in message.answers)
+    assert any(
+        "причину" in str(a) or "текстом" in str(a) for a in message.answers
+    )
     updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.from_blogger is None
@@ -2005,7 +2032,7 @@ async def test_handle_no_deal_other_text_empty_asks_again(
 async def test_handle_no_deal_other_text_interaction_not_found(
     user_repo, interaction_repo, nps_service, order_response_repo, order_service
 ) -> None:
-    """When interaction is not found in waiting_no_deal_other, reply and clear state."""
+    """Interaction not found in waiting_no_deal_other: reply and clear state."""
 
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
@@ -2044,7 +2071,7 @@ async def test_handle_no_deal_other_text_interaction_not_found(
 async def test_handle_no_deal_other_text_invalid_uuid(
     user_repo, interaction_repo, nps_service, order_response_repo, order_service
 ) -> None:
-    """When state has invalid interaction_id UUID, reply error and clear state."""
+    """State has invalid interaction_id UUID: reply error and clear state."""
 
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
@@ -2092,7 +2119,9 @@ async def test_handle_no_deal_other_text_user_not_in_repo_clears_state(
         FeedbackStates,
         handle_no_deal_other_text,
     )
-    from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryUserRepository,
+    )
 
     user_repo = InMemoryUserRepository()
     interaction = await create_test_interaction(
@@ -2135,12 +2164,12 @@ async def test_handle_issue_description_creates_complaint_and_records(
     order_response_repo,
     order_service,
 ) -> None:
-    """When user sends text and clicks Отправить, create complaint and record ISSUE."""
+    """User sends text, clicks Отправить: create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        FeedbackStates,
         _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
         handle_issue_description,
     )
 
@@ -2191,7 +2220,9 @@ async def test_handle_issue_description_creates_complaint_and_records(
     assert state.cleared is False
     assert len(message.reply_markups) > 0
 
-    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1130))
+    send_message = FakeMessage(
+        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1130)
+    )
     await handle_issue_description(
         send_message,
         state,
@@ -2222,12 +2253,12 @@ async def test_handle_issue_description_blogger_creates_complaint(
     order_response_repo,
     order_service,
 ) -> None:
-    """When blogger sends text and clicks Отправить, create complaint and record ISSUE."""
+    """Blogger text, clicks Отправить: create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        FeedbackStates,
         _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
         handle_issue_description,
     )
 
@@ -2262,7 +2293,9 @@ async def test_handle_issue_description_blogger_creates_complaint(
         issue_description_parts=[],
         issue_file_ids=[],
     )
-    message = FakeMessage(text="Креатор не выполнил условия", user=FakeUser(1131))
+    message = FakeMessage(
+        text="Креатор не выполнил условия", user=FakeUser(1131)
+    )
 
     await handle_issue_description(
         message,
@@ -2275,7 +2308,9 @@ async def test_handle_issue_description_blogger_creates_complaint(
         order_service,
     )
 
-    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1131))
+    send_message = FakeMessage(
+        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1131)
+    )
     await handle_issue_description(
         send_message,
         state,
@@ -2309,7 +2344,7 @@ async def test_handle_issue_description_expired_state(
     order_response_repo,
     order_service,
 ) -> None:
-    """When state data is missing (expired), reply session expired and clear state."""
+    """State data missing (expired): reply session expired and clear state."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
@@ -2414,14 +2449,16 @@ async def test_handle_issue_description_user_not_in_repo_clears_state(
     order_response_repo,
     order_service,
 ) -> None:
-    """When user is not in repo in waiting_issue_description, clear state and return."""
+    """User not in repo in waiting_issue_description: clear state and return."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
-    from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryUserRepository,
+    )
 
     user_repo = InMemoryUserRepository()
     interaction = await create_test_interaction(
@@ -2468,10 +2505,10 @@ async def test_feedback_reason_invalid_code(
 ) -> None:
     """Reject fb_r callback with unknown reason code."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -2521,10 +2558,10 @@ async def test_feedback_reason_blogger_conditions(
 ) -> None:
     """Blogger selects conditions reason, feedback recorded."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -2576,14 +2613,13 @@ async def test_handle_issue_description_with_photos(
     order_response_repo,
     order_service,
 ) -> None:
-    """When user sends photo with caption and clicks Отправить, file_ids in complaint."""
+    """User photo with caption, Отправить: file_ids in complaint."""
 
     from tests.helpers.fakes import FakePhotoSize
-
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        FeedbackStates,
         _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
         handle_issue_description,
     )
 
@@ -2628,7 +2664,9 @@ async def test_handle_issue_description_with_photos(
         order_service,
     )
 
-    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1170))
+    send_message = FakeMessage(
+        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1170)
+    )
     await handle_issue_description(
         send_message,
         state,
@@ -2774,7 +2812,7 @@ async def test_handle_feedback_advertiser_ok_shows_nps_keyboard(
     order_repo,
     order_service,
 ) -> None:
-    """When advertiser selects ok, NPS keyboard is shown (advertiser is last blogger)."""
+    """Advertiser ok: NPS keyboard shown (advertiser is last blogger)."""
 
     advertiser = await create_test_user(
         user_repo,
@@ -2840,7 +2878,7 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
     order_repo,
     order_service,
 ) -> None:
-    """Advertiser gets NPS only after giving feedback to all bloggers in the order."""
+    """Advertiser gets NPS after feedback to all bloggers in order."""
 
     advertiser = await create_test_user(
         user_repo,
@@ -2901,7 +2939,9 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
     nps_after_first = [
         m for m in bot.messages if len(m) >= 3 and m[2] and "nps:" in str(m[2])
     ]
-    assert not nps_after_first, "Advertiser should NOT get NPS after first blogger only"
+    assert (
+        not nps_after_first
+    ), "Advertiser should NOT get NPS after first blogger only"
 
     callback2 = FakeCallback(
         data=f"feedback:adv:{interaction2.interaction_id}:ok",
@@ -2919,14 +2959,16 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
     nps_after_all = [
         m for m in bot.messages if len(m) >= 3 and m[2] and "nps:" in str(m[2])
     ]
-    assert nps_after_all, "Advertiser should get NPS after feedback to all bloggers"
+    assert (
+        nps_after_all
+    ), "Advertiser should get NPS after feedback to all bloggers"
 
 
 @pytest.mark.asyncio
 async def test_handle_feedback_no_deal_blogger(
     user_repo, interaction_repo, nps_service, order_response_repo, order_service
 ) -> None:
-    """Blogger selects no_deal, gets reason question with blogger-specific text."""
+    """Blogger no_deal: gets reason question with blogger-specific text."""
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -3052,11 +3094,16 @@ class FailingComplaintRepo:
         self.complaints: dict = {}
 
     async def exists(
-        self, order_id: object, reporter_id: object, session: object | None = None
+        self,
+        order_id: object,
+        reporter_id: object,
+        session: object | None = None,
     ) -> bool:
         return False
 
-    async def save(self, complaint: object, session: object | None = None) -> None:
+    async def save(
+        self, complaint: object, session: object | None = None
+    ) -> None:
         raise RuntimeError("DB error")
 
     async def get_by_id(
@@ -3093,8 +3140,8 @@ async def test_handle_issue_description_complaint_fails(
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        FeedbackStates,
         _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
         handle_issue_description,
     )
 
@@ -3122,7 +3169,9 @@ async def test_handle_issue_description_complaint_fails(
         issue_description_parts=["Мошенник"],
         issue_file_ids=[],
     )
-    send_message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1210))
+    send_message = FakeMessage(
+        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1210)
+    )
 
     await handle_issue_description(
         send_message,
@@ -3150,10 +3199,10 @@ async def test_handle_feedback_reason_invalid_hex(
 ) -> None:
     """Reject invalid hex in interaction_id."""
 
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -3255,8 +3304,8 @@ async def test_handle_issue_description_send_button_invalid_uuid(
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        FeedbackStates,
         _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
         handle_issue_description,
     )
 
@@ -3302,12 +3351,12 @@ async def test_handle_issue_description_send_button_blogger(
     order_response_repo,
     order_service,
 ) -> None:
-    """Blogger can submit issue and complaint is created with blogger as reporter."""
+    """Blogger submits issue: complaint created with blogger as reporter."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        FeedbackStates,
         _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
         handle_issue_description,
     )
 
@@ -3357,7 +3406,9 @@ async def test_handle_issue_description_send_button_blogger(
 
 
 @pytest.mark.asyncio
-async def test_handle_nps_invalid_kind_defaults_to_blog(user_repo, nps_service) -> None:
+async def test_handle_nps_invalid_kind_defaults_to_blog(
+    user_repo, nps_service
+) -> None:
     """When kind is invalid, default to blog."""
 
     from ugc_bot.bot.handlers.feedback import handle_nps
@@ -3394,7 +3445,9 @@ async def test_handle_nps_score_zero_rejected(user_repo, nps_service) -> None:
         username="u",
     )
     user_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data=f"nps:{user.user_id.hex}:0:blog", user=FakeUser(1350))
+    callback = FakeCallback(
+        data=f"nps:{user.user_id.hex}:0:blog", user=FakeUser(1350)
+    )
     state = FakeFSMContext()
     await handle_nps(callback, state, user_service, nps_service)
     assert "1 до 5" in callback.answers[0]
@@ -3413,7 +3466,9 @@ async def test_handle_nps_score_six_rejected(user_repo, nps_service) -> None:
         username="u",
     )
     user_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data=f"nps:{user.user_id.hex}:6:blog", user=FakeUser(1360))
+    callback = FakeCallback(
+        data=f"nps:{user.user_id.hex}:6:blog", user=FakeUser(1360)
+    )
     state = FakeFSMContext()
     await handle_nps(callback, state, user_service, nps_service)
     assert "1 до 5" in callback.answers[0]

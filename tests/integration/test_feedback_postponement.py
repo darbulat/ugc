@@ -1,11 +1,12 @@
 """Integration test for feedback postponement logic."""
 
-import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from ugc_bot.domain.enums import InteractionStatus, OrderStatus, OrderType
+import pytest
+
 from ugc_bot.domain.entities import AdvertiserProfile
+from ugc_bot.domain.enums import InteractionStatus, OrderStatus, OrderType
 
 
 async def _get_interaction(dispatcher, interaction_id: UUID):
@@ -21,7 +22,7 @@ async def _get_interaction(dispatcher, interaction_id: UUID):
 async def test_feedback_postponement_three_times_leads_to_no_deal(
     dispatcher,
 ) -> None:
-    """Test that after 3 postponements, interaction automatically becomes NO_DEAL."""
+    """Test: after 3 postponements, interaction becomes NO_DEAL."""
 
     # === Подготовка ===
     # Создаем пользователей
@@ -97,7 +98,9 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Это означает перенос
     )
 
-    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
+    updated_interaction = await _get_interaction(
+        dispatcher, interaction.interaction_id
+    )
     assert updated_interaction.postpone_count == 1
     assert updated_interaction.status == InteractionStatus.PENDING
     assert updated_interaction.next_check_at is not None
@@ -109,7 +112,9 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Еще один перенос
     )
 
-    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
+    updated_interaction = await _get_interaction(
+        dispatcher, interaction.interaction_id
+    )
     assert updated_interaction.postpone_count == 2
     assert updated_interaction.status == InteractionStatus.PENDING
 
@@ -119,9 +124,13 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Третий перенос
     )
 
-    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
+    updated_interaction = await _get_interaction(
+        dispatcher, interaction.interaction_id
+    )
     assert updated_interaction.postpone_count == 3
-    assert updated_interaction.status == InteractionStatus.PENDING  # Еще PENDING
+    assert (
+        updated_interaction.status == InteractionStatus.PENDING
+    )  # Еще PENDING
 
     # === Шаг 4: Четвертый перенос (postpone_count = 4 → NO_DEAL) ===
     # Имитируем четвертый перенос, который должен привести к NO_DEAL
@@ -130,7 +139,9 @@ async def test_feedback_postponement_three_times_leads_to_no_deal(
         "еще не связался",  # Четвертый перенос
     )
 
-    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
+    updated_interaction = await _get_interaction(
+        dispatcher, interaction.interaction_id
+    )
     assert updated_interaction.postpone_count == 4
     assert (
         updated_interaction.status == InteractionStatus.NO_DEAL
@@ -210,7 +221,9 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         interaction.interaction_id, "еще не связался"
     )
 
-    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
+    updated_interaction = await _get_interaction(
+        dispatcher, interaction.interaction_id
+    )
     assert updated_interaction.postpone_count == 1
     assert updated_interaction.status == InteractionStatus.PENDING
 
@@ -219,9 +232,13 @@ async def test_feedback_postponement_less_than_three_times_keeps_pending(
         interaction.interaction_id, "еще не связался"
     )
 
-    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
+    updated_interaction = await _get_interaction(
+        dispatcher, interaction.interaction_id
+    )
     assert updated_interaction.postpone_count == 2
-    assert updated_interaction.status == InteractionStatus.PENDING  # Еще не NO_DEAL
+    assert (
+        updated_interaction.status == InteractionStatus.PENDING
+    )  # Еще не NO_DEAL
 
     print("✅ Feedback postponement test (< 3 times → still PENDING) passed!")
 
@@ -309,13 +326,21 @@ async def test_feedback_mixed_responses_aggregation(
 
     # === Шаг 2: Блогеры отвечают по-разному ===
     # Блогер 1: OK
-    await interaction_service.record_blogger_feedback(interaction1.interaction_id, "✅")
+    await interaction_service.record_blogger_feedback(
+        interaction1.interaction_id, "✅"
+    )
     # Блогер 2: NO_DEAL
-    await interaction_service.record_blogger_feedback(interaction2.interaction_id, "❌")
+    await interaction_service.record_blogger_feedback(
+        interaction2.interaction_id, "❌"
+    )
 
     # === Шаг 3: Проверяем агрегацию ===
-    final_interaction1 = await _get_interaction(dispatcher, interaction1.interaction_id)
-    final_interaction2 = await _get_interaction(dispatcher, interaction2.interaction_id)
+    final_interaction1 = await _get_interaction(
+        dispatcher, interaction1.interaction_id
+    )
+    final_interaction2 = await _get_interaction(
+        dispatcher, interaction2.interaction_id
+    )
 
     # Оба должны быть OK (advertiser OK + blogger OK/NO_DEAL)
     assert final_interaction1.status == InteractionStatus.OK
@@ -389,11 +414,15 @@ async def test_feedback_issue_status_blocks_user(
     )
 
     # === Шаг 1: Один участник отвечает ISSUE ===
-    await interaction_service.record_blogger_feedback(interaction.interaction_id, "⚠️")
+    await interaction_service.record_blogger_feedback(
+        interaction.interaction_id, "⚠️"
+    )
 
-    # Проверяем, что взаимодействие остаётся PENDING (другая сторона ещё не ответила)
+    # Interaction stays PENDING (other side has not responded yet)
     # и next_check_at установлен для повторного запроса
-    updated_interaction = await _get_interaction(dispatcher, interaction.interaction_id)
+    updated_interaction = await _get_interaction(
+        dispatcher, interaction.interaction_id
+    )
     assert updated_interaction.status == InteractionStatus.PENDING
     assert updated_interaction.next_check_at is not None
 

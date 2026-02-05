@@ -1,12 +1,12 @@
 """Integration test for complete advertiser user flow."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from aiogram import Dispatcher
 from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import AsyncMock
 
 from ugc_bot.domain.entities import AdvertiserProfile, Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus, UserStatus
@@ -20,7 +20,7 @@ async def test_advertiser_basic_flow(
     create_test_user,
     create_test_order,
 ) -> None:
-    """Test complete advertiser flow: registration → order creation → payment → contacts → feedback."""
+    """Test advertiser flow: registration → order → payment → feedback."""
 
     # === Step 1: Advertiser registration ===
     advertiser_user = create_test_user("advertiser_123")
@@ -56,8 +56,8 @@ async def test_advertiser_basic_flow(
     assert order.status == OrderStatus.NEW
     assert order.advertiser_id == advertiser_user.user_id
 
-    # === Step 3: Payment and order activation (same transaction, no outbox table) ===
-    # PaymentService.confirm_telegram_payment does reads without session; we run the
+    # === Step 3: Payment and order activation (no outbox table) ===
+    # PaymentService.confirm_telegram_payment reads without session; we run the
     # write path manually so integration tests work with SQLite.
     now = datetime.now(timezone.utc)
     payment = Payment(

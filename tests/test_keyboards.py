@@ -93,7 +93,7 @@ def test_advertiser_start_keyboard() -> None:
 
 
 def test_advertiser_menu_keyboard() -> None:
-    """Advertiser menu has Create order, My orders, My profile, Edit profile, Support."""
+    """Advertiser menu: Create order, My orders, My profile, Edit, Support."""
     from ugc_bot.bot.handlers.keyboards import EDIT_PROFILE_BUTTON_TEXT
 
     keyboard = advertiser_menu_keyboard()

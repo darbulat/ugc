@@ -6,7 +6,9 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.domain.entities import BloggerProfile, Order, User
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -182,7 +184,7 @@ async def test_dispatch_requires_active_order() -> None:
 async def test_get_order_and_advertiser_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """get_order_and_advertiser uses transaction when transaction_manager is set."""
+    """get_order_and_advertiser uses transaction when tm is set."""
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
@@ -219,16 +221,21 @@ async def test_get_order_and_advertiser_with_transaction_manager(
     )
     await user_repo.save(advertiser)
 
-    got_order, got_advertiser = await service.get_order_and_advertiser(order.order_id)
+    got_order, got_advertiser = await service.get_order_and_advertiser(
+        order.order_id
+    )
     assert got_order is not None and got_order.order_id == order.order_id
-    assert got_advertiser is not None and got_advertiser.user_id == advertiser.user_id
+    assert (
+        got_advertiser is not None
+        and got_advertiser.user_id == advertiser.user_id
+    )
 
 
 @pytest.mark.asyncio
 async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
     fake_tm: object,
 ) -> None:
-    """get_order_and_advertiser with transaction_manager returns (None, None) when order missing."""
+    """get_order_and_advertiser with tm returns (None, None) when missing."""
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
@@ -240,13 +247,15 @@ async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
         transaction_manager=fake_tm,
     )
     missing_order_id = UUID("00000000-0000-0000-0000-000000000616")
-    got_order, got_advertiser = await service.get_order_and_advertiser(missing_order_id)
+    got_order, got_advertiser = await service.get_order_and_advertiser(
+        missing_order_id
+    )
     assert got_order is None
     assert got_advertiser is None
 
 
 def test_format_offer_ugc_plus_placement() -> None:
-    """format_offer uses UGC + размещение label for ugc_plus_placement order type."""
+    """format_offer uses UGC+размещение for ugc_plus_placement order."""
 
     service = OfferDispatchService(
         user_repo=InMemoryUserRepository(),

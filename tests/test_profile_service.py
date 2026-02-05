@@ -7,7 +7,12 @@ import pytest
 
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
@@ -66,7 +71,7 @@ async def test_get_user_by_external_with_transaction_manager(fake_tm) -> None:
 
 @pytest.mark.asyncio
 async def test_get_blogger_profile_with_transaction_manager(fake_tm) -> None:
-    """ProfileService get_blogger_profile with transaction_manager uses session."""
+    """ProfileService get_blogger_profile with tm uses session."""
     user_id = UUID("00000000-0000-0000-0000-000000000003")
     blogger_repo = InMemoryBloggerProfileRepository()
     profile = BloggerProfile(
@@ -98,7 +103,7 @@ async def test_get_blogger_profile_with_transaction_manager(fake_tm) -> None:
 
 @pytest.mark.asyncio
 async def test_get_advertiser_profile_with_transaction_manager(fake_tm) -> None:
-    """ProfileService get_advertiser_profile with transaction_manager uses session."""
+    """ProfileService get_advertiser_profile with tm uses session."""
     user_id = UUID("00000000-0000-0000-0000-000000000004")
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     profile = AdvertiserProfile(

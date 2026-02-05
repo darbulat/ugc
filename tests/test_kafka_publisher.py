@@ -47,7 +47,7 @@ async def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
 
         async def send_and_wait(self, topic, value):  # type: ignore[no-untyped-def]
             sent.append((topic, value))
-            return None
+            return
 
         async def stop(self) -> None:
             self.stopped = True
@@ -77,7 +77,9 @@ async def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_kafka_publisher_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_kafka_publisher_handles_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Swallow Kafka errors."""
 
     created: dict[str, object] = {}

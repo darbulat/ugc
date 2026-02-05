@@ -21,7 +21,9 @@ class TestOutboxPublisher:
         outbox_repo = Mock()
         outbox_repo.save = AsyncMock()
         order_repo = Mock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
 
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -63,7 +65,9 @@ class TestOutboxPublisher:
 
         outbox_repo = Mock()
         order_repo = Mock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
 
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000010"),
@@ -138,7 +142,9 @@ class TestOutboxPublisher:
         order_repo = Mock()
         order_repo.get_by_id = AsyncMock(return_value=order)
         order_repo.save = AsyncMock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as processing
@@ -207,7 +213,9 @@ class TestOutboxPublisher:
         order_repo = Mock()
         order_repo.get_by_id = AsyncMock(return_value=order)
         order_repo.save = AsyncMock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as processing
@@ -256,10 +264,14 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_published = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
-        kafka_publisher.publish = AsyncMock(side_effect=Exception("Kafka error"))
+        kafka_publisher.publish = AsyncMock(
+            side_effect=Exception("Kafka error")
+        )
 
         order_repo = Mock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was NOT marked as processing (skipped due to max retries)
@@ -331,7 +343,9 @@ class TestOutboxPublisher:
         order_repo = Mock()
         order_repo.get_by_id = AsyncMock(return_value=order)
         order_repo.save = AsyncMock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as processing
@@ -364,7 +378,9 @@ class TestOutboxPublisher:
         kafka_publisher.publish = AsyncMock()
 
         order_repo = Mock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify no interactions with repositories
@@ -399,7 +415,9 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_failed = AsyncMock()
 
         order_repo = Mock()
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as failed
@@ -447,7 +465,9 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_failed = AsyncMock()
         kafka_publisher.publish = AsyncMock()
 
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify event was marked as failed
@@ -517,7 +537,9 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
 
-        publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
         await publisher.process_pending_events(kafka_publisher, max_retries=3)
 
         # Verify order was saved (activation happened before Kafka failure)

@@ -1,7 +1,7 @@
 """Add platform_feedback table for UMC platform rating (1-5 stars + comment)."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0022_add_platform_feedback"
@@ -60,6 +60,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop platform_feedback table."""
 
-    op.drop_index("ix_platform_feedback_user_id", table_name="platform_feedback")
-    op.drop_index("ix_platform_feedback_order_id", table_name="platform_feedback")
+    op.drop_index(
+        "ix_platform_feedback_user_id", table_name="platform_feedback"
+    )
+    op.drop_index(
+        "ix_platform_feedback_order_id", table_name="platform_feedback"
+    )
     op.drop_table("platform_feedback")

@@ -1,7 +1,7 @@
-"""Add postpone_count, next_check_at, updated_at to interactions and PENDING status."""
+"""Add postpone_count, next_check_at, updated_at, PENDING to interactions."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0007_interaction_postpone"
 down_revision = "7b07c4b86f09"
@@ -13,12 +13,16 @@ def upgrade() -> None:
     """Add postpone fields and PENDING status to interactions."""
 
     # Add PENDING to interaction_status enum
-    op.execute("ALTER TYPE interaction_status ADD VALUE IF NOT EXISTS 'pending'")
+    op.execute(
+        "ALTER TYPE interaction_status ADD VALUE IF NOT EXISTS 'pending'"
+    )
 
     # Add new columns to interactions table
     op.add_column(
         "interactions",
-        sa.Column("postpone_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column(
+            "postpone_count", sa.Integer(), nullable=False, server_default="0"
+        ),
     )
     op.add_column(
         "interactions",

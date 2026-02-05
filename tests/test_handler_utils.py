@@ -96,7 +96,8 @@ def test_parse_user_id_from_state_custom_key() -> None:
     """Use custom key (e.g. edit_user_id)."""
     uid = uuid4()
     assert (
-        parse_user_id_from_state({"edit_user_id": str(uid)}, key="edit_user_id") == uid
+        parse_user_id_from_state({"edit_user_id": str(uid)}, key="edit_user_id")
+        == uid
     )
 
 
@@ -125,7 +126,9 @@ async def test_get_user_and_ensure_allowed_none() -> None:
             self.answers.append(text)
 
     class NoUserService:
-        async def get_user(self, external_id: str, messenger_type: object) -> None:
+        async def get_user(
+            self, external_id: str, messenger_type: object
+        ) -> None:
             return None
 
     message = FakeMessage()
@@ -259,7 +262,7 @@ async def test_get_user_and_ensure_allowed_callback_ok() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_draft_choice_session_expired() -> None:
-    """When user_id is missing from state, clear and send session_expired_msg."""
+    """When user_id missing from state, clear and send session_expired_msg."""
 
     class FakeMessage:
         def __init__(self) -> None:
@@ -314,7 +317,7 @@ async def test_handle_draft_choice_session_expired() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_draft_choice_resume_draft_none() -> None:
-    """When RESUME_DRAFT but draft is None, show draft_used_msg and first step."""
+    """When RESUME_DRAFT but draft None, show draft_used_msg and first step."""
 
     class FakeMessage:
         def __init__(self, text: str) -> None:

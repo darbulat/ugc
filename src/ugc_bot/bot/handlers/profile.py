@@ -2,6 +2,7 @@
 
 import logging
 import re
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -15,7 +16,26 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
+from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import (
+    DRAFT_QUESTION_TEXT,
+    EDIT_PROFILE_BUTTON_TEXT,
+    MY_PROFILE_BUTTON_TEXT,
+    WORK_FORMAT_ADS_BUTTON_TEXT,
+    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
+    advertiser_menu_keyboard,
+    blogger_profile_view_keyboard,
+    draft_choice_keyboard,
+    support_keyboard,
+    with_support_keyboard,
+)
+from ugc_bot.bot.handlers.utils import (
+    handle_draft_choice,
+    parse_user_id_from_state,
+)
 from ugc_bot.bot.validators import (
     validate_audience_geo,
     validate_brand,
@@ -28,25 +48,13 @@ from ugc_bot.bot.validators import (
     validate_site_link,
     validate_topics,
 )
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
-from ugc_bot.application.services.profile_service import ProfileService
-from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import handle_draft_choice, parse_user_id_from_state
-from ugc_bot.bot.handlers.keyboards import (
-    EDIT_PROFILE_BUTTON_TEXT,
-    DRAFT_QUESTION_TEXT,
-    MY_PROFILE_BUTTON_TEXT,
-    WORK_FORMAT_ADS_BUTTON_TEXT,
-    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
-    advertiser_menu_keyboard,
-    blogger_profile_view_keyboard,
-    draft_choice_keyboard,
-    support_keyboard,
-    with_support_keyboard,
-)
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
-
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 
 router = Router()
 
@@ -117,7 +125,8 @@ def _format_profile_text(
                 f"   Подтверждён: {confirmed}",
                 f"   Город: {blogger.city}",
                 f"   Тематики: {topics}",
-                f"   Целевая аудитория: {gender_label}, {blogger.audience_age_min}–{blogger.audience_age_max} лет",
+                f"   Целевая аудитория: {gender_label}, "
+                f"{blogger.audience_age_min}–{blogger.audience_age_max} лет",
                 f"   География: {blogger.audience_geo}",
                 f"   Цена: {blogger.price} ₽",
                 f"   Бартер: {barter_str}",
@@ -175,7 +184,9 @@ _EDIT_FIELDS_ADVERTISER = [
     ("Ссылка на сайт", "site_link"),
 ]
 EDIT_FIELD_LABELS_ADVERTISER = [label for label, _ in _EDIT_FIELDS_ADVERTISER]
-EDIT_FIELD_KEYS_ADVERTISER = {label: key for label, key in _EDIT_FIELDS_ADVERTISER}
+EDIT_FIELD_KEYS_ADVERTISER = {
+    label: key for label, key in _EDIT_FIELDS_ADVERTISER
+}
 
 _AGE_BUTTONS: dict[str, tuple[int, int]] = {
     "до 18": (1, 17),
@@ -187,6 +198,388 @@ _AGE_BUTTONS: dict[str, tuple[int, int]] = {
 
 
 EDIT_PROFILE_FLOW_TYPE = "edit_profile"
+
+
+async def _adv_update_contact(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    advertiser_registration_service: AdvertiserRegistrationService,
+) -> AdvertiserProfile | None:
+    """Update phone. Returns profile or None."""
+    err = validate_phone(text)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await advertiser_registration_service.update_advertiser_profile(
+        user_id, phone=text
+    )
+
+
+async def _adv_update_brand(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    advertiser_registration_service: AdvertiserRegistrationService,
+) -> AdvertiserProfile | None:
+    """Update brand. Returns profile or None."""
+    err = validate_brand(text)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await advertiser_registration_service.update_advertiser_profile(
+        user_id, brand=text
+    )
+
+
+async def _adv_update_site_link(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    advertiser_registration_service: AdvertiserRegistrationService,
+) -> AdvertiserProfile | None:
+    """Update site_link. Returns profile or None."""
+    err = validate_site_link(text or None)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await advertiser_registration_service.update_advertiser_profile(
+        user_id, site_link=text or None
+    )
+
+
+async def _adv_update_city(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    advertiser_registration_service: AdvertiserRegistrationService,
+) -> AdvertiserProfile | None:
+    """Update city. Returns profile or None."""
+    err = validate_city(text or None, required=False)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await advertiser_registration_service.update_advertiser_profile(
+        user_id, city=text or None
+    )
+
+
+async def _adv_update_company_activity(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    advertiser_registration_service: AdvertiserRegistrationService,
+) -> AdvertiserProfile | None:
+    """Update company_activity. Returns profile or None."""
+    err = validate_company_activity(text or None)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await advertiser_registration_service.update_advertiser_profile(
+        user_id, company_activity=text or None
+    )
+
+
+async def _update_advertiser_field(
+    message: Message,
+    state: FSMContext,
+    field_key: str,
+    text: str,
+    user_id: UUID,
+    external_id: str,
+    advertiser: AdvertiserProfile,
+    profile_service: ProfileService,
+    advertiser_registration_service: AdvertiserRegistrationService,
+    user_role_service: UserRoleService,
+) -> bool:
+    """Validate and update advertiser field. Returns True on success."""
+    if field_key == "name":
+        err = validate_name(text)
+        if err is not None:
+            await message.answer(err, reply_markup=support_keyboard())
+            return False
+        await user_role_service.set_user(
+            external_id=external_id,
+            messenger_type=MessengerType.TELEGRAM,
+            username=text,
+        )
+        await state.clear()
+        await message.answer(
+            "Профиль обновлён.",
+            reply_markup=advertiser_menu_keyboard(),
+        )
+        await show_profile(message, profile_service, state)
+        return True
+
+    updaters = {
+        "phone": _adv_update_contact,
+        "brand": _adv_update_brand,
+        "site_link": _adv_update_site_link,
+        "city": _adv_update_city,
+        "company_activity": _adv_update_company_activity,
+    }
+    updater = updaters.get(field_key)
+    if updater is None:
+        await state.clear()
+        await message.answer("Неизвестное поле.")
+        return False
+    updated = await updater(
+        text, user_id, message, advertiser_registration_service
+    )
+    if updated is None:
+        await state.clear()
+        await message.answer("Не удалось обновить профиль.")
+        return False
+    await state.clear()
+    await message.answer(
+        "Профиль обновлён.",
+        reply_markup=advertiser_menu_keyboard(),
+    )
+    await show_profile(message, profile_service, state)
+    return True
+
+
+async def _blog_update_instagram(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update instagram_url. Returns profile or None."""
+    if not text or "instagram.com/" not in text.lower():
+        await message.answer(
+            "Неверный формат ссылки. Пример: instagram.com/name"
+        )
+        return None
+    if not _INSTAGRAM_URL_REGEX.match(text):
+        await message.answer("Неверный формат ссылки Instagram.")
+        return None
+    existing = await blogger_registration_service.get_profile_by_instagram_url(
+        text
+    )
+    if existing is not None and existing.user_id != user_id:
+        await message.answer(
+            "Этот Instagram уже зарегистрирован. Используйте другой."
+        )
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, instagram_url=text
+    )
+
+
+async def _blog_update_city(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update city. Returns profile or None."""
+    err = validate_city(text, required=True)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, city=text
+    )
+
+
+async def _blog_update_topics(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update topics. Returns profile or None."""
+    topics = [t.strip().lower() for t in text.split(",") if t.strip()]
+    err = validate_topics(topics)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, topics={"selected": topics}
+    )
+
+
+async def _blog_update_audience_gender(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update audience_gender. Returns profile or None."""
+    key = text[2:].lower()
+    gender_map = {
+        "в основном женщины": AudienceGender.FEMALE,
+        "в основном мужчины": AudienceGender.MALE,
+        "примерно поровну": AudienceGender.ALL,
+    }
+    if key not in gender_map:
+        await message.answer("Выберите одну из кнопок.")
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, audience_gender=gender_map[key]
+    )
+
+
+async def _blog_update_audience_age(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update audience_age. Returns profile or None."""
+    if text not in _AGE_BUTTONS:
+        await message.answer("Выберите одну из кнопок возраста.")
+        return None
+    min_age, max_age = _AGE_BUTTONS[text]
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, audience_age_min=min_age, audience_age_max=max_age
+    )
+
+
+async def _blog_update_audience_geo(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update audience_geo. Returns profile or None."""
+    err = validate_audience_geo(text)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    cities = [c.strip() for c in text.split(",") if c.strip()]
+    if len(cities) > 3:
+        await message.answer(
+            "Укажите не более 3 городов.",
+            reply_markup=support_keyboard(),
+        )
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, audience_geo=text
+    )
+
+
+async def _blog_update_price(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update price. Returns profile or None."""
+    try:
+        price = float(text.replace(",", "."))
+    except ValueError:
+        await message.answer("Введите число, например 1000.")
+        return None
+    err = validate_price(price, MAX_ORDER_PRICE)
+    if err is not None:
+        await message.answer(err, reply_markup=support_keyboard())
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, price=price
+    )
+
+
+async def _blog_update_barter(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update barter. Returns profile or None."""
+    if text.lower() == "да":
+        barter = True
+    elif text.lower() == "нет":
+        barter = False
+    else:
+        await message.answer("Выберите Да или Нет.")
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, barter=barter
+    )
+
+
+async def _blog_update_work_format(
+    text: str,
+    user_id: UUID,
+    message: Message,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update work_format. Returns profile or None."""
+    if text == WORK_FORMAT_ADS_BUTTON_TEXT:
+        wf = WorkFormat.ADS_IN_ACCOUNT
+    elif text == WORK_FORMAT_UGC_ONLY_BUTTON_TEXT:
+        wf = WorkFormat.UGC_ONLY
+    else:
+        await message.answer("Выберите одну из кнопок.")
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, work_format=wf
+    )
+
+
+async def _update_blogger_field(
+    message: Message,
+    state: FSMContext,
+    field_key: str,
+    text: str,
+    user_id: UUID,
+    external_id: str,
+    blogger: BloggerProfile,
+    profile_service: ProfileService,
+    blogger_registration_service: BloggerRegistrationService,
+    user_role_service: UserRoleService,
+) -> bool:
+    """Validate and update blogger field. Returns True on success."""
+    if field_key == "nickname":
+        err = validate_nickname(text)
+        if err is not None:
+            await message.answer(err, reply_markup=support_keyboard())
+            return False
+        await user_role_service.set_user(
+            external_id=external_id,
+            messenger_type=MessengerType.TELEGRAM,
+            username=text,
+        )
+        await state.clear()
+        await message.answer(
+            "Имя обновлено.",
+            reply_markup=blogger_profile_view_keyboard(blogger.confirmed),
+        )
+        await show_profile(message, profile_service, state)
+        return True
+
+    updaters = {
+        "instagram_url": _blog_update_instagram,
+        "city": _blog_update_city,
+        "topics": _blog_update_topics,
+        "audience_gender": _blog_update_audience_gender,
+        "audience_age": _blog_update_audience_age,
+        "audience_geo": _blog_update_audience_geo,
+        "price": _blog_update_price,
+        "barter": _blog_update_barter,
+        "work_format": _blog_update_work_format,
+    }
+    updater = updaters.get(field_key)
+    if updater is None:
+        await state.clear()
+        await message.answer("Неизвестное поле.")
+        return False
+    updated_blogger = await updater(
+        text, user_id, message, blogger_registration_service
+    )
+    if updated_blogger is None:
+        await state.clear()
+        await message.answer("Не удалось обновить профиль.")
+        return False
+    await state.clear()
+    await message.answer(
+        "Профиль обновлён.",
+        reply_markup=blogger_profile_view_keyboard(updated_blogger.confirmed),
+    )
+    await show_profile(message, profile_service, state)
+    return True
 
 
 class EditProfileStates(StatesGroup):
@@ -223,7 +616,9 @@ async def show_profile(
 
     reply_markup = None
     if blogger is not None:
-        reply_markup = blogger_profile_view_keyboard(confirmed=blogger.confirmed)
+        reply_markup = blogger_profile_view_keyboard(
+            confirmed=blogger.confirmed
+        )
     elif advertiser is not None:
         reply_markup = advertiser_menu_keyboard()
 
@@ -231,7 +626,7 @@ async def show_profile(
 
 
 def _edit_field_keyboard(profile_type: str = "blogger") -> ReplyKeyboardMarkup:
-    """Keyboard with profile field names for editing (two per row to save space)."""
+    """Keyboard with profile fields for editing (two per row)."""
 
     labels = (
         EDIT_FIELD_LABELS_ADVERTISER
@@ -265,7 +660,9 @@ def _edit_profile_type_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-@router.message(lambda msg: (msg.text or "").strip() == EDIT_PROFILE_BUTTON_TEXT)
+@router.message(
+    lambda msg: (msg.text or "").strip() == EDIT_PROFILE_BUTTON_TEXT
+)
 async def edit_profile_start(
     message: Message,
     state: FSMContext,
@@ -294,9 +691,13 @@ async def edit_profile_start(
     await state.update_data(
         edit_user_id=user.user_id, edit_external_id=str(message.from_user.id)
     )
-    draft = await fsm_draft_service.get_draft(user.user_id, EDIT_PROFILE_FLOW_TYPE)
+    draft = await fsm_draft_service.get_draft(
+        user.user_id, EDIT_PROFILE_FLOW_TYPE
+    )
     if draft is not None:
-        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await message.answer(
+            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
+        )
         await state.set_state(EditProfileStates.choosing_draft_restore)
         return
     if blogger is not None and advertiser is not None:
@@ -397,7 +798,9 @@ async def edit_profile_choose_field(
     data = await state.get_data()
     profile_type = data.get("edit_profile_type", "blogger")
     field_keys = (
-        EDIT_FIELD_KEYS_ADVERTISER if profile_type == "advertiser" else EDIT_FIELD_KEYS
+        EDIT_FIELD_KEYS_ADVERTISER
+        if profile_type == "advertiser"
+        else EDIT_FIELD_KEYS
     )
     if text not in field_keys:
         await message.answer("Выберите один из разделов на клавиатуре.")
@@ -408,7 +811,7 @@ async def edit_profile_choose_field(
 
     prompts_blogger = {
         "nickname": "Введите новое имя:",
-        "instagram_url": "Прикрепите новую ссылку в формате instagram.com/name:",
+        "instagram_url": "Прикрепите ссылку instagram.com/name:",
         "city": "Из какого вы города?",
         "topics": "Напишите 1–3 тематики через запятую:",
         "audience_gender": "Кто в основном смотрит ваш контент?",
@@ -420,11 +823,13 @@ async def edit_profile_choose_field(
     }
     prompts_advertiser = {
         "name": "Введите имя:",
-        "phone": "Укажите номер телефона, по которому с вами можно связаться по заказу. Пример: 89001110777",
+        "phone": "Укажите номер телефона для связи. Пример: 89001110777",
         "brand": "Название вашего бренда / компании / бизнеса:",
         "site_link": "Ссылка на сайт, продукт или соцсети бренда:",
     }
-    prompts = prompts_advertiser if profile_type == "advertiser" else prompts_blogger
+    prompts = (
+        prompts_advertiser if profile_type == "advertiser" else prompts_blogger
+    )
     prompt = prompts.get(field_key, "Введите новое значение:")
 
     if field_key == "audience_gender":
@@ -498,6 +903,7 @@ async def edit_profile_enter_value(
         await message.answer("Сессия истекла. Откройте «Мой профиль» снова.")
         return
     external_id = str(external_id_raw)
+    text = (message.text or "").strip()
 
     if profile_type == "advertiser":
         advertiser = await profile_service.get_advertiser_profile(user_id)
@@ -505,78 +911,18 @@ async def edit_profile_enter_value(
             await state.clear()
             await message.answer("Профиль рекламодателя не найден.")
             return
-        text = (message.text or "").strip()
-        if field_key == "name":
-            err = validate_name(text)
-            if err is not None:
-                await message.answer(err, reply_markup=support_keyboard())
-                return
-            await user_role_service.set_user(
-                external_id=external_id,
-                messenger_type=MessengerType.TELEGRAM,
-                username=text,
-            )
-            await state.clear()
-            await message.answer(
-                "Профиль обновлён.",
-                reply_markup=advertiser_menu_keyboard(),
-            )
-            await show_profile(message, profile_service, state)
-            return
-        elif field_key == "phone":
-            err = validate_phone(text)
-            if err is not None:
-                await message.answer(err, reply_markup=support_keyboard())
-                return
-            updated = await advertiser_registration_service.update_advertiser_profile(
-                user_id, phone=text
-            )
-        elif field_key == "brand":
-            err = validate_brand(text)
-            if err is not None:
-                await message.answer(err, reply_markup=support_keyboard())
-                return
-            updated = await advertiser_registration_service.update_advertiser_profile(
-                user_id, brand=text
-            )
-        elif field_key == "site_link":
-            err = validate_site_link(text or None)
-            if err is not None:
-                await message.answer(err, reply_markup=support_keyboard())
-                return
-            updated = await advertiser_registration_service.update_advertiser_profile(
-                user_id, site_link=text or None
-            )
-        elif field_key == "city":
-            err = validate_city(text or None, required=False)
-            if err is not None:
-                await message.answer(err, reply_markup=support_keyboard())
-                return
-            updated = await advertiser_registration_service.update_advertiser_profile(
-                user_id, city=text or None
-            )
-        elif field_key == "company_activity":
-            err = validate_company_activity(text or None)
-            if err is not None:
-                await message.answer(err, reply_markup=support_keyboard())
-                return
-            updated = await advertiser_registration_service.update_advertiser_profile(
-                user_id, company_activity=text or None
-            )
-        else:
-            await state.clear()
-            await message.answer("Неизвестное поле.")
-            return
-        if updated is None:
-            await state.clear()
-            await message.answer("Не удалось обновить профиль.")
-            return
-        await state.clear()
-        await message.answer(
-            "Профиль обновлён.",
-            reply_markup=advertiser_menu_keyboard(),
+        await _update_advertiser_field(
+            message,
+            state,
+            field_key,
+            text,
+            user_id,
+            external_id,
+            advertiser,
+            profile_service,
+            advertiser_registration_service,
+            user_role_service,
         )
-        await show_profile(message, profile_service, state)
         return
 
     blogger = await profile_service.get_blogger_profile(user_id)
@@ -584,141 +930,15 @@ async def edit_profile_enter_value(
         await state.clear()
         await message.answer("Профиль не найден.")
         return
-
-    text = (message.text or "").strip()
-
-    if field_key == "nickname":
-        err = validate_nickname(text)
-        if err is not None:
-            await message.answer(err, reply_markup=support_keyboard())
-            return
-        await user_role_service.set_user(
-            external_id=external_id,
-            messenger_type=MessengerType.TELEGRAM,
-            username=text,
-        )
-        await state.clear()
-        await message.answer("Имя обновлено.")
-        await show_profile(message, profile_service, state)
-        return
-
-    if field_key == "instagram_url":
-        if not text or "instagram.com/" not in text.lower():
-            await message.answer("Неверный формат ссылки. Пример: instagram.com/name")
-            return
-        if not _INSTAGRAM_URL_REGEX.match(text):
-            await message.answer("Неверный формат ссылки Instagram.")
-            return
-        existing = await blogger_registration_service.get_profile_by_instagram_url(text)
-        if existing is not None and existing.user_id != user_id:
-            await message.answer(
-                "Этот Instagram аккаунт уже зарегистрирован. Используйте другой."
-            )
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, instagram_url=text
-        )
-    elif field_key == "city":
-        err = validate_city(text, required=True)
-        if err is not None:
-            await message.answer(err, reply_markup=support_keyboard())
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, city=text
-        )
-    elif field_key == "topics":
-        topics = [t.strip().lower() for t in text.split(",") if t.strip()]
-        err = validate_topics(topics)
-        if err is not None:
-            await message.answer(err, reply_markup=support_keyboard())
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, topics={"selected": topics}
-        )
-    elif field_key == "audience_gender":
-        key = text[2:].lower()
-        gender_map = {
-            "в основном женщины": AudienceGender.FEMALE,
-            "в основном мужчины": AudienceGender.MALE,
-            "примерно поровну": AudienceGender.ALL,
-        }
-        if key not in gender_map:
-            await message.answer("Выберите одну из кнопок.")
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, audience_gender=gender_map[key]
-        )
-    elif field_key == "audience_age":
-        if text not in _AGE_BUTTONS:
-            await message.answer("Выберите одну из кнопок возраста.")
-            return
-        min_age, max_age = _AGE_BUTTONS[text]
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, audience_age_min=min_age, audience_age_max=max_age
-        )
-    elif field_key == "audience_geo":
-        err = validate_audience_geo(text)
-        if err is not None:
-            await message.answer(err, reply_markup=support_keyboard())
-            return
-        cities = [c.strip() for c in text.split(",") if c.strip()]
-        if len(cities) > 3:
-            await message.answer(
-                "Укажите не более 3 городов.",
-                reply_markup=support_keyboard(),
-            )
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, audience_geo=text
-        )
-    elif field_key == "price":
-        try:
-            price = float(text.replace(",", "."))
-        except ValueError:
-            await message.answer("Введите число, например 1000.")
-            return
-        err = validate_price(price, MAX_ORDER_PRICE)
-        if err is not None:
-            await message.answer(err, reply_markup=support_keyboard())
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, price=price
-        )
-    elif field_key == "barter":
-        if text.lower() == "да":
-            barter = True
-        elif text.lower() == "нет":
-            barter = False
-        else:
-            await message.answer("Выберите Да или Нет.")
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, barter=barter
-        )
-    elif field_key == "work_format":
-        if text == WORK_FORMAT_ADS_BUTTON_TEXT:
-            wf = WorkFormat.ADS_IN_ACCOUNT
-        elif text == WORK_FORMAT_UGC_ONLY_BUTTON_TEXT:
-            wf = WorkFormat.UGC_ONLY
-        else:
-            await message.answer("Выберите одну из кнопок.")
-            return
-        updated_blogger = await blogger_registration_service.update_blogger_profile(
-            user_id, work_format=wf
-        )
-    else:
-        await state.clear()
-        await message.answer("Неизвестное поле.")
-        return
-
-    if updated_blogger is None:
-        await state.clear()
-        await message.answer("Не удалось обновить профиль.")
-        return
-
-    await state.clear()
-    await message.answer(
-        "Профиль обновлён.",
-        reply_markup=blogger_profile_view_keyboard(updated_blogger.confirmed),
+    await _update_blogger_field(
+        message,
+        state,
+        field_key,
+        text,
+        user_id,
+        external_id,
+        blogger,
+        profile_service,
+        blogger_registration_service,
+        user_role_service,
     )
-    await show_profile(message, profile_service, state)

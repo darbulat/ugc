@@ -4,6 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.helpers.factories import create_test_user
+from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
+from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -14,9 +17,6 @@ from ugc_bot.bot.handlers.instagram_verification import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus
-from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
-from tests.helpers.factories import create_test_user
-from tests.helpers.services import build_profile_service
 
 
 def _fake_config() -> AppConfig:
@@ -166,7 +166,7 @@ async def test_start_verification_paused_user(
 
 
 def test_verification_instruction_format() -> None:
-    """Verify instruction text matches TZ requirements (code sent in separate message)."""
+    """Verify instruction matches TZ (code sent in separate message)."""
     admin_username = "admin_ugc_bot"
 
     instruction = _verification_instruction_text(admin_username)
@@ -185,6 +185,7 @@ async def test_start_verification_via_button(
     """Handle verification request via button click."""
     from datetime import datetime, timezone
     from uuid import UUID
+
     from ugc_bot.bot.handlers.keyboards import CONFIRM_INSTAGRAM_BUTTON_TEXT
     from ugc_bot.domain.entities import BloggerProfile
     from ugc_bot.domain.enums import AudienceGender, WorkFormat
@@ -220,7 +221,8 @@ async def test_start_verification_via_button(
     )
     profile_service = build_profile_service(user_repo, blogger_repo)
     message = FakeMessage(
-        text=CONFIRM_INSTAGRAM_BUTTON_TEXT, user=FakeUser(6, "blogger", "Blogger")
+        text=CONFIRM_INSTAGRAM_BUTTON_TEXT,
+        user=FakeUser(6, "blogger", "Blogger"),
     )
     state = FakeFSMContext()
 

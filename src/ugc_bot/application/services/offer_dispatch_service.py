@@ -48,14 +48,18 @@ class OfferDispatchService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def _dispatch(self, order_id: UUID, session: object | None) -> list[User]:
+    async def _dispatch(
+        self, order_id: UUID, session: object | None
+    ) -> list[User]:
         order = await self.order_repo.get_by_id(order_id, session=session)
         if order is None:
             raise OrderCreationError("Order not found.")
         if order.status != OrderStatus.ACTIVE:
             raise OrderCreationError("Order is not active.")
 
-        confirmed_ids = await self.blogger_repo.list_confirmed_user_ids(session=session)
+        confirmed_ids = await self.blogger_repo.list_confirmed_user_ids(
+            session=session
+        )
         if not confirmed_ids:
             return []
 
@@ -100,9 +104,11 @@ class OfferDispatchService:
         parts.append("")
         parts.append(
             "⚠️ Важно\n"
-            "🧷 Откликайтесь только если готовы работать на указанных условиях\n"
-            "❗ Отказ после отклика без изменения условий со стороны заказчика\n"
-            " может привести к жалобе и ограничению аккаунта"
+            "🧷 Откликайтесь только если готовы работать "
+            "на указанных условиях\n"
+            "❗ Отказ после отклика без изменения условий "
+            "со стороны заказчика\n"
+            "   может привести к жалобе и ограничению аккаунта"
         )
         parts.append("")
         parts.append(

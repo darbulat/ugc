@@ -1,12 +1,12 @@
 """Tests for admin app setup."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from ugc_bot.admin.app import (
     ComplaintAdmin,
@@ -15,7 +15,9 @@ from ugc_bot.admin.app import (
     _get_services,
     create_admin_app,
 )
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
 from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
@@ -27,7 +29,7 @@ from ugc_bot.infrastructure.db.models import (
 
 
 def _make_session_maker_mock(mock_session: MagicMock) -> MagicMock:
-    """Create a mock session_maker that yields mock_session when used as context manager."""
+    """Mock session_maker yielding mock_session as context manager."""
 
     mock_cm = AsyncMock()
     mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
@@ -51,7 +53,9 @@ def test_create_admin_app(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "password")
     monkeypatch.setenv("ADMIN_SECRET", "secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@localhost/db")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql+psycopg://user:pass@localhost/db"
+    )
 
     startup_called: dict[str, object] = {}
 
@@ -142,7 +146,9 @@ def test_get_services() -> None:
         {"BOT_TOKEN": "x", "DATABASE_URL": "sqlite:///:memory:"}
     )
     container = Container(config)
-    user_service, complaint_service, interaction_service = _get_services(container)
+    user_service, complaint_service, interaction_service = _get_services(
+        container
+    )
 
     assert user_service is not None
     assert complaint_service is not None
@@ -194,15 +200,19 @@ async def test_user_admin_update_model_status_change() -> None:
     request = MagicMock()
     data = {"status": UserStatus.BLOCKED}
 
-    with patch.object(UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock):
+    with patch.object(
+        UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    ):
         await admin.update_model(request, str(user_id), data)
 
     assert mock_session.get.call_count == 2
 
 
 @pytest.mark.asyncio
-async def test_user_admin_update_model_exception_in_logging_suppressed() -> None:
-    """When logging status change raises, update still succeeds (except pass)."""
+async def test_user_admin_update_model_exception_in_logging_suppressed() -> (
+    None
+):
+    """When logging status change raises, update still succeeds."""
     user_id = UUID("00000000-0000-0000-0000-000000000001")
     old_user = UserModel(
         user_id=user_id,
@@ -241,12 +251,16 @@ async def test_user_admin_update_model_exception_in_logging_suppressed() -> None
     request = MagicMock()
     data = {"status": UserStatus.BLOCKED}
 
-    with patch.object(UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock):
-        with patch(
+    with (
+        patch.object(
+            UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
             "ugc_bot.admin.app._get_services",
             return_value=(mock_user_service, None, None),
-        ):
-            result = await admin.update_model(request, str(user_id), data)
+        ),
+    ):
+        result = await admin.update_model(request, str(user_id), data)
 
     assert result is not None
     mock_user_service.get_user_by_id.assert_called_once_with(user_id)
@@ -254,7 +268,7 @@ async def test_user_admin_update_model_exception_in_logging_suppressed() -> None
 
 @pytest.mark.asyncio
 async def test_user_admin_update_model_sync_session() -> None:
-    """Test UserAdmin.update_model with sync session (is_async=False, production path)."""
+    """Test UserAdmin.update_model with sync session (production path)."""
 
     user_id = UUID("00000000-0000-0000-0000-000000000001")
     old_user = UserModel(
@@ -286,7 +300,9 @@ async def test_user_admin_update_model_sync_session() -> None:
     request = MagicMock()
     data = {"status": UserStatus.BLOCKED}
 
-    with patch.object(UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock):
+    with patch.object(
+        UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    ):
         await admin.update_model(request, str(user_id), data)
 
     assert mock_session.get.call_count == 2
@@ -329,7 +345,9 @@ async def test_interaction_admin_update_model_resolve_issue() -> None:
 
     mock_engine = MagicMock()
     mock_engine.url = MagicMock()
-    mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
+    mock_engine.url.render_as_string = MagicMock(
+        return_value="sqlite:///:memory:"
+    )
 
     admin = InteractionAdmin()
     admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
@@ -342,9 +360,14 @@ async def test_interaction_admin_update_model_resolve_issue() -> None:
     mock_interaction_service = MagicMock()
     mock_interaction_service.manually_resolve_issue = AsyncMock()
 
-    with patch.object(
-        InteractionAdmin.__bases__[0], "update_model", new_callable=AsyncMock
-    ), patch("ugc_bot.admin.app._get_services") as mock_get_services:
+    with (
+        patch.object(
+            InteractionAdmin.__bases__[0],
+            "update_model",
+            new_callable=AsyncMock,
+        ),
+        patch("ugc_bot.admin.app._get_services") as mock_get_services,
+    ):
         mock_get_services.return_value = (None, None, mock_interaction_service)
         await admin.update_model(request, str(interaction_id), data)
 
@@ -391,7 +414,9 @@ async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
 
     mock_engine = MagicMock()
     mock_engine.url = MagicMock()
-    mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
+    mock_engine.url.render_as_string = MagicMock(
+        return_value="sqlite:///:memory:"
+    )
 
     admin = InteractionAdmin()
     admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
@@ -404,9 +429,14 @@ async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
     mock_interaction_service = MagicMock()
     mock_interaction_service.manually_resolve_issue = AsyncMock()
 
-    with patch.object(
-        InteractionAdmin.__bases__[0], "update_model", new_callable=AsyncMock
-    ), patch("ugc_bot.admin.app._get_services") as mock_get_services:
+    with (
+        patch.object(
+            InteractionAdmin.__bases__[0],
+            "update_model",
+            new_callable=AsyncMock,
+        ),
+        patch("ugc_bot.admin.app._get_services") as mock_get_services,
+    ):
         mock_get_services.return_value = (None, None, mock_interaction_service)
         await admin.update_model(request, str(interaction_id), data)
 
@@ -418,7 +448,7 @@ async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
 
 @pytest.mark.asyncio
 async def test_complaint_admin_update_model_action_taken() -> None:
-    """Test ComplaintAdmin.update_model blocks user when status changes to ACTION_TAKEN."""
+    """Test ComplaintAdmin.update_model blocks user on ACTION_TAKEN."""
 
     complaint_id = UUID("00000000-0000-0000-0000-000000000006")
     reported_id = UUID("00000000-0000-0000-0000-000000000007")
@@ -448,7 +478,9 @@ async def test_complaint_admin_update_model_action_taken() -> None:
 
     mock_engine = MagicMock()
     mock_engine.url = MagicMock()
-    mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
+    mock_engine.url.render_as_string = MagicMock(
+        return_value="sqlite:///:memory:"
+    )
 
     admin = ComplaintAdmin()
     admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
@@ -463,9 +495,12 @@ async def test_complaint_admin_update_model_action_taken() -> None:
     mock_complaint_service = MagicMock()
     mock_complaint_service.resolve_complaint_with_action = AsyncMock()
 
-    with patch.object(
-        ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock
-    ), patch("ugc_bot.admin.app._get_services") as mock_get_services:
+    with (
+        patch.object(
+            ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch("ugc_bot.admin.app._get_services") as mock_get_services,
+    ):
         mock_get_services.return_value = (
             mock_user_service,
             mock_complaint_service,
@@ -484,7 +519,7 @@ async def test_complaint_admin_update_model_action_taken() -> None:
 
 @pytest.mark.asyncio
 async def test_complaint_admin_update_model_dismissed() -> None:
-    """Test ComplaintAdmin.update_model dismisses complaint when status changes to DISMISSED."""
+    """Test ComplaintAdmin.update_model dismisses complaint on DISMISSED."""
 
     complaint_id = UUID("00000000-0000-0000-0000-000000000010")
     old_complaint = ComplaintModel(
@@ -513,7 +548,9 @@ async def test_complaint_admin_update_model_dismissed() -> None:
 
     mock_engine = MagicMock()
     mock_engine.url = MagicMock()
-    mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
+    mock_engine.url.render_as_string = MagicMock(
+        return_value="sqlite:///:memory:"
+    )
 
     admin = ComplaintAdmin()
     admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
@@ -526,14 +563,19 @@ async def test_complaint_admin_update_model_dismissed() -> None:
     mock_complaint_service = MagicMock()
     mock_complaint_service.dismiss_complaint = AsyncMock()
 
-    with patch.object(
-        ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock
-    ), patch("ugc_bot.admin.app._get_services") as mock_get_services:
+    with (
+        patch.object(
+            ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch("ugc_bot.admin.app._get_services") as mock_get_services,
+    ):
         mock_get_services.return_value = (None, mock_complaint_service, None)
         await admin.update_model(request, str(complaint_id), data)
 
     assert mock_session.get.call_count == 2
-    mock_complaint_service.dismiss_complaint.assert_called_once_with(complaint_id)
+    mock_complaint_service.dismiss_complaint.assert_called_once_with(
+        complaint_id
+    )
 
 
 @pytest.mark.asyncio
@@ -636,7 +678,7 @@ async def test_complaint_admin_update_model_no_engine() -> None:
 
 @pytest.mark.asyncio
 async def test_complaint_admin_update_model_dismissed_exception() -> None:
-    """Test ComplaintAdmin.update_model handles exception when dismissing complaint."""
+    """Test ComplaintAdmin.update_model handles exception on dismiss."""
 
     complaint_id = UUID("00000000-0000-0000-0000-000000000024")
     old_complaint = ComplaintModel(
@@ -665,7 +707,9 @@ async def test_complaint_admin_update_model_dismissed_exception() -> None:
 
     mock_engine = MagicMock()
     mock_engine.url = MagicMock()
-    mock_engine.url.render_as_string = MagicMock(return_value="sqlite:///:memory:")
+    mock_engine.url.render_as_string = MagicMock(
+        return_value="sqlite:///:memory:"
+    )
 
     admin = ComplaintAdmin()
     admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
@@ -680,12 +724,17 @@ async def test_complaint_admin_update_model_dismissed_exception() -> None:
         side_effect=Exception("Service error")
     )
 
-    with patch.object(
-        ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock
-    ), patch("ugc_bot.admin.app._get_services") as mock_get_services:
+    with (
+        patch.object(
+            ComplaintAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch("ugc_bot.admin.app._get_services") as mock_get_services,
+    ):
         mock_get_services.return_value = (None, mock_complaint_service, None)
         # Should not raise exception even if service fails
         await admin.update_model(request, str(complaint_id), data)
 
     assert mock_session.get.call_count == 2
-    mock_complaint_service.dismiss_complaint.assert_called_once_with(complaint_id)
+    mock_complaint_service.dismiss_complaint.assert_called_once_with(
+        complaint_id
+    )

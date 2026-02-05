@@ -18,8 +18,18 @@ _ENV = SettingsConfigDict(
 _FLAT_KEYS = {
     "bot": ["BOT_TOKEN", "TELEGRAM_PROVIDER_TOKEN"],
     "log": ["LOG_LEVEL", "LOG_FORMAT"],
-    "db": ["DATABASE_URL", "DB_POOL_SIZE", "DB_MAX_OVERFLOW", "DB_POOL_TIMEOUT"],
-    "admin": ["ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_SECRET", "ADMIN_SITE_NAME"],
+    "db": [
+        "DATABASE_URL",
+        "DB_POOL_SIZE",
+        "DB_MAX_OVERFLOW",
+        "DB_POOL_TIMEOUT",
+    ],
+    "admin": [
+        "ADMIN_USERNAME",
+        "ADMIN_PASSWORD",
+        "ADMIN_SECRET",
+        "ADMIN_SITE_NAME",
+    ],
     "kafka": [
         "KAFKA_ENABLED",
         "KAFKA_BOOTSTRAP_SERVERS",
@@ -81,7 +91,9 @@ class BotConfig(BaseSettings):
     model_config = _ENV
 
     bot_token: str = Field(alias="BOT_TOKEN")
-    telegram_provider_token: str = Field(default="", alias="TELEGRAM_PROVIDER_TOKEN")
+    telegram_provider_token: str = Field(
+        default="", alias="TELEGRAM_PROVIDER_TOKEN"
+    )
 
     @field_validator("bot_token")
     @classmethod
@@ -130,7 +142,9 @@ class KafkaConfig(BaseSettings):
     )
     kafka_topic: str = Field(default="order_activated", alias="KAFKA_TOPIC")
     kafka_group_id: str = Field(default="ugc-bot", alias="KAFKA_GROUP_ID")
-    kafka_dlq_topic: str = Field(default="order_activated_dlq", alias="KAFKA_DLQ_TOPIC")
+    kafka_dlq_topic: str = Field(
+        default="order_activated_dlq", alias="KAFKA_DLQ_TOPIC"
+    )
     kafka_send_retries: int = Field(default=3, alias="KAFKA_SEND_RETRIES")
     kafka_send_retry_delay_seconds: float = Field(
         default=1.0, alias="KAFKA_SEND_RETRY_DELAY_SECONDS"
@@ -140,13 +154,19 @@ class KafkaConfig(BaseSettings):
 class FeedbackConfig(BaseSettings):
     model_config = _ENV
 
-    feedback_delay_minutes: int = Field(default=4320, alias="FEEDBACK_DELAY_MINUTES")
+    feedback_delay_minutes: int = Field(
+        default=4320, alias="FEEDBACK_DELAY_MINUTES"
+    )
     feedback_poll_interval_seconds: int = Field(
         default=300, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
     )
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
-    feedback_reminder_hour: int = Field(default=10, alias="FEEDBACK_REMINDER_HOUR")
-    feedback_reminder_minute: int = Field(default=0, alias="FEEDBACK_REMINDER_MINUTE")
+    feedback_reminder_hour: int = Field(
+        default=10, alias="FEEDBACK_REMINDER_HOUR"
+    )
+    feedback_reminder_minute: int = Field(
+        default=0, alias="FEEDBACK_REMINDER_MINUTE"
+    )
     feedback_reminder_timezone: str = Field(
         default="Europe/Moscow", alias="FEEDBACK_REMINDER_TIMEZONE"
     )
@@ -155,7 +175,9 @@ class FeedbackConfig(BaseSettings):
 class RoleReminderConfig(BaseSettings):
     model_config = _ENV
 
-    role_reminder_enabled: bool = Field(default=True, alias="ROLE_REMINDER_ENABLED")
+    role_reminder_enabled: bool = Field(
+        default=True, alias="ROLE_REMINDER_ENABLED"
+    )
     role_reminder_hour: int = Field(default=10, alias="ROLE_REMINDER_HOUR")
     role_reminder_minute: int = Field(default=0, alias="ROLE_REMINDER_MINUTE")
     role_reminder_timezone: str = Field(
@@ -180,7 +202,9 @@ class InstagramConfig(BaseSettings):
     admin_instagram_username: str = Field(
         default="usemycontent", alias="ADMIN_INSTAGRAM_USERNAME"
     )
-    instagram_access_token: str = Field(default="", alias="INSTAGRAM_ACCESS_TOKEN")
+    instagram_access_token: str = Field(
+        default="", alias="INSTAGRAM_ACCESS_TOKEN"
+    )
     instagram_api_base_url: str = Field(
         default="https://graph.instagram.com", alias="INSTAGRAM_API_BASE_URL"
     )
@@ -200,7 +224,7 @@ class DocsConfig(BaseSettings):
 
 
 class AppConfig(BaseModel):
-    """Application configuration. Composes Bot, Log, Db, Admin, Kafka, Feedback, Redis, Instagram, Docs."""
+    """Application configuration."""
 
     model_config = {"extra": "forbid"}
 
@@ -228,7 +252,9 @@ class AppConfig(BaseModel):
             "admin": AdminConfig.model_validate(nested["admin"]),
             "kafka": KafkaConfig.model_validate(nested["kafka"]),
             "feedback": FeedbackConfig.model_validate(nested["feedback"]),
-            "role_reminder": RoleReminderConfig.model_validate(nested["role_reminder"]),
+            "role_reminder": RoleReminderConfig.model_validate(
+                nested["role_reminder"]
+            ),
             "redis": RedisConfig.model_validate(nested["redis"]),
             "instagram": InstagramConfig.model_validate(nested["instagram"]),
             "docs": DocsConfig.model_validate(nested["docs"]),
@@ -236,5 +262,5 @@ class AppConfig(BaseModel):
 
 
 def load_config() -> AppConfig:
-    """Load configuration from environment (and .env). Use empty dict so each section reads from env."""
+    """Load config from env (.env)."""
     return AppConfig.model_validate({})

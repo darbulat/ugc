@@ -4,15 +4,17 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.factories import create_test_advertiser
+from tests.helpers.services import build_order_service
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.domain.enums import OrderType, UserStatus
-from tests.helpers.factories import create_test_advertiser
-from tests.helpers.services import build_order_service
 
 
 @pytest.mark.asyncio
-async def test_create_order_success(user_repo, advertiser_repo, order_repo) -> None:
+async def test_create_order_success(
+    user_repo, advertiser_repo, order_repo
+) -> None:
     """Create order with valid data."""
 
     user_id = await create_test_advertiser(

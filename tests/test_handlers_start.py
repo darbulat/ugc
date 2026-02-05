@@ -2,14 +2,26 @@
 
 import pytest
 
+from tests.helpers.fakes import (
+    FakeFSMContext,
+    FakeFsmDraftService,
+    FakeMessage,
+    FakeUser,
+    RecordingFsmDraftService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
     choose_advertiser_role,
 )
 from ugc_bot.bot.handlers.blogger_registration import (
-    choose_creator_role,
     CREATOR_CHOOSE_ACTION_TEXT,
     CREATOR_INTRO_NOT_REGISTERED,
+    choose_creator_role,
+)
+from ugc_bot.bot.handlers.keyboards import (
+    advertiser_menu_keyboard,
+    creator_filled_profile_keyboard,
+    creator_start_keyboard,
 )
 from ugc_bot.bot.handlers.start import (
     CHANGE_ROLE_BUTTON_TEXT,
@@ -19,19 +31,7 @@ from ugc_bot.bot.handlers.start import (
     start_command,
     support_button,
 )
-from ugc_bot.bot.handlers.keyboards import (
-    advertiser_menu_keyboard,
-    creator_filled_profile_keyboard,
-    creator_start_keyboard,
-)
 from ugc_bot.domain.enums import MessengerType
-from tests.helpers.fakes import (
-    FakeFSMContext,
-    FakeFsmDraftService,
-    FakeMessage,
-    FakeUser,
-    RecordingFsmDraftService,
-)
 
 
 @pytest.mark.asyncio
@@ -64,7 +64,9 @@ async def test_start_command_without_from_user_returns_early(user_repo) -> None:
 async def test_change_role_button_shows_start_screen() -> None:
     """Change role button shows start text and role keyboard."""
 
-    message = FakeMessage(text=CHANGE_ROLE_BUTTON_TEXT, user=FakeUser(1, "u", "User"))
+    message = FakeMessage(
+        text=CHANGE_ROLE_BUTTON_TEXT, user=FakeUser(1, "u", "User")
+    )
     state = FakeFSMContext(state=None)
     await change_role_button(message, state=state)
 
@@ -76,12 +78,14 @@ async def test_change_role_button_shows_start_screen() -> None:
 
 @pytest.mark.asyncio
 async def test_choose_role_creator_persists(user_repo, blogger_repo) -> None:
-    """Ensure creator role selection is persisted; no profile shows create profile."""
+    """Creator role persisted; no profile shows create profile."""
 
     from tests.helpers.services import build_profile_service
 
     service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Я креатор", user=FakeUser(42, "bob", "Bob"))
     state = FakeFSMContext(state=None)
     await choose_creator_role(
@@ -103,13 +107,15 @@ async def test_choose_role_creator_persists(user_repo, blogger_repo) -> None:
 async def test_choose_role_creator_with_filled_profile_shows_menu(
     user_repo, blogger_repo
 ) -> None:
-    """When creator has filled blogger profile, show Edit/My profile/My orders."""
+    """Creator with filled blogger profile: show Edit/My profile/My orders."""
 
     from tests.helpers.factories import create_test_blogger_profile
     from tests.helpers.services import build_profile_service
 
     service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Я креатор", user=FakeUser(42, "bob", "Bob"))
     state = FakeFSMContext(state=None)
 
@@ -132,14 +138,17 @@ async def test_choose_role_creator_with_filled_profile_shows_menu(
 
     assert message.answers
     assert message.answers[-1][0] == CREATOR_CHOOSE_ACTION_TEXT
-    assert message.answers[-1][1].keyboard == creator_filled_profile_keyboard().keyboard
+    assert (
+        message.answers[-1][1].keyboard
+        == creator_filled_profile_keyboard().keyboard
+    )
 
 
 @pytest.mark.asyncio
 async def test_choose_role_advertiser_with_filled_profile_shows_menu(
     user_repo, blogger_repo, advertiser_repo
 ) -> None:
-    """When advertiser has filled profile, show 'Выберите действие:' and menu."""
+    """Advertiser with filled profile: show 'Выберите действие:' and menu."""
 
     from tests.helpers.factories import create_test_advertiser_profile
     from tests.helpers.services import build_profile_service
@@ -172,7 +181,9 @@ async def test_choose_role_advertiser_with_filled_profile_shows_menu(
 
     assert message.answers
     assert message.answers[-1][0] == "Выберите действие:"
-    assert message.answers[-1][1].keyboard == advertiser_menu_keyboard().keyboard
+    assert (
+        message.answers[-1][1].keyboard == advertiser_menu_keyboard().keyboard
+    )
 
 
 @pytest.mark.asyncio
@@ -182,7 +193,9 @@ async def test_choose_role_without_user(user_repo, blogger_repo) -> None:
     from tests.helpers.services import build_profile_service
 
     service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Мне нужны UGC‑креаторы", user=None)
     state = FakeFSMContext(state=None)
     await choose_advertiser_role(
@@ -201,8 +214,12 @@ async def test_choose_role_advertiser_response(user_repo, blogger_repo) -> None:
     from tests.helpers.services import build_profile_service
 
     service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(user_repo, blogger_repo=blogger_repo)
-    message = FakeMessage(text="Мне нужны UGC‑креаторы", user=FakeUser(99, None, "Ann"))
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
+    message = FakeMessage(
+        text="Мне нужны UGC‑креаторы", user=FakeUser(99, None, "Ann")
+    )
     state = FakeFSMContext(state=None)
     await choose_advertiser_role(
         message,
@@ -238,7 +255,9 @@ async def test_support_button_sends_support_text(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_support_button_without_from_user_returns_early(user_repo) -> None:
+async def test_support_button_without_from_user_returns_early(
+    user_repo,
+) -> None:
     """Support button with no from_user does not send message."""
 
     service = UserRoleService(user_repo=user_repo)
@@ -277,7 +296,7 @@ async def test_support_button_clears_fsm_state(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_support_button_saves_draft_when_in_flow(user_repo) -> None:
-    """Support button saves draft when user is in a draftable flow and has data."""
+    """Support button saves draft when user in draftable flow and has data."""
 
     service = UserRoleService(user_repo=user_repo)
     user = await service.set_user(

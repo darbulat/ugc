@@ -4,9 +4,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ugc_bot.application.services.contact_pricing_service import ContactPricingService
+from ugc_bot.application.services.contact_pricing_service import (
+    ContactPricingService,
+)
 from ugc_bot.domain.entities import ContactPricing
-from ugc_bot.infrastructure.memory_repositories import InMemoryContactPricingRepository
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryContactPricingRepository,
+)
 
 
 @pytest.mark.asyncio
@@ -36,6 +40,8 @@ async def test_get_price_with_transaction_manager(fake_tm) -> None:
             updated_at=datetime.now(timezone.utc),
         )
     )
-    service = ContactPricingService(pricing_repo=repo, transaction_manager=fake_tm)
+    service = ContactPricingService(
+        pricing_repo=repo, transaction_manager=fake_tm
+    )
     got = await service.get_price(5)
     assert got == 2500.0

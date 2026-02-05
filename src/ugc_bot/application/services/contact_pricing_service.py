@@ -2,7 +2,10 @@
 
 from dataclasses import dataclass
 
-from ugc_bot.application.ports import ContactPricingRepository, TransactionManager
+from ugc_bot.application.ports import (
+    ContactPricingRepository,
+    TransactionManager,
+)
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 

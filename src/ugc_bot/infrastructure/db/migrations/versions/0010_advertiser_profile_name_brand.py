@@ -1,7 +1,7 @@
 """Add name and brand to advertiser_profiles."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0010_advertiser_name_brand"
 down_revision = "0009_blogger_city_barter_fmt"

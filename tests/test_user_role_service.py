@@ -69,7 +69,10 @@ async def test_get_user_id() -> None:
         username="john",
     )
 
-    assert await service.get_user_id("777", MessengerType.TELEGRAM) == created.user_id
+    assert (
+        await service.get_user_id("777", MessengerType.TELEGRAM)
+        == created.user_id
+    )
     assert await service.get_user_id("999", MessengerType.TELEGRAM) is None
 
 
@@ -140,11 +143,15 @@ async def test_get_user_id_with_transaction_manager(fake_tm: object) -> None:
     )
     uid = await service.get_user_id("tid-1", MessengerType.TELEGRAM)
     assert uid is not None
-    assert await service.get_user_id("nonexistent", MessengerType.TELEGRAM) is None
+    assert (
+        await service.get_user_id("nonexistent", MessengerType.TELEGRAM) is None
+    )
 
 
 @pytest.mark.asyncio
-async def test_get_user_and_get_by_id_with_transaction_manager(fake_tm: object) -> None:
+async def test_get_user_and_get_by_id_with_transaction_manager(
+    fake_tm: object,
+) -> None:
     """Cover transaction_manager path for get_user and get_user_by_id."""
 
     repo = InMemoryUserRepository()
@@ -282,7 +289,7 @@ async def test_create_user_with_default_username() -> None:
 
 @pytest.mark.asyncio
 async def test_update_status_records_metrics_when_blocked() -> None:
-    """update_status calls metrics_collector.record_user_blocked when status becomes BLOCKED."""
+    """update_status calls metrics.record_user_blocked when status BLOCKED."""
 
     from unittest.mock import MagicMock
 

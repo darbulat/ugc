@@ -2,7 +2,9 @@
 
 from datetime import datetime, timezone
 
-from ugc_bot.application.services.contact_pricing_service import ContactPricingService
+from ugc_bot.application.services.contact_pricing_service import (
+    ContactPricingService,
+)
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
@@ -115,7 +117,9 @@ def build_payment_service(
     if outbox_repo is None:
         outbox_repo = InMemoryOutboxRepository()
 
-    outbox_publisher = OutboxPublisher(outbox_repo=outbox_repo, order_repo=order_repo)
+    outbox_publisher = OutboxPublisher(
+        outbox_repo=outbox_repo, order_repo=order_repo
+    )
 
     return PaymentService(
         user_repo=user_repo,
@@ -183,7 +187,9 @@ def build_service_fixtures(
         order_repo = InMemoryOrderRepository()
 
     return {
-        "user_role_service": build_user_role_service(user_repo, transaction_manager),
+        "user_role_service": build_user_role_service(
+            user_repo, transaction_manager
+        ),
         "profile_service": build_profile_service(
             user_repo, blogger_repo, advertiser_repo
         ),

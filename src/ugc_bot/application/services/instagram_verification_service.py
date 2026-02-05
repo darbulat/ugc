@@ -8,7 +8,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+from ugc_bot.application.errors import (
+    BloggerRegistrationError,
+    UserNotFoundError,
+)
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     InstagramGraphApiClient,
@@ -16,10 +19,34 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
-from ugc_bot.domain.entities import BloggerProfile, InstagramVerificationCode, User
+from ugc_bot.domain.entities import (
+    BloggerProfile,
+    InstagramVerificationCode,
+    User,
+)
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_username_from_instagram_url(instagram_url: str) -> str | None:
+    """Extract username from instagram_url (instagram.com/user or @user)."""
+    url = instagram_url.lower().strip()
+    if "instagram.com/" in url:
+        parts = url.split("instagram.com/")
+        if len(parts) > 1:
+            return parts[-1].split("/")[0].split("?")[0].strip()
+        return None
+    return url.replace("@", "").strip()
+
+
+def _usernames_match(
+    api_username: str | None, profile_username: str | None
+) -> bool:
+    """Return True if usernames match or API check skipped."""
+    if not api_username or not profile_username:
+        return True
+    return api_username.lower().strip() == profile_username.lower().strip()
 
 
 @dataclass(slots=True)
@@ -32,16 +59,34 @@ class InstagramVerificationService:
     instagram_api_client: InstagramGraphApiClient | None = None
     transaction_manager: TransactionManager | None = None
 
+    async def _fetch_api_username(self, instagram_sender_id: str) -> str | None:
+        """Fetch username from Instagram Graph API. Returns None on error."""
+        if not self.instagram_api_client:
+            return None
+        try:
+            return await self.instagram_api_client.get_username_by_id(
+                instagram_sender_id
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to get username from Instagram API",
+                extra={"sender_id": instagram_sender_id, "error": str(exc)},
+                exc_info=exc,
+            )
+            return None
+
     async def get_notification_recipient(
         self, user_id: UUID
     ) -> tuple[Optional[User], Optional[BloggerProfile]]:
-        """Fetch user and blogger profile for notification within a transaction."""
+        """Fetch user and blogger profile for notification in a transaction."""
 
         async def _run(session: object | None):
             user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
                 return (None, None)
-            profile = await self.blogger_repo.get_by_user_id(user_id, session=session)
+            profile = await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
             return (user, profile)
 
         return await with_optional_tx(self.transaction_manager, _run)
@@ -51,7 +96,9 @@ class InstagramVerificationService:
 
         async def _run(session: object | None) -> InstagramVerificationCode:
             if await self.user_repo.get_by_id(user_id, session=session) is None:
-                raise UserNotFoundError("User not found for Instagram verification.")
+                raise UserNotFoundError(
+                    "User not found for Instagram verification."
+                )
 
             code = _generate_code()
             now = datetime.now(timezone.utc)
@@ -72,7 +119,9 @@ class InstagramVerificationService:
         """Validate code and confirm blogger profile."""
 
         async def _run(session: object | None) -> bool:
-            profile = await self.blogger_repo.get_by_user_id(user_id, session=session)
+            profile = await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
             if profile is None:
                 raise BloggerRegistrationError("Blogger profile not found.")
 
@@ -82,7 +131,9 @@ class InstagramVerificationService:
             if valid_code is None:
                 return False
 
-            await self.verification_repo.mark_used(valid_code.code_id, session=session)
+            await self.verification_repo.mark_used(
+                valid_code.code_id, session=session
+            )
             confirmed_profile = BloggerProfile(
                 user_id=profile.user_id,
                 instagram_url=profile.instagram_url,
@@ -132,7 +183,9 @@ class InstagramVerificationService:
                 code_upper, session=session
             )
 
-        valid_code = await with_optional_tx(self.transaction_manager, _get_valid_code)
+        valid_code = await with_optional_tx(
+            self.transaction_manager, _get_valid_code
+        )
         if valid_code is None:
             logger.debug("No valid code found for webhook verification")
             return None
@@ -150,50 +203,22 @@ class InstagramVerificationService:
             )
             return None
 
-        # Extract Instagram username from instagram_url
-        instagram_url = profile.instagram_url.lower().strip()
-        if "instagram.com/" in instagram_url:
-            parts = instagram_url.split("instagram.com/")
-            if len(parts) > 1:
-                profile_username = parts[-1].split("/")[0].split("?")[0].strip()
-            else:
-                profile_username = None
-        else:
-            profile_username = instagram_url.replace("@", "").strip()
+        profile_username = _extract_username_from_instagram_url(
+            profile.instagram_url
+        )
+        api_username = await self._fetch_api_username(instagram_sender_id)
 
-        # Get username from Instagram Graph API
-        api_username = None
-        if self.instagram_api_client:
-            try:
-                api_username = await self.instagram_api_client.get_username_by_id(
-                    instagram_sender_id
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Failed to get username from Instagram API",
-                    extra={
-                        "sender_id": instagram_sender_id,
-                        "error": str(exc),
-                    },
-                    exc_info=exc,
-                )
-
-        # Verify username matches
-        if api_username and profile_username:
-            api_username_normalized = api_username.lower().strip()
-            profile_username_normalized = profile_username.lower().strip()
-
-            if api_username_normalized != profile_username_normalized:
-                logger.warning(
-                    "Instagram username mismatch",
-                    extra={
-                        "user_id": valid_code.user_id,
-                        "sender_id": instagram_sender_id,
-                        "api_username": api_username,
-                        "profile_username": profile_username,
-                    },
-                )
-                return None
+        if not _usernames_match(api_username, profile_username):
+            logger.warning(
+                "Instagram username mismatch",
+                extra={
+                    "user_id": valid_code.user_id,
+                    "sender_id": instagram_sender_id,
+                    "api_username": api_username,
+                    "profile_username": profile_username,
+                },
+            )
+            return None
 
         logger.info(
             "Verifying code from Instagram webhook",
@@ -206,7 +231,9 @@ class InstagramVerificationService:
         )
 
         async def _confirm(session: object | None) -> None:
-            await self.verification_repo.mark_used(valid_code.code_id, session=session)
+            await self.verification_repo.mark_used(
+                valid_code.code_id, session=session
+            )
             confirmed_profile = BloggerProfile(
                 user_id=profile.user_id,
                 instagram_url=profile.instagram_url,

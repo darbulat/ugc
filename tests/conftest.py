@@ -1,6 +1,6 @@
 """Global pytest configuration and fixtures."""
 
-# Set env vars before any imports that might trigger config loading (e.g. admin app)
+# Set env vars before any imports that might trigger config (e.g. admin app)
 import os
 
 os.environ.setdefault("BOT_TOKEN", "test-token")
@@ -10,17 +10,17 @@ os.environ.setdefault("ADMIN_PASSWORD", "test_pass")
 os.environ.setdefault("ADMIN_SECRET", "test_secret")
 
 import asyncio
+import contextlib
+import logging
 import sys
 import threading
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import logging
-
 import pytest
 
-# Ensure project root is on path so "tests.helpers" resolves when run from any cwd
+# Ensure project root on path so "tests.helpers" resolves from any cwd
 _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
@@ -96,23 +96,21 @@ def _track_and_dispose_async_engines() -> None:
         _TRACKED_ASYNC_ENGINES.append(engine)
         return engine
 
-    mp.setattr(session_mod, "create_async_db_engine", _create_async_db_engine_tracked)
+    mp.setattr(
+        session_mod, "create_async_db_engine", _create_async_db_engine_tracked
+    )
     try:
         yield
     finally:
         mp.undo()
-        if not _TRACKED_ASYNC_ENGINES:
-            return
-        loop = asyncio.new_event_loop()
-        try:
-            for engine in list(_TRACKED_ASYNC_ENGINES):
-                try:
-                    loop.run_until_complete(engine.dispose())
-                except Exception:
-                    # Diagnostics will be printed in `pytest_sessionfinish`.
-                    pass
-        finally:
-            loop.close()
+        if _TRACKED_ASYNC_ENGINES:
+            loop = asyncio.new_event_loop()
+            try:
+                for engine in list(_TRACKED_ASYNC_ENGINES):
+                    with contextlib.suppress(Exception):
+                        loop.run_until_complete(engine.dispose())
+            finally:
+                loop.close()
 
 
 @pytest.fixture(autouse=True)
@@ -148,7 +146,8 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         return
 
     print(
-        "\n=== pytest diagnostic: non-daemon threads still alive ===", file=sys.stderr
+        "\n=== pytest diagnostic: non-daemon threads still alive ===",
+        file=sys.stderr,
     )
     if _TRACKED_ASYNC_ENGINES:
         print(
@@ -168,6 +167,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         frame = frames.get(t.ident)
         if frame is None:
             continue
-        print(f"\n--- stack for thread {t.name!r} ({t.ident}) ---", file=sys.stderr)
+        print(
+            f"\n--- stack for thread {t.name!r} ({t.ident}) ---",
+            file=sys.stderr,
+        )
         for line in traceback.format_stack(frame):
             print(line.rstrip("\n"), file=sys.stderr)

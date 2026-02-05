@@ -5,9 +5,9 @@ from unittest.mock import Mock
 
 import pytest
 
+from ugc_bot import startup_logging as sl
 from ugc_bot.config import AppConfig
 from ugc_bot.logging_setup import JSONFormatter
-from ugc_bot import startup_logging as sl
 
 
 def test_get_service_version_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -33,9 +33,12 @@ def test_mask_url_credentials_masks_userinfo() -> None:
     )
 
 
-def test_mask_url_credentials_returns_unchanged_when_no_colon_in_userinfo() -> None:
-    """Return value when netloc has @ but userinfo has no ':' (e.g. user@host)."""
-    assert sl._mask_url_credentials("http://user@host/path") == "http://user@host/path"
+def test_mask_url_credentials_unchanged_when_no_colon_in_userinfo() -> None:
+    """Return value when netloc has @ but userinfo has no ':'."""
+    assert (
+        sl._mask_url_credentials("http://user@host/path")
+        == "http://user@host/path"
+    )
 
 
 def test_sanitize_for_logging_returns_non_dict_list_str_unchanged() -> None:
@@ -45,14 +48,14 @@ def test_sanitize_for_logging_returns_non_dict_list_str_unchanged() -> None:
 
 
 def test_safe_config_for_logging_accepts_iterable_config() -> None:
-    """Accept config that is not dict and has no model_dump but dict(config) works."""
+    """Accept config not dict, no model_dump, but dict(config) works."""
     config_pairs = [("bot_token", "x"), ("database_url", "y")]
     got = sl.safe_config_for_logging(config_pairs)
     assert got == {"bot_token": "***", "database_url": "***"}
 
 
 def test_sanitize_for_logging_handles_list() -> None:
-    """_sanitize_for_logging recurses into lists (covers list branch)."""
+    """_sanitize_for_logging recurses into lists."""
     got = sl._sanitize_for_logging([1, "http://u:p@h/path"])
     assert got == [1, "http://u:***@h/path"]
 
@@ -69,7 +72,7 @@ def test_mask_url_credentials_handles_parser_error(
     assert sl._mask_url_credentials("not-a-url") == "not-a-url"
 
 
-def test_safe_config_for_logging_masks_sensitive_and_masks_url_credentials() -> None:
+def test_safe_config_masks_sensitive_and_url_credentials() -> None:
     """Mask known secret fields and credentials embedded into URLs."""
 
     config = AppConfig.model_validate(
@@ -127,7 +130,9 @@ def test_log_startup_info_embeds_config_for_text_logs(
     monkeypatch.setattr(sl, "get_service_version", lambda: "1.2.3")
     monkeypatch.setattr(sl, "is_json_logging_configured", lambda: False)
 
-    config = AppConfig.model_validate({"BOT_TOKEN": "token", "DATABASE_URL": "db"})
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "token", "DATABASE_URL": "db"}
+    )
     with caplog.at_level("INFO"):
         sl.log_startup_info(
             logger=logging.getLogger("svc-text"),
@@ -150,7 +155,9 @@ def test_log_startup_info_uses_extra_for_json_logs(
     monkeypatch.setattr(sl, "get_service_version", lambda: "1.2.3")
     monkeypatch.setattr(sl, "is_json_logging_configured", lambda: True)
 
-    config = AppConfig.model_validate({"BOT_TOKEN": "token", "DATABASE_URL": "db"})
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "token", "DATABASE_URL": "db"}
+    )
     with caplog.at_level("INFO"):
         sl.log_startup_info(
             logger=logging.getLogger("svc-json"),
@@ -161,12 +168,14 @@ def test_log_startup_info_uses_extra_for_json_logs(
     # Find our record and ensure extra fields exist.
     rec = next(r for r in caplog.records if r.name == "svc-json")
     assert rec.getMessage() == "svc-json starting"
-    assert getattr(rec, "service") == "svc-json"
-    assert getattr(rec, "service_version") == "1.2.3"
-    assert isinstance(getattr(rec, "config"), dict)
+    assert rec.service == "svc-json"
+    assert rec.service_version == "1.2.3"
+    assert isinstance(rec.config, dict)
 
 
-def test_log_startup_info_accepts_logger_like(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_log_startup_info_accepts_logger_like(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Support logger-like objects (used in some unit tests)."""
 
     monkeypatch.setattr(sl, "get_service_version", lambda: "1.2.3")

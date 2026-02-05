@@ -5,12 +5,24 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+from ugc_bot.application.errors import (
+    BloggerRegistrationError,
+    UserNotFoundError,
+)
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
-from ugc_bot.domain.entities import BloggerProfile, InstagramVerificationCode, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
+from ugc_bot.domain.entities import (
+    BloggerProfile,
+    InstagramVerificationCode,
+    User,
+)
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramGraphApiClient,
@@ -35,7 +47,9 @@ async def _seed_user(user_repo: InMemoryUserRepository) -> UUID:
     return user.user_id
 
 
-async def _seed_profile(repo: InMemoryBloggerProfileRepository, user_id: UUID) -> None:
+async def _seed_profile(
+    repo: InMemoryBloggerProfileRepository, user_id: UUID
+) -> None:
     """Seed a blogger profile in memory."""
 
     await repo.save(
@@ -68,7 +82,9 @@ async def test_generate_code_requires_user() -> None:
     )
 
     with pytest.raises(UserNotFoundError):
-        await service.generate_code(UUID("00000000-0000-0000-0000-000000000131"))
+        await service.generate_code(
+            UUID("00000000-0000-0000-0000-000000000131")
+        )
 
 
 @pytest.mark.asyncio
@@ -296,7 +312,9 @@ async def test_verify_code_by_instagram_sender_used_code() -> None:
 
 
 @pytest.mark.asyncio
-async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> None:
+async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> (
+    None
+):
     """Test that username is correctly extracted from Instagram URL."""
     user_repo = InMemoryUserRepository()
     profile_repo = InMemoryBloggerProfileRepository()
@@ -348,7 +366,7 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> N
 
 
 @pytest.mark.asyncio
-async def test_verify_code_by_instagram_sender_username_extraction_variants() -> None:
+async def test_verify_code_username_extraction_variants() -> None:
     """Test username extraction from different Instagram URL formats."""
     user_repo = InMemoryUserRepository()
     profile_repo = InMemoryBloggerProfileRepository()
@@ -515,7 +533,9 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
 
     # Create API client that raises an exception
     class FailingInstagramGraphApiClient(InMemoryInstagramGraphApiClient):
-        async def get_username_by_id(self, instagram_user_id: str) -> str | None:
+        async def get_username_by_id(
+            self, instagram_user_id: str
+        ) -> str | None:
             raise Exception("API error")
 
     api_client = FailingInstagramGraphApiClient()
@@ -544,7 +564,7 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
 
 @pytest.mark.asyncio
 async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
-    """Test username extraction handles edge case where URL doesn't contain username."""
+    """Test username extraction when URL doesn't contain username."""
     user_repo = InMemoryUserRepository()
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
@@ -636,7 +656,9 @@ async def test_mark_used_nonexistent_code_no_op() -> None:
     """mark_used with nonexistent code_id returns without error (no-op)."""
 
     verification_repo = InMemoryInstagramVerificationRepository()
-    await verification_repo.mark_used(UUID("00000000-0000-0000-0000-000000000999"))
+    await verification_repo.mark_used(
+        UUID("00000000-0000-0000-0000-000000000999")
+    )
     assert len(verification_repo.codes) == 0
 
 
@@ -644,7 +666,7 @@ async def test_mark_used_nonexistent_code_no_op() -> None:
 async def test_get_notification_recipient_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """get_notification_recipient with transaction_manager returns user and profile."""
+    """get_notification_recipient with tm returns user and profile."""
 
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)
@@ -668,7 +690,7 @@ async def test_get_notification_recipient_with_transaction_manager(
 async def test_get_notification_recipient_user_none_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """get_notification_recipient returns (None, None) when user not found."""
+    """get_notification_recipient returns (None, None) when user missing."""
 
     user_repo = InMemoryUserRepository()
     profile_repo = InMemoryBloggerProfileRepository()
@@ -690,7 +712,7 @@ async def test_get_notification_recipient_user_none_with_transaction_manager(
 async def test_generate_code_user_not_found_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """generate_code raises UserNotFoundError when user missing and tm is used."""
+    """generate_code raises UserNotFoundError when user missing, tm used."""
 
     service = InstagramVerificationService(
         user_repo=InMemoryUserRepository(),
@@ -699,14 +721,16 @@ async def test_generate_code_user_not_found_with_transaction_manager(
         transaction_manager=fake_tm,
     )
     with pytest.raises(UserNotFoundError):
-        await service.generate_code(UUID("00000000-0000-0000-0000-000000000999"))
+        await service.generate_code(
+            UUID("00000000-0000-0000-0000-000000000999")
+        )
 
 
 @pytest.mark.asyncio
 async def test_verify_code_profile_not_found_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """verify_code raises BloggerRegistrationError when profile missing and tm used."""
+    """verify_code raises BloggerRegistrationError when profile missing."""
 
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)

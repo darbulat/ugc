@@ -108,7 +108,9 @@ async def test_register_advertiser_empty_brand() -> None:
     )
 
     with pytest.raises(AdvertiserRegistrationError):
-        await service.register_advertiser(user_id=user_id, phone="+7900", brand=" ")
+        await service.register_advertiser(
+            user_id=user_id, phone="+7900", brand=" "
+        )
 
 
 @pytest.mark.asyncio
@@ -160,8 +162,10 @@ async def test_get_profile_returns_saved_profile() -> None:
 
 
 @pytest.mark.asyncio
-async def test_register_advertiser_with_transaction_manager(fake_tm: object) -> None:
-    """Cover transaction_manager path for register_advertiser and get_profile."""
+async def test_register_advertiser_with_transaction_manager(
+    fake_tm: object,
+) -> None:
+    """Cover transaction_manager path for register_advertiser, get_profile."""
 
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
@@ -185,7 +189,7 @@ async def test_register_advertiser_with_transaction_manager(fake_tm: object) -> 
 async def test_register_advertiser_user_not_found_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """Raise UserNotFoundError when user does not exist and transaction_manager is used."""
+    """Raise UserNotFoundError when user missing and tm used."""
 
     service = AdvertiserRegistrationService(
         user_repo=InMemoryUserRepository(),
@@ -260,7 +264,9 @@ async def test_update_advertiser_profile_partial_update() -> None:
         company_activity="Activity",
     )
 
-    updated = await service.update_advertiser_profile(user_id, phone="@updated_phone")
+    updated = await service.update_advertiser_profile(
+        user_id, phone="@updated_phone"
+    )
 
     assert updated is not None
     assert updated.phone == "@updated_phone"
@@ -307,7 +313,9 @@ async def test_update_advertiser_profile_with_transaction_manager(
         brand="Brand",
     )
 
-    updated = await service.update_advertiser_profile(user_id, brand="Updated Brand")
+    updated = await service.update_advertiser_profile(
+        user_id, brand="Updated Brand"
+    )
 
     assert updated is not None
     assert updated.brand == "Updated Brand"

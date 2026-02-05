@@ -40,7 +40,11 @@ class FakeBot:
         self.pre_checkout_answers.append(kwargs)
 
     async def send_message(
-        self, chat_id: int, text: str, reply_markup: object = None, **kwargs: object
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: object = None,
+        **kwargs: object,
     ) -> None:  # type: ignore[no-untyped-def]
         """Capture sent messages with optional reply_markup."""
         self.messages.append((chat_id, text, reply_markup))
@@ -180,7 +184,7 @@ class FakeFSMContext:
 
 
 class FakeFsmDraftService:
-    """Minimal FSM draft service stub for handler tests (no draft saved/restored)."""
+    """Minimal FSM draft service stub for handler tests."""
 
     async def save_draft(
         self, user_id: object, flow_type: str, state_key: str, data: object
@@ -189,14 +193,14 @@ class FakeFsmDraftService:
 
     async def get_draft(self, user_id: object, flow_type: str) -> None:
         """Return None (no draft)."""
-        return None
+        return
 
     async def delete_draft(self, user_id: object, flow_type: str) -> None:
         """No-op."""
 
 
 class RecordingFsmDraftService(FakeFsmDraftService):
-    """Fake draft service that records save_draft calls and can return a configured draft."""
+    """Records save_draft calls and returns configured draft."""
 
     def __init__(self, draft_to_return: object = None) -> None:
         """Initialize with optional draft to return from get_draft."""

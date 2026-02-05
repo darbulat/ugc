@@ -5,9 +5,9 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.infrastructure.memory_repositories import InMemoryOutboxRepository
 from ugc_bot.domain.entities import OutboxEvent
 from ugc_bot.domain.enums import OutboxEventStatus
+from ugc_bot.infrastructure.memory_repositories import InMemoryOutboxRepository
 
 
 class TestInMemoryOutboxRepository:
@@ -297,7 +297,9 @@ class TestInMemoryOutboxRepository:
         repo = InMemoryOutboxRepository()
 
         # This should not raise an exception
-        await repo.mark_as_processing(UUID("00000000-0000-0000-0000-000000000999"))
+        await repo.mark_as_processing(
+            UUID("00000000-0000-0000-0000-000000000999")
+        )
 
     @pytest.mark.asyncio
     async def test_mark_as_published_nonexistent_event(self) -> None:

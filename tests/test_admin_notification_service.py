@@ -22,7 +22,11 @@ class FakeBot:
         self.photos: list[tuple[int, str, str | None]] = []
 
     async def send_message(
-        self, chat_id: int, text: str, parse_mode: str | None = None, **kwargs: object
+        self,
+        chat_id: int,
+        text: str,
+        parse_mode: str | None = None,
+        **kwargs: object,
     ) -> None:
         self.messages.append((chat_id, text))
 
@@ -225,7 +229,9 @@ async def test_notify_admins_continues_on_send_failure() -> None:
     messages: list[tuple[int, str]] = []
 
     class FailingBot:
-        async def send_message(self, chat_id: int, text: str, **kwargs: object) -> None:
+        async def send_message(
+            self, chat_id: int, text: str, **kwargs: object
+        ) -> None:
             if chat_id == 111:
                 raise RuntimeError("Network error")
             messages.append((chat_id, text))

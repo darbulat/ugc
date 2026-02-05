@@ -22,7 +22,7 @@ async def test_lock_memory_fallback_when_no_redis_url() -> None:
 
 @pytest.mark.asyncio
 async def test_lock_memory_serializes_concurrent_calls_per_user() -> None:
-    """In-memory lock serializes concurrent access per user (u1 tasks sequential)."""
+    """In-memory lock serializes concurrent access per user."""
     manager = IssueDescriptionLockManager(redis_url=None)
     order: list[str] = []
 
@@ -124,7 +124,9 @@ async def test_get_redis_lazy_init_success() -> None:
         {"redis": fake_redis, "redis.asyncio": fake_redis_asyncio},
         clear=False,
     ):
-        manager = IssueDescriptionLockManager(redis_url="redis://localhost:6379")
+        manager = IssueDescriptionLockManager(
+            redis_url="redis://localhost:6379"
+        )
         result1 = manager._get_redis()
         result2 = manager._get_redis()
         assert result1 is mock_redis

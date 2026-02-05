@@ -25,7 +25,9 @@ class AdminAuth(AuthenticationBackend):
         username = str(form.get("username", "")).strip()
         password = str(form.get("password", "")).strip()
 
-        if _verify_credentials(username, password, self._username, self._password_hash):
+        if _verify_credentials(
+            username, password, self._username, self._password_hash
+        ):
             request.session.update({"admin_token": self._token})
             return True
         return False

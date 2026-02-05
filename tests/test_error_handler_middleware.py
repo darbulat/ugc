@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aiogram.types import CallbackQuery, Message
 
+from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     BloggerRegistrationError,
@@ -17,7 +18,6 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.metrics.collector import MetricsCollector
-from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 
 
 def _answer_text(answers: list, index: int = 0) -> str:
@@ -172,7 +172,7 @@ async def test_middleware_handles_callback_query() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_handles_unknown_error_type() -> None:
-    """Middleware returns generic message for error type not in ERROR_MESSAGES."""
+    """Middleware returns generic message for unknown error type."""
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
     message = FakeMessage(user=FakeUser(123))
 
@@ -209,8 +209,8 @@ async def test_middleware_error_message_mapping() -> None:
     for error, expected_text in test_cases:
         message.answers.clear()
 
-        async def handler(event, data):
-            raise error
+        async def handler(event, data, exc=error):
+            raise exc
 
         await middleware(handler, message, {})
 
@@ -220,7 +220,7 @@ async def test_middleware_error_message_mapping() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_handles_complaint_errors() -> None:
-    """Middleware handles ComplaintAlreadyExistsError and ComplaintNotFoundError."""
+    """Middleware handles ComplaintAlreadyExists and ComplaintNotFound."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
     message = FakeMessage(user=FakeUser(123))
@@ -267,7 +267,7 @@ async def test_middleware_handles_interaction_errors() -> None:
 
 @pytest.mark.asyncio
 async def test_middleware_send_error_with_answer_no_show_alert() -> None:
-    """Event with answer() that does not accept show_alert falls back to answer(msg)."""
+    """Event answer() without show_alert falls back to answer(msg)."""
 
     class EventWithSimpleAnswer:
         """Event whose answer() only accepts message, not show_alert."""

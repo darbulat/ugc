@@ -15,13 +15,6 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import (
-    format_agreements_message,
-    get_user_and_ensure_allowed,
-    handle_draft_choice,
-    handle_role_choice,
-    parse_user_id_from_state,
-)
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
     CONFIRM_AGREEMENT_BUTTON_TEXT,
@@ -32,6 +25,13 @@ from ugc_bot.bot.handlers.keyboards import (
     support_keyboard,
 )
 from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
+from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
+    get_user_and_ensure_allowed,
+    handle_draft_choice,
+    handle_role_choice,
+    parse_user_id_from_state,
+)
 from ugc_bot.bot.validators import (
     validate_brand,
     validate_city,
@@ -41,7 +41,6 @@ from ugc_bot.bot.validators import (
     validate_site_link,
 )
 from ugc_bot.config import AppConfig
-
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -63,7 +62,7 @@ async def choose_advertiser_role(
     profile_service: ProfileService,
     state: FSMContext,
 ) -> None:
-    """Handle 'Мне нужны UGC‑креаторы': persist role and show menu or registration prompt."""
+    """Handle 'Мне нужны UGC‑креаторы': persist role, show menu or reg."""
 
     await handle_role_choice(
         message,
@@ -99,7 +98,9 @@ async def _ask_name(message: Message, state: FSMContext) -> None:
     await state.set_state(AdvertiserRegistrationStates.name)
 
 
-@router.message(lambda msg: (msg.text or "").strip() == ADVERTISER_START_BUTTON_TEXT)
+@router.message(
+    lambda msg: (msg.text or "").strip() == ADVERTISER_START_BUTTON_TEXT
+)
 async def handle_advertiser_start(
     message: Message,
     state: FSMContext,
@@ -107,7 +108,7 @@ async def handle_advertiser_start(
     profile_service: ProfileService,
     fsm_draft_service: FsmDraftService,
 ) -> None:
-    """Handle 'Начать' after advertiser role: show menu if profile exists, else start registration."""
+    """Handle 'Начать' after advertiser role: menu or start registration."""
 
     user = await get_user_and_ensure_allowed(
         message,
@@ -128,16 +129,21 @@ async def handle_advertiser_start(
         return
 
     await state.update_data(user_id=user.user_id)
-    draft = await fsm_draft_service.get_draft(user.user_id, ADVERTISER_FLOW_TYPE)
+    draft = await fsm_draft_service.get_draft(
+        user.user_id, ADVERTISER_FLOW_TYPE
+    )
     if draft is not None:
-        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
-        await state.set_state(AdvertiserRegistrationStates.choosing_draft_restore)
+        await message.answer(
+            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
+        )
+        await state.set_state(
+            AdvertiserRegistrationStates.choosing_draft_restore
+        )
         return
     if user.username and len(user.username.strip()) >= 2:
         await state.update_data(name=user.username)
         await message.answer(
-            "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
-            "Пример: 89001110777",
+            "Укажите номер телефона для связи по заказу.\nПример: 89001110777",
             reply_markup=support_keyboard(),
         )
         await state.set_state(AdvertiserRegistrationStates.phone)
@@ -177,8 +183,7 @@ async def handle_name(message: Message, state: FSMContext) -> None:
 
     await state.update_data(name=name)
     await message.answer(
-        "Укажите номер телефона, по которому с вами можно связаться по заказу.\n"
-        "Пример: 89001110777",
+        "Укажите номер телефона для связи по заказу.\nПример: 89001110777",
         reply_markup=support_keyboard(),
     )
     await state.set_state(AdvertiserRegistrationStates.phone)
@@ -298,7 +303,7 @@ async def handle_agreements_confirm(
 
     if (message.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
         await message.answer(
-            "Нажмите кнопку «Подтвердить согласие», чтобы завершить регистрацию.",
+            "Нажмите «Подтвердить согласие» для завершения регистрации.",
             reply_markup=_agreements_keyboard(),
         )
         return
@@ -337,6 +342,6 @@ async def handle_agreements_confirm(
 
     await state.clear()
     await message.answer(
-        "Теперь вы можете разместить заказ и найти UGC-креаторов под вашу задачу.",
+        "Теперь вы можете разместить заказ и найти UGC-креаторов.",
         reply_markup=advertiser_menu_keyboard(),
     )

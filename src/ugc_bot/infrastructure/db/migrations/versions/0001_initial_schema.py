@@ -1,9 +1,8 @@
 """Initial schema for UGC bot."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
-
 
 revision = "0001_initial"
 down_revision = None
@@ -19,15 +18,25 @@ def upgrade() -> None:
     messenger_type = postgresql.ENUM(
         "telegram", "max", "whatsapp", name="messenger_type"
     )
-    user_role = postgresql.ENUM("blogger", "advertiser", "both", name="user_role")
-    user_status = postgresql.ENUM("active", "pause", "blocked", name="user_status")
+    user_role = postgresql.ENUM(
+        "blogger", "advertiser", "both", name="user_role"
+    )
+    user_status = postgresql.ENUM(
+        "active", "pause", "blocked", name="user_status"
+    )
     audience_gender = postgresql.ENUM("m", "f", "all", name="audience_gender")
-    order_status = postgresql.ENUM("new", "active", "closed", name="order_status")
+    order_status = postgresql.ENUM(
+        "new", "active", "closed", name="order_status"
+    )
     interaction_status = postgresql.ENUM(
         "ok", "no_deal", "issue", name="interaction_status"
     )
     complaint_status = postgresql.ENUM(
-        "pending", "reviewed", "dismissed", "action_taken", name="complaint_status"
+        "pending",
+        "reviewed",
+        "dismissed",
+        "action_taken",
+        name="complaint_status",
     )
 
     for enum_type in (
@@ -65,18 +74,28 @@ def upgrade() -> None:
         sa.Column(
             "role",
             postgresql.ENUM(
-                "blogger", "advertiser", "both", name="user_role", create_type=False
+                "blogger",
+                "advertiser",
+                "both",
+                name="user_role",
+                create_type=False,
             ),
             nullable=False,
         ),
         sa.Column(
             "status",
             postgresql.ENUM(
-                "active", "pause", "blocked", name="user_status", create_type=False
+                "active",
+                "pause",
+                "blocked",
+                name="user_status",
+                create_type=False,
             ),
             nullable=False,
         ),
-        sa.Column("issue_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column(
+            "issue_count", sa.Integer(), nullable=False, server_default="0"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -104,7 +123,9 @@ def upgrade() -> None:
         sa.Column("topics", postgresql.JSONB(), nullable=False),
         sa.Column(
             "audience_gender",
-            postgresql.ENUM("m", "f", "all", name="audience_gender", create_type=False),
+            postgresql.ENUM(
+                "m", "f", "all", name="audience_gender", create_type=False
+            ),
             nullable=False,
         ),
         sa.Column("audience_age_min", sa.Integer(), nullable=False),
@@ -154,7 +175,11 @@ def upgrade() -> None:
         sa.Column(
             "status",
             postgresql.ENUM(
-                "new", "active", "closed", name="order_status", create_type=False
+                "new",
+                "active",
+                "closed",
+                name="order_status",
+                create_type=False,
             ),
             nullable=False,
         ),
@@ -164,7 +189,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.Column("contacts_sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "contacts_sent_at", sa.DateTime(timezone=True), nullable=True
+        ),
         sa.CheckConstraint("price > 0"),
         sa.CheckConstraint("bloggers_needed IN (3, 10, 20, 30, 50)"),
     )
@@ -227,7 +254,11 @@ def upgrade() -> None:
         sa.Column(
             "status",
             postgresql.ENUM(
-                "ok", "no_deal", "issue", name="interaction_status", create_type=False
+                "ok",
+                "no_deal",
+                "issue",
+                name="interaction_status",
+                create_type=False,
             ),
             nullable=False,
         ),
@@ -333,8 +364,12 @@ def upgrade() -> None:
         ["status"],
         postgresql_where=sa.text("status = 'active'"),
     )
-    op.create_index("ix_order_responses_order_id", "order_responses", ["order_id"])
-    op.create_index("ix_order_responses_blogger_id", "order_responses", ["blogger_id"])
+    op.create_index(
+        "ix_order_responses_order_id", "order_responses", ["order_id"]
+    )
+    op.create_index(
+        "ix_order_responses_blogger_id", "order_responses", ["blogger_id"]
+    )
     op.create_index("ix_interactions_order_id", "interactions", ["order_id"])
     op.create_index(
         "ix_interactions_issue",

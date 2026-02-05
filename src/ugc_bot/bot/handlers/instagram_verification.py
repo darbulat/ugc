@@ -14,13 +14,12 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     blogger_verification_sent_keyboard,
 )
+from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
 from ugc_bot.config import AppConfig
-
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -47,7 +46,9 @@ def _verification_instruction_text(admin_instagram_username: str) -> str:
 
 
 @router.message(Command("verify_instagram"))
-@router.message(lambda msg: (msg.text or "").strip() == CONFIRM_INSTAGRAM_BUTTON_TEXT)
+@router.message(
+    lambda msg: (msg.text or "").strip() == CONFIRM_INSTAGRAM_BUTTON_TEXT
+)
 async def start_verification(
     message: Message,
     state: FSMContext,
@@ -56,25 +57,27 @@ async def start_verification(
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
 ) -> None:
-    """Start Instagram verification flow: instruction then code in separate message."""
+    """Start Instagram verification: instruction then code."""
 
     user = await get_user_and_ensure_allowed(
         message,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные пользователи не могут подтверждать аккаунт.",
-        pause_msg="Пользователи на паузе не могут подтверждать аккаунт.",
+        blocked_msg="Заблокированные не могут подтверждать аккаунт.",
+        pause_msg="На паузе не могут подтверждать аккаунт.",
     )
     if user is None:
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
         await message.answer(
-            "Профиль не заполнен. Нажмите «Создать профиль» или команда: /register"
+            "Профиль не заполнен. «Создать профиль» или /register"
         )
         return
 
-    verification = await instagram_verification_service.generate_code(user.user_id)
+    verification = await instagram_verification_service.generate_code(
+        user.user_id
+    )
     await state.clear()
 
     instruction = _verification_instruction_text(

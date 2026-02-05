@@ -5,8 +5,6 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from ugc_bot.domain.enums import OutboxEventStatus
-
 from ugc_bot.domain.enums import (
     AudienceGender,
     ComplaintStatus,
@@ -14,6 +12,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OrderType,
+    OutboxEventStatus,
     PaymentStatus,
     UserStatus,
     WorkFormat,

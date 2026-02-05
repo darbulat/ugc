@@ -14,15 +14,9 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import (
-    format_agreements_message,
-    get_user_and_ensure_allowed,
-    handle_draft_choice,
-    handle_role_choice,
-    parse_user_id_from_state,
-)
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     CREATE_PROFILE_BUTTON_TEXT,
@@ -36,8 +30,14 @@ from ugc_bot.bot.handlers.keyboards import (
     support_keyboard,
     with_support_keyboard,
 )
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.bot.handlers.start import CREATOR_LABEL
+from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
+    get_user_and_ensure_allowed,
+    handle_draft_choice,
+    handle_role_choice,
+    parse_user_id_from_state,
+)
 from ugc_bot.bot.validators import (
     validate_audience_geo,
     validate_city,
@@ -47,7 +47,6 @@ from ugc_bot.bot.validators import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
-
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -111,7 +110,7 @@ async def _start_registration_flow(
     user_role_service: UserRoleService,
     fsm_draft_service: FsmDraftService,
 ) -> None:
-    """Common logic to start blogger registration: check draft, then first step (name)."""
+    """Start blogger registration: check draft, then first step (name)."""
 
     user = await get_user_and_ensure_allowed(
         message,
@@ -126,7 +125,9 @@ async def _start_registration_flow(
     await state.update_data(user_id=user.user_id, external_id=user.external_id)
     draft = await fsm_draft_service.get_draft(user.user_id, BLOGGER_FLOW_TYPE)
     if draft is not None:
-        await message.answer(DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard())
+        await message.answer(
+            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
+        )
         await state.set_state(BloggerRegistrationStates.choosing_draft_restore)
         return
 
@@ -145,7 +146,9 @@ async def _start_registration_flow(
         await state.set_state(BloggerRegistrationStates.name)
 
 
-@router.message(lambda msg: (msg.text or "").strip() == CREATE_PROFILE_BUTTON_TEXT)
+@router.message(
+    lambda msg: (msg.text or "").strip() == CREATE_PROFILE_BUTTON_TEXT
+)
 async def start_registration_button(
     message: Message,
     state: FSMContext,
@@ -154,7 +157,9 @@ async def start_registration_button(
 ) -> None:
     """Start blogger registration flow via Create profile button."""
 
-    await _start_registration_flow(message, state, user_role_service, fsm_draft_service)
+    await _start_registration_flow(
+        message, state, user_role_service, fsm_draft_service
+    )
 
 
 @router.message(BloggerRegistrationStates.choosing_draft_restore)
@@ -173,7 +178,7 @@ async def blogger_draft_choice(
         first_state=BloggerRegistrationStates.name,
         first_prompt="Введите ваше имя:",
         first_keyboard=support_keyboard(),
-        session_expired_msg="Сессия истекла. Начните снова с «Создать профиль».",
+        session_expired_msg="Сессия истекла. Начните с «Создать профиль».",
     )
 
 
@@ -209,7 +214,7 @@ async def handle_instagram(
         return
     if "instagram.com/" not in instagram_url.lower():
         await message.answer(
-            "Неверный формат ссылки. Прикрепите ссылку в формате instagram.com/name"
+            "Неверный формат ссылки. Прикрепите instagram.com/name"
         )
         return
     if not _INSTAGRAM_URL_REGEX.match(instagram_url):
@@ -219,8 +224,10 @@ async def handle_instagram(
         return
 
     # Check if Instagram URL is already taken
-    existing_profile = await blogger_registration_service.get_profile_by_instagram_url(
-        instagram_url
+    existing_profile = (
+        await blogger_registration_service.get_profile_by_instagram_url(
+            instagram_url
+        )
     )
     if existing_profile is not None:
         await message.answer(
@@ -250,9 +257,9 @@ async def handle_city(message: Message, state: FSMContext) -> None:
     await state.update_data(city=city)
     topics_text = (
         "О чём ваш контент?\n"
-        "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, питание, "
-        "бьюти, уход за кожей, путешествия, еда, рестораны, мода, стиль, дети, семья, "
-        "технологии, гаджеты, лайфстайл, повседневная жизнь, другое"
+        "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, "
+        "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, "
+        "стиль, дети, семья, технологии, гаджеты, лайфстайл, другое"
     )
     await message.answer(topics_text, reply_markup=support_keyboard())
     await state.set_state(BloggerRegistrationStates.topics)
@@ -263,7 +270,9 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
     """Store blogger topics."""
 
     raw = (message.text or "").strip()
-    topics = [topic.strip().lower() for topic in raw.split(",") if topic.strip()]
+    topics = [
+        topic.strip().lower() for topic in raw.split(",") if topic.strip()
+    ]
     err = validate_topics(topics)
     if err is not None:
         await message.answer(err, reply_markup=support_keyboard())
@@ -271,7 +280,7 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
     await state.update_data(topics={"selected": topics})
 
     await message.answer(
-        "Кто в основном смотрит ваш контент? По вашим наблюдениям или статистике",
+        "Кто в основном смотрит ваш контент? По наблюдениям или статистике",
         reply_markup=with_support_keyboard(
             keyboard=[
                 [KeyboardButton(text="👩 В основном женщины")],
@@ -296,7 +305,7 @@ async def handle_gender(message: Message, state: FSMContext) -> None:
     key = gender_text[2:].lower()
     if key not in gender_map:
         await message.answer(
-            "Выберите одну из кнопок: В основном женщины, В основном мужчины или Примерно поровну."
+            "Выберите: В основном женщины, мужчины или Примерно поровну."
         )
         return
 
@@ -440,7 +449,8 @@ async def handle_work_format(
         work_format = WorkFormat.UGC_ONLY
     else:
         await message.answer(
-            "Выберите одну из кнопок: Размещать рекламу у себя в аккаунте или Только UGC (без размещения)."
+            "Выберите одну из кнопок: Размещать рекламу у себя в аккаунте "
+            "или Только UGC (без размещения)."
         )
         return
 
@@ -479,7 +489,9 @@ async def handle_agreements(
         await message.answer("Сессия истекла. Начните заново.")
         return
     try:
-        telegram_username = message.from_user.username if message.from_user else None
+        telegram_username = (
+            message.from_user.username if message.from_user else None
+        )
         await user_role_service.set_user(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
@@ -510,8 +522,8 @@ async def handle_agreements(
                 },
             )
             await message.answer(
-                "Этот Instagram аккаунт уже зарегистрирован. "
-                "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
+                "Этот Instagram уже зарегистрирован. "
+                "Используйте другой или обратитесь в поддержку."
             )
             return
         raise

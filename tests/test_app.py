@@ -1,6 +1,7 @@
 """Tests for application setup."""
 
 import asyncio
+import contextlib
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -23,7 +24,9 @@ def test_build_dispatcher_requires_database_url() -> None:
 
     with pytest.raises(ValueError):
         build_dispatcher(
-            AppConfig.model_validate({"BOT_TOKEN": "token", "DATABASE_URL": ""}),
+            AppConfig.model_validate(
+                {"BOT_TOKEN": "token", "DATABASE_URL": ""}
+            ),
             include_routers=False,
             storage=None,
         )
@@ -54,7 +57,9 @@ def test_build_dispatcher_sets_services() -> None:
     assert dispatcher["payment_service"] is not None
 
 
-def test_build_dispatcher_includes_routers(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_dispatcher_includes_routers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Include routers when enabled."""
 
     monkeypatch.setattr("ugc_bot.app.start_router", Router())
@@ -167,7 +172,7 @@ def test_json_dumps_default_raises_for_other_types() -> None:
 
 
 def _redis_import_works() -> bool:
-    """Check if redis can be imported (avoids cffi/cryptography issues in some envs)."""
+    """Check if redis can be imported (avoids cffi/cryptography issues)."""
     try:
         from redis.asyncio import Redis  # noqa: F401
 
@@ -180,7 +185,7 @@ def _redis_import_works() -> bool:
 async def test_create_storage_returns_redis_storage_when_redis_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """create_storage returns RedisStorage when use_redis_storage is True and redis available."""
+    """create_storage returns RedisStorage when use_redis and redis ok."""
     import importlib.util
 
     if importlib.util.find_spec("redis") is None:
@@ -227,7 +232,7 @@ async def test_create_storage_returns_memory_when_redis_disabled() -> None:
 async def test_create_storage_falls_back_to_memory_on_import_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """create_storage falls back to MemoryStorage when redis is not installed."""
+    """create_storage falls back to MemoryStorage when redis not installed."""
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "t",
@@ -256,7 +261,9 @@ async def test_create_storage_falls_back_to_memory_on_import_error(
 @pytest.mark.asyncio
 async def test_health_server_responds_ok() -> None:
     """Health server responds with 200 and status ok for GET /health."""
-    server = await asyncio.start_server(_handle_health_connection, "127.0.0.1", 0)
+    server = await asyncio.start_server(
+        _handle_health_connection, "127.0.0.1", 0
+    )
     port = server.sockets[0].getsockname()[1]
     async with server:
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
@@ -272,7 +279,9 @@ async def test_health_server_responds_ok() -> None:
 @pytest.mark.asyncio
 async def test_health_server_responds_404_for_other_paths() -> None:
     """Health server responds 404 for non GET /health requests."""
-    server = await asyncio.start_server(_handle_health_connection, "127.0.0.1", 0)
+    server = await asyncio.start_server(
+        _handle_health_connection, "127.0.0.1", 0
+    )
     port = server.sockets[0].getsockname()[1]
     async with server:
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
@@ -348,18 +357,18 @@ async def test_health_server_handles_oserror_on_wait_closed() -> None:
 
 @pytest.mark.asyncio
 async def test_health_server_handles_oserror_when_client_closes_early() -> None:
-    """Health server handles OSError/ConnectionReset when client closes before read."""
-    server = await asyncio.start_server(_handle_health_connection, "127.0.0.1", 0)
+    """Health server handles OSError when client closes before read."""
+    server = await asyncio.start_server(
+        _handle_health_connection, "127.0.0.1", 0
+    )
     port = server.sockets[0].getsockname()[1]
     async with server:
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         writer.write(b"GET /health HTTP/1.1\r\n\r\n")
         await writer.drain()
         writer.close()
-        try:
+        with contextlib.suppress(OSError):
             await writer.wait_closed()
-        except OSError:
-            pass
     # Handler may hit OSError in finally when client already closed
 
 
@@ -382,7 +391,5 @@ async def test_run_health_server_starts_and_responds(
         assert b'{"status":"ok"}' in data
     finally:
         task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass

@@ -19,16 +19,27 @@ def test_app_config_accepts_nested_dict() -> None:
         "bot": {"BOT_TOKEN": "token"},
         "log": {"LOG_LEVEL": "INFO", "LOG_FORMAT": "text"},
         "db": {"DATABASE_URL": "postgresql://localhost/db"},
-        "admin": {"ADMIN_USERNAME": "a", "ADMIN_PASSWORD": "p", "ADMIN_SECRET": "s"},
+        "admin": {
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+        },
         "kafka": {"KAFKA_ENABLED": "false"},
         "feedback": {"FEEDBACK_ENABLED": "false"},
         "role_reminder": {"ROLE_REMINDER_ENABLED": "false"},
-        "redis": {"REDIS_URL": "redis://localhost", "USE_REDIS_STORAGE": "false"},
+        "redis": {
+            "REDIS_URL": "redis://localhost",
+            "USE_REDIS_STORAGE": "false",
+        },
         "instagram": {
             "INSTAGRAM_WEBHOOK_VERIFY_TOKEN": "v",
             "INSTAGRAM_APP_SECRET": "s",
         },
-        "docs": {"DOCS_OFFER_URL": "", "DOCS_PRIVACY_URL": "", "DOCS_CONSENT_URL": ""},
+        "docs": {
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+        },
     }
     config = AppConfig.model_validate(nested)
     assert config.bot.bot_token == "token"

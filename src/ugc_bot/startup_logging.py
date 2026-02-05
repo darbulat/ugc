@@ -84,7 +84,9 @@ def _sanitize_for_logging(obj: Any, *, key: str | None = None) -> Any:
         return MASK
 
     if isinstance(obj, dict):
-        return {str(k): _sanitize_for_logging(v, key=str(k)) for k, v in obj.items()}
+        return {
+            str(k): _sanitize_for_logging(v, key=str(k)) for k, v in obj.items()
+        }
 
     if isinstance(obj, list):
         return [_sanitize_for_logging(v) for v in obj]
@@ -136,13 +138,15 @@ def log_startup_info(*, logger: Any, service_name: str, config: Any) -> None:
     service_version = get_service_version()
     safe_config = safe_config_for_logging(config)
 
-    # Text logs usually don't include extra fields; embed config into the message.
+    # Text logs: embed config into message.
     if not is_json_logging_configured():
         logger.info(
             "%s starting (version=%s, config=%s)",
             service_name,
             service_version,
-            json.dumps(safe_config, ensure_ascii=False, default=str, sort_keys=True),
+            json.dumps(
+                safe_config, ensure_ascii=False, default=str, sort_keys=True
+            ),
         )
         return  # pragma: no cover
 

@@ -1,22 +1,23 @@
 """Integration tests for admin actions through SQLAdmin interface."""
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.config import AppConfig
-from ugc_bot.infrastructure.db.base import Base
-from ugc_bot.domain.entities import User, Order, Interaction, Complaint
+from ugc_bot.domain.entities import Complaint, Interaction, Order, User
 from ugc_bot.domain.enums import (
-    UserStatus,
-    OrderStatus,
-    InteractionStatus,
     ComplaintStatus,
+    InteractionStatus,
+    OrderStatus,
+    UserStatus,
 )
+from ugc_bot.infrastructure.db.base import Base
 
 
 @pytest.fixture(scope="function")
@@ -24,7 +25,7 @@ def test_db_engine():
     """Create in-memory SQLite engine for admin tests."""
     engine = create_engine("sqlite:///:memory:", echo=False)
 
-    # Create all tables except those with JSONB fields (not compatible with SQLite)
+    # Exclude tables with JSONB (not compatible with SQLite)
     tables_to_exclude = {"outbox_events", "blogger_profiles", "fsm_drafts"}
     tables_to_create = [
         table
@@ -61,7 +62,9 @@ def admin_client(admin_config):
 @pytest.fixture(scope="function")
 def db_session(test_db_engine):
     """Database session for tests."""
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_db_engine)
+    SessionLocal = sessionmaker(
+        autocommit=False, autoflush=False, bind=test_db_engine
+    )
     session = SessionLocal()
     try:
         yield session
@@ -111,9 +114,13 @@ def sample_order(db_session: Session, sample_user: User):
 
 
 @pytest.fixture(scope="function")
-def sample_interaction(db_session: Session, sample_order: Order, sample_user: User):
+def sample_interaction(
+    db_session: Session, sample_order: Order, sample_user: User
+):
     """Create a sample interaction for testing."""
-    from ugc_bot.infrastructure.db.repositories import SqlAlchemyInteractionRepository
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyInteractionRepository,
+    )
 
     interaction_repo = SqlAlchemyInteractionRepository(lambda: db_session)
     interaction = Interaction(
@@ -135,9 +142,13 @@ def sample_interaction(db_session: Session, sample_order: Order, sample_user: Us
 
 
 @pytest.fixture(scope="function")
-def sample_complaint(db_session: Session, sample_order: Order, sample_user: User):
+def sample_complaint(
+    db_session: Session, sample_order: Order, sample_user: User
+):
     """Create a sample complaint for testing."""
-    from ugc_bot.infrastructure.db.repositories import SqlAlchemyComplaintRepository
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyComplaintRepository,
+    )
 
     complaint_repo = SqlAlchemyComplaintRepository(lambda: db_session)
     complaint = Complaint(
@@ -157,7 +168,7 @@ def sample_complaint(db_session: Session, sample_order: Order, sample_user: User
 
 def test_admin_action_methods_exist():
     """Test that admin classes have the required action methods."""
-    from ugc_bot.admin.app import UserAdmin, InteractionAdmin, ComplaintAdmin
+    from ugc_bot.admin.app import ComplaintAdmin, InteractionAdmin, UserAdmin
 
     # Проверяем, что у админ-классов есть методы update_model
     assert hasattr(UserAdmin, "update_model")
@@ -175,10 +186,12 @@ def test_admin_action_methods_exist():
 
 
 @pytest.mark.asyncio
-async def test_admin_update_model_logic(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_admin_update_model_logic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Smoke-test custom update_model hooks don't crash.
 
-    We mock SQLAdmin base update_model and the async session so we can exercise the
+    We mock SQLAdmin update_model and async session to exercise the
     branch logic without requiring a real AsyncSession/DB.
     """
 
@@ -188,7 +201,11 @@ async def test_admin_update_model_logic(monkeypatch: pytest.MonkeyPatch) -> None
 
     from ugc_bot.admin import app as admin_app
     from ugc_bot.admin.app import ComplaintAdmin, InteractionAdmin, UserAdmin
-    from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
+    from ugc_bot.domain.enums import (
+        ComplaintStatus,
+        InteractionStatus,
+        UserStatus,
+    )
 
     async def _noop_update_model(self, request, pk: str, data: dict) -> None:  # type: ignore[no-untyped-def]
         return None
@@ -208,7 +225,7 @@ async def test_admin_update_model_logic(monkeypatch: pytest.MonkeyPatch) -> None
             return obj
 
     def make_session_maker(dummy: DummySession):
-        """Create session_maker that yields dummy session when used as context manager."""
+        """Session maker yielding dummy session as context manager."""
 
         @asynccontextmanager
         async def _cm():
@@ -240,7 +257,9 @@ async def test_admin_update_model_logic(monkeypatch: pytest.MonkeyPatch) -> None
             ]
         )
     )
-    await interaction_admin.update_model(object(), pk, {"status": InteractionStatus.OK})
+    await interaction_admin.update_model(
+        object(), pk, {"status": InteractionStatus.OK}
+    )
 
     reported_id = UUID("00000000-0000-0000-0000-000000000002")
     complaint_admin = ComplaintAdmin()

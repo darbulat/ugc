@@ -5,12 +5,20 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.errors import BloggerRegistrationError, UserNotFoundError
+from ugc_bot.application.errors import (
+    BloggerRegistrationError,
+    UserNotFoundError,
+)
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.domain.entities import BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
@@ -41,7 +49,9 @@ async def test_register_blogger_success() -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     user_id = await _seed_user(user_repo)
 
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     profile = await service.register_blogger(
         user_id=user_id,
@@ -64,12 +74,15 @@ async def test_register_blogger_success() -> None:
 @pytest.mark.asyncio
 async def test_register_blogger_duplicate_instagram_url() -> None:
     """Reject registration with duplicate Instagram URL."""
-    from ugc_bot.domain.entities import BloggerProfile
     from datetime import datetime, timezone
+
+    from ugc_bot.domain.entities import BloggerProfile
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     # Create first user and profile
     user1 = User(
@@ -138,7 +151,9 @@ async def test_register_blogger_empty_instagram() -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     user_id = await _seed_user(user_repo)
 
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     with pytest.raises(BloggerRegistrationError):
         await service.register_blogger(
@@ -189,7 +204,9 @@ async def test_register_blogger_invalid_age() -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     user_id = await _seed_user(user_repo)
 
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     with pytest.raises(BloggerRegistrationError):
         await service.register_blogger(
@@ -215,7 +232,9 @@ async def test_register_blogger_invalid_geo_and_price() -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     user_id = await _seed_user(user_repo)
 
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     with pytest.raises(BloggerRegistrationError):
         await service.register_blogger(
@@ -256,7 +275,9 @@ async def test_register_blogger_non_positive_age_is_rejected() -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     user_id = await _seed_user(user_repo)
 
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     with pytest.raises(BloggerRegistrationError):
         await service.register_blogger(
@@ -312,7 +333,7 @@ async def test_register_blogger_records_metrics_when_enabled() -> None:
 async def test_register_blogger_records_metrics_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """Record metrics when collector and transaction_manager are both provided."""
+    """Record metrics when collector and transaction_manager provided."""
 
     from unittest.mock import Mock
 
@@ -346,7 +367,9 @@ async def test_register_blogger_records_metrics_with_transaction_manager(
 
 
 @pytest.mark.asyncio
-async def test_register_blogger_with_transaction_manager(fake_tm: object) -> None:
+async def test_register_blogger_with_transaction_manager(
+    fake_tm: object,
+) -> None:
     """Cover transaction_manager path for register_blogger."""
 
     user_repo = InMemoryUserRepository()
@@ -404,7 +427,9 @@ async def test_get_profile_by_instagram_url_with_transaction_manager(
         blogger_repo=blogger_repo,
         transaction_manager=fake_tm,
     )
-    result = await service.get_profile_by_instagram_url("https://instagram.com/with_tm")
+    result = await service.get_profile_by_instagram_url(
+        "https://instagram.com/with_tm"
+    )
     assert result is not None
     assert result.instagram_url == "https://instagram.com/with_tm"
 
@@ -436,7 +461,9 @@ async def test_increment_wanted_to_change_terms_count() -> None:
             updated_at=now,
         )
     )
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     await service.increment_wanted_to_change_terms_count(user_id)
     updated = await blogger_repo.get_by_user_id(user_id)
     assert updated is not None
@@ -448,7 +475,9 @@ async def test_increment_wanted_to_change_terms_count() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_blogger_profile_instagram_url_sets_confirmed_false() -> None:
+async def test_update_blogger_profile_instagram_url_sets_confirmed_false() -> (
+    None
+):
     """When instagram_url is updated, confirmed must be set to False."""
 
     user_repo = InMemoryUserRepository()
@@ -472,7 +501,9 @@ async def test_update_blogger_profile_instagram_url_sets_confirmed_false() -> No
             updated_at=now,
         )
     )
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     updated = await service.update_blogger_profile(
         user_id, instagram_url="https://instagram.com/new_user"
     )
@@ -482,7 +513,9 @@ async def test_update_blogger_profile_instagram_url_sets_confirmed_false() -> No
 
 
 @pytest.mark.asyncio
-async def test_update_blogger_profile_same_instagram_url_keeps_confirmed() -> None:
+async def test_update_blogger_profile_same_instagram_url_keeps_confirmed() -> (
+    None
+):
     """When instagram_url is unchanged, confirmed stays as is."""
 
     user_repo = InMemoryUserRepository()
@@ -506,7 +539,9 @@ async def test_update_blogger_profile_same_instagram_url_keeps_confirmed() -> No
             updated_at=now,
         )
     )
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     updated = await service.update_blogger_profile(
         user_id, instagram_url="https://instagram.com/same_user"
     )
@@ -516,8 +551,10 @@ async def test_update_blogger_profile_same_instagram_url_keeps_confirmed() -> No
 
 
 @pytest.mark.asyncio
-async def test_get_profile_by_instagram_url_without_transaction_manager() -> None:
-    """Cover path without transaction_manager for get_profile_by_instagram_url."""
+async def test_get_profile_by_instagram_url_without_transaction_manager() -> (
+    None
+):
+    """Cover path without tm for get_profile_by_instagram_url."""
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
@@ -542,7 +579,9 @@ async def test_get_profile_by_instagram_url_without_transaction_manager() -> Non
         user_repo=InMemoryUserRepository(),
         blogger_repo=blogger_repo,
     )
-    result = await service.get_profile_by_instagram_url("https://instagram.com/no_tm")
+    result = await service.get_profile_by_instagram_url(
+        "https://instagram.com/no_tm"
+    )
     assert result is not None
     assert result.instagram_url == "https://instagram.com/no_tm"
 
@@ -551,7 +590,7 @@ async def test_get_profile_by_instagram_url_without_transaction_manager() -> Non
 async def test_register_blogger_user_not_found_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """Raise UserNotFoundError when user does not exist and transaction_manager is used."""
+    """Raise UserNotFoundError when user missing and tm used."""
 
     service = BloggerRegistrationService(
         user_repo=InMemoryUserRepository(),
@@ -582,7 +621,9 @@ async def test_register_blogger_empty_city() -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     user_id = await _seed_user(user_repo)
-    service = BloggerRegistrationService(user_repo=user_repo, blogger_repo=blogger_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
 
     with pytest.raises(BloggerRegistrationError):
         await service.register_blogger(
@@ -655,7 +696,9 @@ async def test_update_blogger_profile_with_transaction_manager(
 
 
 @pytest.mark.asyncio
-async def test_increment_wanted_to_change_terms_count_profile_not_found() -> None:
+async def test_increment_wanted_to_change_terms_count_profile_not_found() -> (
+    None
+):
     """Do nothing when profile does not exist."""
 
     service = BloggerRegistrationService(
@@ -672,7 +715,7 @@ async def test_increment_wanted_to_change_terms_count_profile_not_found() -> Non
 async def test_increment_wanted_to_change_terms_count_with_transaction_manager(
     fake_tm: object,
 ) -> None:
-    """Cover transaction_manager path for increment_wanted_to_change_terms_count."""
+    """Cover transaction_manager path for increment_wanted_to_change_terms."""
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
@@ -799,7 +842,10 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
         )
-    assert "max" in str(exc_info.value).lower() or "min" in str(exc_info.value).lower()
+    assert (
+        "max" in str(exc_info.value).lower()
+        or "min" in str(exc_info.value).lower()
+    )
 
     with pytest.raises(BloggerRegistrationError) as exc_info:
         await service.register_blogger(

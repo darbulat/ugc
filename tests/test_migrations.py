@@ -25,7 +25,9 @@ def _psycopg_conninfo(database_url: str) -> str:
     """
     url = make_url(database_url)
     # Build standard postgresql:// URI (no +dialect)
-    return url.set(drivername="postgresql").render_as_string(hide_password=False)
+    return url.set(drivername="postgresql").render_as_string(
+        hide_password=False
+    )
 
 
 def _build_urls(database_url: str, schema: str) -> tuple[str, str]:
@@ -46,7 +48,9 @@ def test_migrations_upgrade_downgrade_upgrade() -> None:
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url or "postgresql" not in database_url:
-        pytest.skip("DATABASE_URL with PostgreSQL is required for migration tests.")
+        pytest.skip(
+            "DATABASE_URL with PostgreSQL is required for migration tests."
+        )
     try:
         conninfo = _psycopg_conninfo(database_url)
     except Exception:
@@ -67,6 +71,8 @@ def test_migrations_upgrade_downgrade_upgrade() -> None:
             command.upgrade(config, "head")
         finally:
             with psycopg.connect(conninfo, autocommit=True) as connection:
-                connection.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
+                connection.execute(
+                    f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'
+                )
     except psycopg.OperationalError:
         pytest.skip("PostgreSQL is not available for migration tests.")

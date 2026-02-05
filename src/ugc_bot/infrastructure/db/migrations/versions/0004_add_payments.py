@@ -1,9 +1,8 @@
 """Add payments table."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
-
 
 revision = "0004_add_payments"
 down_revision = "0003_add_barter_description"
@@ -14,7 +13,9 @@ depends_on = None
 def upgrade() -> None:
     """Upgrade database schema."""
 
-    payment_status = postgresql.ENUM("pending", "paid", "failed", name="payment_status")
+    payment_status = postgresql.ENUM(
+        "pending", "paid", "failed", name="payment_status"
+    )
     payment_status.create(op.get_bind(), checkfirst=True)
 
     op.create_table(

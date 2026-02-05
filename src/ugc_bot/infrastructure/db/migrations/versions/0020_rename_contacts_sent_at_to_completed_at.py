@@ -10,9 +10,13 @@ depends_on = None
 
 def upgrade() -> None:
     """Rename contacts_sent_at to completed_at."""
-    op.execute("ALTER TABLE orders RENAME COLUMN contacts_sent_at TO completed_at")
+    op.execute(
+        "ALTER TABLE orders RENAME COLUMN contacts_sent_at TO completed_at"
+    )
 
 
 def downgrade() -> None:
     """Rename completed_at back to contacts_sent_at."""
-    op.execute("ALTER TABLE orders RENAME COLUMN completed_at TO contacts_sent_at")
+    op.execute(
+        "ALTER TABLE orders RENAME COLUMN completed_at TO contacts_sent_at"
+    )

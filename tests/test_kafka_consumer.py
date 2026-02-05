@@ -8,7 +8,9 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.services.offer_dispatch_service import OfferDispatchService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import BloggerProfile, Order, User
 from ugc_bot.domain.enums import (
@@ -38,13 +40,18 @@ def test_parse_order_id_returns_none_for_unknown_event() -> None:
     assert _parse_order_id({"event": "other"}) is None
     assert _parse_order_id({"event": "order_activated"}) is None
     assert _parse_order_id({"event": "order_activated", "order_id": ""}) is None
-    assert _parse_order_id({"event": "order_activated", "order_id": "bad"}) is None
+    assert (
+        _parse_order_id({"event": "order_activated", "order_id": "bad"}) is None
+    )
 
 
 def test_parse_order_id_returns_uuid_for_activation() -> None:
     """Extract order_id from order_activation payload."""
     got = _parse_order_id(
-        {"event": "order_activated", "order_id": "00000000-0000-0000-0000-000000000999"}
+        {
+            "event": "order_activated",
+            "order_id": "00000000-0000-0000-0000-000000000999",
+        }
     )
     assert got == UUID("00000000-0000-0000-0000-000000000999")
 
@@ -128,7 +135,12 @@ async def test_send_offers_sends_messages() -> None:
             self.sent.append((chat_id, text))
 
         async def send_photo(
-            self, chat_id: int, photo: str, caption: str, reply_markup=None, **kwargs
+            self,
+            chat_id: int,
+            photo: str,
+            caption: str,
+            reply_markup=None,
+            **kwargs,
         ) -> None:  # type: ignore[no-untyped-def]
             self.photos_sent.append((chat_id, photo, caption))
 
@@ -226,7 +238,12 @@ async def test_send_offers_with_photo_uses_send_photo() -> None:
             self.sent.append((chat_id, text))
 
         async def send_photo(
-            self, chat_id: int, photo: str, caption: str, reply_markup=None, **kwargs
+            self,
+            chat_id: int,
+            photo: str,
+            caption: str,
+            reply_markup=None,
+            **kwargs,
         ) -> None:  # type: ignore[no-untyped-def]
             self.photos_sent.append((chat_id, photo, caption))
 
@@ -357,7 +374,10 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
         order_repo=order_repo,
     )
     with patch.object(
-        OfferDispatchService, "dispatch", new_callable=AsyncMock, return_value=[]
+        OfferDispatchService,
+        "dispatch",
+        new_callable=AsyncMock,
+        return_value=[],
     ):
         bot = Mock(spec=["send_message"])
         bot.sent = []
@@ -388,7 +408,9 @@ def test_main_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     def _fake_startup_log(**kwargs):  # type: ignore[no-untyped-def]
         startup_called.update(kwargs)
 
-    monkeypatch.setattr("ugc_bot.kafka_consumer.log_startup_info", _fake_startup_log)
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.log_startup_info", _fake_startup_log
+    )
 
     main()
     assert startup_called.get("service_name") == "kafka-consumer"
@@ -536,7 +558,9 @@ async def test_run_consumer_processes_activation_message(
 
 
 @pytest.mark.asyncio
-async def test_publish_dlq_handles_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_publish_dlq_handles_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """DLQ publisher should swallow errors."""
 
     class FakeProducer:
@@ -652,13 +676,15 @@ async def test_send_offers_retries_then_succeeds() -> None:
         retries=2,
         retry_delay_seconds=0.0,
     )
-    # Each offer sends 1 message (offer text includes blocks; no separate warning per TZ)
+    # Each offer sends 1 message (offer text includes blocks per TZ)
     # First attempt fails (1 call), retry succeeds (1 call) = 2 total
     assert bot.calls == 2
 
 
 @pytest.mark.asyncio
-async def test_send_offers_sends_to_dlq(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_send_offers_sends_to_dlq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Send DLQ message after retries exhausted."""
 
     user_repo = InMemoryUserRepository()
