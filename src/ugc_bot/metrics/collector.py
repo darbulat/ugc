@@ -5,20 +5,92 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
+from prometheus_client import Counter, Histogram
+
 logger = logging.getLogger(__name__)
+
+# Prometheus metrics - module level for shared registry
+_BLOGGER_REGISTRATIONS = Counter(
+    "ugc_blogger_registrations_total",
+    "Total number of blogger registrations",
+)
+_ADVERTISER_REGISTRATIONS = Counter(
+    "ugc_advertiser_registrations_total",
+    "Total number of advertiser registrations",
+)
+_ORDERS_CREATED = Counter(
+    "ugc_orders_created_total",
+    "Total number of orders created",
+)
+_ORDERS_PAID = Counter(
+    "ugc_orders_paid_total",
+    "Total number of orders paid",
+)
+_PAYMENT_FAILED = Counter(
+    "ugc_payment_failed_total",
+    "Total number of failed payments",
+)
+_BLOGGER_RESPONSES = Counter(
+    "ugc_blogger_responses_total",
+    "Total number of blogger responses to orders",
+)
+_CONTACTS_SENT = Counter(
+    "ugc_contacts_sent_total",
+    "Total number of contacts sent to advertisers",
+)
+_USERS_BLOCKED = Counter(
+    "ugc_users_blocked_total",
+    "Total number of blocked users",
+)
+_COMPLAINTS_CREATED = Counter(
+    "ugc_complaints_created_total",
+    "Total number of complaints created",
+)
+_COMPLAINT_STATUS_CHANGES = Counter(
+    "ugc_complaint_status_changes_total",
+    "Total number of complaint status changes",
+)
+_INTERACTION_ISSUES = Counter(
+    "ugc_interaction_issues_total",
+    "Total number of interaction issues",
+)
+_FEEDBACK_POSTPONEMENTS = Counter(
+    "ugc_feedback_postponements_total",
+    "Total number of feedback postponements",
+)
+_ERRORS = Counter(
+    "ugc_errors_total",
+    "Total number of application errors",
+)
+_ORDER_PAYMENT_DURATION = Histogram(
+    "ugc_order_payment_duration_seconds",
+    "Time from order creation to payment",
+    buckets=(60, 300, 900, 3600, 86400),
+)
+_CONTACTS_DURATION = Histogram(
+    "ugc_contacts_duration_seconds",
+    "Time from order creation to contacts sent",
+    buckets=(60, 300, 900, 3600, 86400),
+)
+_REQUEST_LATENCY = Histogram(
+    "ugc_request_latency_seconds",
+    "Request/operation latency",
+    ["operation", "success"],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
 
 
 @dataclass(slots=True)
 class MetricsCollector:
     """Collector for KPI metrics.
 
-    This collector tracks business and technical metrics by logging them
-    in structured format. Metrics can be extracted from logs for analysis
-    or exported to Prometheus in the future.
+    Tracks business and technical metrics via Prometheus counters/histograms
+    and structured logging. Metrics are exposed at /metrics for Prometheus.
     """
 
     def record_blogger_registration(self, user_id: str) -> None:
         """Record blogger registration."""
+        _BLOGGER_REGISTRATIONS.inc()
         logger.info(
             "Metric: Blogger registration",
             extra={
@@ -30,6 +102,7 @@ class MetricsCollector:
 
     def record_advertiser_registration(self, user_id: str) -> None:
         """Record advertiser registration."""
+        _ADVERTISER_REGISTRATIONS.inc()
         logger.info(
             "Metric: Advertiser registration",
             extra={
@@ -47,6 +120,7 @@ class MetricsCollector:
         bloggers_needed: int,
     ) -> None:
         """Record order creation."""
+        _ORDERS_CREATED.inc()
         logger.info(
             "Metric: Order created",
             extra={
@@ -67,6 +141,9 @@ class MetricsCollector:
         time_to_payment_seconds: Optional[float] = None,
     ) -> None:
         """Record order payment."""
+        _ORDERS_PAID.inc()
+        if time_to_payment_seconds is not None:
+            _ORDER_PAYMENT_DURATION.observe(time_to_payment_seconds)
         extra = {
             "metric_type": "order_paid",
             "order_id": order_id,
@@ -85,6 +162,7 @@ class MetricsCollector:
         reason: str,
     ) -> None:
         """Record failed payment."""
+        _PAYMENT_FAILED.inc()
         logger.warning(
             "Metric: Payment failed",
             extra={
@@ -101,6 +179,7 @@ class MetricsCollector:
         blogger_id: str,
     ) -> None:
         """Record blogger response to order."""
+        _BLOGGER_RESPONSES.inc()
         logger.info(
             "Metric: Blogger response",
             extra={
@@ -119,6 +198,9 @@ class MetricsCollector:
         time_to_contacts_seconds: Optional[float] = None,
     ) -> None:
         """Record contacts sent to advertiser."""
+        _CONTACTS_SENT.inc()
+        if time_to_contacts_seconds is not None:
+            _CONTACTS_DURATION.observe(time_to_contacts_seconds)
         extra: dict[str, str | float] = {
             "metric_type": "contacts_sent",
             "order_id": order_id,
@@ -137,6 +219,7 @@ class MetricsCollector:
         reason: str,
     ) -> None:
         """Record user blocking."""
+        _USERS_BLOCKED.inc()
         logger.warning(
             "Metric: User blocked",
             extra={
@@ -156,6 +239,7 @@ class MetricsCollector:
         reason: str,
     ) -> None:
         """Record complaint creation."""
+        _COMPLAINTS_CREATED.inc()
         logger.warning(
             "Metric: Complaint created",
             extra={
@@ -176,6 +260,7 @@ class MetricsCollector:
         new_status: str,
     ) -> None:
         """Record complaint status change."""
+        _COMPLAINT_STATUS_CHANGES.inc()
         logger.info(
             "Metric: Complaint status changed",
             extra={
@@ -195,6 +280,7 @@ class MetricsCollector:
         advertiser_id: str,
     ) -> None:
         """Record interaction with ISSUE status."""
+        _INTERACTION_ISSUES.inc()
         logger.warning(
             "Metric: Interaction issue",
             extra={
@@ -213,6 +299,7 @@ class MetricsCollector:
         postpone_count: int,
     ) -> None:
         """Record feedback postponement."""
+        _FEEDBACK_POSTPONEMENTS.inc()
         logger.info(
             "Metric: Feedback postponement",
             extra={
@@ -230,6 +317,11 @@ class MetricsCollector:
         success: bool = True,
     ) -> None:
         """Record request/operation latency."""
+        success_label = "true" if success else "false"
+        _REQUEST_LATENCY.labels(
+            operation=operation,
+            success=success_label,
+        ).observe(duration_seconds)
         logger.info(
             "Metric: Request latency",
             extra={
@@ -248,6 +340,7 @@ class MetricsCollector:
         user_id: str,
     ) -> None:
         """Record application or unexpected error."""
+        _ERRORS.inc()
         logger.warning(
             "Metric: Error occurred",
             extra={

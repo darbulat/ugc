@@ -30,7 +30,7 @@ from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
-# Port for lightweight /health HTTP server (for orchestrator healthchecks).
+# Port for lightweight /health and /metrics HTTP server.
 BOT_HEALTH_PORT = 9999
 HEALTH_RESPONSE = (
     b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
@@ -136,15 +136,33 @@ def build_dispatcher(
     return dispatcher
 
 
+def _build_metrics_response() -> bytes:
+    """Build Prometheus metrics HTTP response."""
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    body = generate_latest()
+    header = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: " + CONTENT_TYPE_LATEST.encode() + b"\r\n"
+        b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+        b"Connection: close\r\n\r\n"
+    )
+    return header + body
+
+
 async def _handle_health_connection(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
 ) -> None:
-    """Handle health server connection; respond to GET /health."""
+    """Handle health server; respond to GET /health and GET /metrics."""
     try:
         data = await asyncio.wait_for(reader.read(1024), timeout=2.0)
         if data.startswith(b"GET /health") or data.startswith(b"GET /health "):
             writer.write(HEALTH_RESPONSE)
+        elif data.startswith(b"GET /metrics") or data.startswith(
+            b"GET /metrics "
+        ):
+            writer.write(_build_metrics_response())
         else:
             writer.write(
                 b"HTTP/1.1 404 Not Found\r\n"

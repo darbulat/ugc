@@ -277,6 +277,25 @@ async def test_health_server_responds_ok() -> None:
 
 
 @pytest.mark.asyncio
+async def test_metrics_server_responds_prometheus_format() -> None:
+    """Metrics server responds with Prometheus text format for GET /metrics."""
+    server = await asyncio.start_server(
+        _handle_health_connection, "127.0.0.1", 0
+    )
+    port = server.sockets[0].getsockname()[1]
+    async with server:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        await writer.drain()
+        data = await reader.read(4096)
+        writer.close()
+        await writer.wait_closed()
+    assert b"200 OK" in data
+    assert b"text/plain" in data or b"text/plain;" in data
+    assert b"ugc_" in data
+
+
+@pytest.mark.asyncio
 async def test_health_server_responds_404_for_other_paths() -> None:
     """Health server responds 404 for non GET /health requests."""
     server = await asyncio.start_server(

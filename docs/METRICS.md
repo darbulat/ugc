@@ -261,9 +261,31 @@ conversion_rate = orders_paid / orders_created * 100
 avg(metric_type:order_paid.time_to_payment_seconds)
 ```
 
-## Экспорт в Prometheus (планируется)
+## Экспорт в Prometheus
 
-В будущем метрики можно экспортировать в Prometheus: вынести сбор счётчиков (например, количество регистраций, заказов, ошибок) в отдельный HTTP endpoint (например, `/metrics`), отдающий формат Prometheus text. Тогда сборщик Prometheus будет скрейпить этот endpoint, а в Grafana можно строить дашборды по тем же KPI. Текущая реализация через структурированные логи позволяет извлекать метрики из логов (например, через Promtail/Loki или скрипты) до появления отдельного endpoint.
+Метрики экспортируются через HTTP endpoint `/metrics` в формате Prometheus text.
+
+- **Endpoint:** `GET /metrics` (через nginx: `https://<host>/metrics`)
+- **Сервис:** app (бот) на порту 9999
+- **Prometheus:** job `ugc-bot` скрейпит `app:9999/metrics` каждые 15 секунд
+
+Доступные метрики:
+- `ugc_blogger_registrations_total` — регистрации блогеров
+- `ugc_advertiser_registrations_total` — регистрации рекламодателей
+- `ugc_orders_created_total` — созданные заказы
+- `ugc_orders_paid_total` — оплаченные заказы
+- `ugc_payment_failed_total` — неудачные оплаты
+- `ugc_blogger_responses_total` — отклики блогеров
+- `ugc_contacts_sent_total` — переданные контакты
+- `ugc_users_blocked_total` — заблокированные пользователи
+- `ugc_complaints_created_total` — созданные жалобы
+- `ugc_complaint_status_changes_total` — изменения статусов жалоб
+- `ugc_interaction_issues_total` — взаимодействия со статусом ISSUE
+- `ugc_feedback_postponements_total` — переносы фидбека
+- `ugc_errors_total` — ошибки приложения
+- `ugc_order_payment_duration_seconds` — время от создания заказа до оплаты
+- `ugc_contacts_duration_seconds` — время до передачи контактов
+- `ugc_request_latency_seconds` — латентность операций
 
 ## Рекомендации
 

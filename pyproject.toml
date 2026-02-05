@@ -21,6 +21,7 @@ dependencies = [
  "httpx>=0.25.0,<1.0.0",
  "cffi>=2.0.0",
  "cryptography>=46.0.4",
+ "prometheus-client>=0.21.0,<1.0.0",
 ]
 
 [project.optional-dependencies]

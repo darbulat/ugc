@@ -26,3 +26,10 @@ scrape_configs:
     static_configs:
       - targets:
           - cadvisor:8080
+
+  - job_name: ugc-bot
+    static_configs:
+      - targets:
+          - app:9999
+    metrics_path: /metrics
+    scrape_interval: 15s
