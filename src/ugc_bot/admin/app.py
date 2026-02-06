@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import TypeVar
+from enum import Enum
+from typing import Any, TypeVar
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -426,6 +427,100 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     ]
 
 
+class EnumAwareAdmin(Admin):
+    """Admin that fixes enum select fields showing first option instead of DB.
+
+    SQLAdmin's conv_enum uses SQLAlchemy Enum.enums which with values_callable
+    returns string values (e.g. 'pending_moderation'). The form receives
+    Python enum from model (OrderStatus.PENDING_MODERATION). SelectField
+    compares these and finds no match, defaulting to first option. We pass
+    enum.value in form data so the select shows the correct option.
+    """
+
+    def _edit_form_data(
+        self, model: Any, model_view: ModelView
+    ) -> dict[str, Any]:
+        """Build form data for edit. Enum fields use .value for SelectField.
+
+        WTForms gives obj precedence over data, so we pass only data (no obj)
+        with enum values as strings to fix select display.
+        """
+        data = dict(self._normalize_wtform_data(model))
+        for prop_name in model_view._form_prop_names:
+            if prop_name in data:
+                continue
+            try:
+                value = getattr(model, prop_name, None)
+            except Exception:
+                continue
+            if value is not None and isinstance(value, Enum):
+                data[prop_name] = value.value
+            elif value is not None:
+                data[prop_name] = value
+        return data
+
+    async def edit(self, request: Request):  # pragma: no cover
+        """Override edit to pass enum .value for correct select display."""
+        from starlette.exceptions import HTTPException
+        from starlette.responses import RedirectResponse
+
+        await self._edit(request)
+
+        identity = request.path_params["identity"]
+        model_view = self._find_model_view(identity)
+
+        model = await model_view.get_object_for_edit(request)
+        if not model:
+            raise HTTPException(status_code=404)
+
+        Form = await model_view.scaffold_form(model_view._form_edit_rules)
+        form_data = self._edit_form_data(model, model_view)
+        context = {
+            "obj": model,
+            "model_view": model_view,
+            "form": Form(data=form_data),
+        }
+
+        if request.method == "GET":
+            return await self.templates.TemplateResponse(
+                request, model_view.edit_template, context
+            )
+
+        form_data_post = await self._handle_form_data(request, model)
+        form = Form(form_data_post)
+        if not form.validate():
+            context["form"] = form
+            return await self.templates.TemplateResponse(
+                request, model_view.edit_template, context, status_code=400
+            )
+
+        form_data_dict = self._denormalize_wtform_data(form.data, model)
+        try:
+            if (
+                model_view.save_as
+                and form_data_post.get("save") == "Save as new"
+            ):
+                obj = await model_view.insert_model(request, form_data_dict)
+            else:
+                obj = await model_view.update_model(
+                    request, pk=request.path_params["pk"], data=form_data_dict
+                )
+        except Exception as e:
+            logger.exception(e)
+            context["error"] = str(e)
+            return await self.templates.TemplateResponse(
+                request, model_view.edit_template, context, status_code=400
+            )
+
+        url = self.get_save_redirect_url(
+            request=request,
+            form=form_data_post,
+            obj=obj,
+            model_view=model_view,
+        )
+        return RedirectResponse(url=url, status_code=302)
+
+
 def create_admin_app() -> FastAPI:
     """Create a FastAPI app with SQLAdmin."""
 
@@ -462,7 +557,9 @@ def create_admin_app() -> FastAPI:
         username=config.admin.admin_username,
         password=config.admin.admin_password,
     )
-    admin = Admin(app, engine, authentication_backend=auth, base_url="/admin")
+    admin = EnumAwareAdmin(
+        app, engine, authentication_backend=auth, base_url="/admin"
+    )
 
     # Store container in admin views for service access
     UserAdmin._container = container  # type: ignore[attr-defined]

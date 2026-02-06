@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from ugc_bot.admin.app import (
     ComplaintAdmin,
+    EnumAwareAdmin,
     InteractionAdmin,
     UserAdmin,
     _get_services,
@@ -20,7 +21,12 @@ from ugc_bot.application.services.offer_dispatch_service import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
-from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
+from ugc_bot.domain.enums import (
+    ComplaintStatus,
+    InteractionStatus,
+    OrderStatus,
+    UserStatus,
+)
 from ugc_bot.infrastructure.db.models import (
     ComplaintModel,
     InteractionModel,
@@ -84,6 +90,29 @@ def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] in ("ok", "degraded")
+
+
+def test_enum_aware_admin_edit_form_data_converts_enum_to_value() -> None:
+    """_edit_form_data converts Enum to .value for correct select display."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    app = FastAPI()
+    admin = EnumAwareAdmin(app, engine, base_url="/admin")
+
+    model = MagicMock()
+    model.status = OrderStatus.PENDING_MODERATION
+    model.order_type = "ugc_only"
+    model.product_link = "https://example.com"
+
+    model_view = MagicMock()
+    model_view._form_prop_names = ["status", "order_type", "product_link"]
+
+    result = admin._edit_form_data(model, model_view)
+
+    assert result["status"] == "pending_moderation"
+    assert result["order_type"] == "ugc_only"
+    assert result["product_link"] == "https://example.com"
 
 
 def test_create_admin_app_raises_when_admin_secret_empty(
