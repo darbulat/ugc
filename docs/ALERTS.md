@@ -227,7 +227,7 @@ curl -X POST http://localhost:9090/-/reload
 
 ### Ручной тест алерта
 
-Используйте Alertmanager API для отправки тестового алерта:
+Используйте Alertmanager v2 API для отправки тестового алерта:
 
 ```bash
 curl -H "Content-Type: application/json" -d '[
@@ -242,8 +242,10 @@ curl -H "Content-Type: application/json" -d '[
       "description": "This is a test alert"
     }
   }
-]' http://localhost:9093/api/v1/alerts
+]' http://localhost:9093/api/v2/alerts
 ```
+
+> **Примечание:** API v1 (`/api/v1/alerts`) удалён в Alertmanager 0.27.0. Используйте v2 (`/api/v2/alerts`).
 
 ### Проверка Alertmanager
 
