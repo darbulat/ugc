@@ -12,7 +12,9 @@ from ugc_bot.admin.app import (
     ComplaintAdmin,
     EnumAwareAdmin,
     InteractionAdmin,
+    OrderAdmin,
     UserAdmin,
+    _get_order_moderation_deps,
     _get_services,
     create_admin_app,
 )
@@ -30,6 +32,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.models import (
     ComplaintModel,
     InteractionModel,
+    OrderModel,
     UserModel,
 )
 
@@ -767,3 +770,409 @@ async def test_complaint_admin_update_model_dismissed_exception() -> None:
     mock_complaint_service.dismiss_complaint.assert_called_once_with(
         complaint_id
     )
+
+
+def test_get_order_moderation_deps() -> None:
+    """Test _get_order_moderation_deps function creates services correctly."""
+    from unittest.mock import patch
+
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "x", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+    container = Container(config)
+
+    mock_outbox_publisher = MagicMock()
+    mock_order_repo = MagicMock()
+
+    with (
+        patch.object(
+            container,
+            "build_outbox_deps",
+            return_value=(mock_outbox_publisher, None),
+        ),
+        patch.object(
+            container,
+            "build_repos",
+            return_value={"order_repo": mock_order_repo},
+        ),
+    ):
+        content_moderation, outbox_publisher, order_repo = (
+            _get_order_moderation_deps(container)
+        )
+
+    assert content_moderation is not None
+    assert outbox_publisher is not None
+    assert order_repo is not None
+
+
+@pytest.mark.asyncio
+async def test_user_admin_update_model_user_not_found() -> None:
+    """Test UserAdmin.update_model handles user not found gracefully."""
+    user_id = UUID("00000000-0000-0000-0000-000000000030")
+    old_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    new_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(side_effect=[old_user, new_user])
+
+    mock_user_service = MagicMock()
+    mock_user_service.get_user_by_id = AsyncMock(return_value=None)
+
+    mock_container = MagicMock()
+
+    admin = UserAdmin()
+    admin._container = mock_container  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"status": UserStatus.BLOCKED}
+
+    with (
+        patch.object(
+            UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._get_services",
+            return_value=(mock_user_service, None, None),
+        ),
+    ):
+        result = await admin.update_model(request, str(user_id), data)
+
+    assert result is not None
+    mock_user_service.get_user_by_id.assert_called_once_with(user_id)
+
+
+@pytest.mark.asyncio
+async def test_order_admin_update_model_banned_content_rejected() -> None:
+    """Test OrderAdmin.update_model rejects order with banned content."""
+    order_id = UUID("00000000-0000-0000-0000-000000000040")
+    old_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000041"),
+        order_type="ugc_only",
+        product_link="https://1xbet.com/link",
+        offer_text="Test",
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=old_order)
+
+    mock_container = MagicMock()
+    mock_container.build_outbox_deps = MagicMock(return_value=(None, None))
+    mock_container.build_repos = MagicMock(
+        return_value={"order_repo": MagicMock()}
+    )
+
+    admin = OrderAdmin()
+    admin._container = mock_container  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {
+        "status": OrderStatus.ACTIVE,
+        "product_link": "https://1xbet.com/link",
+        "offer_text": "Test",
+    }
+
+    with (
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        pytest.raises(ValueError, match="Запрещённый контент"),
+    ):
+        await admin.update_model(request, str(order_id), data)
+
+
+@pytest.mark.asyncio
+async def test_order_admin_update_model_activation_publishes() -> None:
+    """Test OrderAdmin.update_model publishes activation on status change."""
+    from contextlib import asynccontextmanager
+
+    order_id = UUID("00000000-0000-0000-0000-000000000050")
+    old_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000051"),
+        order_type="ugc_only",
+        product_link="https://example.com/product",
+        offer_text="Test",
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=datetime.now(timezone.utc),
+    )
+    new_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=old_order.advertiser_id,
+        order_type=old_order.order_type,
+        product_link=old_order.product_link,
+        offer_text=old_order.offer_text,
+        price=old_order.price,
+        bloggers_needed=old_order.bloggers_needed,
+        status=OrderStatus.ACTIVE,
+        created_at=old_order.created_at,
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(side_effect=[old_order, new_order])
+
+    mock_order = MagicMock()
+    mock_order_repo = MagicMock()
+    mock_order_repo.get_by_id = AsyncMock(return_value=mock_order)
+
+    mock_outbox_publisher = MagicMock()
+    mock_outbox_publisher.publish_order_activation = AsyncMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.build_outbox_deps = MagicMock(
+        return_value=(mock_outbox_publisher, None)
+    )
+    mock_container.build_repos = MagicMock(
+        return_value={"order_repo": mock_order_repo}
+    )
+    mock_container.transaction_manager = mock_tm
+
+    admin = OrderAdmin()
+    admin._container = mock_container  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"status": OrderStatus.ACTIVE}
+
+    with patch.object(
+        OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    ):
+        await admin.update_model(request, str(order_id), data)
+
+    assert mock_session.get.call_count == 2
+    mock_order_repo.get_by_id.assert_called_once_with(
+        order_id, session=mock_session
+    )
+    mock_outbox_publisher.publish_order_activation.assert_called_once_with(
+        mock_order, session=mock_session
+    )
+
+
+@pytest.mark.asyncio
+async def test_order_admin_update_model_activation_no_order() -> None:
+    """Test OrderAdmin.update_model handles missing order gracefully."""
+    from contextlib import asynccontextmanager
+
+    order_id = UUID("00000000-0000-0000-0000-000000000060")
+    old_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000061"),
+        order_type="ugc_only",
+        product_link="https://example.com/product",
+        offer_text="Test",
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=datetime.now(timezone.utc),
+    )
+    new_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=old_order.advertiser_id,
+        order_type=old_order.order_type,
+        product_link=old_order.product_link,
+        offer_text=old_order.offer_text,
+        price=old_order.price,
+        bloggers_needed=old_order.bloggers_needed,
+        status=OrderStatus.ACTIVE,
+        created_at=old_order.created_at,
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(side_effect=[old_order, new_order])
+
+    mock_order_repo = MagicMock()
+    mock_order_repo.get_by_id = AsyncMock(return_value=None)
+
+    mock_outbox_publisher = MagicMock()
+    mock_outbox_publisher.publish_order_activation = AsyncMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.build_outbox_deps = MagicMock(
+        return_value=(mock_outbox_publisher, None)
+    )
+    mock_container.build_repos = MagicMock(
+        return_value={"order_repo": mock_order_repo}
+    )
+    mock_container.transaction_manager = mock_tm
+
+    admin = OrderAdmin()
+    admin._container = mock_container  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"status": OrderStatus.ACTIVE}
+
+    with patch.object(
+        OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    ):
+        await admin.update_model(request, str(order_id), data)
+
+    assert mock_session.get.call_count == 2
+    mock_order_repo.get_by_id.assert_called_once_with(
+        order_id, session=mock_session
+    )
+    mock_outbox_publisher.publish_order_activation.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_order_admin_update_model_activation_exception_handled() -> None:
+    """Test OrderAdmin.update_model handles exception during publishing."""
+    from contextlib import asynccontextmanager
+
+    order_id = UUID("00000000-0000-0000-0000-000000000070")
+    old_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000071"),
+        order_type="ugc_only",
+        product_link="https://example.com/product",
+        offer_text="Test",
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=datetime.now(timezone.utc),
+    )
+    new_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=old_order.advertiser_id,
+        order_type=old_order.order_type,
+        product_link=old_order.product_link,
+        offer_text=old_order.offer_text,
+        price=old_order.price,
+        bloggers_needed=old_order.bloggers_needed,
+        status=OrderStatus.ACTIVE,
+        created_at=old_order.created_at,
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(side_effect=[old_order, new_order])
+
+    mock_order = MagicMock()
+    mock_order_repo = MagicMock()
+    mock_order_repo.get_by_id = AsyncMock(return_value=mock_order)
+
+    mock_outbox_publisher = MagicMock()
+    mock_outbox_publisher.publish_order_activation = AsyncMock(
+        side_effect=Exception("Publish failed")
+    )
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.build_outbox_deps = MagicMock(
+        return_value=(mock_outbox_publisher, None)
+    )
+    mock_container.build_repos = MagicMock(
+        return_value={"order_repo": mock_order_repo}
+    )
+    mock_container.transaction_manager = mock_tm
+
+    admin = OrderAdmin()
+    admin._container = mock_container  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"status": OrderStatus.ACTIVE}
+
+    with patch.object(
+        OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    ):
+        # Should not raise exception
+        result = await admin.update_model(request, str(order_id), data)
+
+    assert result is not None
+    mock_outbox_publisher.publish_order_activation.assert_called_once()
+
+
+def test_enum_aware_admin_edit_form_data_skip_existing() -> None:
+    """_edit_form_data skips properties already in data."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    app = FastAPI()
+    admin = EnumAwareAdmin(app, engine, base_url="/admin")
+
+    model = MagicMock()
+    model.status = OrderStatus.PENDING_MODERATION
+
+    model_view = MagicMock()
+    model_view._form_prop_names = ["status"]
+
+    # Simulate data already containing status
+    admin._normalize_wtform_data = MagicMock(
+        return_value={"status": "pending_moderation"}
+    )
+
+    result = admin._edit_form_data(model, model_view)
+
+    assert result["status"] == "pending_moderation"
+
+
+def test_enum_aware_admin_edit_form_data_handles_attribute_error() -> None:
+    """_edit_form_data handles exception when getting attribute."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    app = FastAPI()
+    admin = EnumAwareAdmin(app, engine, base_url="/admin")
+
+    model = MagicMock()
+    # Make getattr raise exception
+    model.__getattribute__ = MagicMock(side_effect=AttributeError("No attr"))
+
+    model_view = MagicMock()
+    model_view._form_prop_names = ["nonexistent"]
+
+    admin._normalize_wtform_data = MagicMock(return_value={})
+
+    # Should not raise exception
+    result = admin._edit_form_data(model, model_view)
+
+    assert isinstance(result, dict)

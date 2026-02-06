@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
 
@@ -20,21 +21,25 @@ from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Instagram Webhook")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for FastAPI application.
 
-@app.on_event("startup")
-async def _log_startup() -> None:
-    """Log version and sanitized config on server startup.
-
+    Logs version and sanitized config on server startup.
     This runs when the app is served by Uvicorn (including docker-compose),
     where `main()` is typically not executed.
     """
-
+    # Startup
     config = load_config()
     log_startup_info(
         logger=logger, service_name="instagram-webhook", config=config
     )
+    yield
+    # Shutdown (if needed in the future)
+
+
+app = FastAPI(title="Instagram Webhook", lifespan=lifespan)
 
 
 def _verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:

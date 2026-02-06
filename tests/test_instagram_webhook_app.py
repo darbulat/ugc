@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ugc_bot.application.services.instagram_verification_service import (
@@ -567,9 +568,12 @@ async def test_webhook_startup_event(
 ) -> None:
     """Startup event loads config and logs."""
     mock_load_config.return_value = test_config
-    from ugc_bot.instagram_webhook_app import _log_startup
+    from ugc_bot.instagram_webhook_app import lifespan
 
-    await _log_startup()
+    app = FastAPI()
+    async with lifespan(app):
+        pass
+
     mock_load_config.assert_called()
 
 

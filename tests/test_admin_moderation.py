@@ -295,3 +295,385 @@ async def test_handle_moderate_activate_already_processed(
 
     assert len(callback.answers) == 1
     assert callback.answers[0] == "Заказ уже обработан."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_no_user_id(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Callback without from_user returns error."""
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    callback = FakeCallback(
+        data="mod_activate:" + uuid4().hex,
+        user=None,  # type: ignore[arg-type]
+    )
+    callback.from_user = None
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Ошибка: пользователь не определён."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_user_not_found(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """User not found in repository returns error."""
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    callback = FakeCallback(
+        data="mod_activate:" + uuid4().hex,
+        user=FakeUser(99999, "unknown"),
+    )
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Пользователь не найден."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_invalid_order_id_format(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Invalid order ID format returns error."""
+    admin = User(
+        user_id=uuid4(),
+        external_id="333",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    # Invalid format: wrong prefix
+    callback = FakeCallback(
+        data="invalid_prefix:12345",
+        user=FakeUser(333, "admin"),
+    )
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Неверный формат идентификатора заказа."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_empty_data(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Empty callback data returns error."""
+    admin = User(
+        user_id=uuid4(),
+        external_id="444",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    callback = FakeCallback(
+        data="",  # Empty data
+        user=FakeUser(444, "admin"),
+    )
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Неверный формат идентификатора заказа."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_none_data(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """None callback data returns error."""
+    admin = User(
+        user_id=uuid4(),
+        external_id="445",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    callback = FakeCallback(
+        data="mod_activate:" + uuid4().hex,
+        user=FakeUser(445, "admin"),
+    )
+    callback.data = None  # type: ignore[assignment]
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Неверный формат идентификатора заказа."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_order_id_wrong_length(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Order ID with wrong length returns error."""
+    admin = User(
+        user_id=uuid4(),
+        external_id="444",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    # Wrong length: should be 32 hex chars
+    callback = FakeCallback(
+        data="mod_activate:12345",  # Too short
+        user=FakeUser(444, "admin"),
+    )
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Неверный формат идентификатора заказа."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_order_id_invalid_hex(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Order ID with invalid hex characters returns error."""
+    admin = User(
+        user_id=uuid4(),
+        external_id="555",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    # Invalid hex: contains 'g' which is not a valid hex character
+    callback = FakeCallback(
+        data="mod_activate:" + "g" * 32,
+        user=FakeUser(555, "admin"),
+    )
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Неверный формат идентификатора заказа."
+
+
+@pytest.mark.asyncio
+async def test_handle_moderate_activate_order_not_found(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Order not found in repository returns error."""
+    admin = User(
+        user_id=uuid4(),
+        external_id="666",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    # Valid format but order doesn't exist
+    non_existent_order_id = uuid4()
+    callback = FakeCallback(
+        data=f"mod_activate:{non_existent_order_id.hex}",
+        user=FakeUser(666, "admin"),
+    )
+
+    await handle_moderate_activate(
+        callback,
+        user_role_service=user_role_service,
+        content_moderation_service=content_moderation,
+        order_repo=order_repo,
+        outbox_publisher=outbox_publisher,
+        transaction_manager=fake_tm,
+    )
+
+    assert len(callback.answers) == 1
+    assert callback.answers[0] == "Заказ не найден."
+
+
+@pytest.mark.asyncio
+async def test_remove_moderation_keyboard_no_message(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_repo: InMemoryOutboxRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Removing keyboard when message has no edit_reply_markup doesn't fail."""
+    from ugc_bot.bot.handlers.admin_moderation import (
+        _remove_moderation_keyboard,
+    )
+
+    admin = User(
+        user_id=uuid4(),
+        external_id="777",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+
+    order = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/product",
+        offer_text="Test offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+
+    # Message without edit_reply_markup method
+    # Create a message-like object without edit_reply_markup
+    class MessageWithoutEdit:
+        pass
+
+    message = MessageWithoutEdit()
+    callback = FakeCallback(
+        data=f"mod_activate:{order.order_id.hex}",
+        user=FakeUser(777, "admin"),
+        message=message,
+    )
+
+    # Should not raise exception
+    await _remove_moderation_keyboard(callback)
+
+
+@pytest.mark.asyncio
+async def test_remove_moderation_keyboard_no_message_object(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_repo: InMemoryOutboxRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """Removing keyboard when callback has no message doesn't fail."""
+    from ugc_bot.bot.handlers.admin_moderation import (
+        _remove_moderation_keyboard,
+    )
+
+    callback = FakeCallback(
+        data="mod_activate:" + uuid4().hex,
+        user=FakeUser(888, "admin"),
+    )
+    callback.message = None
+
+    # Should not raise exception
+    await _remove_moderation_keyboard(callback)
