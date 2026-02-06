@@ -59,18 +59,39 @@ def validate_barter_description(value: str, required: bool) -> str | None:
     return None
 
 
+def normalize_url(value: str) -> str:
+    """Add https:// prefix if URL has no scheme. Returns normalized URL."""
+    v = (value or "").strip()
+    if not v:
+        return v
+    parsed = urlparse(v)
+    if parsed.scheme and parsed.scheme in ("http", "https"):
+        return v
+    if not parsed.scheme and v:
+        return f"https://{v}"
+    return v
+
+
 def validate_url(value: str, max_len: int = URL_MAX) -> str | None:
-    """Validate URL format (http/https) and length."""
+    """Validate URL format (http/https or domain without scheme) and length."""
     v = (value or "").strip()
     if not v:
         return None
     if len(v) > max_len:
         return f"Ссылка слишком длинная (максимум {max_len} символов)."
     parsed = urlparse(v)
-    if not parsed.scheme or parsed.scheme not in ("http", "https"):
+    if parsed.scheme and parsed.scheme not in ("http", "https"):
         return "Введите ссылку (http:// или https://)."
-    if not parsed.netloc:
+    if parsed.scheme and parsed.scheme in ("http", "https"):
+        if not parsed.netloc:
+            return "Введите корректную ссылку."
+        return None
+    parsed_with_scheme = urlparse(f"https://{v}")
+    netloc = parsed_with_scheme.netloc or ""
+    if not netloc or " " in v:
         return "Введите корректную ссылку."
+    if "." not in netloc.split(":")[0]:
+        return "Введите корректную ссылку (например, сайт.рф или example.com)."
     return None
 
 

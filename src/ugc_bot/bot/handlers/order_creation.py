@@ -34,6 +34,7 @@ from ugc_bot.bot.handlers.utils import (
     parse_user_id_from_state,
 )
 from ugc_bot.bot.validators import (
+    normalize_url,
     validate_barter_description,
     validate_geography,
     validate_offer_text,
@@ -433,7 +434,7 @@ async def handle_product_link(message: Message, state: FSMContext) -> None:
         await message.answer(err, reply_markup=support_keyboard())
         return
 
-    await state.update_data(product_link=product_link)
+    await state.update_data(product_link=normalize_url(product_link))
     await message.answer(
         "Прикрепите фото (по желанию).\n"
         "Фотография поможет креатору быстрее понять заказ и повысит отклик "

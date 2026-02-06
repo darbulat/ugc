@@ -1,6 +1,7 @@
 """Tests for bot input validators."""
 
 from ugc_bot.bot.validators import (
+    normalize_url,
     validate_audience_geo,
     validate_barter_description,
     validate_brand,
@@ -78,6 +79,10 @@ class TestValidateProductLink:
 
     def test_valid_http_ok(self) -> None:
         assert validate_product_link("http://example.com") is None
+
+    def test_valid_domain_without_scheme_ok(self) -> None:
+        assert validate_product_link("example.com") is None
+        assert validate_product_link("сайт.рф") is None
 
 
 class TestValidateGeography:
@@ -193,6 +198,7 @@ class TestValidateSiteLink:
 
     def test_valid_url_ok(self) -> None:
         assert validate_site_link("https://example.com") is None
+        assert validate_site_link("сайт.рф") is None
 
 
 class TestValidateNickname:
@@ -265,8 +271,28 @@ class TestValidateUrl:
     def test_invalid_scheme_returns_error(self) -> None:
         assert validate_url("ftp://example.com") is not None
 
-    def test_no_scheme_returns_error(self) -> None:
-        assert validate_url("example.com") is not None
+    def test_no_scheme_valid_domain_ok(self) -> None:
+        assert validate_url("example.com") is None
+        assert validate_url("сайт.рф") is None
+        assert validate_url("sub.example.com/path") is None
 
     def test_valid_ok(self) -> None:
         assert validate_url("https://example.com") is None
+        assert validate_url("http://example.com") is None
+
+
+class TestNormalizeUrl:
+    """Tests for normalize_url."""
+
+    def test_adds_https_when_no_scheme(self) -> None:
+        assert normalize_url("example.com") == "https://example.com"
+        assert normalize_url("сайт.рф") == "https://сайт.рф"
+
+    def test_leaves_http_unchanged(self) -> None:
+        assert normalize_url("http://example.com") == "http://example.com"
+
+    def test_leaves_https_unchanged(self) -> None:
+        assert normalize_url("https://example.com") == "https://example.com"
+
+    def test_empty_returns_empty(self) -> None:
+        assert normalize_url("") == ""

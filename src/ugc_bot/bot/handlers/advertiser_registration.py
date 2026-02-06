@@ -33,6 +33,7 @@ from ugc_bot.bot.handlers.utils import (
     parse_user_id_from_state,
 )
 from ugc_bot.bot.validators import (
+    normalize_url,
     validate_brand,
     validate_city,
     validate_company_activity,
@@ -281,7 +282,9 @@ async def handle_site_link(
     if err is not None:
         await message.answer(err, reply_markup=support_keyboard())
         return
-    await state.update_data(site_link=site_link)
+    await state.update_data(
+        site_link=normalize_url(site_link) if site_link else None
+    )
 
     text = format_agreements_message(config)
     await message.answer(
