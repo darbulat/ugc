@@ -40,6 +40,10 @@ def test_app_config_accepts_nested_dict() -> None:
             "DOCS_PRIVACY_URL": "",
             "DOCS_CONSENT_URL": "",
         },
+        "webhook": {
+            "WEBHOOK_BASE_URL": "",
+            "WEBHOOK_SECRET": "",
+        },
     }
     config = AppConfig.model_validate(nested)
     assert config.bot.bot_token == "token"

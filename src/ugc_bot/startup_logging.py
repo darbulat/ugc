@@ -28,6 +28,7 @@ SENSITIVE_KEYS = {
     "instagram_webhook_verify_token",
     "redis_url",
     "telegram_provider_token",
+    "webhook_secret",
 }
 SENSITIVE_KEYWORDS = ("password", "secret", "token")
 

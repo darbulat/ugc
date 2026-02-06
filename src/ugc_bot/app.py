@@ -1,10 +1,13 @@
-"""Application entrypoint."""
+"""Application entrypoint.
 
-import asyncio
-import contextlib
+Shared components (build_dispatcher, create_storage) are used by
+telegram_webhook_app for webhook-based deployment. The bot runs via:
+  uvicorn ugc_bot.telegram_webhook_app:app --host 0.0.0.0 --port 9999
+"""
+
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from ugc_bot.bot.handlers.admin_moderation import (
@@ -28,17 +31,8 @@ from ugc_bot.bot.handlers.profile import router as profile_router
 # Services are built via Container.build_bot_services()
 from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
-from ugc_bot.config import AppConfig, load_config
+from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
-from ugc_bot.logging_setup import configure_logging
-from ugc_bot.startup_logging import log_startup_info
-
-# Port for lightweight /health and /metrics HTTP server.
-BOT_HEALTH_PORT = 9999
-HEALTH_RESPONSE = (
-    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
-    b'Content-Length: 15\r\nConnection: close\r\n\r\n{"status":"ok"}'
-)
 
 
 def _json_dumps(obj: dict) -> str:
@@ -138,94 +132,3 @@ def build_dispatcher(
         dispatcher.include_router(payments_router)
         dispatcher.include_router(complaints_router)
     return dispatcher
-
-
-def _build_metrics_response() -> bytes:
-    """Build Prometheus metrics HTTP response."""
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-
-    body = generate_latest()
-    header = (
-        b"HTTP/1.1 200 OK\r\n"
-        b"Content-Type: " + CONTENT_TYPE_LATEST.encode() + b"\r\n"
-        b"Content-Length: " + str(len(body)).encode() + b"\r\n"
-        b"Connection: close\r\n\r\n"
-    )
-    return header + body
-
-
-async def _handle_health_connection(
-    reader: asyncio.StreamReader,
-    writer: asyncio.StreamWriter,
-) -> None:
-    """Handle health server; respond to GET /health and GET /metrics."""
-    try:
-        data = await asyncio.wait_for(reader.read(1024), timeout=2.0)
-        if data.startswith(b"GET /health") or data.startswith(b"GET /health "):
-            writer.write(HEALTH_RESPONSE)
-        elif data.startswith(b"GET /metrics") or data.startswith(
-            b"GET /metrics "
-        ):
-            writer.write(_build_metrics_response())
-        else:
-            writer.write(
-                b"HTTP/1.1 404 Not Found\r\n"
-                b"Content-Length: 0\r\nConnection: close\r\n\r\n"
-            )
-    except asyncio.TimeoutError:
-        writer.write(
-            b"HTTP/1.1 408 Request Timeout\r\n"
-            b"Content-Length: 0\r\nConnection: close\r\n\r\n"
-        )
-    finally:
-        await writer.drain()
-        writer.close()
-        with contextlib.suppress(OSError):  # pragma: no cover
-            await writer.wait_closed()  # pragma: no cover
-
-
-async def _run_health_server() -> None:
-    """Run minimal HTTP server on BOT_HEALTH_PORT for GET /health."""
-    server = await asyncio.start_server(
-        _handle_health_connection, "0.0.0.0", BOT_HEALTH_PORT
-    )
-    async with server:
-        await server.serve_forever()
-
-
-async def run_bot() -> None:
-    """Run the Telegram bot."""
-
-    config = load_config()
-    configure_logging(
-        config.log.log_level,
-        json_format=config.log.log_format.lower() == "json",
-    )
-
-    log_startup_info(
-        logger=logging.getLogger(__name__),
-        service_name="ugc-bot",
-        config=config,
-    )
-    storage = await create_storage(config)
-    dispatcher = build_dispatcher(config, storage=storage)
-    bot = Bot(token=config.bot.bot_token)
-    health_task = asyncio.create_task(_run_health_server())
-    try:
-        await dispatcher.start_polling(bot)
-    finally:
-        health_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await health_task
-        if hasattr(storage, "close"):
-            await storage.close()
-
-
-def main() -> None:
-    """Entry point for the CLI."""
-
-    asyncio.run(run_bot())
-
-
-if __name__ == "__main__":  # pragma: no cover
-    main()

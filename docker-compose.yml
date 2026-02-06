@@ -11,7 +11,15 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
-    command: ["python", "-m", "ugc_bot.app"]
+    command:
+      - uvicorn
+      - ugc_bot.telegram_webhook_app:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "9999"
+      - --log-config
+      - config/uvicorn_log_config.json
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9999/health', timeout=5)\" || exit 1"]
       interval: 30s

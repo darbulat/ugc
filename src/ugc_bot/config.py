@@ -67,6 +67,7 @@ _FLAT_KEYS = {
         "DOCS_PRIVACY_URL",
         "DOCS_CONSENT_URL",
     ],
+    "webhook": ["WEBHOOK_BASE_URL", "WEBHOOK_SECRET"],
 }
 
 
@@ -224,6 +225,22 @@ class DocsConfig(BaseSettings):
     docs_consent_url: str = Field(default="", alias="DOCS_CONSENT_URL")
 
 
+class WebhookConfig(BaseSettings):
+    """Telegram webhook configuration for scalable bot deployment."""
+
+    model_config = _ENV
+
+    webhook_base_url: str = Field(
+        default="", alias="WEBHOOK_BASE_URL"
+    )  # e.g. https://bot.usemycontent.ru
+    webhook_secret: str = Field(default="", alias="WEBHOOK_SECRET")
+
+    @field_validator("webhook_base_url")
+    @classmethod
+    def strip_trailing_slash(cls, v: str) -> str:
+        return v.rstrip("/") if v else v
+
+
 # --- Composite ---
 
 
@@ -242,6 +259,7 @@ class AppConfig(BaseModel):
     redis: RedisConfig
     instagram: InstagramConfig
     docs: DocsConfig
+    webhook: WebhookConfig
 
     @model_validator(mode="before")
     @classmethod
@@ -262,6 +280,7 @@ class AppConfig(BaseModel):
             "redis": RedisConfig.model_validate(nested["redis"]),
             "instagram": InstagramConfig.model_validate(nested["instagram"]),
             "docs": DocsConfig.model_validate(nested["docs"]),
+            "webhook": WebhookConfig.model_validate(nested["webhook"]),
         }
 
 
