@@ -52,6 +52,7 @@ async def _validate_and_get_order(
     callback: CallbackQuery,
     user_role_service: UserRoleService,
     order_repo: OrderRepository,
+    session: object,
 ) -> tuple[str | None, Order | None]:
     """Validate user/admin and load order. Returns (error_msg, order)."""
     external_id = str(callback.from_user.id) if callback.from_user else ""
@@ -71,7 +72,7 @@ async def _validate_and_get_order(
     if order_id is None:
         return ("Неверный формат идентификатора заказа.", None)
 
-    order = await order_repo.get_by_id(order_id)
+    order = await order_repo.get_by_id(order_id, session=session)
     if order is None:
         return ("Заказ не найден.", None)
     if order.status != OrderStatus.PENDING_MODERATION:
@@ -92,32 +93,23 @@ async def handle_moderate_activate(
     transaction_manager: TransactionManagerProtocol,
 ) -> None:
     """Handle admin click on 'Activate' button for order moderation."""
-    err, order = await _validate_and_get_order(
-        callback, user_role_service, order_repo
-    )
-    if err:
-        await callback.answer(err)
-        return
-    assert order is not None
-
-    if _order_has_banned_content(order, content_moderation_service):
-        msg = _format_banned_content_message(order, content_moderation_service)
-        await callback.answer(msg, show_alert=True)
-        return
-
     async with transaction_manager.transaction() as session:
-        order_in_tx = await order_repo.get_by_id(
-            order.order_id, session=session
+        err, order = await _validate_and_get_order(
+            callback, user_role_service, order_repo, session
         )
-        if order_in_tx is None:
-            await callback.answer("Заказ не найден.")
+        if err:
+            await callback.answer(err)
             return
-        if order_in_tx.status != OrderStatus.PENDING_MODERATION:
-            await callback.answer("Заказ уже обработан.")
+        assert order is not None
+
+        if _order_has_banned_content(order, content_moderation_service):
+            msg = _format_banned_content_message(
+                order, content_moderation_service
+            )
+            await callback.answer(msg, show_alert=True)
             return
-        await outbox_publisher.publish_order_activation(
-            order_in_tx, session=session
-        )
+
+        await outbox_publisher.publish_order_activation(order, session=session)
 
     await callback.answer("Заказ активирован, уходит блогерам.")
     await _remove_moderation_keyboard(callback)
