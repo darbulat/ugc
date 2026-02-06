@@ -36,7 +36,11 @@ class HealthMetricsFilter(logging.Filter):
         if record.name != "uvicorn.access":
             return True
         msg = record.getMessage()
-        return " /health" not in msg and " /metrics" not in msg and " /telegram/webhook" not in msg
+        return (
+            " /health" not in msg
+            and " /metrics" not in msg
+            and " /telegram/webhook" not in msg
+        )
 
 
 class JSONFormatter(logging.Formatter):
