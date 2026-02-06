@@ -80,6 +80,7 @@ def _flow_type_from_state(state_key: str | None) -> str | None:
     return _STATE_TO_FLOW.get(prefix)
 
 
+@router.message(Command("support"))
 @router.message(lambda msg: (msg.text or "").strip() == SUPPORT_BUTTON_TEXT)
 async def support_button(
     message: Message,

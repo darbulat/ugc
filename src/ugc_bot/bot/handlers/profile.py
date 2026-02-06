@@ -29,8 +29,8 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_menu_keyboard,
     blogger_profile_view_keyboard,
     draft_choice_keyboard,
-    support_keyboard,
-    with_support_keyboard,
+    flow_keyboard,
+    flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.utils import (
     handle_draft_choice,
@@ -209,7 +209,7 @@ async def _adv_update_contact(
     """Update phone. Returns profile or None."""
     err = validate_phone(text)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await advertiser_registration_service.update_advertiser_profile(
         user_id, phone=text
@@ -225,7 +225,7 @@ async def _adv_update_brand(
     """Update brand. Returns profile or None."""
     err = validate_brand(text)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await advertiser_registration_service.update_advertiser_profile(
         user_id, brand=text
@@ -241,7 +241,7 @@ async def _adv_update_site_link(
     """Update site_link. Returns profile or None."""
     err = validate_site_link(text or None)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await advertiser_registration_service.update_advertiser_profile(
         user_id, site_link=text or None
@@ -257,7 +257,7 @@ async def _adv_update_city(
     """Update city. Returns profile or None."""
     err = validate_city(text or None, required=False)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await advertiser_registration_service.update_advertiser_profile(
         user_id, city=text or None
@@ -273,7 +273,7 @@ async def _adv_update_company_activity(
     """Update company_activity. Returns profile or None."""
     err = validate_company_activity(text or None)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await advertiser_registration_service.update_advertiser_profile(
         user_id, company_activity=text or None
@@ -296,7 +296,7 @@ async def _update_advertiser_field(
     if field_key == "name":
         err = validate_name(text)
         if err is not None:
-            await message.answer(err, reply_markup=support_keyboard())
+            await message.answer(err, reply_markup=flow_keyboard_remove())
             return False
         await user_role_service.set_user(
             external_id=external_id,
@@ -376,7 +376,7 @@ async def _blog_update_city(
     """Update city. Returns profile or None."""
     err = validate_city(text, required=True)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await blogger_registration_service.update_blogger_profile(
         user_id, city=text
@@ -393,7 +393,7 @@ async def _blog_update_topics(
     topics = [t.strip().lower() for t in text.split(",") if t.strip()]
     err = validate_topics(topics)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await blogger_registration_service.update_blogger_profile(
         user_id, topics={"selected": topics}
@@ -446,13 +446,13 @@ async def _blog_update_audience_geo(
     """Update audience_geo. Returns profile or None."""
     err = validate_audience_geo(text)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     cities = [c.strip() for c in text.split(",") if c.strip()]
     if len(cities) > 3:
         await message.answer(
             "Укажите не более 3 городов.",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         return None
     return await blogger_registration_service.update_blogger_profile(
@@ -474,7 +474,7 @@ async def _blog_update_price(
         return None
     err = validate_price(price, MAX_ORDER_PRICE)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     return await blogger_registration_service.update_blogger_profile(
         user_id, price=price
@@ -535,7 +535,7 @@ async def _update_blogger_field(
     if field_key == "nickname":
         err = validate_nickname(text)
         if err is not None:
-            await message.answer(err, reply_markup=support_keyboard())
+            await message.answer(err, reply_markup=flow_keyboard_remove())
             return False
         await user_role_service.set_user(
             external_id=external_id,
@@ -835,7 +835,7 @@ async def edit_profile_choose_field(
     if field_key == "audience_gender":
         await message.answer(
             prompt,
-            reply_markup=with_support_keyboard(
+            reply_markup=flow_keyboard(
                 keyboard=[
                     [KeyboardButton(text="👩 В основном женщины")],
                     [KeyboardButton(text="👨 В основном мужчины")],
@@ -846,7 +846,7 @@ async def edit_profile_choose_field(
     elif field_key == "audience_age":
         await message.answer(
             prompt,
-            reply_markup=with_support_keyboard(
+            reply_markup=flow_keyboard(
                 keyboard=[
                     [KeyboardButton(text="до 18")],
                     [KeyboardButton(text="18–24")],
@@ -859,7 +859,7 @@ async def edit_profile_choose_field(
     elif field_key == "barter":
         await message.answer(
             prompt,
-            reply_markup=with_support_keyboard(
+            reply_markup=flow_keyboard(
                 keyboard=[
                     [KeyboardButton(text="Да")],
                     [KeyboardButton(text="Нет")],
@@ -869,7 +869,7 @@ async def edit_profile_choose_field(
     elif field_key == "work_format":
         await message.answer(
             prompt,
-            reply_markup=with_support_keyboard(
+            reply_markup=flow_keyboard(
                 keyboard=[
                     [KeyboardButton(text=WORK_FORMAT_ADS_BUTTON_TEXT)],
                     [KeyboardButton(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT)],
@@ -877,7 +877,7 @@ async def edit_profile_choose_field(
             ),
         )
     else:
-        await message.answer(prompt, reply_markup=support_keyboard())
+        await message.answer(prompt, reply_markup=flow_keyboard_remove())
 
     await state.set_state(EditProfileStates.entering_value)
 

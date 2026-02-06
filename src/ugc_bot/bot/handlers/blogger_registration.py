@@ -27,8 +27,8 @@ from ugc_bot.bot.handlers.keyboards import (
     creator_filled_profile_keyboard,
     creator_start_keyboard,
     draft_choice_keyboard,
-    support_keyboard,
-    with_support_keyboard,
+    flow_keyboard,
+    flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.start import CREATOR_LABEL
 from ugc_bot.bot.handlers.utils import (
@@ -135,13 +135,13 @@ async def _start_registration_flow(
         await state.update_data(nickname=user.username)
         await message.answer(
             "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         await state.set_state(BloggerRegistrationStates.instagram)
     else:
         await message.answer(
             "Введите ваше имя:",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         await state.set_state(BloggerRegistrationStates.name)
 
@@ -177,7 +177,7 @@ async def blogger_draft_choice(
         user_id_key="user_id",
         first_state=BloggerRegistrationStates.name,
         first_prompt="Введите ваше имя:",
-        first_keyboard=support_keyboard(),
+        first_keyboard=flow_keyboard_remove(),
         session_expired_msg="Сессия истекла. Начните с «Создать профиль».",
     )
 
@@ -189,13 +189,13 @@ async def handle_name(message: Message, state: FSMContext) -> None:
     nickname = (message.text or "").strip()
     err = validate_nickname(nickname)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(nickname=nickname)
     await message.answer(
         "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(BloggerRegistrationStates.instagram)
 
@@ -239,7 +239,7 @@ async def handle_instagram(
     await state.update_data(instagram_url=instagram_url)
     await message.answer(
         "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(BloggerRegistrationStates.city)
 
@@ -251,7 +251,7 @@ async def handle_city(message: Message, state: FSMContext) -> None:
     city = (message.text or "").strip()
     err = validate_city(city, required=True)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(city=city)
@@ -261,7 +261,7 @@ async def handle_city(message: Message, state: FSMContext) -> None:
         "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, "
         "стиль, дети, семья, технологии, гаджеты, лайфстайл, другое"
     )
-    await message.answer(topics_text, reply_markup=support_keyboard())
+    await message.answer(topics_text, reply_markup=flow_keyboard_remove())
     await state.set_state(BloggerRegistrationStates.topics)
 
 
@@ -275,13 +275,13 @@ async def handle_topics(message: Message, state: FSMContext) -> None:
     ]
     err = validate_topics(topics)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
     await state.update_data(topics={"selected": topics})
 
     await message.answer(
         "Кто в основном смотрит ваш контент? По наблюдениям или статистике",
-        reply_markup=with_support_keyboard(
+        reply_markup=flow_keyboard(
             keyboard=[
                 [KeyboardButton(text="👩 В основном женщины")],
                 [KeyboardButton(text="👨 В основном мужчины")],
@@ -312,7 +312,7 @@ async def handle_gender(message: Message, state: FSMContext) -> None:
     await state.update_data(audience_gender=gender_map[key])
     await message.answer(
         "Основной возраст вашей аудитории?",
-        reply_markup=with_support_keyboard(
+        reply_markup=flow_keyboard(
             keyboard=[
                 [KeyboardButton(text="до 18")],
                 [KeyboardButton(text="18–24")],
@@ -348,7 +348,7 @@ async def handle_age(message: Message, state: FSMContext) -> None:
     await message.answer(
         "Где находится основная аудитория? Укажите до 3 городов через запятую: "
         "Москва, Казань, Санкт‑Петербург",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(BloggerRegistrationStates.audience_geo)
 
@@ -360,21 +360,21 @@ async def handle_geo(message: Message, state: FSMContext) -> None:
     geo = (message.text or "").strip()
     err = validate_audience_geo(geo)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     cities = [c.strip() for c in geo.split(",") if c.strip()]
     if len(cities) > 3:
         await message.answer(
             "Укажите не более 3 городов через запятую.",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         return
 
     await state.update_data(audience_geo=geo)
     await message.answer(
         "Сколько стоит 1 UGC‑видео? Укажите цену в рублях: 500, 1000, 2000",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(BloggerRegistrationStates.price)
 
@@ -392,13 +392,13 @@ async def handle_price(message: Message, state: FSMContext) -> None:
 
     err = validate_price(price, MAX_ORDER_PRICE)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(price=price)
     await message.answer(
         "Иногда вы готовы работать с брендами по бартеру?",
-        reply_markup=with_support_keyboard(
+        reply_markup=flow_keyboard(
             keyboard=[
                 [KeyboardButton(text="Да")],
                 [KeyboardButton(text="Нет")],
@@ -424,7 +424,7 @@ async def handle_barter(message: Message, state: FSMContext) -> None:
     await state.update_data(barter=barter)
     await message.answer(
         "Помимо UGC, как ещё вы готовы работать с брендами?",
-        reply_markup=with_support_keyboard(
+        reply_markup=flow_keyboard(
             keyboard=[
                 [KeyboardButton(text=WORK_FORMAT_ADS_BUTTON_TEXT)],
                 [KeyboardButton(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT)],
@@ -463,7 +463,7 @@ async def handle_work_format(
     await message.answer(
         agreements_text,
         parse_mode="HTML",
-        reply_markup=with_support_keyboard(
+        reply_markup=flow_keyboard(
             keyboard=[[KeyboardButton(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
         ),
     )

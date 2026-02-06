@@ -22,7 +22,7 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_menu_keyboard,
     advertiser_start_keyboard,
     draft_choice_keyboard,
-    support_keyboard,
+    flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
 from ugc_bot.bot.handlers.utils import (
@@ -94,7 +94,7 @@ async def _ask_name(message: Message, state: FSMContext) -> None:
     """Send name prompt and set state to name."""
     await message.answer(
         "Как вас зовут?",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(AdvertiserRegistrationStates.name)
 
@@ -145,7 +145,7 @@ async def handle_advertiser_start(
         await state.update_data(name=user.username)
         await message.answer(
             "Укажите номер телефона для связи по заказу.\nПример: 89001110777",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         await state.set_state(AdvertiserRegistrationStates.phone)
     else:
@@ -167,7 +167,7 @@ async def advertiser_draft_choice(
         user_id_key="user_id",
         first_state=AdvertiserRegistrationStates.name,
         first_prompt="Как вас зовут?",
-        first_keyboard=support_keyboard(),
+        first_keyboard=flow_keyboard_remove(),
         session_expired_msg="Сессия истекла. Начните снова.",
     )
 
@@ -179,13 +179,13 @@ async def handle_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     err = validate_name(name)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(name=name)
     await message.answer(
         "Укажите номер телефона для связи по заказу.\nПример: 89001110777",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(AdvertiserRegistrationStates.phone)
 
@@ -197,13 +197,13 @@ async def handle_phone(message: Message, state: FSMContext) -> None:
     phone = (message.text or "").strip()
     err = validate_phone(phone)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(phone=phone)
     await message.answer(
         "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(AdvertiserRegistrationStates.city)
 
@@ -215,12 +215,12 @@ async def handle_city(message: Message, state: FSMContext) -> None:
     city = (message.text or "").strip() or None
     err = validate_city(city, required=False)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
     await state.update_data(city=city)
     await message.answer(
         "Название вашего бренда / компании / бизнеса:",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(AdvertiserRegistrationStates.brand)
 
@@ -232,13 +232,13 @@ async def handle_brand(message: Message, state: FSMContext) -> None:
     brand = (message.text or "").strip()
     err = validate_brand(brand)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(brand=brand)
     await message.answer(
         "Чем занимается ваша компания?",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(AdvertiserRegistrationStates.company_activity)
 
@@ -250,12 +250,12 @@ async def handle_company_activity(message: Message, state: FSMContext) -> None:
     company_activity = (message.text or "").strip() or None
     err = validate_company_activity(company_activity)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
     await state.update_data(company_activity=company_activity)
     await message.answer(
         "Ссылка на сайт, продукт или соцсети бренда:",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(AdvertiserRegistrationStates.site_link)
 
@@ -280,7 +280,7 @@ async def handle_site_link(
     site_link = (message.text or "").strip() or None
     err = validate_site_link(site_link)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
     await state.update_data(
         site_link=normalize_url(site_link) if site_link else None

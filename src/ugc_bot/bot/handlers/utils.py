@@ -12,7 +12,12 @@ from uuid import UUID
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery,
+    Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
@@ -250,10 +255,12 @@ async def handle_draft_choice(
     user_id_key: str,
     first_state: State,
     first_prompt: str,
-    first_keyboard: ReplyKeyboardMarkup,
+    first_keyboard: ReplyKeyboardMarkup | ReplyKeyboardRemove,
     session_expired_msg: str,
     draft_used_msg: str = "Черновик использован. Начинаем с начала.",
-    keyboard_for_restored_state: Callable[[str, dict], ReplyKeyboardMarkup]
+    keyboard_for_restored_state: Callable[
+        [str, dict], ReplyKeyboardMarkup | ReplyKeyboardRemove
+    ]
     | None = None,
 ) -> None:
     """Handle draft restore: resume, start over, or ask to choose."""

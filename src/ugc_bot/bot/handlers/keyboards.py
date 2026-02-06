@@ -1,6 +1,10 @@
 """Keyboard helpers for bot handlers."""
 
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import (
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 SUPPORT_BUTTON_TEXT = "💬 Поддержка"
 MY_ORDERS_BUTTON_TEXT = "📂 Мои заказы"
@@ -57,6 +61,25 @@ def with_support_keyboard(
         resize_keyboard=True,
         one_time_keyboard=one_time_keyboard,
     )
+
+
+def flow_keyboard(
+    keyboard: list[list[KeyboardButton]],
+    one_time_keyboard: bool = True,
+) -> ReplyKeyboardMarkup:
+    """Build a reply keyboard for flow steps (no support button)."""
+
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=one_time_keyboard,
+    )
+
+
+def flow_keyboard_remove() -> ReplyKeyboardRemove:
+    """Remove keyboard during flow (no support button)."""
+
+    return ReplyKeyboardRemove()
 
 
 def creator_start_keyboard() -> ReplyKeyboardMarkup:

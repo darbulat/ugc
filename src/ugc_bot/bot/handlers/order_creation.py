@@ -6,7 +6,12 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import (
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.contact_pricing_service import (
@@ -23,8 +28,8 @@ from ugc_bot.bot.handlers.keyboards import (
     CREATE_ORDER_BUTTON_TEXT,
     DRAFT_QUESTION_TEXT,
     draft_choice_keyboard,
-    support_keyboard,
-    with_support_keyboard,
+    flow_keyboard,
+    flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.payments import send_order_invoice
 from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
@@ -158,36 +163,36 @@ def _deadlines_keyboard() -> list[list[KeyboardButton]]:
 
 def _keyboard_for_order_state(
     state_key: str, data: dict
-) -> ReplyKeyboardMarkup:
+) -> ReplyKeyboardMarkup | ReplyKeyboardRemove:
     """Return reply keyboard for order creation state (draft restore)."""
-    keyboards: dict[str, ReplyKeyboardMarkup] = {
-        "OrderCreationStates:order_type": with_support_keyboard(
+    keyboards: dict[str, ReplyKeyboardMarkup | ReplyKeyboardRemove] = {
+        "OrderCreationStates:order_type": flow_keyboard(
             keyboard=_order_type_keyboard()
         ),
-        "OrderCreationStates:offer_text": support_keyboard(),
-        "OrderCreationStates:cooperation_format": with_support_keyboard(
+        "OrderCreationStates:offer_text": flow_keyboard_remove(),
+        "OrderCreationStates:cooperation_format": flow_keyboard(
             keyboard=_cooperation_format_keyboard()
         ),
-        "OrderCreationStates:price": support_keyboard(),
-        "OrderCreationStates:barter_description": support_keyboard(),
-        "OrderCreationStates:bloggers_needed": with_support_keyboard(
+        "OrderCreationStates:price": flow_keyboard_remove(),
+        "OrderCreationStates:barter_description": flow_keyboard_remove(),
+        "OrderCreationStates:bloggers_needed": flow_keyboard(
             keyboard=_bloggers_needed_keyboard()
         ),
-        "OrderCreationStates:product_link": support_keyboard(),
-        "OrderCreationStates:order_photo": with_support_keyboard(
+        "OrderCreationStates:product_link": flow_keyboard_remove(),
+        "OrderCreationStates:order_photo": flow_keyboard(
             keyboard=_order_photo_keyboard()
         ),
-        "OrderCreationStates:content_usage": with_support_keyboard(
+        "OrderCreationStates:content_usage": flow_keyboard(
             keyboard=_content_usage_keyboard()
         ),
-        "OrderCreationStates:deadlines": with_support_keyboard(
+        "OrderCreationStates:deadlines": flow_keyboard(
             keyboard=_deadlines_keyboard()
         ),
-        "OrderCreationStates:geography": support_keyboard(),
+        "OrderCreationStates:geography": flow_keyboard_remove(),
     }
     return keyboards.get(
         state_key,
-        with_support_keyboard(keyboard=_order_type_keyboard()),
+        flow_keyboard(keyboard=_order_type_keyboard()),
     )
 
 
@@ -232,7 +237,7 @@ async def start_order_creation(
         return
     await message.answer(
         "Что вам нужно?",
-        reply_markup=with_support_keyboard(keyboard=_order_type_keyboard()),
+        reply_markup=flow_keyboard(keyboard=_order_type_keyboard()),
     )
     await state.set_state(OrderCreationStates.order_type)
 
@@ -252,7 +257,7 @@ async def order_draft_choice(
         user_id_key="user_id",
         first_state=OrderCreationStates.order_type,
         first_prompt="Что вам нужно?",
-        first_keyboard=with_support_keyboard(keyboard=_order_type_keyboard()),
+        first_keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
         session_expired_msg="Сессия истекла. Начните с «Создать заказ».",
         keyboard_for_restored_state=_keyboard_for_order_state,
     )
@@ -270,7 +275,7 @@ async def handle_order_type(message: Message, state: FSMContext) -> None:
     else:
         await message.answer(
             "Выберите один из вариантов на клавиатуре.",
-            reply_markup=with_support_keyboard(keyboard=_order_type_keyboard()),
+            reply_markup=flow_keyboard(keyboard=_order_type_keyboard()),
         )
         return
 
@@ -278,7 +283,7 @@ async def handle_order_type(message: Message, state: FSMContext) -> None:
     await message.answer(
         "Кратко опишите задачу для креаторов.\n"
         "Что снять и в каком формате. Пример: Видео с распаковкой.",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(OrderCreationStates.offer_text)
 
@@ -290,13 +295,13 @@ async def handle_offer_text(message: Message, state: FSMContext) -> None:
     offer_text = (message.text or "").strip()
     err = validate_offer_text(offer_text)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(offer_text=offer_text)
     await message.answer(
         "Какой формат сотрудничества вам подходит?",
-        reply_markup=with_support_keyboard(
+        reply_markup=flow_keyboard(
             keyboard=_cooperation_format_keyboard(),
         ),
     )
@@ -313,7 +318,7 @@ async def handle_cooperation_format(
     if text not in (COOP_BARTER, COOP_PAYMENT, COOP_BOTH):
         await message.answer(
             "Выберите один из вариантов на клавиатуре.",
-            reply_markup=with_support_keyboard(
+            reply_markup=flow_keyboard(
                 keyboard=_cooperation_format_keyboard(),
             ),
         )
@@ -323,7 +328,7 @@ async def handle_cooperation_format(
     if text == COOP_PAYMENT:
         await message.answer(
             "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         await state.set_state(OrderCreationStates.price)
         return
@@ -331,14 +336,14 @@ async def handle_cooperation_format(
         await message.answer(
             "Что вы предлагаете по бартеру?\n"
             "Продукт бренда (опишите коротко) + доставка",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         await state.set_state(OrderCreationStates.barter_description)
         return
     # Бартер + оплата
     await message.answer(
         "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(OrderCreationStates.price)
 
@@ -356,7 +361,7 @@ async def handle_price(message: Message, state: FSMContext) -> None:
 
     err = validate_price(price, MAX_ORDER_PRICE)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(price=price)
@@ -365,15 +370,13 @@ async def handle_price(message: Message, state: FSMContext) -> None:
         await message.answer(
             "Что вы предлагаете по бартеру?\n"
             "Продукт бренда (опишите коротко) + доставка",
-            reply_markup=support_keyboard(),
+            reply_markup=flow_keyboard_remove(),
         )
         await state.set_state(OrderCreationStates.barter_description)
         return
     await message.answer(
         "Сколько креаторов вам нужно?",
-        reply_markup=with_support_keyboard(
-            keyboard=_bloggers_needed_keyboard()
-        ),
+        reply_markup=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
     )
     await state.set_state(OrderCreationStates.bloggers_needed)
 
@@ -389,14 +392,12 @@ async def handle_barter_description(
     required = coop == COOP_BOTH
     err = validate_barter_description(barter_description, required=required)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
     await state.update_data(barter_description=barter_description or None)
     await message.answer(
         "Сколько креаторов вам нужно?",
-        reply_markup=with_support_keyboard(
-            keyboard=_bloggers_needed_keyboard()
-        ),
+        reply_markup=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
     )
     await state.set_state(OrderCreationStates.bloggers_needed)
 
@@ -409,9 +410,7 @@ async def handle_bloggers_needed(message: Message, state: FSMContext) -> None:
     if raw not in ("3", "5", "10"):
         await message.answer(
             "Выберите одно из значений: 3, 5 или 10.",
-            reply_markup=with_support_keyboard(
-                keyboard=_bloggers_needed_keyboard()
-            ),
+            reply_markup=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
         )
         return
 
@@ -419,7 +418,7 @@ async def handle_bloggers_needed(message: Message, state: FSMContext) -> None:
     await state.update_data(bloggers_needed=bloggers_needed)
     await message.answer(
         "Введите ссылку на продукт (для откликнувшихся креаторов):",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(OrderCreationStates.product_link)
 
@@ -431,7 +430,7 @@ async def handle_product_link(message: Message, state: FSMContext) -> None:
     product_link = (message.text or "").strip()
     err = validate_product_link(product_link)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     await state.update_data(product_link=normalize_url(product_link))
@@ -439,7 +438,7 @@ async def handle_product_link(message: Message, state: FSMContext) -> None:
         "Прикрепите фото (по желанию).\n"
         "Фотография поможет креатору быстрее понять заказ и повысит отклик "
         "на ваше предложение",
-        reply_markup=with_support_keyboard(keyboard=_order_photo_keyboard()),
+        reply_markup=flow_keyboard(keyboard=_order_photo_keyboard()),
     )
     await state.set_state(OrderCreationStates.order_photo)
 
@@ -453,7 +452,7 @@ async def handle_order_photo(message: Message, state: FSMContext) -> None:
         await state.update_data(product_photo_file_id=None)
         await message.answer(
             "Где вы планируете использовать UGC-видео?",
-            reply_markup=with_support_keyboard(
+            reply_markup=flow_keyboard(
                 keyboard=_content_usage_keyboard(),
             ),
         )
@@ -462,9 +461,7 @@ async def handle_order_photo(message: Message, state: FSMContext) -> None:
     if text == ORDER_PHOTO_ADD:
         await message.answer(
             "Отправьте фото продукта:",
-            reply_markup=with_support_keyboard(
-                keyboard=_order_photo_keyboard()
-            ),
+            reply_markup=flow_keyboard(keyboard=_order_photo_keyboard()),
         )
         return
 
@@ -473,7 +470,7 @@ async def handle_order_photo(message: Message, state: FSMContext) -> None:
         await state.update_data(product_photo_file_id=file_id)
         await message.answer(
             "Где вы планируете использовать UGC-видео?",
-            reply_markup=with_support_keyboard(
+            reply_markup=flow_keyboard(
                 keyboard=_content_usage_keyboard(),
             ),
         )
@@ -483,7 +480,7 @@ async def handle_order_photo(message: Message, state: FSMContext) -> None:
     await message.answer(
         "Выберите «Добавить фото» или «Пропустить» на клавиатуре, "
         "либо отправьте фото продукта.",
-        reply_markup=with_support_keyboard(keyboard=_order_photo_keyboard()),
+        reply_markup=flow_keyboard(keyboard=_order_photo_keyboard()),
     )
 
 
@@ -499,9 +496,7 @@ async def handle_content_usage(message: Message, state: FSMContext) -> None:
     ):
         await message.answer(
             "Выберите один из вариантов на клавиатуре.",
-            reply_markup=with_support_keyboard(
-                keyboard=_content_usage_keyboard()
-            ),
+            reply_markup=flow_keyboard(keyboard=_content_usage_keyboard()),
         )
         return
 
@@ -510,7 +505,7 @@ async def handle_content_usage(message: Message, state: FSMContext) -> None:
     await message.answer(
         "В какие сроки вам нужен контент? Укажите, через сколько дней после "
         "согласования вы ожидаете превью.",
-        reply_markup=with_support_keyboard(keyboard=_deadlines_keyboard()),
+        reply_markup=flow_keyboard(keyboard=_deadlines_keyboard()),
     )
     await state.set_state(OrderCreationStates.deadlines)
 
@@ -523,7 +518,7 @@ async def handle_deadlines(message: Message, state: FSMContext) -> None:
     if text not in (DEADLINES_3, DEADLINES_7, DEADLINES_14):
         await message.answer(
             "Выберите один из вариантов на клавиатуре.",
-            reply_markup=with_support_keyboard(keyboard=_deadlines_keyboard()),
+            reply_markup=flow_keyboard(keyboard=_deadlines_keyboard()),
         )
         return
 
@@ -533,7 +528,7 @@ async def handle_deadlines(message: Message, state: FSMContext) -> None:
         "В каких городах или регионах может находиться креатор? Можно указать "
         "от 1 до 10 городов, регионы или написать «РФ». "
         "(Нужно для бартерных заказов и доставки продукта.)",
-        reply_markup=support_keyboard(),
+        reply_markup=flow_keyboard_remove(),
     )
     await state.set_state(OrderCreationStates.geography)
 
@@ -551,7 +546,7 @@ async def handle_geography(
     geography = (message.text or "").strip()
     err = validate_geography(geography)
     if err is not None:
-        await message.answer(err, reply_markup=support_keyboard())
+        await message.answer(err, reply_markup=flow_keyboard_remove())
         return
 
     data = await state.get_data()
