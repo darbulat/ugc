@@ -236,16 +236,6 @@ async def _render_page(
             f"Ссылка на проект: {order.product_link}",
         ]
         lines.append("\n".join(order_lines))
-        # Add complaint button for closed orders (when contacts are sent)
-        if order.status == OrderStatus.CLOSED and matched_count > 0:
-            buttons_rows.append(
-                [
-                    InlineKeyboardButton(
-                        text="⚠️ Пожаловаться",
-                        callback_data=f"complaint_select:{order.order_id}",
-                    )
-                ]
-            )
 
     # Pagination buttons
     nav_buttons: list[InlineKeyboardButton] = []
