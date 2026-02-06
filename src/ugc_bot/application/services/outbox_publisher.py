@@ -168,7 +168,6 @@ class OutboxPublisher:
             order_type=order.order_type,
             product_link=order.product_link,
             offer_text=order.offer_text,
-            ugc_requirements=order.ugc_requirements,
             barter_description=order.barter_description,
             price=order.price,
             bloggers_needed=order.bloggers_needed,

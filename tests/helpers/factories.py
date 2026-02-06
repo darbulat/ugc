@@ -203,7 +203,6 @@ async def create_test_order(
     order_type: OrderType = OrderType.UGC_ONLY,
     product_link: str = "https://example.com",
     offer_text: str = "Offer",
-    ugc_requirements: str | None = None,
     barter_description: str | None = None,
     price: float = 1000.0,
     bloggers_needed: int = 3,
@@ -221,7 +220,6 @@ async def create_test_order(
         order_type: Order type (UGC only or UGC + placement)
         product_link: Product link
         offer_text: Offer text
-        ugc_requirements: UGC requirements
         barter_description: Barter description
         price: Price
         bloggers_needed: Number of bloggers needed
@@ -245,7 +243,6 @@ async def create_test_order(
         order_type=order_type,
         product_link=product_link,
         offer_text=offer_text,
-        ugc_requirements=ugc_requirements,
         barter_description=barter_description,
         price=price,
         bloggers_needed=bloggers_needed,

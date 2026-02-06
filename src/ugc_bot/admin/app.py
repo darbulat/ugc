@@ -191,7 +191,6 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.order_type,
         OrderModel.product_link,
         OrderModel.offer_text,
-        OrderModel.ugc_requirements,
         OrderModel.barter_description,
         OrderModel.price,
         OrderModel.bloggers_needed,
@@ -219,7 +218,6 @@ class OrderAdmin(ModelView, model=OrderModel):
                 if content_moderation.order_contains_banned_content(
                     product_link=data.get("product_link"),
                     offer_text=data.get("offer_text"),
-                    ugc_requirements=data.get("ugc_requirements"),
                     barter_description=data.get("barter_description"),
                     content_usage=data.get("content_usage"),
                     geography=data.get("geography"),
@@ -227,7 +225,6 @@ class OrderAdmin(ModelView, model=OrderModel):
                     matches = content_moderation.get_order_banned_matches(
                         product_link=data.get("product_link"),
                         offer_text=data.get("offer_text"),
-                        ugc_requirements=data.get("ugc_requirements"),
                         barter_description=data.get("barter_description"),
                         content_usage=data.get("content_usage"),
                         geography=data.get("geography"),

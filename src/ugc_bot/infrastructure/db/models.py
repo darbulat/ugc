@@ -184,7 +184,6 @@ class OrderModel(Base):
     )
     product_link: Mapped[str] = mapped_column(String, nullable=False)
     offer_text: Mapped[str] = mapped_column(Text, nullable=False)
-    ugc_requirements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     barter_description: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )

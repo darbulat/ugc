@@ -79,7 +79,6 @@ def test_order_mapping_roundtrip() -> None:
         order_type=OrderType.UGC_ONLY,
         product_link="https://example.com",
         offer_text="Offer",
-        ugc_requirements=None,
         barter_description=None,
         price=1000.0,
         bloggers_needed=3,

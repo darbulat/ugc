@@ -53,7 +53,6 @@ class ContentModerationService:
         self,
         product_link: str | None = None,
         offer_text: str | None = None,
-        ugc_requirements: str | None = None,
         barter_description: str | None = None,
         content_usage: str | None = None,
         geography: str | None = None,
@@ -62,7 +61,6 @@ class ContentModerationService:
         for text in (
             product_link,
             offer_text,
-            ugc_requirements,
             barter_description,
             content_usage,
             geography,
@@ -75,7 +73,6 @@ class ContentModerationService:
         self,
         product_link: str | None = None,
         offer_text: str | None = None,
-        ugc_requirements: str | None = None,
         barter_description: str | None = None,
         content_usage: str | None = None,
         geography: str | None = None,
@@ -85,7 +82,6 @@ class ContentModerationService:
         for text in (
             product_link,
             offer_text,
-            ugc_requirements,
             barter_description,
             content_usage,
             geography,

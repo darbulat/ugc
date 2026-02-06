@@ -587,7 +587,6 @@ async def handle_geography(
         order_type=order_type,
         product_link=product_link,
         offer_text=offer_text,
-        ugc_requirements=None,
         barter_description=barter_description,
         price=price,
         bloggers_needed=bloggers_needed,

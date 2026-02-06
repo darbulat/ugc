@@ -128,7 +128,6 @@ async def notify_admins_about_new_order(
     if content_moderation.order_contains_banned_content(
         product_link=order.product_link,
         offer_text=order.offer_text,
-        ugc_requirements=order.ugc_requirements,
         barter_description=order.barter_description,
         content_usage=order.content_usage,
         geography=order.geography,

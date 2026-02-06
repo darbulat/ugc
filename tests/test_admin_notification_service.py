@@ -266,7 +266,6 @@ def _make_order(
         order_type=OrderType.UGC_ONLY,
         product_link="https://example.com/product",
         offer_text=offer_text,
-        ugc_requirements=None,
         barter_description=None,
         price=1000.0,
         bloggers_needed=3,

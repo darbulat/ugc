@@ -77,7 +77,6 @@ class Order:
     order_type: OrderType
     product_link: str
     offer_text: str
-    ugc_requirements: Optional[str]
     barter_description: Optional[str]
     price: float
     bloggers_needed: int
