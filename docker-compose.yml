@@ -28,6 +28,35 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  app_2:
+    build: .
+    env_file: .env
+    expose:
+      - "9999"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    command:
+      - uvicorn
+      - ugc_bot.telegram_webhook_app:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "9999"
+      - --log-config
+      - config/uvicorn_log_config.json
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9999/health', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
   migrate:
     build: .
     env_file: .env
