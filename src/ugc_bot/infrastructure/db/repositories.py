@@ -17,6 +17,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     InteractionRepository,
     NpsRepository,
+    OfferDispatchRepository,
     OrderRepository,
     OrderResponseRepository,
     OutboxRepository,
@@ -55,6 +56,7 @@ from ugc_bot.infrastructure.db.models import (
     InstagramVerificationCodeModel,
     InteractionModel,
     NpsResponseModel,
+    OfferDispatchModel,
     OrderModel,
     OrderResponseModel,
     OutboxEventModel,
@@ -566,6 +568,39 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
         )
         result = exec_result.scalar_one()
         return int(result)
+
+
+@dataclass(slots=True)
+class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
+    """SQLAlchemy-backed offer dispatch repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def record_sent(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Record that an offer was sent to a blogger for an order."""
+        db_session = _get_async_session(session)
+        model = OfferDispatchModel(
+            order_id=order_id,
+            blogger_id=blogger_id,
+        )
+        await db_session.merge(model)
+
+    async def list_blogger_ids_sent_for_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[UUID]:
+        """List blogger ids who already received an offer for this order."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(OfferDispatchModel.blogger_id).where(
+                OfferDispatchModel.order_id == order_id
+            )
+        )
+        return list(exec_result.scalars().all())
 
 
 @dataclass(slots=True)

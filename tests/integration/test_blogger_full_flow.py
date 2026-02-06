@@ -81,10 +81,9 @@ async def test_blogger_full_flow(
         paid_at=now,
     )
     transaction_manager = dispatcher["transaction_manager"]
-    payment_service = dispatcher["payment_service"]
     async with transaction_manager.transaction() as tx_session:
         await dispatcher["payment_repo"].save(payment, session=tx_session)
-        await payment_service.outbox_publisher.publish_order_activation(
+        await dispatcher["outbox_publisher"].publish_order_activation(
             order, session=tx_session
         )
 

@@ -219,6 +219,28 @@ class ContactPricingModel(Base):
     )
 
 
+class OfferDispatchModel(Base):
+    """ORM model for tracking offer dispatches."""
+
+    __tablename__ = "offer_dispatches"
+
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("orders.order_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    blogger_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class OrderResponseModel(Base):
     """Order response ORM model."""
 

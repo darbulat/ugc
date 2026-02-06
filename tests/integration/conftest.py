@@ -124,6 +124,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         SqlAlchemyContactPricingRepository,
         SqlAlchemyInstagramVerificationRepository,
         SqlAlchemyInteractionRepository,
+        SqlAlchemyOfferDispatchRepository,
         SqlAlchemyOrderRepository,
         SqlAlchemyOrderResponseRepository,
         SqlAlchemyPaymentRepository,
@@ -143,6 +144,9 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     )
     order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
     order_response_repo = SqlAlchemyOrderResponseRepository(
+        session_factory=session_factory
+    )
+    offer_dispatch_repo = SqlAlchemyOfferDispatchRepository(
         session_factory=session_factory
     )
     interaction_repo = SqlAlchemyInteractionRepository(
@@ -217,6 +221,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         transaction_manager=transaction_manager,
     )
     dispatcher["offer_response_service"] = OfferResponseService(
@@ -229,13 +234,14 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         postpone_delay_minutes=config.feedback.feedback_delay_minutes,
         transaction_manager=transaction_manager,
     )
-    # Sync-activation outbox: order becomes ACTIVE without outbox_events table
-    # (outbox_events uses JSONB, not compatible with SQLite)
+    from ugc_bot.application.services.content_moderation_service import (
+        ContentModerationService,
+    )
     from ugc_bot.domain.entities import Order
     from ugc_bot.domain.enums import OrderStatus
 
     class SyncActivationOutboxPublisher:
-        """Activates order immediately without persisting to outbox."""
+        """Activates order for integration tests (no outbox table)."""
 
         def __init__(self, order_repo: object) -> None:
             self.order_repo = order_repo
@@ -256,16 +262,22 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
                 status=OrderStatus.ACTIVE,
                 created_at=order.created_at,
                 completed_at=order.completed_at,
+                content_usage=order.content_usage,
+                deadlines=order.deadlines,
+                geography=order.geography,
+                product_photo_file_id=order.product_photo_file_id,
             )
             await self.order_repo.save(activated, session=session)
 
-    outbox_publisher = SyncActivationOutboxPublisher(order_repo=order_repo)
+    dispatcher["content_moderation_service"] = ContentModerationService()
+    dispatcher["outbox_publisher"] = SyncActivationOutboxPublisher(
+        order_repo=order_repo
+    )
     dispatcher["payment_service"] = PaymentService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
-        outbox_publisher=outbox_publisher,
         transaction_manager=transaction_manager,
     )
     dispatcher["contact_pricing_service"] = ContactPricingService(

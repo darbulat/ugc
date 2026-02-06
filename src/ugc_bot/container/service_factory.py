@@ -10,6 +10,9 @@ from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
+)
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
@@ -37,6 +40,7 @@ def build_offer_dispatch_service(repos, transaction_manager):
         user_repo=repos["user_repo"],
         blogger_repo=repos["blogger_repo"],
         order_repo=repos["order_repo"],
+        offer_dispatch_repo=repos["offer_dispatch_repo"],
         transaction_manager=transaction_manager,
     )
 
@@ -95,6 +99,7 @@ def build_bot_services(
     """Build all services and repos for the bot dispatcher."""
     return {
         "metrics_collector": metrics_collector,
+        "content_moderation_service": ContentModerationService(),
         "user_role_service": UserRoleService(
             user_repo=repos["user_repo"],
             metrics_collector=metrics_collector,
@@ -130,6 +135,7 @@ def build_bot_services(
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
             order_repo=repos["order_repo"],
+            offer_dispatch_repo=repos["offer_dispatch_repo"],
             transaction_manager=transaction_manager,
         ),
         "offer_response_service": OfferResponseService(
@@ -150,7 +156,6 @@ def build_bot_services(
             advertiser_repo=repos["advertiser_repo"],
             order_repo=repos["order_repo"],
             payment_repo=repos["payment_repo"],
-            outbox_publisher=outbox_publisher,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),

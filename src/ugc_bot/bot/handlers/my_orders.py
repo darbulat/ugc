@@ -30,6 +30,7 @@ from ugc_bot.domain.enums import OrderStatus, OrderType
 router = Router()
 ORDER_STATUS_LABELS = {
     OrderStatus.NEW: "Создан",
+    OrderStatus.PENDING_MODERATION: "На модерации",
     OrderStatus.ACTIVE: "Активен",
     OrderStatus.CLOSED: "Завершён",
 }

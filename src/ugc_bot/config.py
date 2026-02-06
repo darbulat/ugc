@@ -29,6 +29,7 @@ _FLAT_KEYS = {
         "ADMIN_PASSWORD",
         "ADMIN_SECRET",
         "ADMIN_SITE_NAME",
+        "ADMIN_BASE_URL",
     ],
     "kafka": [
         "KAFKA_ENABLED",
@@ -131,6 +132,9 @@ class AdminConfig(BaseSettings):
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     admin_secret: str = Field(default="", alias="ADMIN_SECRET")
     admin_site_name: str = Field(default="UGC Admin", alias="ADMIN_SITE_NAME")
+    admin_base_url: str = Field(
+        default="", alias="ADMIN_BASE_URL"
+    )  # e.g. https://admin.example.com/admin
 
 
 class KafkaConfig(BaseSettings):

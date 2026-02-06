@@ -197,6 +197,25 @@ class OrderResponseRepository(ABC):
         """Count responses by order."""
 
 
+class OfferDispatchRepository(ABC):
+    """Port for tracking offer dispatches (who received offers)."""
+
+    @abstractmethod
+    async def record_sent(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Record that an offer was sent to a blogger for an order."""
+
+    @abstractmethod
+    async def list_blogger_ids_sent_for_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[UUID]:
+        """List blogger ids who already received an offer for this order."""
+
+
 class InteractionRepository(ABC):
     """Port for interaction persistence."""
 

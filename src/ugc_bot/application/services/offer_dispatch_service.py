@@ -6,6 +6,7 @@ from uuid import UUID
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
+    OfferDispatchRepository,
     OrderRepository,
     TransactionManager,
     UserRepository,
@@ -22,6 +23,7 @@ class OfferDispatchService:
     user_repo: UserRepository
     blogger_repo: BloggerProfileRepository
     order_repo: OrderRepository
+    offer_dispatch_repo: OfferDispatchRepository
     transaction_manager: TransactionManager | None = None
 
     async def get_order_and_advertiser(
@@ -63,9 +65,18 @@ class OfferDispatchService:
         if not confirmed_ids:
             return []
 
+        already_sent = (
+            await self.offer_dispatch_repo.list_blogger_ids_sent_for_order(
+                order_id, session=session
+            )
+        )
+        already_sent_set = frozenset(already_sent)
+
         users: list[User] = []
         for user_id in confirmed_ids:
             if user_id == order.advertiser_id:
+                continue
+            if user_id in already_sent_set:
                 continue
             user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
@@ -74,6 +85,21 @@ class OfferDispatchService:
                 continue
             users.append(user)
         return users
+
+    async def record_offer_sent(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Record that an offer was sent to a blogger for an order."""
+
+        async def _run(sess: object | None) -> None:
+            await self.offer_dispatch_repo.record_sent(
+                order_id, blogger_id, session=sess
+            )
+
+        await with_optional_tx(self.transaction_manager, _run)
 
     def format_offer(self, order: Order, advertiser_status: str) -> str:
         """Format offer text for a blogger (without product_link per TZ)."""

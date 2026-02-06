@@ -43,19 +43,17 @@ class TestOutboxIntegration:
     """Integration tests for outbox functionality."""
 
     @pytest.mark.asyncio
-    async def test_payment_service_creates_outbox_event_on_activation(
+    async def test_payment_service_sets_pending_moderation(
         self, fake_tm: object
     ) -> None:
-        """Payment service creates outbox event when order is activated."""
+        """Payment service moves order to PENDING_MODERATION (no outbox)."""
 
-        # Setup repositories
         user_repo = InMemoryUserRepository()
         advertiser_repo = InMemoryAdvertiserProfileRepository()
         order_repo = InMemoryOrderRepository()
         payment_repo = InMemoryPaymentRepository()
         outbox_repo = InMemoryOutboxRepository()
 
-        # Setup user and profile
         user = User(
             user_id=UUID("00000000-0000-0000-0000-000000000001"),
             external_id="123",
@@ -74,7 +72,6 @@ class TestOutboxIntegration:
         )
         await advertiser_repo.save(profile)
 
-        # Setup order
         order = Order(
             order_id=UUID("00000000-0000-0000-0000-000000000002"),
             advertiser_id=user.user_id,
@@ -91,57 +88,31 @@ class TestOutboxIntegration:
         )
         await order_repo.save(order)
 
-        # Don't create payment upfront - let confirm_telegram_payment create it
-        # This ensures the outbox event is created
-
-        # Create services
-        outbox_publisher = OutboxPublisher(
-            outbox_repo=outbox_repo, order_repo=order_repo
-        )
         payment_service = PaymentService(
             user_repo=user_repo,
             advertiser_repo=advertiser_repo,
             order_repo=order_repo,
             payment_repo=payment_repo,
-            outbox_publisher=outbox_publisher,
             transaction_manager=fake_tm,
         )
 
-        # Confirm payment (this should create outbox event)
         result = await payment_service.confirm_telegram_payment(
             user_id=user.user_id,
             order_id=order.order_id,
             provider_payment_charge_id="test_charge_123",
-            total_amount=100000,  # 1000.00 RUB in minor units
+            total_amount=100000,
             currency="RUB",
         )
 
-        # Verify payment was returned
         assert result is not None
         assert result.order_id == order.order_id
 
-        # Verify order was NOT activated yet (activation happens via outbox)
         updated_order = await order_repo.get_by_id(order.order_id)
         assert updated_order is not None
-        assert (
-            updated_order.status == OrderStatus.NEW
-        )  # Still NEW until outbox is processed
+        assert updated_order.status == OrderStatus.PENDING_MODERATION
 
-        # Verify outbox event was created
         outbox_events = await outbox_repo.get_pending_events()
-        assert len(outbox_events) == 1
-
-        event = outbox_events[0]
-        assert event.event_type == "order.activated"
-        assert event.aggregate_id == str(order.order_id)
-        assert event.aggregate_type == "order"
-        assert event.status == OutboxEventStatus.PENDING
-        assert event.payload["order_id"] == str(order.order_id)
-        assert event.payload["advertiser_id"] == str(user.user_id)
-        assert event.payload["product_link"] == order.product_link
-        assert event.payload["offer_text"] == order.offer_text
-        assert event.payload["bloggers_needed"] == order.bloggers_needed
-        assert event.payload["price"] == order.price
+        assert len(outbox_events) == 0
 
     @pytest.mark.asyncio
     async def test_outbox_publisher_processes_event_successfully(self) -> None:
@@ -334,13 +305,11 @@ class TestOutboxIntegration:
 
     @pytest.mark.asyncio
     async def test_end_to_end_outbox_flow(self, fake_tm: object) -> None:
-        """End-to-end test of outbox flow from payment to Kafka."""
+        """End-to-end test of outbox flow from admin approval to Kafka."""
 
-        # Setup all repositories
         user_repo = InMemoryUserRepository()
         advertiser_repo = InMemoryAdvertiserProfileRepository()
         order_repo = InMemoryOrderRepository()
-        payment_repo = InMemoryPaymentRepository()
         outbox_repo = InMemoryOutboxRepository()
 
         # Setup user and profile
@@ -379,34 +348,39 @@ class TestOutboxIntegration:
         )
         await order_repo.save(order)
 
-        # Don't create payment upfront - let confirm_telegram_payment create it
-
-        # Create services
         outbox_publisher = OutboxPublisher(
             outbox_repo=outbox_repo, order_repo=order_repo
         )
-        payment_service = PaymentService(
-            user_repo=user_repo,
-            advertiser_repo=advertiser_repo,
-            order_repo=order_repo,
-            payment_repo=payment_repo,
-            outbox_publisher=outbox_publisher,
-            transaction_manager=fake_tm,
-        )
+        outbox_publisher.transaction_manager = fake_tm
 
-        # Create mock Kafka publisher
         kafka_publisher = MockKafkaPublisher()
 
-        # 1. Confirm payment (creates outbox event)
-        await payment_service.confirm_telegram_payment(
-            user_id=user.user_id,
+        # 1. Simulate admin approval: publish order activation to outbox
+        activated_order = Order(
             order_id=order.order_id,
-            provider_payment_charge_id="test_charge_123",
-            total_amount=100000,
-            currency="RUB",
+            advertiser_id=order.advertiser_id,
+            order_type=order.order_type,
+            product_link=order.product_link,
+            offer_text=order.offer_text,
+            ugc_requirements=order.ugc_requirements,
+            barter_description=order.barter_description,
+            price=order.price,
+            bloggers_needed=order.bloggers_needed,
+            status=OrderStatus.ACTIVE,
+            created_at=order.created_at,
+            completed_at=order.completed_at,
+            content_usage=order.content_usage,
+            deadlines=order.deadlines,
+            geography=order.geography,
+            product_photo_file_id=order.product_photo_file_id,
         )
+        async with fake_tm.transaction() as session:
+            await order_repo.save(activated_order, session=session)
+            await outbox_publisher.publish_order_activation(
+                activated_order, session=session
+            )
 
-        # 2. Process outbox events (activates order and publishes to Kafka)
+        # 2. Process outbox events (publishes to Kafka)
         await outbox_publisher.process_pending_events(
             kafka_publisher, max_retries=3
         )

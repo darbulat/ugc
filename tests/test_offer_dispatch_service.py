@@ -20,6 +20,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
@@ -32,11 +33,12 @@ async def test_dispatch_selects_confirmed_bloggers() -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
 
     order = Order(
@@ -94,10 +96,12 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     order = Order(
@@ -153,11 +157,12 @@ async def test_dispatch_requires_active_order() -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
 
     order = Order(
@@ -189,10 +194,12 @@ async def test_get_order_and_advertiser_with_transaction_manager(
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     order = Order(
@@ -240,10 +247,12 @@ async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     missing_order_id = UUID("00000000-0000-0000-0000-000000000616")
@@ -261,6 +270,7 @@ def test_format_offer_ugc_plus_placement() -> None:
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
     )
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000614"),
@@ -289,11 +299,12 @@ async def test_dispatch_skips_ineligible_bloggers() -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
 
     order = Order(
@@ -369,11 +380,12 @@ async def test_dispatch_no_profiles_returns_empty() -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
 
     order = Order(
@@ -403,11 +415,12 @@ async def test_dispatch_excludes_order_author() -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
 
     advertiser_id = UUID("00000000-0000-0000-0000-000000000650")
@@ -490,3 +503,105 @@ async def test_dispatch_excludes_order_author() -> None:
     assert len(result) == 1
     assert result[0].user_id == other_blogger.user_id
     assert result[0].user_id != advertiser_id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_excludes_bloggers_who_already_received_offer() -> None:
+    """Do not return bloggers who already received an offer for this order."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000660"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000661"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        ugc_requirements=None,
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+
+    blogger_sent = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000662"),
+        external_id="100",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_sent",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger_new = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000663"),
+        external_id="101",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_new",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_sent)
+    await user_repo.save(blogger_new)
+    for b, url in [
+        (blogger_sent, "instagram.com/sent"),
+        (blogger_new, "instagram.com/new"),
+    ]:
+        await blogger_repo.save(
+            BloggerProfile(
+                user_id=b.user_id,
+                instagram_url=f"https://{url}",
+                confirmed=True,
+                city="Moscow",
+                topics={"selected": ["tech"]},
+                audience_gender=AudienceGender.ALL,
+                audience_age_min=18,
+                audience_age_max=35,
+                audience_geo="Moscow",
+                price=1000.0,
+                barter=False,
+                work_format=WorkFormat.UGC_ONLY,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_sent.user_id)
+
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger_new.user_id
+
+
+@pytest.mark.asyncio
+async def test_record_offer_sent() -> None:
+    """record_offer_sent persists to repo."""
+
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+
+    order_id = UUID("00000000-0000-0000-0000-000000000670")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000671")
+
+    await service.record_offer_sent(order_id, blogger_id)
+
+    sent = await offer_dispatch_repo.list_blogger_ids_sent_for_order(order_id)
+    assert sent == [blogger_id]

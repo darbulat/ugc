@@ -46,6 +46,7 @@ class OrderStatus(StrEnum):
     """Order lifecycle status."""
 
     NEW = "new"
+    PENDING_MODERATION = "pending_moderation"
     ACTIVE = "active"
     CLOSED = "closed"
 

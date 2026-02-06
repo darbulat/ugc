@@ -21,6 +21,9 @@ from tests.helpers.services import (
     build_payment_service,
     build_profile_service,
 )
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import (
     pay_order,
@@ -60,7 +63,6 @@ async def test_pay_order_success(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -142,7 +144,6 @@ async def test_pay_order_missing_provider_token(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -223,7 +224,6 @@ async def test_pay_order_invalid_args(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -279,7 +279,6 @@ async def test_pay_order_invalid_uuid(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -335,7 +334,6 @@ async def test_pay_order_order_not_found(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -393,7 +391,6 @@ async def test_pay_order_wrong_owner(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -466,7 +463,6 @@ async def test_pay_order_not_new_status(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -532,7 +528,6 @@ async def test_pay_order_blocked_user(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -593,7 +588,6 @@ async def test_pay_order_paused_user(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -654,7 +648,6 @@ async def test_pay_order_missing_profile(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -745,7 +738,6 @@ async def test_successful_payment_handler(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
 
     user = await create_test_user(
@@ -775,28 +767,27 @@ async def test_successful_payment_handler(
         payload=str(order.order_id), charge_id="charge_1"
     )
 
-    await successful_payment_handler(message, user_service, payment_service)
+    content_moderation = ContentModerationService()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await successful_payment_handler(
+        message,
+        user_service,
+        payment_service,
+        content_moderation,
+        config,
+    )
     assert message.answers
 
-    # Order should still be NEW until outbox is processed
+    # Order goes to PENDING_MODERATION after payment
     fetched_order = await order_repo.get_by_id(order.order_id)
     assert fetched_order is not None
-    assert fetched_order.status == OrderStatus.NEW
-
-    # Process outbox events to activate order
-    from ugc_bot.infrastructure.kafka.publisher import (
-        NoopOrderActivationPublisher,
-    )
-
-    kafka_publisher = NoopOrderActivationPublisher()
-    await payment_service.outbox_publisher.process_pending_events(
-        kafka_publisher, max_retries=3
-    )
-
-    # Now order should be activated
-    fetched_order = await order_repo.get_by_id(order.order_id)
-    assert fetched_order is not None
-    assert fetched_order.status == OrderStatus.ACTIVE
+    assert fetched_order.status == OrderStatus.PENDING_MODERATION
 
 
 @pytest.mark.asyncio
@@ -818,7 +809,6 @@ async def test_successful_payment_invalid_payload(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     user = await create_test_user(
         user_repo,
@@ -833,7 +823,21 @@ async def test_successful_payment_invalid_payload(
     message.successful_payment = FakeSuccessfulPayment(
         payload="bad", charge_id="c"
     )
-    await successful_payment_handler(message, user_service, payment_service)
+    content_moderation = ContentModerationService()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await successful_payment_handler(
+        message,
+        user_service,
+        payment_service,
+        content_moderation,
+        config,
+    )
     assert "Не удалось определить заказ" in message.answers[0]
 
 
@@ -856,7 +860,6 @@ async def test_successful_payment_user_not_found(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
 
     message = FakeMessage(
@@ -865,7 +868,21 @@ async def test_successful_payment_user_not_found(
     message.successful_payment = FakeSuccessfulPayment(
         payload="00000000-0000-0000-0000-000000000600", charge_id="c"
     )
-    await successful_payment_handler(message, user_service, payment_service)
+    content_moderation = ContentModerationService()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await successful_payment_handler(
+        message,
+        user_service,
+        payment_service,
+        content_moderation,
+        config,
+    )
     assert "Пользователь не найден" in message.answers[0]
 
 
@@ -932,7 +949,6 @@ async def test_successful_payment_handler_no_payment_returns(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     await create_test_user(
         user_repo,
@@ -944,7 +960,21 @@ async def test_successful_payment_handler_no_payment_returns(
     )
     message.successful_payment = None
 
-    await successful_payment_handler(message, user_service, payment_service)
+    content_moderation = ContentModerationService()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await successful_payment_handler(
+        message,
+        user_service,
+        payment_service,
+        content_moderation,
+        config,
+    )
 
     assert not message.answers
 
@@ -1030,7 +1060,6 @@ async def test_pay_order_contact_price_not_configured(
         order_repo,
         payment_repo,
         fake_tm,
-        outbox_repo,
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
@@ -1136,8 +1165,22 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
         payload="00000000-0000-0000-0000-000000000538", charge_id="charge_1"
     )
 
+    content_moderation = ContentModerationService()
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
     with pytest.raises(OrderCreationError):
-        await successful_payment_handler(message, user_service, payment_service)
+        await successful_payment_handler(
+            message,
+            user_service,
+            payment_service,
+            content_moderation,
+            config,
+        )
 
     assert len(metrics.recorded) == 1
     assert (

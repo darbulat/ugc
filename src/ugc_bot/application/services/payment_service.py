@@ -14,7 +14,6 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
-from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.domain.entities import Order, Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -24,13 +23,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class PaymentService:
-    """Telegram payment service for activating orders."""
+    """Telegram payment service. Moves order to PENDING_MODERATION."""
 
     user_repo: UserRepository
     advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
     payment_repo: PaymentRepository
-    outbox_publisher: OutboxPublisher
     provider: str = "yookassa_telegram"
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
@@ -117,9 +115,25 @@ class PaymentService:
                 paid_at=now,
             )
             await self.payment_repo.save(payment, session=session)
-            await self.outbox_publisher.publish_order_activation(
-                order, session=session
+            order_pending = Order(
+                order_id=order.order_id,
+                advertiser_id=order.advertiser_id,
+                order_type=order.order_type,
+                product_link=order.product_link,
+                offer_text=order.offer_text,
+                ugc_requirements=order.ugc_requirements,
+                barter_description=order.barter_description,
+                price=order.price,
+                bloggers_needed=order.bloggers_needed,
+                status=OrderStatus.PENDING_MODERATION,
+                created_at=order.created_at,
+                completed_at=order.completed_at,
+                content_usage=order.content_usage,
+                deadlines=order.deadlines,
+                geography=order.geography,
+                product_photo_file_id=order.product_photo_file_id,
             )
+            await self.order_repo.save(order_pending, session=session)
 
         logger.info(
             "Payment confirmed",
@@ -135,25 +149,3 @@ class PaymentService:
         )
 
         return payment
-
-    async def _activate_order(self, order: Order) -> None:
-        activated = Order(
-            order_id=order.order_id,
-            advertiser_id=order.advertiser_id,
-            order_type=order.order_type,
-            product_link=order.product_link,
-            offer_text=order.offer_text,
-            ugc_requirements=order.ugc_requirements,
-            barter_description=order.barter_description,
-            price=order.price,
-            bloggers_needed=order.bloggers_needed,
-            status=OrderStatus.ACTIVE,
-            created_at=order.created_at,
-            completed_at=order.completed_at,
-            content_usage=order.content_usage,
-            deadlines=order.deadlines,
-            geography=order.geography,
-            product_photo_file_id=order.product_photo_file_id,
-        )
-        await self.order_repo.save(activated)
-        await self.outbox_publisher.publish_order_activation(activated)

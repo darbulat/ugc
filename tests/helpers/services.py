@@ -6,7 +6,6 @@ from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
 from ugc_bot.application.services.order_service import OrderService
-from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -16,7 +15,6 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryContactPricingRepository,
     InMemoryOrderRepository,
-    InMemoryOutboxRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
 )
@@ -99,7 +97,6 @@ def build_payment_service(
     order_repo: InMemoryOrderRepository,
     payment_repo: InMemoryPaymentRepository,
     transaction_manager: object,
-    outbox_repo: InMemoryOutboxRepository | None = None,
 ) -> PaymentService:
     """Build payment service for tests.
 
@@ -109,24 +106,15 @@ def build_payment_service(
         order_repo: Order repository
         payment_repo: Payment repository
         transaction_manager: Transaction manager (required)
-        outbox_repo: Optional outbox repository (created if None)
 
     Returns:
         Payment service instance
     """
-    if outbox_repo is None:
-        outbox_repo = InMemoryOutboxRepository()
-
-    outbox_publisher = OutboxPublisher(
-        outbox_repo=outbox_repo, order_repo=order_repo
-    )
-
     return PaymentService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
-        outbox_publisher=outbox_publisher,
         transaction_manager=transaction_manager,
     )
 

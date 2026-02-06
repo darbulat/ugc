@@ -12,8 +12,14 @@ from ugc_bot.application.errors import (  # noqa: F401 - used in except
     OrderCreationError,
     UserNotFoundError,
 )
+from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_new_order,
+)
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
+)
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
 )
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
@@ -172,6 +178,8 @@ async def successful_payment_handler(
     message: Message,
     user_role_service: UserRoleService,
     payment_service: PaymentService,
+    content_moderation_service: ContentModerationService,
+    config: AppConfig,
 ) -> None:
     """Handle successful Telegram payment."""
 
@@ -217,6 +225,16 @@ async def successful_payment_handler(
             )
         # Re-raise so middleware can handle it
         raise
+
+    order = await payment_service.get_order(order_id)
+    if order and message.bot:
+        await notify_admins_about_new_order(
+            order=order,
+            bot=message.bot,
+            user_role_service=user_role_service,
+            content_moderation=content_moderation_service,
+            admin_base_url=config.admin.admin_base_url,
+        )
 
     await message.answer(ADVERTISER_AFTER_PAYMENT_SUCCESS)
     await message.answer(

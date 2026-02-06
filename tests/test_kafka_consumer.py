@@ -23,6 +23,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
@@ -63,10 +64,12 @@ async def test_send_offers_sends_messages() -> None:
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
 
     now = datetime.now(timezone.utc)
@@ -165,10 +168,12 @@ async def test_send_offers_with_photo_uses_send_photo() -> None:
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
 
     now = datetime.now(timezone.utc)
@@ -273,10 +278,12 @@ async def test_send_offers_returns_when_order_not_found() -> None:
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
     order_id = UUID("00000000-0000-0000-0000-000000000999")
     bot = Mock(spec=["send_message"])
@@ -316,10 +323,12 @@ async def test_send_offers_returns_when_advertiser_not_found() -> None:
         completed_at=None,
     )
     await order_repo.save(order)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
     bot = Mock(spec=["send_message"])
     bot.sent = []
@@ -368,10 +377,12 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
         completed_at=None,
     )
     await order_repo.save(order)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
     with patch.object(
         OfferDispatchService,
@@ -598,10 +609,12 @@ async def test_send_offers_retries_then_succeeds() -> None:
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
     now = datetime.now(timezone.utc)
     advertiser = User(
@@ -690,10 +703,12 @@ async def test_send_offers_sends_to_dlq(
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     offer_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
     )
     now = datetime.now(timezone.utc)
     advertiser = User(

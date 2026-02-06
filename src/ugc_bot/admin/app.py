@@ -11,12 +11,22 @@ from sqlalchemy import text
 from starlette.requests import Request
 
 from ugc_bot.admin.auth import AdminAuth
+from ugc_bot.application.ports import OrderRepository
 from ugc_bot.application.services.complaint_service import ComplaintService
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
+)
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
-from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus, UserStatus
+from ugc_bot.domain.enums import (
+    ComplaintStatus,
+    InteractionStatus,
+    OrderStatus,
+    UserStatus,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -39,6 +49,16 @@ def _get_services(
 ) -> tuple[UserRoleService, ComplaintService, InteractionService]:
     """Get services for admin actions."""
     return container.build_admin_services()
+
+
+def _get_order_moderation_deps(
+    container: Container,
+) -> tuple[ContentModerationService, OutboxPublisher, OrderRepository]:
+    """Get ContentModerationService, OutboxPublisher, OrderRepository."""
+    content_moderation = ContentModerationService()
+    outbox_publisher, _ = container.build_outbox_deps()
+    order_repo = container.build_repos()["order_repo"]
+    return (content_moderation, outbox_publisher, order_repo)
 
 
 T = TypeVar("T")
@@ -152,7 +172,7 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
 
 
 class OrderAdmin(ModelView, model=OrderModel):
-    """Admin view for orders."""
+    """Admin view for orders with moderation support."""
 
     column_list = [
         OrderModel.order_id,
@@ -167,6 +187,88 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.status,
         OrderModel.created_at,
     ]
+    form_columns = [
+        OrderModel.order_type,
+        OrderModel.product_link,
+        OrderModel.offer_text,
+        OrderModel.ugc_requirements,
+        OrderModel.barter_description,
+        OrderModel.price,
+        OrderModel.bloggers_needed,
+        OrderModel.status,
+        OrderModel.content_usage,
+        OrderModel.deadlines,
+        OrderModel.geography,
+        OrderModel.product_photo_file_id,
+    ]
+
+    async def update_model(self, request: Request, pk: str, data: dict):
+        """Update order with banned content check and activation publishing."""
+        pk_uuid = UUID(pk)
+        obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
+        old_status = obj.status if obj else None
+        new_status_raw = data.get("status")
+        new_status_active = (
+            new_status_raw == "active" or new_status_raw == OrderStatus.ACTIVE
+        )
+
+        if new_status_active and old_status == OrderStatus.PENDING_MODERATION:
+            container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+            if container:
+                content_moderation, _, _ = _get_order_moderation_deps(container)
+                if content_moderation.order_contains_banned_content(
+                    product_link=data.get("product_link"),
+                    offer_text=data.get("offer_text"),
+                    ugc_requirements=data.get("ugc_requirements"),
+                    barter_description=data.get("barter_description"),
+                    content_usage=data.get("content_usage"),
+                    geography=data.get("geography"),
+                ):
+                    matches = content_moderation.get_order_banned_matches(
+                        product_link=data.get("product_link"),
+                        offer_text=data.get("offer_text"),
+                        ugc_requirements=data.get("ugc_requirements"),
+                        barter_description=data.get("barter_description"),
+                        content_usage=data.get("content_usage"),
+                        geography=data.get("geography"),
+                    )
+                    raise ValueError(
+                        f"Запрещённый контент. Найдено: {', '.join(matches)}. "
+                        "Отредактируйте заявку."
+                    )
+
+        result = await super().update_model(request, pk, data)
+
+        obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
+        new_status = obj.status if obj else None
+
+        if (
+            old_status != OrderStatus.ACTIVE
+            and new_status == OrderStatus.ACTIVE
+        ):
+            try:
+                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                if container:
+                    _, outbox_publisher, order_repo = (
+                        _get_order_moderation_deps(container)
+                    )
+                    tm = container.transaction_manager
+                    if tm:
+                        async with tm.transaction() as session:
+                            order = await order_repo.get_by_id(
+                                pk_uuid, session=session
+                            )
+                            if order:
+                                await outbox_publisher.publish_order_activation(
+                                    order, session=session
+                                )
+            except Exception:
+                logger.exception(
+                    "Failed to publish order activation after admin approval",
+                    extra={"order_id": str(pk_uuid)},
+                )
+
+        return result
 
 
 class OrderResponseAdmin(ModelView, model=OrderResponseModel):
@@ -369,6 +471,7 @@ def create_admin_app() -> FastAPI:
     UserAdmin._container = container  # type: ignore[attr-defined]
     InteractionAdmin._container = container  # type: ignore[attr-defined]
     ComplaintAdmin._container = container  # type: ignore[attr-defined]
+    OrderAdmin._container = container  # type: ignore[attr-defined]
 
     admin.add_view(UserAdmin)
     admin.add_view(BloggerProfileAdmin)

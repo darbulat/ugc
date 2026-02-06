@@ -9,6 +9,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyNpsRepository,
+    SqlAlchemyOfferDispatchRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyOrderResponseRepository,
     SqlAlchemyOutboxRepository,
@@ -41,6 +42,9 @@ def build_repos(session_factory):
             session_factory=session_factory
         ),
         "order_response_repo": SqlAlchemyOrderResponseRepository(
+            session_factory=session_factory
+        ),
+        "offer_dispatch_repo": SqlAlchemyOfferDispatchRepository(
             session_factory=session_factory
         ),
         "interaction_repo": SqlAlchemyInteractionRepository(

@@ -89,6 +89,9 @@ async def _send_offer_to_blogger(
                     text=offer_text,
                     reply_markup=reply_markup,
                 )
+            await offer_dispatch_service.record_offer_sent(
+                order.order_id, blogger.user_id
+            )
             return
         except Exception as exc:
             logger.warning(

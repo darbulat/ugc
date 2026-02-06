@@ -14,6 +14,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     InteractionRepository,
     NpsRepository,
+    OfferDispatchRepository,
     OrderRepository,
     OrderResponseRepository,
     OutboxRepository,
@@ -362,6 +363,33 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
         return len(
             [resp for resp in self.responses if resp.order_id == order_id]
         )
+
+
+@dataclass
+class InMemoryOfferDispatchRepository(OfferDispatchRepository):
+    """In-memory implementation of offer dispatch repository."""
+
+    _dispatches: List[Tuple[UUID, UUID]] = field(default_factory=list)
+
+    async def record_sent(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Record that an offer was sent to a blogger for an order."""
+        if (order_id, blogger_id) not in self._dispatches:
+            self._dispatches.append((order_id, blogger_id))
+
+    async def list_blogger_ids_sent_for_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> List[UUID]:
+        """List blogger ids who already received an offer for this order."""
+        return [
+            blogger_id
+            for oid, blogger_id in self._dispatches
+            if oid == order_id
+        ]
 
 
 @dataclass
