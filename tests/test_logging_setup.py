@@ -7,6 +7,7 @@ import pytest
 
 from ugc_bot.logging_setup import (
     EnvLevelFilter,
+    HealthMetricsFilter,
     JSONFormatter,
     configure_logging,
 )
@@ -97,3 +98,63 @@ def test_env_level_filter_respects_log_level(
 
     assert flt.filter(info_rec) is False
     assert flt.filter(warn_rec) is True
+
+
+def test_health_metrics_filter_blocks_health_access_logs() -> None:
+    """HealthMetricsFilter blocks uvicorn.access logs for /health."""
+    flt = HealthMetricsFilter()
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='127.0.0.1 - "GET /health HTTP/1.1" 200',
+        args=(),
+        exc_info=None,
+    )
+    assert flt.filter(record) is False
+
+
+def test_health_metrics_filter_blocks_metrics_access_logs() -> None:
+    """HealthMetricsFilter blocks uvicorn.access logs for /metrics."""
+    flt = HealthMetricsFilter()
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='127.0.0.1 - "GET /metrics HTTP/1.1" 200',
+        args=(),
+        exc_info=None,
+    )
+    assert flt.filter(record) is False
+
+
+def test_health_metrics_filter_allows_other_access_logs() -> None:
+    """HealthMetricsFilter allows uvicorn.access logs for other paths."""
+    flt = HealthMetricsFilter()
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='127.0.0.1 - "POST /webhook/telegram HTTP/1.1" 200',
+        args=(),
+        exc_info=None,
+    )
+    assert flt.filter(record) is True
+
+
+def test_health_metrics_filter_allows_non_access_logs() -> None:
+    """HealthMetricsFilter allows non-uvicorn.access logs."""
+    flt = HealthMetricsFilter()
+    record = logging.LogRecord(
+        name="ugc_bot.app",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="Health check passed",
+        args=(),
+        exc_info=None,
+    )
+    assert flt.filter(record) is True

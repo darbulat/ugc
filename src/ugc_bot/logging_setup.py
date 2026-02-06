@@ -25,6 +25,20 @@ class EnvLevelFilter(logging.Filter):
         return record.levelno >= self._min_level
 
 
+class HealthMetricsFilter(logging.Filter):
+    """Filter out access logs for /health and /metrics endpoints.
+
+    Reduces log noise from health checks and Prometheus scraping.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return False for uvicorn.access logs of /health and /metrics."""
+        if record.name != "uvicorn.access":
+            return True
+        msg = record.getMessage()
+        return " /health" not in msg and " /metrics" not in msg
+
+
 class JSONFormatter(logging.Formatter):
     """JSON formatter for structured logging in production."""
 

@@ -2,54 +2,25 @@
   "version": 1,
   "disable_existing_loggers": false,
   "filters": {
-    "env_level": {
-      "()": "ugc_bot.logging_setup.EnvLevelFilter"
-    }
+    "env_level": {"()": "ugc_bot.logging_setup.EnvLevelFilter"},
+    "health_metrics": {"()": "ugc_bot.logging_setup.HealthMetricsFilter"}
   },
   "formatters": {
-    "json": {
-      "()": "ugc_bot.logging_setup.JSONFormatter"
-    }
+    "json": {"()": "ugc_bot.logging_setup.JSONFormatter"}
   },
   "handlers": {
     "default": {
       "class": "logging.StreamHandler",
       "formatter": "json",
-      "filters": [
-        "env_level"
-      ],
+      "filters": ["env_level", "health_metrics"],
       "level": "DEBUG",
       "stream": "ext://sys.stdout"
     }
   },
   "loggers": {
-    "uvicorn": {
-      "handlers": [
-        "default"
-      ],
-      "level": "DEBUG",
-      "propagate": false
-    },
-    "uvicorn.error": {
-      "handlers": [
-        "default"
-      ],
-      "level": "DEBUG",
-      "propagate": false
-    },
-    "uvicorn.access": {
-      "handlers": [
-        "default"
-      ],
-      "level": "DEBUG",
-      "propagate": false
-    }
+    "uvicorn": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
+    "uvicorn.error": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
+    "uvicorn.access": {"handlers": ["default"], "level": "DEBUG", "propagate": false}
   },
-  "root": {
-    "handlers": [
-      "default"
-    ],
-    "level": "DEBUG"
-  }
+  "root": {"handlers": ["default"], "level": "DEBUG"}
 }
-
