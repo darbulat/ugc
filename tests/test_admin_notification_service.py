@@ -259,6 +259,10 @@ def _make_order(
     order_id: UUID | None = None,
     advertiser_id: UUID | None = None,
     offer_text: str = "Test offer",
+    barter_description: str | None = None,
+    content_usage: str | None = None,
+    deadlines: str | None = None,
+    geography: str | None = None,
 ) -> Order:
     return Order(
         order_id=order_id or uuid4(),
@@ -266,12 +270,15 @@ def _make_order(
         order_type=OrderType.UGC_ONLY,
         product_link="https://example.com/product",
         offer_text=offer_text,
-        barter_description=None,
+        barter_description=barter_description,
         price=1000.0,
         bloggers_needed=3,
         status=OrderStatus.PENDING_MODERATION,
         created_at=datetime.now(timezone.utc),
         completed_at=None,
+        content_usage=content_usage,
+        deadlines=deadlines,
+        geography=geography,
     )
 
 
@@ -336,7 +343,7 @@ async def test_notify_admins_about_new_order_sends_message() -> None:
 
 @pytest.mark.asyncio
 async def test_notify_admins_about_new_order_includes_admin_link() -> None:
-    """When admin_base_url is set, message has InlineKeyboardButton with URL."""
+    """When admin_base_url set, message has admin link and Activate button."""
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     user_repo = InMemoryUserRepository()
@@ -378,11 +385,70 @@ async def test_notify_admins_about_new_order_includes_admin_link() -> None:
     _, text, reply_markup = bot.messages[0]
     assert "Новый заказ на модерацию" in text
     assert isinstance(reply_markup, InlineKeyboardMarkup)
-    assert len(reply_markup.inline_keyboard) == 1
-    btn = reply_markup.inline_keyboard[0][0]
-    assert isinstance(btn, InlineKeyboardButton)
-    assert btn.text == "Открыть в админке"
+    assert len(reply_markup.inline_keyboard) >= 1
+    admin_btn = reply_markup.inline_keyboard[0][0]
+    assert isinstance(admin_btn, InlineKeyboardButton)
+    assert admin_btn.text == "Открыть в админке"
     assert (
-        btn.url
+        admin_btn.url
         == f"https://admin.example.com/order-model/edit/{order.order_id}"
     )
+    activate_row = reply_markup.inline_keyboard[-1]
+    assert len(activate_row) == 1
+    activate_btn = activate_row[0]
+    assert activate_btn.text == "Активировать"
+    assert activate_btn.callback_data == f"mod_activate:{order.order_id.hex}"
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_new_order_includes_all_fields() -> None:
+    """Message includes all order fields: type, barter, content_usage, etc."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="555",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    advertiser = User(
+        user_id=uuid4(),
+        external_id="999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(advertiser)
+    user_service = UserRoleService(user_repo=user_repo)
+    bot = FakeBot()
+    content_moderation = ContentModerationService()
+    order = _make_order(
+        advertiser_id=advertiser.user_id,
+        offer_text="Full offer text without truncation",
+        barter_description="Product sample",
+        content_usage="Stories and reels",
+        deadlines="2 weeks",
+        geography="Russia",
+    )
+
+    await notify_admins_about_new_order(
+        order, bot, user_service, content_moderation
+    )
+
+    assert len(bot.messages) == 1
+    _, text, reply_markup = bot.messages[0]
+    assert "Full offer text without truncation" in text
+    assert "Product sample" in text
+    assert "Stories and reels" in text
+    assert "2 weeks" in text
+    assert "Russia" in text
+    assert "UGC-видео для бренда" in text
+    assert reply_markup is not None
+    activate_btn = reply_markup.inline_keyboard[0][0]
+    assert activate_btn.text == "Активировать"

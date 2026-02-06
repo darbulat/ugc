@@ -11,12 +11,26 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import Complaint, Order
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.domain.enums import MessengerType, OrderType
 
 if TYPE_CHECKING:
     from aiogram import Bot
 
 logger = logging.getLogger(__name__)
+
+MOD_ACTIVATE_CALLBACK_PREFIX = "mod_activate:"
+
+
+def _format_order_type_for_moderation(order: Order) -> str:
+    """Format order type for admin moderation message."""
+    if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
+        return "UGC + размещение"
+    return "UGC-видео для бренда"
+
+
+def _format_optional_field(value: str | None) -> str:
+    """Return value or em dash if empty."""
+    return value.strip() if value and value.strip() else "—"
 
 
 async def notify_admins_about_complaint(
@@ -118,12 +132,6 @@ async def notify_admins_about_new_order(
         advertiser.username if advertiser else str(order.advertiser_id)
     )
 
-    offer_preview = (
-        (order.offer_text[:200] + "...")
-        if order.offer_text and len(order.offer_text) > 200
-        else (order.offer_text or "")
-    )
-
     banned_warning = ""
     if content_moderation.order_contains_banned_content(
         product_link=order.product_link,
@@ -134,34 +142,52 @@ async def notify_admins_about_new_order(
     ):
         banned_warning = "\n\n⚠️ <b>Обнаружен возможный запрещённый контент</b>"
 
-    reply_markup = None
+    order_id_hex = order.order_id.hex
+    buttons: list[list[InlineKeyboardButton]] = []
     if admin_base_url and admin_base_url.rstrip("/"):
         base = admin_base_url.rstrip("/")
         link_url = f"{base}/order-model/edit/{order.order_id}"
-        reply_markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Открыть в админке",
-                        url=link_url,
-                    )
-                ]
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="Открыть в админке",
+                    url=link_url,
+                )
             ]
         )
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text="Активировать",
+                callback_data=f"{MOD_ACTIVATE_CALLBACK_PREFIX}{order_id_hex}",
+            )
+        ]
+    )
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     advertiser_esc = html.escape(advertiser_name)
-    offer_esc = html.escape(offer_preview)
+    offer_esc = html.escape(order.offer_text or "")
     product_link_esc = html.escape(order.product_link)
     order_id_esc = html.escape(str(order.order_id))
+    barter_esc = html.escape(_format_optional_field(order.barter_description))
+    content_usage_esc = html.escape(_format_optional_field(order.content_usage))
+    deadlines_esc = html.escape(_format_optional_field(order.deadlines))
+    geography_esc = html.escape(_format_optional_field(order.geography))
+    order_type_esc = html.escape(_format_order_type_for_moderation(order))
 
     text = (
         "📋 <b>Новый заказ на модерацию</b>\n\n"
         f"<b>ID заказа:</b> <code>{order_id_esc}</code>\n"
         f"<b>Заказчик:</b> {advertiser_esc}\n"
+        f"<b>Тип заказа:</b> {order_type_esc}\n"
         f"<b>Задача:</b> {offer_esc}\n"
         f"<b>Ссылка на продукт:</b> {product_link_esc}\n"
+        f"<b>Бартер:</b> {barter_esc}\n"
         f"<b>Бюджет:</b> {order.price} ₽\n"
-        f"<b>Нужно креаторов:</b> {order.bloggers_needed}"
+        f"<b>Нужно креаторов:</b> {order.bloggers_needed}\n"
+        f"<b>Использование контента:</b> {content_usage_esc}\n"
+        f"<b>Сроки:</b> {deadlines_esc}\n"
+        f"<b>География:</b> {geography_esc}"
         f"{banned_warning}"
     )
 

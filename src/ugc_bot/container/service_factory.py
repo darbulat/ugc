@@ -186,4 +186,6 @@ def build_bot_services(
         "order_repo": repos["order_repo"],
         "order_response_repo": repos["order_response_repo"],
         "interaction_repo": repos["interaction_repo"],
+        "outbox_publisher": outbox_publisher,
+        "transaction_manager": transaction_manager,
     }

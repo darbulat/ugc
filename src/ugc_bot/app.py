@@ -7,6 +7,9 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from ugc_bot.bot.handlers.admin_moderation import (
+    router as admin_moderation_router,
+)
 from ugc_bot.bot.handlers.advertiser_registration import (
     router as advertiser_router,
 )
@@ -123,6 +126,7 @@ def build_dispatcher(
         dispatcher[key] = service
     if include_routers:
         dispatcher.include_router(start_router)
+        dispatcher.include_router(admin_moderation_router)
         dispatcher.include_router(blogger_router)
         dispatcher.include_router(advertiser_router)
         dispatcher.include_router(profile_router)

@@ -119,7 +119,9 @@ class Container:
         instagram_api_client = self.build_instagram_api_client()
         issue_lock_manager = self.build_issue_lock_manager()
         outbox_publisher = OutboxPublisher(
-            outbox_repo=repos["outbox_repo"], order_repo=repos["order_repo"]
+            outbox_repo=repos["outbox_repo"],
+            order_repo=repos["order_repo"],
+            transaction_manager=self._transaction_manager,
         )
         return service_factory.build_bot_services(
             self._config,
