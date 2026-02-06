@@ -6,10 +6,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
+from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CHANGE_ROLE_BUTTON_TEXT,
     SUPPORT_BUTTON_TEXT,
+    advertiser_menu_keyboard,
     main_menu_keyboard,
 )
 from ugc_bot.domain.enums import MessengerType
@@ -82,6 +84,7 @@ def _flow_type_from_state(state_key: str | None) -> str | None:
 async def support_button(
     message: Message,
     user_role_service: UserRoleService,
+    profile_service: ProfileService,
     state: FSMContext,
     fsm_draft_service: FsmDraftService,
 ) -> None:
@@ -122,9 +125,20 @@ async def support_button(
         role_chosen=True,
         telegram_username=message.from_user.username,
     )
+
+    advertiser = (
+        await profile_service.get_advertiser_profile(user.user_id)
+        if user
+        else None
+    )
+    reply_markup = (
+        advertiser_menu_keyboard()
+        if advertiser is not None
+        else main_menu_keyboard()
+    )
     await message.answer(
         SUPPORT_RESPONSE_TEXT,
-        reply_markup=main_menu_keyboard(),
+        reply_markup=reply_markup,
     )
 
 

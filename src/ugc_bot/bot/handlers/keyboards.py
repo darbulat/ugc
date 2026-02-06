@@ -111,10 +111,13 @@ def profile_keyboard(one_time_keyboard: bool = True) -> ReplyKeyboardMarkup:
 
 
 def advertiser_start_keyboard() -> ReplyKeyboardMarkup:
-    """Keyboard after advertiser role selection: single Start button."""
+    """Keyboard after advertiser role selection: Create order and Start."""
 
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=ADVERTISER_START_BUTTON_TEXT)]],
+        keyboard=[
+            [KeyboardButton(text=CREATE_ORDER_BUTTON_TEXT)],
+            [KeyboardButton(text=ADVERTISER_START_BUTTON_TEXT)],
+        ],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
@@ -139,10 +142,11 @@ def advertiser_menu_keyboard(
 
 
 def advertiser_after_payment_keyboard() -> ReplyKeyboardMarkup:
-    """Keyboard after successful payment: My orders and Support only."""
+    """Keyboard after successful payment: Create order, My orders, Support."""
 
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text=CREATE_ORDER_BUTTON_TEXT)],
             [KeyboardButton(text=MY_ORDERS_BUTTON_TEXT)],
             [KeyboardButton(text=SUPPORT_BUTTON_TEXT)],
         ],

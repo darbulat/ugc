@@ -233,10 +233,17 @@ async def test_choose_role_advertiser_response(user_repo, blogger_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_support_button_sends_support_text(user_repo) -> None:
+async def test_support_button_sends_support_text(
+    user_repo, blogger_repo
+) -> None:
     """Support button sends support text and main menu."""
 
+    from tests.helpers.services import build_profile_service
+
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Поддержка", user=FakeUser(1, "u", "User"))
     state = FakeFSMContext(state=None)
     draft_service = FakeFsmDraftService()
@@ -244,6 +251,7 @@ async def test_support_button_sends_support_text(user_repo) -> None:
     await support_button(
         message,
         user_role_service=service,
+        profile_service=profile_service,
         state=state,
         fsm_draft_service=draft_service,
     )
@@ -256,11 +264,16 @@ async def test_support_button_sends_support_text(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_support_button_without_from_user_returns_early(
-    user_repo,
+    user_repo, blogger_repo
 ) -> None:
     """Support button with no from_user does not send message."""
 
+    from tests.helpers.services import build_profile_service
+
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Поддержка", user=None)
     state = FakeFSMContext(state=None)
     draft_service = FakeFsmDraftService()
@@ -268,6 +281,7 @@ async def test_support_button_without_from_user_returns_early(
     await support_button(
         message,
         user_role_service=service,
+        profile_service=profile_service,
         state=state,
         fsm_draft_service=draft_service,
     )
@@ -275,10 +289,15 @@ async def test_support_button_without_from_user_returns_early(
 
 
 @pytest.mark.asyncio
-async def test_support_button_clears_fsm_state(user_repo) -> None:
+async def test_support_button_clears_fsm_state(user_repo, blogger_repo) -> None:
     """Support button clears FSM state when in a flow."""
 
+    from tests.helpers.services import build_profile_service
+
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
     state = FakeFSMContext(state="BloggerRegistrationStates:instagram")
     draft_service = FakeFsmDraftService()
@@ -286,6 +305,7 @@ async def test_support_button_clears_fsm_state(user_repo) -> None:
     await support_button(
         message,
         user_role_service=service,
+        profile_service=profile_service,
         state=state,
         fsm_draft_service=draft_service,
     )
@@ -295,10 +315,17 @@ async def test_support_button_clears_fsm_state(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_support_button_saves_draft_when_in_flow(user_repo) -> None:
+async def test_support_button_saves_draft_when_in_flow(
+    user_repo, blogger_repo
+) -> None:
     """Support button saves draft when user in draftable flow and has data."""
 
+    from tests.helpers.services import build_profile_service
+
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     user = await service.set_user(
         external_id="2",
         messenger_type=MessengerType.TELEGRAM,
@@ -312,6 +339,7 @@ async def test_support_button_saves_draft_when_in_flow(user_repo) -> None:
     await support_button(
         message,
         user_role_service=service,
+        profile_service=profile_service,
         state=state,
         fsm_draft_service=draft_service,
     )
@@ -323,3 +351,42 @@ async def test_support_button_saves_draft_when_in_flow(user_repo) -> None:
     assert flow_type == "blogger_registration"
     assert state_key == "BloggerRegistrationStates:instagram"
     assert data.get("user_id") == user.user_id
+
+
+@pytest.mark.asyncio
+async def test_support_button_shows_advertiser_menu_when_has_profile(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Support button shows advertiser menu when user has advertiser profile."""
+
+    from tests.helpers.factories import create_test_advertiser_profile
+    from tests.helpers.services import build_profile_service
+
+    service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    user = await service.set_user(
+        external_id="5",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+
+    message = FakeMessage(
+        text="Поддержка", user=FakeUser(5, "adv", "Advertiser")
+    )
+    state = FakeFSMContext(state=None)
+    draft_service = FakeFsmDraftService()
+
+    await support_button(
+        message,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+        fsm_draft_service=draft_service,
+    )
+
+    assert message.answers
+    assert "Служба поддержки" in message.answers[0][0]
+    assert message.answers[0][1].keyboard == advertiser_menu_keyboard().keyboard

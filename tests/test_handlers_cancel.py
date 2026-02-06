@@ -13,10 +13,17 @@ from ugc_bot.bot.handlers.start import support_button
 
 
 @pytest.mark.asyncio
-async def test_support_button_sends_support_text_and_menu(user_repo) -> None:
+async def test_support_button_sends_support_text_and_menu(
+    user_repo, blogger_repo
+) -> None:
     """Support button sends support text and main menu keyboard."""
 
+    from tests.helpers.services import build_profile_service
+
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Поддержка", user=FakeUser(1, "u", "User"))
     state = FakeFSMContext(state=None)
     draft_service = FakeFsmDraftService()
@@ -24,6 +31,7 @@ async def test_support_button_sends_support_text_and_menu(user_repo) -> None:
     await support_button(
         message,
         user_role_service=service,
+        profile_service=profile_service,
         state=state,
         fsm_draft_service=draft_service,
     )
@@ -40,10 +48,17 @@ async def test_support_button_sends_support_text_and_menu(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_support_button_clears_state_when_in_fsm(user_repo) -> None:
+async def test_support_button_clears_state_when_in_fsm(
+    user_repo, blogger_repo
+) -> None:
     """Support button clears FSM state and shows support."""
 
+    from tests.helpers.services import build_profile_service
+
     service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
     state = FakeFSMContext(state="OrderCreationStates:product_link")
     draft_service = FakeFsmDraftService()
@@ -51,6 +66,7 @@ async def test_support_button_clears_state_when_in_fsm(user_repo) -> None:
     await support_button(
         message,
         user_role_service=service,
+        profile_service=profile_service,
         state=state,
         fsm_draft_service=draft_service,
     )
