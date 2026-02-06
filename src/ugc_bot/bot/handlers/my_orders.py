@@ -79,7 +79,7 @@ async def show_my_orders(
     order_service: OrderService,
     offer_response_service: OfferResponseService,
 ) -> None:
-    """Show orders: advertiser's created or blogger's responded."""
+    """Show advertiser and blogger orders in two separate messages."""
 
     user = await get_user_and_ensure_allowed(
         message,
@@ -94,20 +94,26 @@ async def show_my_orders(
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     blogger = await profile_service.get_blogger_profile(user.user_id)
 
+    if advertiser is None and blogger is None:
+        await message.answer(
+            "Заполните профиль (/register_advertiser или /register), "
+            "чтобы видеть заказы."
+        )
+        return
+
     if advertiser is not None:
         orders = sorted(
             await order_service.list_by_advertiser(user.user_id),
             key=lambda item: item.created_at,
             reverse=True,
         )
-        if not orders:
+        if orders:
+            text, keyboard = await _render_page(
+                orders, page=1, offer_response_service=offer_response_service
+            )
+            await message.answer(text, reply_markup=keyboard)
+        else:
             await message.answer("У вас пока нет заказов. /create_order")
-            return
-        text, keyboard = await _render_page(
-            orders, page=1, offer_response_service=offer_response_service
-        )
-        await message.answer(text, reply_markup=keyboard)
-        return
 
     if blogger is not None:
         responses = await offer_response_service.list_by_blogger(user.user_id)
@@ -118,19 +124,15 @@ async def show_my_orders(
             order = await order_service.get_order(resp.order_id)
             if order is not None:
                 order_responses.append((order, resp))
-        if not order_responses:
+        if order_responses:
+            text, keyboard = _render_blogger_orders_page(
+                order_responses, page=1
+            )
+            await message.answer(text, reply_markup=keyboard)
+        else:
             await message.answer(
                 "Вы пока не откликались. Предложения приходят в бот."
             )
-            return
-        text, keyboard = _render_blogger_orders_page(order_responses, page=1)
-        await message.answer(text, reply_markup=keyboard)
-        return
-
-    await message.answer(
-        "Заполните профиль (/register_advertiser или /register), "
-        "чтобы видеть заказы."
-    )
 
 
 @router.callback_query(

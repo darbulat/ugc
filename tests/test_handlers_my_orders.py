@@ -373,6 +373,296 @@ async def test_my_orders_list(
 
 
 @pytest.mark.asyncio
+async def test_my_orders_both_profiles_with_orders(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Both profiles: two messages with advertiser and blogger orders."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="10",
+        username="both",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=uuid4(),
+        price=2000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+    other_adv = await create_test_user(
+        user_repo, user_id=uuid4(), external_id="other", username="other"
+    )
+    await create_test_advertiser_profile(advertiser_repo, other_adv.user_id)
+    other_order = await create_test_order(
+        order_repo,
+        other_adv.user_id,
+        order_id=uuid4(),
+        price=500.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+    )
+    response = OrderResponse(
+        response_id=uuid4(),
+        order_id=other_order.order_id,
+        blogger_id=user.user_id,
+        responded_at=datetime.now(timezone.utc),
+    )
+    await order_response_repo.save(response)
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(10))
+    await show_my_orders(
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+    )
+
+    assert len(message.answers) == 2
+    first = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    second = (
+        message.answers[1]
+        if isinstance(message.answers[1], str)
+        else message.answers[1][0]
+    )
+    assert "Ваши заказы" in first
+    assert "1 000" in first or "2 000" in first
+    assert "откликнулись" in second
+    assert "№ 1" in second
+
+
+@pytest.mark.asyncio
+async def test_my_orders_both_profiles_both_empty(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """User with both profiles but no orders gets two hint messages."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="11",
+        username="both_empty",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(11))
+    await show_my_orders(
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+    )
+
+    assert len(message.answers) == 2
+    first = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    second = (
+        message.answers[1]
+        if isinstance(message.answers[1], str)
+        else message.answers[1][0]
+    )
+    assert "пока нет заказов" in first
+    assert "не откликались" in second
+
+
+@pytest.mark.asyncio
+async def test_my_orders_both_profiles_advertiser_only(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Both profiles: advertiser has orders, blogger has none — list + hint."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="12",
+        username="adv_only",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=uuid4(),
+        price=1500.0,
+        bloggers_needed=2,
+        status=OrderStatus.NEW,
+    )
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(12))
+    await show_my_orders(
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+    )
+
+    assert len(message.answers) == 2
+    first = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    second = (
+        message.answers[1]
+        if isinstance(message.answers[1], str)
+        else message.answers[1][0]
+    )
+    assert "Ваши заказы" in first
+    assert "1 500" in first
+    assert "не откликались" in second
+
+
+@pytest.mark.asyncio
+async def test_my_orders_both_profiles_blogger_only(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """Both profiles: blogger has responses, advertiser none — hint + list."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    adv_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="adv13",
+        username="advertiser",
+    )
+    await create_test_advertiser_profile(advertiser_repo, adv_user.user_id)
+    order = await create_test_order(
+        order_repo,
+        adv_user.user_id,
+        order_id=uuid4(),
+        price=800.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+    )
+
+    blogger_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="13",
+        username="blogger_only",
+    )
+    await create_test_advertiser_profile(advertiser_repo, blogger_user.user_id)
+    await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
+    response = OrderResponse(
+        response_id=uuid4(),
+        order_id=order.order_id,
+        blogger_id=blogger_user.user_id,
+        responded_at=datetime.now(timezone.utc),
+    )
+    await order_response_repo.save(response)
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(13))
+    await show_my_orders(
+        message,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+    )
+
+    assert len(message.answers) == 2
+    first = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    second = (
+        message.answers[1]
+        if isinstance(message.answers[1], str)
+        else message.answers[1][0]
+    )
+    assert "пока нет заказов" in first
+    assert "откликнулись" in second
+    assert "№ 1" in second
+
+
+@pytest.mark.asyncio
 async def test_paginate_orders_returns_early_when_no_from_user(
     fake_tm: object,
     user_repo,
