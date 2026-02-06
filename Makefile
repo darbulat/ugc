@@ -1,4 +1,4 @@
-.PHONY: install-dev lint typecheck test coverage format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements
+.PHONY: install-dev lint typecheck test coverage format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db list-backups
 
 export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
@@ -47,5 +47,32 @@ subscribe-instagram-webhook-page:
 
 list-instagram-subscriptions:
 	docker compose run --rm instagram_webhook python scripts/subscribe_instagram_webhook.py --list
+
+# Database backup commands
+backup-db:
+	docker compose run --rm db_backup python scripts/backup_db.py \
+		--host db \
+		--port 5432 \
+		--database $${POSTGRES_DB:-ugc} \
+		--user $${POSTGRES_USER:-ugc} \
+		--password $${POSTGRES_PASSWORD:-ugc} \
+		--output-dir /backups
+
+restore-db:
+	@if [ -z "$(BACKUP_FILE)" ]; then \
+		echo "Error: BACKUP_FILE is required. Usage: make restore-db BACKUP_FILE=/backups/ugc_backup_YYYYMMDD_HHMMSS.sql.gz"; \
+		exit 1; \
+	fi
+	docker compose run --rm db_backup python scripts/restore_db.py \
+		--host db \
+		--port 5432 \
+		--database $${POSTGRES_DB:-ugc} \
+		--user $${POSTGRES_USER:-ugc} \
+		--password $${POSTGRES_PASSWORD:-ugc} \
+		--confirm \
+		$(BACKUP_FILE)
+
+list-backups:
+	docker compose run --rm db_backup ls -lh /backups/
 
 all: format lint typecheck coverage

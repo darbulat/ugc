@@ -383,6 +383,29 @@ services:
     restart: unless-stopped
     networks:
       - default
+
+  db_backup:
+    build: .
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-ugc}
+      POSTGRES_USER: ${POSTGRES_USER:-ugc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ugc}
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+    volumes:
+      - backup_data:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "/app/scripts/backup_loop.sh"]
+    restart: unless-stopped
+    networks:
+      - default
+
 volumes:
   postgres_data:
   redis_data:
@@ -392,6 +415,7 @@ volumes:
   grafana_data:
   alertmanager_config:
   loki_data:
+  backup_data:
 
 networks:
   default:
