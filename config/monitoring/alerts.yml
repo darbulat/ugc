@@ -27,3 +27,45 @@ groups:
         annotations:
           summary: Low disk space on {{ $labels.instance }}
           description: Disk free space is below 15%.
+
+  - name: application
+    rules:
+      - alert: ApplicationDown
+        expr: up{job="ugc-bot"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Application is down
+          description: Application metrics endpoint is unreachable for 2 minutes.
+
+      - alert: ApplicationHighErrorRate
+        expr: rate(ugc_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High error rate in application
+          description: Error rate is {{ $value | humanize }} errors/sec for 5 minutes.
+
+      - alert: ApplicationHighLatency
+        expr: histogram_quantile(0.95, rate(ugc_request_latency_seconds_bucket[5m])) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: High request latency detected
+          description: 95th percentile latency is {{ $value | humanize }}s for 10 minutes.
+
+      - alert: HighPaymentFailureRate
+        expr: |
+          (
+            rate(ugc_payment_failed_total[15m]) /
+            (rate(ugc_orders_created_total[15m]) + 1)
+          ) > 0.1
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: High payment failure rate
+          description: Payment failure rate is {{ $value | humanizePercentage }} for 15 minutes.
