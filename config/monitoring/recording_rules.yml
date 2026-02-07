@@ -1,0 +1,42 @@
+# Recording rules for SLO-based alerting (Google SRE).
+# SLO: 99.9% success rate over 30 days (error budget 0.1%).
+
+groups:
+  - name: sli
+    interval: 1m
+    rules:
+      - record: job:slo_errors:ratio_rate5m
+        expr: |
+          sum(rate(ugc_errors_total[5m])) by (job)
+          /
+          (sum(rate(ugc_http_requests_total[5m])) by (job) + 1)
+      - record: job:slo_errors:ratio_rate30m
+        expr: |
+          sum(rate(ugc_errors_total[30m])) by (job)
+          /
+          (sum(rate(ugc_http_requests_total[30m])) by (job) + 1)
+      - record: job:slo_errors:ratio_rate1h
+        expr: |
+          sum(rate(ugc_errors_total[1h])) by (job)
+          /
+          (sum(rate(ugc_http_requests_total[1h])) by (job) + 1)
+      - record: job:slo_errors:ratio_rate2h
+        expr: |
+          sum(rate(ugc_errors_total[2h])) by (job)
+          /
+          (sum(rate(ugc_http_requests_total[2h])) by (job) + 1)
+      - record: job:slo_errors:ratio_rate6h
+        expr: |
+          sum(rate(ugc_errors_total[6h])) by (job)
+          /
+          (sum(rate(ugc_http_requests_total[6h])) by (job) + 1)
+      - record: job:slo_errors:ratio_rate24h
+        expr: |
+          sum(rate(ugc_errors_total[24h])) by (job)
+          /
+          (sum(rate(ugc_http_requests_total[24h])) by (job) + 1)
+      - record: job:slo_errors:ratio_rate3d
+        expr: |
+          sum(rate(ugc_errors_total[3d])) by (job)
+          /
+          (sum(rate(ugc_http_requests_total[3d])) by (job) + 1)

@@ -67,6 +67,66 @@ def test_webhook_metrics(client: TestClient) -> None:
     assert b"ugc_" in response.content or b"python_" in response.content
 
 
+def test_webhook_records_http_metrics(client: TestClient) -> None:
+    """HTTP middleware records request metrics (RED method)."""
+    client.get("/health")
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "ugc_http_requests_total" in content
+    assert "ugc_http_request_duration_seconds" in content
+
+
+def test_webhook_records_telegram_metrics_on_success(
+    client: TestClient,
+) -> None:
+    """Valid webhook increments ugc_telegram_webhook_received_total."""
+    payload = {
+        "update_id": 123456789,
+        "message": {
+            "message_id": 1,
+            "date": 1609459200,
+            "chat": {"id": 123, "type": "private", "username": "testuser"},
+            "from": {
+                "id": 123,
+                "is_bot": False,
+                "first_name": "Test",
+                "username": "testuser",
+            },
+            "text": "hello",
+        },
+    }
+    client.post("/webhook/telegram", json=payload)
+    response = client.get("/metrics")
+    assert b"ugc_telegram_webhook_received_total" in response.content
+
+
+def test_webhook_records_telegram_invalid_on_bad_json(
+    client: TestClient,
+) -> None:
+    """Invalid JSON webhook increments ugc_telegram_webhook_invalid_total."""
+    client.post(
+        "/webhook/telegram",
+        content="not json",
+        headers={"Content-Type": "application/json"},
+    )
+    response = client.get("/metrics")
+    assert b"ugc_telegram_webhook_invalid_total" in response.content
+
+
+def test_webhook_records_telegram_invalid_on_bad_update(
+    client: TestClient,
+) -> None:
+    """Invalid Update payload increments ugc_telegram_webhook_invalid_total."""
+    client.post(
+        "/webhook/telegram",
+        json={"update_id": "invalid", "message": None},
+        headers={"Content-Type": "application/json"},
+    )
+    response = client.get("/metrics")
+    assert b"ugc_telegram_webhook_invalid_total" in response.content
+
+
 def test_webhook_post_update_returns_200(client: TestClient) -> None:
     """POST /webhook/telegram with valid Update returns 200."""
     # Minimal Telegram Update payload (message)

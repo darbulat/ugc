@@ -48,14 +48,49 @@ groups:
           summary: High error rate in application
           description: Error rate is {{ $value | humanize }} errors/sec for 5 minutes.
 
+      - alert: SLOErrorBudgetBurnRateFast
+        expr: |
+          (
+            (job:slo_errors:ratio_rate1h{job="ugc-bot"} > (14.4 * 0.001)
+             and job:slo_errors:ratio_rate5m{job="ugc-bot"} > (14.4 * 0.001))
+            or
+            (job:slo_errors:ratio_rate6h{job="ugc-bot"} > (6 * 0.001)
+             and job:slo_errors:ratio_rate30m{job="ugc-bot"} > (6 * 0.001))
+          )
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: SLO error budget burning fast
+          description: Error budget consumption exceeds 2% (1h) or 5% (6h). SLO 99.9%.
+
+      - alert: SLOErrorBudgetBurnRateSlow
+        expr: |
+          (
+            (job:slo_errors:ratio_rate24h{job="ugc-bot"} > (3 * 0.001)
+             and job:slo_errors:ratio_rate2h{job="ugc-bot"} > (3 * 0.001))
+            or
+            (job:slo_errors:ratio_rate3d{job="ugc-bot"} > 0.001
+             and job:slo_errors:ratio_rate6h{job="ugc-bot"} > 0.001)
+          )
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: SLO error budget burning slowly
+          description: Error budget consumption exceeds 10% over 3 days. SLO 99.9%.
+
       - alert: ApplicationHighLatency
-        expr: histogram_quantile(0.95, rate(ugc_request_latency_seconds_bucket[5m])) > 2
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(ugc_http_request_duration_seconds_bucket[5m])) by (le, path)
+          ) > 2
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: High request latency detected
-          description: 95th percentile latency is {{ $value | humanize }}s for 10 minutes.
+          description: 95th percentile HTTP latency is {{ $value | humanize }}s for 10 minutes.
 
       - alert: HighPaymentFailureRate
         expr: |
@@ -69,3 +104,64 @@ groups:
         annotations:
           summary: High payment failure rate
           description: Payment failure rate is {{ $value | humanizePercentage }} for 15 minutes.
+
+      - alert: RegistrationDrop
+        expr: |
+          (
+            rate(ugc_blogger_registrations_total[1h]) +
+            rate(ugc_advertiser_registrations_total[1h])
+          ) < (
+            rate(ugc_blogger_registrations_total[1h] offset 24h) +
+            rate(ugc_advertiser_registrations_total[1h] offset 24h)
+          ) * 0.5
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: Significant drop in registrations
+          description: Registration rate dropped by more than 50% compared to yesterday.
+
+      - alert: HighComplaintRate
+        expr: rate(ugc_complaints_created_total[1h]) > (
+          rate(ugc_complaints_created_total[1h] offset 24h) * 2
+        )
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: High complaint rate
+          description: Complaint rate more than doubled compared to yesterday.
+
+  - name: telegram
+    rules:
+      - alert: TelegramWebhookRejectRate
+        expr: |
+          (
+            sum(rate(ugc_http_requests_total{path="/webhook/telegram",status=~"4.."}[15m]))
+            /
+            (sum(rate(ugc_http_requests_total{path="/webhook/telegram"}[15m])) + 1)
+          ) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: High Telegram webhook reject rate
+          description: More than 10% of webhook requests returned 4xx in 15 minutes.
+
+      - alert: TelegramRateLimitHit
+        expr: increase(ugc_telegram_rate_limit_hits_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Telegram API rate limit hit
+          description: Telegram API rate limit was triggered in the last 5 minutes.
+
+      - alert: TelegramApiErrors
+        expr: rate(ugc_telegram_api_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Telegram API errors
+          description: Telegram API error rate is {{ $value | humanize }}/sec for 5 minutes.

@@ -79,6 +79,41 @@ _REQUEST_LATENCY = Histogram(
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
 )
 
+# HTTP metrics (RED method)
+_HTTP_REQUESTS = Counter(
+    "ugc_http_requests_total",
+    "Total HTTP requests",
+    ["method", "path", "status"],
+)
+_HTTP_REQUEST_DURATION = Histogram(
+    "ugc_http_request_duration_seconds",
+    "HTTP request latency",
+    ["method", "path"],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
+
+# Telegram-specific metrics
+_TELEGRAM_WEBHOOK_RECEIVED = Counter(
+    "ugc_telegram_webhook_received_total",
+    "Total incoming webhook updates from Telegram",
+)
+_TELEGRAM_WEBHOOK_INVALID = Counter(
+    "ugc_telegram_webhook_invalid_total",
+    "Total invalid webhook payloads (JSON or Update validation)",
+)
+_TELEGRAM_UPDATES_DROPPED = Counter(
+    "ugc_telegram_updates_dropped_total",
+    "Total dropped updates (rate limit, error)",
+)
+_TELEGRAM_API_ERRORS = Counter(
+    "ugc_telegram_api_errors_total",
+    "Total Telegram API errors",
+)
+_TELEGRAM_RATE_LIMIT_HITS = Counter(
+    "ugc_telegram_rate_limit_hits_total",
+    "Total Telegram API rate limit hits",
+)
+
 
 @dataclass(slots=True)
 class MetricsCollector:
@@ -351,3 +386,49 @@ class MetricsCollector:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
+
+
+def record_http_request(
+    method: str,
+    path: str,
+    status_code: int,
+    duration_seconds: float,
+) -> None:
+    """Record HTTP request for RED metrics.
+
+    Args:
+        method: HTTP method (GET, POST, etc.)
+        path: Request path (normalized)
+        status_code: HTTP status code
+        duration_seconds: Request duration in seconds
+    """
+    status = str(status_code)
+    _HTTP_REQUESTS.labels(method=method, path=path, status=status).inc()
+    _HTTP_REQUEST_DURATION.labels(method=method, path=path).observe(
+        duration_seconds
+    )
+
+
+def record_telegram_webhook_received() -> None:
+    """Record incoming webhook update from Telegram."""
+    _TELEGRAM_WEBHOOK_RECEIVED.inc()
+
+
+def record_telegram_webhook_invalid() -> None:
+    """Record invalid webhook payload (JSON or Update validation)."""
+    _TELEGRAM_WEBHOOK_INVALID.inc()
+
+
+def record_telegram_update_dropped() -> None:
+    """Record dropped update (rate limit or processing error)."""
+    _TELEGRAM_UPDATES_DROPPED.inc()
+
+
+def record_telegram_api_error() -> None:
+    """Record Telegram API error response."""
+    _TELEGRAM_API_ERRORS.inc()
+
+
+def record_telegram_rate_limit_hit() -> None:
+    """Record Telegram API rate limit hit."""
+    _TELEGRAM_RATE_LIMIT_HITS.inc()

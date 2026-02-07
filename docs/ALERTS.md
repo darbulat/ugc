@@ -83,6 +83,67 @@ TELEGRAM_CRITICAL_CHAT_ID=your_critical_chat_id
 - **Условие:** Свободное место на диске < 15% в течение 10 минут
 - **Описание:** Мало свободного места на диске
 
+### Алерты приложения (Critical → page)
+
+#### ApplicationDown
+- **Тип:** Critical
+- **Условие:** `up{job="ugc-bot"} == 0` в течение 2 минут
+- **Описание:** Приложение недоступно
+
+#### ApplicationHighErrorRate
+- **Тип:** Critical
+- **Условие:** Более 10 ошибок/сек за 5 минут
+- **Описание:** Высокий уровень ошибок в приложении
+
+#### SLOErrorBudgetBurnRateFast
+- **Тип:** Critical
+- **Условие:** Burn rate 14.4x (1h) или 6x (6h) — потребление 2%/5% error budget
+- **Описание:** SLO 99.9%, быстрое сжигание error budget (Google SRE)
+
+#### HighPaymentFailureRate
+- **Тип:** Critical
+- **Условие:** Более 10% неудачных платежей за 15 минут
+- **Описание:** Высокий уровень неудачных платежей
+
+### Алерты приложения (Warning → ticket)
+
+#### SLOErrorBudgetBurnRateSlow
+- **Тип:** Warning
+- **Условие:** Burn rate 1x за 3 дня — потребление 10% error budget
+- **Описание:** Медленное сжигание error budget
+
+#### ApplicationHighLatency
+- **Тип:** Warning
+- **Условие:** p95 HTTP latency > 2s за 10 минут
+- **Описание:** Высокая латентность запросов
+
+#### RegistrationDrop
+- **Тип:** Warning
+- **Условие:** Падение регистраций > 50% относительно вчера
+- **Описание:** Резкое снижение регистраций
+
+#### HighComplaintRate
+- **Тип:** Warning
+- **Условие:** Рост жалоб более чем в 2 раза относительно вчера
+- **Описание:** Аномальный рост жалоб
+
+### Telegram-специфичные алерты
+
+#### TelegramWebhookRejectRate
+- **Тип:** Warning
+- **Условие:** Более 10% webhook-запросов вернули 4xx за 15 минут
+- **Описание:** Высокий процент отклонённых webhook
+
+#### TelegramRateLimitHit
+- **Тип:** Warning
+- **Условие:** Хотя бы один rate limit hit за 5 минут
+- **Описание:** Срабатывание rate limit Telegram API
+
+#### TelegramApiErrors
+- **Тип:** Critical
+- **Условие:** Более 0.1 ошибок Telegram API/сек за 5 минут
+- **Описание:** Ошибки при вызове Telegram API
+
 ### Алерты на необработанные ошибки (Loki)
 
 #### UnhandledErrorInService
@@ -129,7 +190,11 @@ groups:
     description: Подробное описание с деталями
 ```
 
-### 3. Перезапуск Prometheus
+### 3. Recording rules (SLI/SLO)
+
+Recording rules для SLO-based alerting находятся в `config/monitoring/recording_rules.yml`. Они вычисляют `job:slo_errors:ratio_rate*` для окон 5m, 30m, 1h, 2h, 6h, 24h, 3d. Файл смонтирован в Prometheus вместе с `alerts.yml`.
+
+### 4. Перезапуск Prometheus
 
 После изменения правил перезапустите Prometheus:
 
@@ -143,7 +208,7 @@ docker compose restart prometheus
 curl -X POST http://localhost:9090/-/reload
 ```
 
-### 4. Правила Loki (логи)
+### 5. Правила Loki (логи)
 
 Правила для алертов на необработанные ошибки находятся в `config/monitoring/loki-alerts/fake/unhandled_errors.yml`. После изменения перезапустите Loki:
 

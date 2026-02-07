@@ -4,7 +4,15 @@ from unittest.mock import patch
 
 import pytest
 
-from ugc_bot.metrics.collector import MetricsCollector
+from ugc_bot.metrics.collector import (
+    MetricsCollector,
+    record_http_request,
+    record_telegram_api_error,
+    record_telegram_rate_limit_hit,
+    record_telegram_update_dropped,
+    record_telegram_webhook_invalid,
+    record_telegram_webhook_received,
+)
 
 
 @pytest.fixture
@@ -340,3 +348,68 @@ class TestMetricsCollector:
         call_args = mock_logger.info.call_args
         extra = call_args[1]["extra"]
         assert extra["success"] is False
+
+
+class TestHttpAndTelegramMetrics:
+    """Test HTTP and Telegram module-level metrics."""
+
+    def test_record_http_request(self) -> None:
+        """record_http_request increments counters and histogram."""
+        record_http_request(
+            method="POST",
+            path="/webhook/telegram",
+            status_code=200,
+            duration_seconds=0.1,
+        )
+        record_http_request(
+            method="POST",
+            path="/webhook/telegram",
+            status_code=200,
+            duration_seconds=0.2,
+        )
+        from prometheus_client import generate_latest
+
+        output = generate_latest().decode()
+        assert "ugc_http_requests_total" in output
+        assert "ugc_http_request_duration_seconds" in output
+
+    def test_record_telegram_webhook_received(self) -> None:
+        """record_telegram_webhook_received increments counter."""
+        from prometheus_client import generate_latest
+
+        record_telegram_webhook_received()
+        record_telegram_webhook_received()
+        output = generate_latest().decode()
+        assert "ugc_telegram_webhook_received_total" in output
+
+    def test_record_telegram_webhook_invalid(self) -> None:
+        """record_telegram_webhook_invalid increments counter."""
+        from prometheus_client import generate_latest
+
+        record_telegram_webhook_invalid()
+        output = generate_latest().decode()
+        assert "ugc_telegram_webhook_invalid_total" in output
+
+    def test_record_telegram_update_dropped(self) -> None:
+        """record_telegram_update_dropped increments counter."""
+        from prometheus_client import generate_latest
+
+        record_telegram_update_dropped()
+        output = generate_latest().decode()
+        assert "ugc_telegram_updates_dropped_total" in output
+
+    def test_record_telegram_api_error(self) -> None:
+        """record_telegram_api_error increments counter."""
+        from prometheus_client import generate_latest
+
+        record_telegram_api_error()
+        output = generate_latest().decode()
+        assert "ugc_telegram_api_errors_total" in output
+
+    def test_record_telegram_rate_limit_hit(self) -> None:
+        """record_telegram_rate_limit_hit increments counter."""
+        from prometheus_client import generate_latest
+
+        record_telegram_rate_limit_hit()
+        output = generate_latest().decode()
+        assert "ugc_telegram_rate_limit_hits_total" in output

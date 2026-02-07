@@ -270,6 +270,8 @@ avg(metric_type:order_paid.time_to_payment_seconds)
 - **Prometheus:** job `ugc-bot` скрейпит `app:9999/metrics` каждые 15 секунд
 
 Доступные метрики:
+
+**Бизнес-метрики:**
 - `ugc_blogger_registrations_total` — регистрации блогеров
 - `ugc_advertiser_registrations_total` — регистрации рекламодателей
 - `ugc_orders_created_total` — созданные заказы
@@ -282,10 +284,28 @@ avg(metric_type:order_paid.time_to_payment_seconds)
 - `ugc_complaint_status_changes_total` — изменения статусов жалоб
 - `ugc_interaction_issues_total` — взаимодействия со статусом ISSUE
 - `ugc_feedback_postponements_total` — переносы фидбека
+
+**Технические метрики:**
 - `ugc_errors_total` — ошибки приложения
 - `ugc_order_payment_duration_seconds` — время от создания заказа до оплаты
 - `ugc_contacts_duration_seconds` — время до передачи контактов
 - `ugc_request_latency_seconds` — латентность операций
+
+**HTTP-метрики (RED-метод, Four Golden Signals):**
+- `ugc_http_requests_total` — HTTP-запросы (method, path, status)
+- `ugc_http_request_duration_seconds` — латентность HTTP-запросов
+
+**Telegram-специфичные метрики:**
+- `ugc_telegram_webhook_received_total` — входящие updates от Telegram
+- `ugc_telegram_webhook_invalid_total` — невалидные payload (JSON/Update)
+- `ugc_telegram_updates_dropped_total` — отклонённые updates (rate limit, ошибка)
+- `ugc_telegram_api_errors_total` — ошибки Telegram API
+- `ugc_telegram_rate_limit_hits_total` — срабатывания rate limit Telegram API
+
+## Recording rules (SLI/SLO)
+
+В `config/monitoring/recording_rules.yml` определены правила для SLO-based alerting:
+- `job:slo_errors:ratio_rate5m`, `ratio_rate30m`, `ratio_rate1h`, `ratio_rate2h`, `ratio_rate6h`, `ratio_rate24h`, `ratio_rate3d` — соотношение ошибок к запросам для различных окон (Google SRE burn rate)
 
 ## Рекомендации
 
