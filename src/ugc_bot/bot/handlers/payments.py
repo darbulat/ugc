@@ -112,7 +112,7 @@ async def pay_order(
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         await message.answer(
-            "Профиль рекламодателя не заполнен. Команда: /register_advertiser"
+            "Профиль рекламодателя не заполнен. Команда: /advertiser"
         )
         return
 

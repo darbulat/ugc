@@ -71,7 +71,7 @@ async def start_verification(
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
         await message.answer(
-            "Профиль не заполнен. «Создать профиль» или /register"
+            "Профиль не заполнен. «Создать профиль» или /creator"
         )
         return
 

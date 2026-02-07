@@ -96,7 +96,7 @@ async def show_my_orders(
 
     if advertiser is None and blogger is None:
         await message.answer(
-            "Заполните профиль (/register_advertiser или /register), "
+            "Заполните профиль (/advertiser или /creator), "
             "чтобы видеть заказы."
         )
         return
