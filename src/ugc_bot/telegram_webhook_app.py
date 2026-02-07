@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from ugc_bot.app import build_dispatcher, create_storage
@@ -61,6 +61,27 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telegram Webhook", lifespan=_lifespan)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Log unhandled exceptions and return 500 (or 200 for webhooks)."""
+    logger.exception(
+        "Unhandled exception",
+        exc_info=(type(exc), exc, exc.__traceback__),
+        extra={"service": "ugc-bot", "path": request.url.path},
+    )
+    if request.url.path.startswith("/webhook/"):
+        return JSONResponse(
+            content={"status": "error", "message": "Internal error"},
+            status_code=200,
+        )
+    return JSONResponse(
+        content={"detail": "Internal server error"},
+        status_code=500,
+    )
 
 
 @app.get("/health")

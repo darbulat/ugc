@@ -363,6 +363,7 @@ services:
       - "-config.file=/etc/loki/loki.yml"
     volumes:
       - ./config/monitoring/loki.yml:/etc/loki/loki.yml:ro
+      - ./config/monitoring/loki-alerts:/loki/rules:ro
       - loki_data:/loki
     ports:
       - "3100:3100"

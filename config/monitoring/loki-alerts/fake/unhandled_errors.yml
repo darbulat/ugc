@@ -1,0 +1,19 @@
+groups:
+  - name: unhandled_errors
+    interval: 1m
+    rules:
+      - alert: UnhandledErrorInService
+        expr: |
+          sum by (service) (
+            count_over_time(
+              {service=~"app|app_2|instagram_webhook|kafka_consumer|feedback_scheduler|outbox_processor"}
+              |~ "Traceback \\(most recent call last\\)|Exception was never retrieved"
+              [5m]
+            )
+          ) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Unhandled error in {{ $labels.service }}"
+          description: "Traceback or unhandled exception in service {{ $labels.service }}"

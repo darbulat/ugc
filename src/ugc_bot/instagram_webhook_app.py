@@ -9,7 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
@@ -40,6 +40,27 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Instagram Webhook", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Log unhandled exceptions and return 500 (or 200 for webhooks)."""
+    logger.exception(
+        "Unhandled exception",
+        exc_info=(type(exc), exc, exc.__traceback__),
+        extra={"service": "instagram-webhook", "path": request.url.path},
+    )
+    if request.url.path.startswith("/webhook/"):
+        return JSONResponse(
+            content={"status": "error", "message": "Internal error"},
+            status_code=200,
+        )
+    return JSONResponse(
+        content={"detail": "Internal server error"},
+        status_code=500,
+    )
 
 
 def _verify_signature(payload: bytes, signature: str, app_secret: str) -> bool:

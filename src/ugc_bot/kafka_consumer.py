@@ -19,6 +19,10 @@ from ugc_bot.application.services.offer_dispatch_service import (
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.entities import Order, User
+from ugc_bot.exception_hooks import (
+    install_asyncio_exception_handler,
+    install_exception_hooks,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -241,12 +245,13 @@ async def _consume_forever(
 
 async def run_consumer() -> None:
     """Run Kafka consumer in single event loop, process messages async."""
-
     config = load_config()
     configure_logging(
         config.log.log_level,
         json_format=config.log.log_format.lower() == "json",
     )
+    install_exception_hooks("kafka-consumer")
+    install_asyncio_exception_handler("kafka-consumer")
     log_startup_info(
         logger=logger, service_name="kafka-consumer", config=config
     )

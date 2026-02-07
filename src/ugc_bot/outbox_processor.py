@@ -10,6 +10,10 @@ from ugc_bot.application.ports import OrderActivationPublisher
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.config import OutboxConfig, load_config
 from ugc_bot.container import Container
+from ugc_bot.exception_hooks import (
+    install_asyncio_exception_handler,
+    install_exception_hooks,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -126,6 +130,8 @@ async def run_processor() -> None:
         config.log.log_level,
         json_format=config.log.log_format.lower() == "json",
     )
+    install_exception_hooks("outbox-processor")
+    install_asyncio_exception_handler("outbox-processor")
     log_startup_info(
         logger=logger, service_name="outbox-processor", config=config
     )

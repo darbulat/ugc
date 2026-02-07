@@ -19,6 +19,10 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.config import FeedbackConfig, load_config
 from ugc_bot.domain.entities import Interaction, Order
+from ugc_bot.exception_hooks import (
+    install_asyncio_exception_handler,
+    install_exception_hooks,
+)
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
@@ -290,6 +294,7 @@ async def run_loop(
     max_iterations: int | None = None,
 ) -> None:
     """Run periodic feedback dispatch."""
+    install_asyncio_exception_handler("feedback-scheduler")
 
     iterations = 0
     logger.info("Feedback scheduler loop started")
@@ -332,6 +337,7 @@ def main() -> None:
         config.log.log_level,
         json_format=config.log.log_format.lower() == "json",
     )
+    install_exception_hooks("feedback-scheduler")
     log_startup_info(
         logger=logger, service_name="Feedback scheduler", config=config
     )

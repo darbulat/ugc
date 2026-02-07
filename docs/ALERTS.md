@@ -8,9 +8,11 @@
 
 ```
 Prometheus → Alertmanager → Telegram Bot
+Loki Ruler → Alertmanager → Telegram Bot
 ```
 
 - **Prometheus** собирает метрики и проверяет правила алертов
+- **Loki Ruler** проверяет правила на основе логов (необработанные ошибки)
 - **Alertmanager** обрабатывает алерты и отправляет уведомления
 - **Telegram** используется как канал доставки уведомлений
 
@@ -81,6 +83,19 @@ TELEGRAM_CRITICAL_CHAT_ID=your_critical_chat_id
 - **Условие:** Свободное место на диске < 15% в течение 10 минут
 - **Описание:** Мало свободного места на диске
 
+### Алерты на необработанные ошибки (Loki)
+
+#### UnhandledErrorInService
+- **Тип:** Critical
+- **Источник:** Loki Ruler (правила в `config/monitoring/loki-alerts/`)
+- **Условие:** В логах сервиса обнаружен Traceback или "Exception was never retrieved" в течение 5 минут
+- **Сервисы:** app, app_2, instagram_webhook, kafka_consumer, feedback_scheduler, outbox_processor
+- **Описание:** Необработанное исключение в указанном сервисе
+
+Для обнаружения необработанных ошибок используются:
+- **Exception hooks** в CLI-сервисах (kafka_consumer, feedback_scheduler, outbox_processor) — логирование через `logger.exception` перед падением
+- **Exception handler** в FastAPI-приложениях (telegram_webhook_app, instagram_webhook_app) — глобальный перехватчик `Exception`
+
 ## Добавление новых алертов
 
 ### 1. Редактирование файла правил
@@ -126,6 +141,14 @@ docker compose restart prometheus
 
 ```bash
 curl -X POST http://localhost:9090/-/reload
+```
+
+### 4. Правила Loki (логи)
+
+Правила для алертов на необработанные ошибки находятся в `config/monitoring/loki-alerts/fake/unhandled_errors.yml`. После изменения перезапустите Loki:
+
+```bash
+docker compose restart loki
 ```
 
 ## Примеры алертов для приложения
