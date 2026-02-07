@@ -1,0 +1,285 @@
+{
+  "uid": "ugc-bot-overview",
+  "title": "UGC Bot Overview",
+  "tags": ["ugc", "application", "business"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Rate",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(ugc_http_requests_total[5m])) by (path)",
+          "legendFormat": "{{path}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Latency p95",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(ugc_http_request_duration_seconds_bucket[5m])) by (le, path))",
+          "legendFormat": "{{path}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Status Distribution",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(ugc_http_requests_total[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Application Errors",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(ugc_errors_total[5m])",
+          "legendFormat": "errors/sec"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "SLO Error Ratio (5m)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "job:slo_errors:ratio_rate5m{job=\"ugc-bot\"}",
+          "legendFormat": "error ratio"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Webhook Received",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(ugc_telegram_webhook_received_total[5m])",
+          "legendFormat": "received/sec"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Webhook Invalid",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(ugc_telegram_webhook_invalid_total[5m])",
+          "legendFormat": "invalid/sec"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "stat",
+      "title": "Total Orders (24h)",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 32},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_orders_created_total[24h])",
+          "legendFormat": "orders"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "stat",
+      "title": "Total Registrations (24h)",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 32},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_blogger_registrations_total[24h]) + increase(ugc_advertiser_registrations_total[24h])",
+          "legendFormat": "registrations"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "stat",
+      "title": "Conversion Rate (24h)",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 32},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(rate(ugc_orders_paid_total[24h]) / (rate(ugc_orders_created_total[24h]) + 1)) * 100",
+          "legendFormat": "conversion %"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []}
+    },
+    {
+      "type": "stat",
+      "title": "Payment Failed (24h)",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 32},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_payment_failed_total[24h])",
+          "legendFormat": "failed"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Blogger Registrations",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_blogger_registrations_total[1h])",
+          "legendFormat": "bloggers/hour"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Advertiser Registrations",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_advertiser_registrations_total[1h])",
+          "legendFormat": "advertisers/hour"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Orders Created",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 46},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_orders_created_total[1h])",
+          "legendFormat": "created/hour"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Orders Paid",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 46},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_orders_paid_total[1h])",
+          "legendFormat": "paid/hour"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Blogger Responses",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 54},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_blogger_responses_total[1h])",
+          "legendFormat": "responses/hour"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Contacts Sent",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 54},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_contacts_sent_total[1h])",
+          "legendFormat": "contacts/hour"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Users Blocked",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 62},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_users_blocked_total[24h])",
+          "legendFormat": "blocked/24h"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Complaints Created",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 62},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_complaints_created_total[24h])",
+          "legendFormat": "complaints/24h"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Interaction Issues",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 62},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_interaction_issues_total[24h])",
+          "legendFormat": "issues/24h"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Feedback Postponements",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 62},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(ugc_feedback_postponements_total[24h])",
+          "legendFormat": "postponements/24h"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}
+    }
+  ]
+}
