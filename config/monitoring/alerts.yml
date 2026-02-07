@@ -113,7 +113,7 @@ groups:
           ) < (
             rate(ugc_blogger_registrations_total[1h] offset 24h) +
             rate(ugc_advertiser_registrations_total[1h] offset 24h)
-          ) * 0.5
+          ) / 2
         for: 1h
         labels:
           severity: warning
@@ -122,9 +122,7 @@ groups:
           description: Registration rate dropped by more than 50% compared to yesterday.
 
       - alert: HighComplaintRate
-        expr: rate(ugc_complaints_created_total[1h]) > (
-          rate(ugc_complaints_created_total[1h] offset 24h) * 2
-        )
+        expr: rate(ugc_complaints_created_total[1h]) > 2 * rate(ugc_complaints_created_total[1h] offset 24h)
         for: 1h
         labels:
           severity: warning
