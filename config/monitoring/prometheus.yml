@@ -32,5 +32,6 @@ scrape_configs:
     static_configs:
       - targets:
           - app:9999
+          - app_2:9999
     metrics_path: /metrics
     scrape_interval: 15s
