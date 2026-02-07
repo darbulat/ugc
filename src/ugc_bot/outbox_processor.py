@@ -8,7 +8,7 @@ from typing import Optional
 
 from ugc_bot.application.ports import OrderActivationPublisher
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
-from ugc_bot.config import load_config
+from ugc_bot.config import OutboxConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
@@ -25,13 +25,16 @@ class OutboxProcessor:
         kafka_publisher: OrderActivationPublisher,
         poll_interval: float = 5.0,
         max_retries: int = 3,
+        outbox_config: Optional[OutboxConfig] = None,
     ):
         self.outbox_publisher = outbox_publisher
         self.kafka_publisher = kafka_publisher
         self.poll_interval = poll_interval
         self.max_retries = max_retries
+        self._outbox_config = outbox_config
         self._running = False
         self._task: Optional[asyncio.Task] = None
+        self._iteration_count = 0
 
     async def start(self) -> None:
         """Start the background processor."""
@@ -62,10 +65,37 @@ class OutboxProcessor:
         while self._running:
             try:
                 await self._process_batch()
+                self._iteration_count += 1
+                await self._maybe_run_cleanup()
             except Exception as e:
                 logger.exception(f"Error in outbox processing loop: {e}")
 
             await asyncio.sleep(self.poll_interval)
+
+    async def _maybe_run_cleanup(self) -> None:
+        """Run cleanup every N iterations if config is available."""
+
+        if (
+            self._outbox_config is None
+            or self._outbox_config.outbox_retention_days <= 0
+        ):
+            return
+
+        interval = self._outbox_config.outbox_cleanup_interval_iterations
+        if interval <= 0 or self._iteration_count % interval != 0:
+            return
+
+        try:
+            deleted = await self.outbox_publisher.cleanup_processed_events(
+                retention_days=self._outbox_config.outbox_retention_days,
+                batch_size=self._outbox_config.outbox_cleanup_batch_size,
+            )
+            if deleted > 0:
+                logger.info(
+                    "Outbox cleanup deleted %d processed events", deleted
+                )
+        except Exception as e:
+            logger.exception("Outbox cleanup failed: %s", e)
 
     async def _process_batch(self) -> None:
         """Process a batch of pending events."""
@@ -117,6 +147,7 @@ async def run_processor() -> None:
         kafka_publisher=kafka_publisher,
         poll_interval=5.0,
         max_retries=3,
+        outbox_config=config.outbox,
     )
 
     try:

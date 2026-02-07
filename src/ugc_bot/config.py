@@ -68,6 +68,11 @@ _FLAT_KEYS = {
         "DOCS_CONSENT_URL",
     ],
     "webhook": ["WEBHOOK_BASE_URL", "WEBHOOK_SECRET"],
+    "outbox": [
+        "OUTBOX_RETENTION_DAYS",
+        "OUTBOX_CLEANUP_BATCH_SIZE",
+        "OUTBOX_CLEANUP_INTERVAL_ITERATIONS",
+    ],
 }
 
 
@@ -241,6 +246,20 @@ class WebhookConfig(BaseSettings):
         return v.rstrip("/") if v else v
 
 
+class OutboxConfig(BaseSettings):
+    """Outbox event cleanup configuration."""
+
+    model_config = _ENV
+
+    outbox_retention_days: int = Field(default=7, alias="OUTBOX_RETENTION_DAYS")
+    outbox_cleanup_batch_size: int = Field(
+        default=1000, alias="OUTBOX_CLEANUP_BATCH_SIZE"
+    )
+    outbox_cleanup_interval_iterations: int = Field(
+        default=720, alias="OUTBOX_CLEANUP_INTERVAL_ITERATIONS"
+    )
+
+
 # --- Composite ---
 
 
@@ -260,6 +279,7 @@ class AppConfig(BaseModel):
     instagram: InstagramConfig
     docs: DocsConfig
     webhook: WebhookConfig
+    outbox: OutboxConfig
 
     @model_validator(mode="before")
     @classmethod
@@ -281,6 +301,7 @@ class AppConfig(BaseModel):
             "instagram": InstagramConfig.model_validate(nested["instagram"]),
             "docs": DocsConfig.model_validate(nested["docs"]),
             "webhook": WebhookConfig.model_validate(nested["webhook"]),
+            "outbox": OutboxConfig.model_validate(nested["outbox"]),
         }
 
 

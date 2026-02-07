@@ -1,7 +1,7 @@
 """In-memory repository implementations."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
@@ -688,6 +688,40 @@ class InMemoryOutboxRepository(OutboxRepository):
         """Get event by ID."""
 
         return self.events.get(event_id)
+
+    async def delete_processed_events(
+        self,
+        retention_days: int,
+        batch_size: int,
+        session: object | None = None,
+    ) -> int:
+        """Delete PUBLISHED/FAILED events older than retention_days."""
+
+        if retention_days <= 0:
+            return 0
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        to_delete: List[UUID] = []
+
+        for event_id, event in self.events.items():
+            if len(to_delete) >= batch_size:
+                break
+            is_published_old = (
+                event.status == OutboxEventStatus.PUBLISHED
+                and event.processed_at
+                and event.processed_at < cutoff
+            )
+            is_failed_old = (
+                event.status == OutboxEventStatus.FAILED
+                and event.created_at < cutoff
+            )
+            if is_published_old or is_failed_old:
+                to_delete.append(event_id)
+
+        for event_id in to_delete:
+            del self.events[event_id]
+
+        return len(to_delete)
 
 
 @dataclass

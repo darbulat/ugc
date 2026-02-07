@@ -44,10 +44,16 @@ def test_app_config_accepts_nested_dict() -> None:
             "WEBHOOK_BASE_URL": "",
             "WEBHOOK_SECRET": "",
         },
+        "outbox": {
+            "OUTBOX_RETENTION_DAYS": "7",
+            "OUTBOX_CLEANUP_BATCH_SIZE": "1000",
+            "OUTBOX_CLEANUP_INTERVAL_ITERATIONS": "720",
+        },
     }
     config = AppConfig.model_validate(nested)
     assert config.bot.bot_token == "token"
     assert config.db.database_url == "postgresql://localhost/db"
+    assert config.outbox.outbox_retention_days == 7
 
 
 def test_load_config_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:

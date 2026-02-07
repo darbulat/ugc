@@ -1,6 +1,6 @@
 """Tests for outbox repositories."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
@@ -324,3 +324,155 @@ class TestInMemoryOutboxRepository:
         await repo.mark_as_failed(
             UUID("00000000-0000-0000-0000-000000000999"), "error", 1
         )
+
+    @pytest.mark.asyncio
+    async def test_delete_processed_events_returns_zero_when_retention_zero(
+        self,
+    ) -> None:
+        """delete_processed_events returns 0 when retention_days is 0."""
+
+        repo = InMemoryOutboxRepository()
+        event = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000001"),
+            event_type="order.activated",
+            aggregate_id="order-123",
+            aggregate_type="order",
+            payload={},
+            status=OutboxEventStatus.PUBLISHED,
+            created_at=datetime.now(timezone.utc),
+            processed_at=datetime.now(timezone.utc),
+            retry_count=0,
+            last_error=None,
+        )
+        await repo.save(event)
+
+        deleted = await repo.delete_processed_events(
+            retention_days=0, batch_size=1000
+        )
+
+        assert deleted == 0
+        assert len(repo.events) == 1
+
+    @pytest.mark.asyncio
+    async def test_delete_processed_events_deletes_old_published(self) -> None:
+        """delete_processed_events removes old PUBLISHED events."""
+
+        repo = InMemoryOutboxRepository()
+        old_processed = datetime.now(timezone.utc) - timedelta(days=10)
+        event = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000001"),
+            event_type="order.activated",
+            aggregate_id="order-123",
+            aggregate_type="order",
+            payload={},
+            status=OutboxEventStatus.PUBLISHED,
+            created_at=datetime.now(timezone.utc) - timedelta(days=10),
+            processed_at=old_processed,
+            retry_count=0,
+            last_error=None,
+        )
+        await repo.save(event)
+
+        deleted = await repo.delete_processed_events(
+            retention_days=7, batch_size=1000
+        )
+
+        assert deleted == 1
+        assert len(repo.events) == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_processed_events_deletes_old_failed(self) -> None:
+        """delete_processed_events removes old FAILED events."""
+
+        repo = InMemoryOutboxRepository()
+        old_created = datetime.now(timezone.utc) - timedelta(days=10)
+        event = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000001"),
+            event_type="order.activated",
+            aggregate_id="order-123",
+            aggregate_type="order",
+            payload={},
+            status=OutboxEventStatus.FAILED,
+            created_at=old_created,
+            processed_at=None,
+            retry_count=3,
+            last_error="error",
+        )
+        await repo.save(event)
+
+        deleted = await repo.delete_processed_events(
+            retention_days=7, batch_size=1000
+        )
+
+        assert deleted == 1
+        assert len(repo.events) == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_processed_events_keeps_recent_and_pending(
+        self,
+    ) -> None:
+        """delete_processed_events keeps PENDING, PROCESSING, and recent."""
+
+        repo = InMemoryOutboxRepository()
+        now = datetime.now(timezone.utc)
+        pending = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000001"),
+            event_type="order.activated",
+            aggregate_id="order-1",
+            aggregate_type="order",
+            payload={},
+            status=OutboxEventStatus.PENDING,
+            created_at=now,
+            processed_at=None,
+            retry_count=0,
+            last_error=None,
+        )
+        published_recent = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000002"),
+            event_type="order.activated",
+            aggregate_id="order-2",
+            aggregate_type="order",
+            payload={},
+            status=OutboxEventStatus.PUBLISHED,
+            created_at=now,
+            processed_at=now - timedelta(days=1),
+            retry_count=0,
+            last_error=None,
+        )
+        await repo.save(pending)
+        await repo.save(published_recent)
+
+        deleted = await repo.delete_processed_events(
+            retention_days=7, batch_size=1000
+        )
+
+        assert deleted == 0
+        assert len(repo.events) == 2
+
+    @pytest.mark.asyncio
+    async def test_delete_processed_events_respects_batch_size(self) -> None:
+        """delete_processed_events respects batch_size limit."""
+
+        repo = InMemoryOutboxRepository()
+        old_processed = datetime.now(timezone.utc) - timedelta(days=10)
+        for i in range(5):
+            event = OutboxEvent(
+                event_id=UUID(f"00000000-0000-0000-0000-00000000000{i+1}"),
+                event_type="order.activated",
+                aggregate_id=f"order-{i+1}",
+                aggregate_type="order",
+                payload={},
+                status=OutboxEventStatus.PUBLISHED,
+                created_at=old_processed,
+                processed_at=old_processed,
+                retry_count=0,
+                last_error=None,
+            )
+            await repo.save(event)
+
+        deleted = await repo.delete_processed_events(
+            retention_days=7, batch_size=2
+        )
+
+        assert deleted == 2
+        assert len(repo.events) == 3

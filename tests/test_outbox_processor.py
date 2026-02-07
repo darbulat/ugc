@@ -164,6 +164,57 @@ class TestOutboxProcessor:
         assert outbox_publisher.process_pending_events.call_count >= 1
         assert not processor._running
 
+    @pytest.mark.asyncio
+    async def test_cleanup_called_when_interval_hit(self) -> None:
+        """Cleanup is called when _maybe_run_cleanup runs at interval."""
+
+        outbox_publisher = Mock()
+        outbox_publisher.cleanup_processed_events = AsyncMock(return_value=5)
+        kafka_publisher = Mock()
+
+        outbox_config = Mock()
+        outbox_config.outbox_retention_days = 7
+        outbox_config.outbox_cleanup_batch_size = 1000
+        outbox_config.outbox_cleanup_interval_iterations = 1
+
+        processor = OutboxProcessor(
+            outbox_publisher=outbox_publisher,
+            kafka_publisher=kafka_publisher,
+            poll_interval=0.01,
+            max_retries=3,
+            outbox_config=outbox_config,
+        )
+
+        processor._iteration_count = 1
+        await processor._maybe_run_cleanup()
+
+        outbox_publisher.cleanup_processed_events.assert_called_once_with(
+            retention_days=7, batch_size=1000
+        )
+
+    @pytest.mark.asyncio
+    async def test_cleanup_skipped_when_no_config(self) -> None:
+        """Cleanup is not called when outbox_config is None."""
+
+        outbox_publisher = Mock()
+        outbox_publisher.process_pending_events = AsyncMock()
+        outbox_publisher.cleanup_processed_events = AsyncMock()
+        kafka_publisher = Mock()
+
+        processor = OutboxProcessor(
+            outbox_publisher=outbox_publisher,
+            kafka_publisher=kafka_publisher,
+            poll_interval=0.01,
+            max_retries=3,
+            outbox_config=None,
+        )
+
+        await processor.start()
+        await asyncio.sleep(0.05)
+        await processor.stop()
+
+        outbox_publisher.cleanup_processed_events.assert_not_called()
+
 
 class TestRunProcessor:
     """Test run_processor function."""
@@ -176,11 +227,15 @@ class TestRunProcessor:
 
         # Mock config
         mock_config = Mock()
-        mock_config.log_level = "INFO"
-        mock_config.kafka_enabled = True
-        mock_config.kafka_bootstrap_servers = "localhost:9092"
-        mock_config.kafka_topic = "test-topic"
-        mock_config.database_url = "sqlite://"
+        mock_config.log = Mock()
+        mock_config.log.log_level = "INFO"
+        mock_config.log.log_format = "text"
+        mock_config.db = Mock()
+        mock_config.db.database_url = "sqlite://"
+        mock_config.outbox = Mock()
+        mock_config.outbox.outbox_retention_days = 7
+        mock_config.outbox.outbox_cleanup_batch_size = 1000
+        mock_config.outbox.outbox_cleanup_interval_iterations = 720
 
         # Mock outbox publisher
         mock_outbox_publisher = Mock()

@@ -1,11 +1,11 @@
 """SQLAlchemy repository implementations."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable, List, Optional
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -1134,6 +1134,42 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         )
         model = exec_result.scalar_one_or_none()
         return _to_outbox_event_entity(model) if model else None
+
+    async def delete_processed_events(
+        self,
+        retention_days: int,
+        batch_size: int,
+        session: object | None = None,
+    ) -> int:
+        """Delete PUBLISHED/FAILED events older than retention_days."""
+
+        if retention_days <= 0:
+            return 0
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        db_session = _get_async_session(session)
+
+        subq = (
+            select(OutboxEventModel.event_id)
+            .where(
+                or_(
+                    and_(
+                        OutboxEventModel.status == OutboxEventStatus.PUBLISHED,
+                        OutboxEventModel.processed_at < cutoff,
+                    ),
+                    and_(
+                        OutboxEventModel.status == OutboxEventStatus.FAILED,
+                        OutboxEventModel.created_at < cutoff,
+                    ),
+                )
+            )
+            .limit(batch_size)
+        )
+
+        result = await db_session.execute(
+            delete(OutboxEventModel).where(OutboxEventModel.event_id.in_(subq))
+        )
+        return getattr(result, "rowcount", None) or 0
 
 
 def _to_outbox_event_entity(model: OutboxEventModel) -> OutboxEvent:

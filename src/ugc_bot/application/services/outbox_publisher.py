@@ -182,3 +182,18 @@ class OutboxPublisher:
         await self.order_repo.save(activated_order, session=session)
 
         await kafka_publisher.publish(activated_order)
+
+    async def cleanup_processed_events(
+        self, retention_days: int, batch_size: int
+    ) -> int:
+        """Delete PUBLISHED/FAILED events older than retention_days.
+
+        Returns deleted count.
+        """
+
+        async def _run(session: object | None) -> int:
+            return await self.outbox_repo.delete_processed_events(
+                retention_days, batch_size, session=session
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)

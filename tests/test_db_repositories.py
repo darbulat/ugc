@@ -82,8 +82,9 @@ class FakeScalarResult:
 class FakeResult:
     """Fake SQLAlchemy result."""
 
-    def __init__(self, value) -> None:
+    def __init__(self, value, rowcount: int | None = None) -> None:
         self._value = value
+        self.rowcount = rowcount
 
     def scalar_one_or_none(self):  # type: ignore[no-untyped-def]
         return self._value
@@ -1434,6 +1435,58 @@ async def test_outbox_repository_mark_as_failed() -> None:
     )
     event_id = UUID("00000000-0000-0000-0000-000000000217")
     await repo.mark_as_failed(event_id, "error", 1, session=session)
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_delete_processed_events_retention_zero() -> (
+    None
+):
+    """delete_processed_events returns 0 when retention_days is 0."""
+
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyOutboxRepository(
+        session_factory=FakeAsyncSessionMaker(session)
+    )
+    deleted = await repo.delete_processed_events(
+        retention_days=0, batch_size=1000, session=session
+    )
+    assert deleted == 0
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_delete_processed_events_returns_count() -> (
+    None
+):
+    """delete_processed_events returns rowcount from execute result."""
+
+    class FakeSessionWithRowcount(FakeSession):
+        async def execute(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            return FakeResult(None, rowcount=3)
+
+    session_with_rowcount = FakeSessionWithRowcount(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            self._session = session
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyOutboxRepository(
+        session_factory=FakeAsyncSessionMaker(session_with_rowcount)
+    )
+    deleted = await repo.delete_processed_events(
+        retention_days=7, batch_size=1000, session=session_with_rowcount
+    )
+    assert deleted == 3
 
 
 class FakeAsyncSessionCompat(FakeSession):

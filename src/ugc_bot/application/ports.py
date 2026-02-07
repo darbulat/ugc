@@ -418,6 +418,18 @@ class OutboxRepository(ABC):
     ) -> Optional[OutboxEvent]:
         """Get event by ID."""
 
+    @abstractmethod
+    async def delete_processed_events(
+        self,
+        retention_days: int,
+        batch_size: int,
+        session: object | None = None,
+    ) -> int:
+        """Delete PUBLISHED/FAILED events older than retention_days.
+
+        Returns deleted count.
+        """
+
 
 class ComplaintRepository(ABC):
     """Port for complaint persistence."""
