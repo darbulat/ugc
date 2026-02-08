@@ -20,7 +20,14 @@
   "loggers": {
     "uvicorn": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
     "uvicorn.error": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
-    "uvicorn.access": {"handlers": ["default"], "level": "DEBUG", "propagate": false}
+    "uvicorn.access": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
+    "aiokafka": {"level": "WARNING", "propagate": true},
+    "urllib3": {"level": "WARNING", "propagate": true},
+    "httpx": {"level": "WARNING", "propagate": true},
+    "aiosqlite": {"level": "WARNING", "propagate": true}
   },
-  "root": {"handlers": ["default"], "level": "DEBUG"}
+  "root": {
+    "handlers": ["default"],
+    "level": "DEBUG"
+  }
 }

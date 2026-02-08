@@ -11,7 +11,6 @@ os.environ.setdefault("ADMIN_SECRET", "test_secret")
 
 import asyncio
 import contextlib
-import logging
 import sys
 import threading
 import traceback
@@ -46,6 +45,7 @@ from tests.helpers.repositories import (  # noqa: E402, F401
 from ugc_bot.infrastructure.messenger.telegram.adapter import (  # noqa: E402
     TelegramEventAdapter,
 )
+from ugc_bot.logging_setup import suppress_noisy_loggers  # noqa: E402
 
 
 def fake_transaction_manager():
@@ -129,8 +129,7 @@ def _silence_noisy_library_loggers() -> None:
     can be confusing and make test output look "stuck" during interpreter
     shutdown.
     """
-
-    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+    suppress_noisy_loggers()
 
 
 @pytest.fixture(autouse=True)

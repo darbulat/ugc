@@ -5,6 +5,21 @@ import logging
 import os
 from typing import Any
 
+NOISY_LOGGERS: tuple[str, ...] = (
+    "aiokafka",
+    "aiokafka.consumer.group_coordinator",
+    "aiokafka.consumer.consumer",
+    "aiosqlite",
+    "urllib3",
+    "httpx",
+)
+
+
+def suppress_noisy_loggers(level: int = logging.WARNING) -> None:
+    """Set third-party noisy loggers to WARNING to reduce log noise."""
+    for name in NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(level)
+
 
 class EnvLevelFilter(logging.Filter):
     """Filter log records below LOG_LEVEL env threshold.
@@ -124,3 +139,4 @@ def configure_logging(log_level: str, json_format: bool | None = None) -> None:
 
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
+    suppress_noisy_loggers()

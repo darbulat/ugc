@@ -6,11 +6,20 @@ import logging
 import pytest
 
 from ugc_bot.logging_setup import (
+    NOISY_LOGGERS,
     EnvLevelFilter,
     HealthMetricsFilter,
     JSONFormatter,
     configure_logging,
+    suppress_noisy_loggers,
 )
+
+
+def test_suppress_noisy_loggers_sets_warning_level() -> None:
+    """suppress_noisy_loggers sets WARNING level for all noisy loggers."""
+    suppress_noisy_loggers()
+    for name in NOISY_LOGGERS:
+        assert logging.getLogger(name).level == logging.WARNING
 
 
 def test_configure_logging_sets_level() -> None:
