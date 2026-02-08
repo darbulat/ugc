@@ -128,7 +128,7 @@ services:
       - default
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.28-alpine
     ports:
       - "80:80"
       - "443:443"
