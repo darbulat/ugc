@@ -82,14 +82,13 @@ def test_main_menu_keyboard_persistent() -> None:
 
 
 def test_advertiser_start_keyboard() -> None:
-    """Advertiser start keyboard has Create order and Начать buttons."""
+    """Advertiser start keyboard has only Начать before profile filled."""
     keyboard = advertiser_start_keyboard()
 
     assert keyboard.rows is not None
-    assert len(keyboard.rows) == 2
-    assert keyboard.rows[0][0].text == CREATE_ORDER_BUTTON_TEXT
-    assert keyboard.rows[1][0].text == ADVERTISER_START_BUTTON_TEXT
-    assert keyboard.rows[1][0].text == "Начать"
+    assert len(keyboard.rows) == 1
+    assert keyboard.rows[0][0].text == ADVERTISER_START_BUTTON_TEXT
+    assert keyboard.rows[0][0].text == "Начать"
 
 
 def test_advertiser_menu_keyboard() -> None:

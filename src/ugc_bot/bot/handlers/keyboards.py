@@ -138,12 +138,15 @@ def profile_keyboard(one_time_keyboard: bool = True) -> Keyboard:
 
 
 def advertiser_start_keyboard() -> Keyboard:
-    """Keyboard after advertiser role selection: Create order and Start."""
+    """Keyboard after advertiser role selection: Start to fill profile only.
+
+    'Create order' is shown only after profile is filled
+    (advertiser_menu_keyboard).
+    """
 
     return Keyboard(
         kind=KeyboardKind.REPLY,
         rows=[
-            [Button(text=CREATE_ORDER_BUTTON_TEXT)],
             [Button(text=ADVERTISER_START_BUTTON_TEXT)],
         ],
         resize=True,
