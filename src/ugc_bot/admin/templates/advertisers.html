@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Заказчики{% endblock %}
+{% block content %}
+  <section class="section">
+    <h1>Заказчики</h1>
+  </section>
+
+  <section class="section">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Имя / компания</th>
+          <th>Дата регистрации</th>
+          <th>Заказов создано</th>
+          <th>Заказов завершено</th>
+          <th>Жалоб</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for advertiser in advertisers %}
+          <tr>
+            <td>{{ advertiser.user_id }}</td>
+            <td>{{ advertiser.name }}</td>
+            <td>{{ advertiser.created_at }}</td>
+            <td>{{ advertiser.orders_total }}</td>
+            <td>{{ advertiser.orders_completed }}</td>
+            <td>{{ advertiser.complaints }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if advertisers|length == 0 %}
+      <div class="empty">Заказчики не найдены.</div>
+    {% endif %}
+  </section>
+{% endblock %}

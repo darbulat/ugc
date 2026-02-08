@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Заказы{% endblock %}
+{% block content %}
+  <section class="section">
+    <h1>Заказы</h1>
+    <div class="filters">
+      <div class="periods">
+        {% for p in periods %}
+          <a
+            class="chip {% if p == period %}chip--active{% endif %}"
+            href="/admin/orders?period={{ p }}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+          >
+            {{ p }}
+          </a>
+        {% endfor %}
+      </div>
+      <div class="toggles">
+        {% for key, label in status_labels.items() %}
+          <a
+            class="chip {% if status_filter == key %}chip--active{% endif %}"
+            href="/admin/orders?period={{ period }}&status={{ key }}"
+          >
+            {{ label }}
+          </a>
+        {% endfor %}
+        <a
+          class="chip {% if not status_filter %}chip--active{% endif %}"
+          href="/admin/orders?period={{ period }}"
+        >
+          Все
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Заказчик</th>
+          <th>Статус</th>
+          <th>Подобрано</th>
+          <th>Дата создания</th>
+          <th>Время в статусе (ч)</th>
+          <th>Проблема</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+          <tr>
+            <td><a href="/admin/orders/{{ order.order_id }}">{{ order.order_id }}</a></td>
+            <td>{{ order.advertiser }}</td>
+            <td>{{ status_labels.get(order.status_label, order.status_label) }}</td>
+            <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
+            <td>{{ order.created_at }}</td>
+            <td>{{ order.status_age_hours }}</td>
+            <td>
+              {% if order.has_problem %}
+                <span class="badge badge--alert">Да</span>
+              {% else %}
+                <span class="badge badge--ok">Нет</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if orders|length == 0 %}
+      <div class="empty">Заказы не найдены.</div>
+    {% endif %}
+  </section>
+{% endblock %}

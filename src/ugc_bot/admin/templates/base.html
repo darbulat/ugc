@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{% block title %}Админка{% endblock %}</title>
+    <link
+      rel="stylesheet"
+      href="{{ request.url_for('admin_mvp_static', path='admin.css') }}"
+    />
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="nav__title">UGC Админка</div>
+      <div class="nav__links">
+        <a href="/admin/dashboard">Дашборд</a>
+        <a href="/admin/users/creators">Креаторы</a>
+        <a href="/admin/users/advertisers">Заказчики</a>
+        <a href="/admin/orders">Заказы</a>
+      </div>
+    </nav>
+    <main class="container">{% block content %}{% endblock %}</main>
+  </body>
+</html>

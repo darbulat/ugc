@@ -1,0 +1,204 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f5f6f8;
+  color: #1b1f24;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #111827;
+  color: #f9fafb;
+}
+
+.nav__title {
+  font-weight: 700;
+}
+
+.nav__links a {
+  color: #f9fafb;
+  margin-left: 12px;
+  text-decoration: none;
+}
+
+.container {
+  padding: 20px;
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f2f4;
+}
+
+.metric:last-child {
+  border-bottom: none;
+}
+
+.metric__label {
+  color: #6b7280;
+}
+
+.metric__value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.metric__delta {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric__delta.positive {
+  color: #059669;
+}
+
+.metric__delta.negative {
+  color: #dc2626;
+}
+
+.metric__delta.neutral {
+  color: #6b7280;
+}
+
+.indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.indicator--ok {
+  background: #16a34a;
+}
+
+.indicator--alert {
+  background: #f59e0b;
+}
+
+.periods,
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chip {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #111827;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.chip--active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eef0f2;
+  text-align: left;
+  font-size: 13px;
+}
+
+.table th {
+  background: #f9fafb;
+  font-weight: 700;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: #e5e7eb;
+}
+
+.badge--alert {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge--ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.empty {
+  padding: 12px;
+  color: #6b7280;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f2f4;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.progress {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  background: #2563eb;
+}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Креаторы{% endblock %}
+{% block content %}
+  <section class="section">
+    <h1>Креаторы</h1>
+    <div class="filters">
+      <div class="periods">
+        {% for p in periods %}
+          <a
+            class="chip {% if p == period %}chip--active{% endif %}"
+            href="/admin/users/creators?period={{ p }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}"
+          >
+            {{ p }}
+          </a>
+        {% endfor %}
+      </div>
+      <div class="toggles">
+        <a
+          class="chip {% if only_new %}chip--active{% endif %}"
+          href="/admin/users/creators?period={{ period }}&only_new={{ 'false' if only_new else 'true' }}&with_complaints={{ 'true' if with_complaints else 'false' }}"
+        >
+          Новые
+        </a>
+        <a
+          class="chip {% if with_complaints %}chip--active{% endif %}"
+          href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'false' if with_complaints else 'true' }}"
+        >
+          С жалобами
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Ник / Instagram</th>
+          <th>Дата регистрации</th>
+          <th>Откликов</th>
+          <th>Жалоб</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for creator in creators %}
+          <tr>
+            <td>{{ creator.user_id }}</td>
+            <td>{{ creator.username }} / {{ creator.instagram }}</td>
+            <td>{{ creator.created_at }}</td>
+            <td>{{ creator.responses }}</td>
+            <td>{{ creator.complaints }}</td>
+            <td>{{ creator.status }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if creators|length == 0 %}
+      <div class="empty">Креаторы не найдены.</div>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -3,15 +3,25 @@
 import asyncio
 import logging
 from enum import Enum
-from typing import Any, TypeVar
+from pathlib import Path
+from typing import Any, TypeVar, cast
 from uuid import UUID
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from sqladmin import Admin, ModelView
 from sqlalchemy import text
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
+from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.staticfiles import StaticFiles
+from starlette.templating import Jinja2Templates
 
 from ugc_bot.admin.auth import AdminAuth
+from ugc_bot.admin.dashboard_service import (
+    AdminDashboardService,
+    DelayThresholds,
+    PeriodKey,
+)
 from ugc_bot.application.ports import OrderRepository
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.content_moderation_service import (
@@ -20,7 +30,7 @@ from ugc_bot.application.services.content_moderation_service import (
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.config import load_config
+from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.enums import (
     ComplaintStatus,
@@ -63,6 +73,223 @@ def _get_order_moderation_deps(
 
 
 T = TypeVar("T")
+_DASHBOARD_PERIODS = ("today", "yesterday", "7d", "30d")
+_STATUS_LABELS = {
+    "active": "Активен",
+    "completed": "Завершён",
+    "archive": "Архив",
+    "complaint": "Жалоба",
+}
+_DELAY_REASON_LABELS = {
+    "active_overdue": "Слишком долго активен",
+    "no_responses": "Нет откликов",
+    "low_picked": "Мало подобрано",
+}
+
+
+def _normalize_period(period: str) -> PeriodKey:
+    """Return supported dashboard period."""
+    normalized = period if period in _DASHBOARD_PERIODS else "today"
+    return cast(PeriodKey, normalized)
+
+
+def _build_dashboard_service(
+    config: AppConfig, container: Container
+) -> AdminDashboardService:
+    """Build AdminDashboardService from config and container."""
+    thresholds = DelayThresholds(
+        active_days=config.admin.admin_delay_active_days,
+        no_responses_hours=config.admin.admin_no_responses_hours,
+        low_picked_hours=config.admin.admin_low_picked_hours,
+        archive_days=config.admin.admin_archive_days,
+    )
+    return AdminDashboardService(
+        session_factory=container.session_factory,
+        timezone_name=config.admin.admin_dashboard_timezone,
+        thresholds=thresholds,
+    )
+
+
+def _build_templates(app: FastAPI) -> Jinja2Templates:
+    """Attach static assets and return templates instance."""
+    templates = Jinja2Templates(
+        directory=str(Path(__file__).parent / "templates")
+    )
+    app.mount(
+        "/admin/mvp-static",
+        StaticFiles(directory=str(Path(__file__).parent / "static")),
+        name="admin_mvp_static",
+    )
+    return templates
+
+
+def _register_dashboard_routes(  # noqa: C901
+    app: FastAPI,
+    auth: AdminAuth,
+    dashboard_service: AdminDashboardService,
+    templates: Jinja2Templates,
+) -> None:
+    """Register dashboard and list routes on the admin app."""
+
+    async def _require_admin(request: Request) -> None:
+        """Raise HTTP 401 when admin session is missing."""
+        if not await auth.authenticate(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    @app.get("/admin/dashboard", response_class=HTMLResponse)
+    async def admin_dashboard(
+        request: Request,
+        period: str = "today",
+    ):
+        """Render dashboard page with KPI cards."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        period_key = _normalize_period(period)
+        payload = await dashboard_service.get_dashboard(period_key)
+        return templates.TemplateResponse(
+            "dashboard.html",
+            {
+                "request": request,
+                "payload": payload,
+                "period": period_key,
+                "periods": _DASHBOARD_PERIODS,
+                "status_labels": _STATUS_LABELS,
+                "delay_reason_labels": _DELAY_REASON_LABELS,
+            },
+        )
+
+    @app.get("/admin/users/creators", response_class=HTMLResponse)
+    async def admin_creators(
+        request: Request,
+        period: str = "today",
+        only_new: bool = False,
+        with_complaints: bool = False,
+    ):
+        """Render creator list page."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        period_key = _normalize_period(period)
+        creators = await dashboard_service.list_creators(
+            period=period_key,
+            only_new=only_new,
+            only_with_complaints=with_complaints,
+        )
+        return templates.TemplateResponse(
+            "creators.html",
+            {
+                "request": request,
+                "creators": creators,
+                "period": period_key,
+                "periods": _DASHBOARD_PERIODS,
+                "only_new": only_new,
+                "with_complaints": with_complaints,
+            },
+        )
+
+    @app.get("/admin/users/advertisers", response_class=HTMLResponse)
+    async def admin_advertisers(request: Request):
+        """Render advertiser list page."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        advertisers = await dashboard_service.list_advertisers()
+        return templates.TemplateResponse(
+            "advertisers.html",
+            {"request": request, "advertisers": advertisers},
+        )
+
+    @app.get("/admin/orders", response_class=HTMLResponse)
+    async def admin_orders(
+        request: Request,
+        period: str = "today",
+        status: str | None = None,
+    ):
+        """Render order list page."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        period_key = _normalize_period(period)
+        orders = await dashboard_service.list_orders(
+            period=period_key, status_filter=status
+        )
+        return templates.TemplateResponse(
+            "orders.html",
+            {
+                "request": request,
+                "orders": orders,
+                "period": period_key,
+                "periods": _DASHBOARD_PERIODS,
+                "status_filter": status,
+                "status_labels": _STATUS_LABELS,
+            },
+        )
+
+    @app.get("/admin/orders/{order_id}", response_class=HTMLResponse)
+    async def admin_order_detail(request: Request, order_id: UUID):
+        """Render order detail page."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        order = await dashboard_service.get_order_card(order_id)
+        if order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        return templates.TemplateResponse(
+            "order_detail.html",
+            {
+                "request": request,
+                "order": order,
+                "status_labels": _STATUS_LABELS,
+            },
+        )
+
+    @app.get("/admin/api/dashboard", dependencies=[Depends(_require_admin)])
+    async def dashboard_api(period: str = "today") -> dict:
+        """Return dashboard data as JSON."""
+        period_key = _normalize_period(period)
+        return await dashboard_service.get_dashboard(period_key)
+
+    @app.get(
+        "/admin/api/users/creators", dependencies=[Depends(_require_admin)]
+    )
+    async def creators_api(
+        period: str = "today",
+        only_new: bool = False,
+        with_complaints: bool = False,
+    ) -> dict:
+        """Return creator list as JSON."""
+        period_key = _normalize_period(period)
+        creators = await dashboard_service.list_creators(
+            period=period_key,
+            only_new=only_new,
+            only_with_complaints=with_complaints,
+        )
+        return {"items": creators}
+
+    @app.get(
+        "/admin/api/users/advertisers", dependencies=[Depends(_require_admin)]
+    )
+    async def advertisers_api() -> dict:
+        """Return advertiser list as JSON."""
+        advertisers = await dashboard_service.list_advertisers()
+        return {"items": advertisers}
+
+    @app.get("/admin/api/orders", dependencies=[Depends(_require_admin)])
+    async def orders_api(
+        period: str = "today", status: str | None = None
+    ) -> dict:
+        """Return order list as JSON."""
+        period_key = _normalize_period(period)
+        orders = await dashboard_service.list_orders(
+            period=period_key, status_filter=status
+        )
+        return {"items": orders}
+
+    @app.get(
+        "/admin/api/orders/{order_id}", dependencies=[Depends(_require_admin)]
+    )
+    async def order_api(order_id: UUID) -> dict:
+        """Return order card as JSON."""
+        order = await dashboard_service.get_order_card(order_id)
+        if order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        return order
 
 
 async def _get_obj_by_pk(
@@ -521,7 +748,7 @@ class EnumAwareAdmin(Admin):
         return RedirectResponse(url=url, status_code=302)
 
 
-def create_admin_app() -> FastAPI:
+def create_admin_app() -> FastAPI:  # noqa: C901
     """Create a FastAPI app with SQLAdmin."""
 
     config = load_config()
@@ -539,6 +766,7 @@ def create_admin_app() -> FastAPI:
     container = Container(config)
     engine = container.get_admin_engine()
     app = FastAPI(title=config.admin.admin_site_name)
+    app.add_middleware(SessionMiddleware, secret_key=config.admin.admin_secret)
 
     @app.get("/health")
     async def health() -> dict[str, bool | str]:
@@ -557,6 +785,9 @@ def create_admin_app() -> FastAPI:
         username=config.admin.admin_username,
         password=config.admin.admin_password,
     )
+    dashboard_service = _build_dashboard_service(config, container)
+    templates = _build_templates(app)
+    _register_dashboard_routes(app, auth, dashboard_service, templates)
     admin = EnumAwareAdmin(
         app, engine, authentication_backend=auth, base_url="/admin"
     )
@@ -576,6 +807,7 @@ def create_admin_app() -> FastAPI:
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)
     admin.add_view(ContactPricingAdmin)
+
     return app
 
 

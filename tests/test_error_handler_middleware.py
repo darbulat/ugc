@@ -1,11 +1,17 @@
 """Tests for error handling middleware."""
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Chat, Message, PreCheckoutQuery, User
 
-from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeCallback,
+    FakeMessage,
+    FakeMessengerClient,
+    FakeUser,
+)
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     BloggerRegistrationError,
@@ -17,6 +23,9 @@ from ugc_bot.application.errors import (
     UserNotFoundError,
 )
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
+)
 from ugc_bot.metrics.collector import MetricsCollector
 
 
@@ -330,3 +339,205 @@ async def test_middleware_get_user_id_from_callback() -> None:
     callback.answer.assert_called_once()
     call_args = callback.answer.call_args
     assert "Заказ не найден" in str(call_args)
+
+
+def _make_aiogram_message(chat_id: int = 123, user_id: int = 123) -> Message:
+    """Create minimal aiogram Message for tests."""
+    user = User(id=user_id, is_bot=False, first_name="Test")
+    chat = Chat(id=chat_id, type="private")
+    return Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=chat,
+        from_user=user,
+    )
+
+
+def _make_aiogram_callback(
+    callback_id: str = "cb1", user_id: int = 456
+) -> CallbackQuery:
+    """Create minimal aiogram CallbackQuery for tests."""
+    user = User(id=user_id, is_bot=False, first_name="Test")
+    chat = Chat(id=user_id, type="private")
+    msg = Message(
+        message_id=1,
+        date=datetime.now(),
+        chat=chat,
+        from_user=user,
+    )
+    return CallbackQuery(
+        id=callback_id,
+        from_user=user,
+        chat_instance="x",
+        message=msg,
+    )
+
+
+def _make_pre_checkout_query(
+    query_id: str = "q1", user_id: int = 999
+) -> PreCheckoutQuery:
+    """Create minimal aiogram PreCheckoutQuery for tests."""
+    user = User(id=user_id, is_bot=False, first_name="Test")
+    return PreCheckoutQuery(
+        id=query_id,
+        from_user=user,
+        currency="RUB",
+        total_amount=10000,
+        invoice_payload="payload",
+    )
+
+
+@pytest.mark.asyncio
+async def test_middleware_get_user_id_from_pre_checkout() -> None:
+    """_get_user_id extracts id from PreCheckoutQuery with from_user."""
+
+    query = _make_pre_checkout_query(user_id=999)
+
+    class FakePaymentProvider:
+        """Stub that records reject_pre_checkout calls."""
+
+        def __init__(self) -> None:
+            self.rejected: list[tuple[str, str]] = []
+
+        async def reject_pre_checkout(
+            self, *, query_id: str, error_message: str
+        ) -> None:
+            self.rejected.append((query_id, error_message))
+
+    provider = FakePaymentProvider()
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+    data = {
+        "messenger_client": FakeMessengerClient(),
+        "event_adapter": TelegramEventAdapter(),
+        "payment_provider": provider,
+    }
+
+    async def handler(event, d):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, query, data)
+
+    assert len(provider.rejected) == 1
+    assert provider.rejected[0][0] == "q1"
+    assert "Заказ не найден" in provider.rejected[0][1]
+
+
+@pytest.mark.asyncio
+async def test_middleware_send_error_via_messenger_client_message() -> None:
+    """Error sent via messenger_client.send_text for Message events."""
+
+    msg = _make_aiogram_message(chat_id=123, user_id=123)
+
+    messenger = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    data = {
+        "messenger_client": messenger,
+        "event_adapter": adapter,
+        "payment_provider": None,
+    }
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+
+    async def handler(event, d):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, msg, data)
+
+    assert len(messenger.sent_text) == 1
+    assert "Заказ не найден" in messenger.sent_text[0]["text"]
+    assert messenger.sent_text[0]["chat_id"] == "123"
+
+
+@pytest.mark.asyncio
+async def test_middleware_send_error_via_messenger_client_callback() -> None:
+    """Error sent via messenger_client.answer_callback for CallbackQuery."""
+
+    callback = _make_aiogram_callback(callback_id="cb-x", user_id=456)
+
+    messenger = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    data = {
+        "messenger_client": messenger,
+        "event_adapter": adapter,
+        "payment_provider": None,
+    }
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+
+    async def handler(event, d):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, callback, data)
+
+    assert len(messenger.answered_callbacks) == 1
+    assert "Заказ не найден" in messenger.answered_callbacks[0]["text"]
+    assert messenger.answered_callbacks[0]["callback_id"] == "cb-x"
+
+
+@pytest.mark.asyncio
+async def test_middleware_messenger_fallback_to_event_answer() -> None:
+    """When messenger_client raises, fall back to event.answer."""
+
+    # Mock that passes isinstance(Message) and has adapter-compatible attrs
+    msg = MagicMock(spec=Message)
+    msg.from_user = MagicMock()
+    msg.from_user.id = 123
+    msg.chat = MagicMock()
+    msg.chat.id = 123
+    msg.photo = None
+    msg.successful_payment = None
+    msg.text = None
+    msg.message_id = 1
+    msg.__class__ = Message  # type: ignore[assignment]
+
+    answer_mock = AsyncMock()
+    msg.answer = answer_mock
+
+    async def failing_send_text(**kwargs: object) -> None:
+        raise RuntimeError("Send failed")
+
+    messenger = MagicMock()
+    messenger.send_text = failing_send_text
+
+    adapter = TelegramEventAdapter()
+    data = {
+        "messenger_client": messenger,
+        "event_adapter": adapter,
+        "payment_provider": None,
+    }
+
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+
+    async def handler(event, d):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, msg, data)
+
+    answer_mock.assert_called_once()
+    call_args = answer_mock.call_args
+    assert "Заказ не найден" in str(call_args)
+
+
+@pytest.mark.asyncio
+async def test_middleware_event_answer_typeerror_fallback() -> None:
+    """When answer(msg, show_alert=False) raises TypeError, use answer(msg)."""
+
+    class EventWithOneArgAnswer:
+        """Event whose answer() only accepts one argument."""
+
+        def __init__(self) -> None:
+            self.answers: list[str] = []
+
+        async def answer(self, text: str) -> None:
+            self.answers.append(text)
+
+    event = EventWithOneArgAnswer()
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+
+    async def handler(ev, data):
+        raise OrderCreationError("Order not found.")
+
+    await middleware(handler, event, {})
+
+    assert len(event.answers) == 1
+    assert "Заказ не найден" in event.answers[0]

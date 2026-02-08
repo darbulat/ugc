@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Дашборд{% endblock %}
+{% block content %}
+  <section class="section">
+    <h1>Дашборд</h1>
+    <div class="periods">
+      {% for p in periods %}
+        <a
+          class="chip {% if p == period %}chip--active{% endif %}"
+          href="/admin/dashboard?period={{ p }}"
+        >
+          {{ p }}
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="section grid">
+    <div class="card">
+      <h2>Регистрации</h2>
+      <div class="metric">
+        <div class="metric__label">Креаторы</div>
+        <div class="metric__value">{{ payload.registrations.creators.count }}</div>
+        {% set delta = payload.registrations.creators.change_pct %}
+        {% if delta is not none %}
+          <div class="metric__delta {{ 'positive' if delta >= 0 else 'negative' }}">
+            {{ "%+.1f%%"|format(delta) }}
+          </div>
+        {% else %}
+          <div class="metric__delta neutral">нет</div>
+        {% endif %}
+      </div>
+      <div class="metric">
+        <div class="metric__label">Заказчики</div>
+        <div class="metric__value">{{ payload.registrations.advertisers.count }}</div>
+        {% set delta = payload.registrations.advertisers.change_pct %}
+        {% if delta is not none %}
+          <div class="metric__delta {{ 'positive' if delta >= 0 else 'negative' }}">
+            {{ "%+.1f%%"|format(delta) }}
+          </div>
+        {% else %}
+          <div class="metric__delta neutral">нет</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Заказы</h2>
+      <div class="metric">
+        <div class="metric__label">Активные</div>
+        <div class="metric__value">{{ payload.orders.active }}</div>
+      </div>
+      <div class="metric">
+        <div class="metric__label">Завершённые</div>
+        <div class="metric__value">{{ payload.orders.completed }}</div>
+      </div>
+      <div class="metric">
+        <div class="metric__label">В архиве</div>
+        <div class="metric__value">{{ payload.orders.archived }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Проблемы</h2>
+      <div class="metric">
+        <div class="metric__label">Открытые жалобы</div>
+        <div class="metric__value">{{ payload.problems.open_complaints }}</div>
+        <div class="indicator {{ 'indicator--ok' if payload.problems.open_complaints == 0 else 'indicator--alert' }}"></div>
+      </div>
+      <div class="metric">
+        <div class="metric__label">Задержки</div>
+        <div class="metric__value">{{ payload.problems.delays }}</div>
+        <div class="indicator {{ 'indicator--ok' if payload.problems.delays == 0 else 'indicator--alert' }}"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Требует внимания ({{ payload.problems.delays }})</h2>
+    {% if payload.delayed_orders %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Заказ</th>
+            <th>Заказчик</th>
+            <th>Подобрано</th>
+            <th>Возраст, часы</th>
+            <th>Причины</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in payload.delayed_orders %}
+            <tr>
+              <td>
+                <a href="/admin/orders/{{ order.order_id }}">{{ order.order_id }}</a>
+              </td>
+              <td>{{ order.advertiser }}</td>
+              <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
+              <td>{{ order.age_hours }}</td>
+              <td>
+                {% for reason in order.reasons %}
+                  <span class="badge">
+                    {{ delay_reason_labels.get(reason, reason) }}
+                  </span>
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Задержек нет.</div>
+    {% endif %}
+  </section>
+{% endblock %}

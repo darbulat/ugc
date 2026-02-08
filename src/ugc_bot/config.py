@@ -30,6 +30,11 @@ _FLAT_KEYS = {
         "ADMIN_SECRET",
         "ADMIN_SITE_NAME",
         "ADMIN_BASE_URL",
+        "ADMIN_DASHBOARD_TIMEZONE",
+        "ADMIN_DELAY_ACTIVE_DAYS",
+        "ADMIN_NO_RESPONSES_HOURS",
+        "ADMIN_LOW_PICKED_HOURS",
+        "ADMIN_ARCHIVE_DAYS",
     ],
     "kafka": [
         "KAFKA_ENABLED",
@@ -141,6 +146,19 @@ class AdminConfig(BaseSettings):
     admin_base_url: str = Field(
         default="", alias="ADMIN_BASE_URL"
     )  # e.g. https://admin.example.com/admin
+    admin_dashboard_timezone: str = Field(
+        default="Europe/Moscow", alias="ADMIN_DASHBOARD_TIMEZONE"
+    )
+    admin_delay_active_days: int = Field(
+        default=7, alias="ADMIN_DELAY_ACTIVE_DAYS"
+    )
+    admin_no_responses_hours: int = Field(
+        default=24, alias="ADMIN_NO_RESPONSES_HOURS"
+    )
+    admin_low_picked_hours: int = Field(
+        default=48, alias="ADMIN_LOW_PICKED_HOURS"
+    )
+    admin_archive_days: int = Field(default=7, alias="ADMIN_ARCHIVE_DAYS")
 
 
 class KafkaConfig(BaseSettings):
