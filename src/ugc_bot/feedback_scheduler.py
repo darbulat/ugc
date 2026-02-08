@@ -7,12 +7,13 @@ from typing import Iterable, Optional
 from uuid import UUID
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ugc_bot.application.feedback_utils import (
     needs_feedback_reminder,
     next_reminder_datetime,
 )
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -35,6 +36,9 @@ from ugc_bot.infrastructure.db.session import (
     create_session_factory,
     with_optional_tx,
 )
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -43,36 +47,37 @@ _send_retries = 3
 _send_retry_delay_seconds = 0.5
 
 
-def _feedback_keyboard(kind: str, interaction_id: UUID) -> InlineKeyboardMarkup:
+def _feedback_keyboard(kind: str, interaction_id: UUID) -> Keyboard:
     """Build feedback buttons."""
 
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
             [
-                InlineKeyboardButton(
+                Button(
                     text="✅ Всё прошло нормально",
                     callback_data=f"feedback:{kind}:{interaction_id}:ok",
                 )
             ],
             [
-                InlineKeyboardButton(
+                Button(
                     text="❌ Не договорились",
                     callback_data=f"feedback:{kind}:{interaction_id}:no_deal",
                 )
             ],
             [
-                InlineKeyboardButton(
+                Button(
                     text="⏳ Ещё не связался",
                     callback_data=f"feedback:{kind}:{interaction_id}:postpone",
                 )
             ],
             [
-                InlineKeyboardButton(
+                Button(
                     text="⚠️ Проблема / подозрение на мошенничество",
                     callback_data=f"feedback:{kind}:{interaction_id}:issue",
                 )
             ],
-        ]
+        ],
     )
 
 
@@ -98,7 +103,7 @@ async def _iter_due_interactions(
 
 
 async def _send_feedback_requests(
-    bot: Bot,
+    messenger_client: MessengerClient,
     interaction: Interaction,
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
@@ -155,11 +160,11 @@ async def _send_feedback_requests(
             "Выберите подходящий вариант:"
         )
         await send_with_retry(
-            bot,
-            chat_id=int(advertiser.external_id),
+            messenger_client,
+            chat_id=advertiser.external_id,
             text=text,
             parse_mode="Markdown",
-            reply_markup=_feedback_keyboard("adv", interaction.interaction_id),
+            keyboard=_feedback_keyboard("adv", interaction.interaction_id),
             retries=_send_retries,
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
@@ -190,11 +195,11 @@ async def _send_feedback_requests(
             f"Удалось ли вам связаться с заказчиком {order_link_part}"
         )
         await send_with_retry(
-            bot,
-            chat_id=int(blogger.external_id),
+            messenger_client,
+            chat_id=blogger.external_id,
             text=text,
             parse_mode="Markdown",
-            reply_markup=_feedback_keyboard("blog", interaction.interaction_id),
+            keyboard=_feedback_keyboard("blog", interaction.interaction_id),
             retries=_send_retries,
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
@@ -225,7 +230,7 @@ async def _send_feedback_requests(
 
 
 async def run_once(
-    bot: Bot,
+    messenger_client: MessengerClient,
     interaction_repo,
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
@@ -254,7 +259,7 @@ async def run_once(
                     interaction.order_id, session=session
                 )
             await _send_feedback_requests(
-                bot,
+                messenger_client,
                 interaction,
                 interaction_service,
                 user_role_service,
@@ -282,7 +287,7 @@ async def run_once(
 
 
 async def run_loop(
-    bot: Bot,
+    messenger_client: MessengerClient,
     interaction_repo,
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
@@ -306,7 +311,7 @@ async def run_loop(
                 "Feedback loop iteration", extra={"iteration": iterations}
             )
             await run_once(
-                bot,
+                messenger_client,
                 interaction_repo,
                 interaction_service,
                 user_role_service,
@@ -324,9 +329,13 @@ async def run_loop(
             "Feedback scheduler loop stopped",
             extra={"total_iterations": iterations},
         )
-        session = getattr(bot, "session", None)
-        if session is not None:
-            await session.close()
+        close_method = getattr(messenger_client, "close", None)
+        if callable(close_method):
+            await close_method()
+        else:
+            session = getattr(messenger_client, "session", None)
+            if session is not None and hasattr(session, "close"):
+                await session.close()
 
 
 def main() -> None:
@@ -391,19 +400,25 @@ def main() -> None:
     )
 
     bot = Bot(token=config.bot.bot_token)
-    asyncio.run(
-        run_loop(
-            bot,
-            interaction_repo,
-            interaction_service,
-            user_role_service,
-            profile_service,
-            order_repo,
-            config.feedback,
-            interval_seconds=config.feedback.feedback_poll_interval_seconds,
-            transaction_manager=transaction_manager,
+    messenger_client = TelegramMessengerClient(bot)
+    try:
+        asyncio.run(
+            run_loop(
+                messenger_client,
+                interaction_repo,
+                interaction_service,
+                user_role_service,
+                profile_service,
+                order_repo,
+                config.feedback,
+                interval_seconds=config.feedback.feedback_poll_interval_seconds,
+                transaction_manager=transaction_manager,
+            )
         )
-    )
+    finally:
+        session = getattr(bot, "session", None)
+        if session is not None:
+            asyncio.run(session.close())
 
 
 if __name__ == "__main__":  # pragma: no cover

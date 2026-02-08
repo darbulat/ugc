@@ -60,6 +60,7 @@ async def test_contact_sent_immediately(
     order_repo,
     order_response_repo,
     interaction_repo,
+    messenger_client,
 ) -> None:
     """Send contact immediately after each response."""
 
@@ -99,7 +100,7 @@ async def test_contact_sent_immediately(
         )
     )
 
-    bot = FakeMessage()
+    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
@@ -107,17 +108,20 @@ async def test_contact_sent_immediately(
         user_role_service=user_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=bot,
+        messenger_client=messenger_client,
     )
 
     # Check contact sent (TZ: "Новый отклик", Креатор, Профиль креатора)
-    assert any("Новый отклик" in answer for answer in bot.answers)
+    def _text(value):  # type: ignore[no-untyped-def]
+        return value[0] if isinstance(value, tuple) else value
+
+    assert any("Новый отклик" in _text(a) for a in bot.answers)
     assert any(
-        "blogger" in answer or "Креатор" in answer for answer in bot.answers
+        "blogger" in _text(a) or "Креатор" in _text(a) for a in bot.answers
     )
     assert any(
-        "Профиль креатора" in answer or "instagram" in answer
-        for answer in bot.answers
+        "Профиль креатора" in _text(a) or "instagram" in _text(a)
+        for a in bot.answers
     )
 
     # Check interaction was created
@@ -132,7 +136,7 @@ async def test_contact_sent_immediately(
 
 
 @pytest.mark.asyncio
-async def test_offer_skip_handler() -> None:
+async def test_offer_skip_handler(messenger_client, event_adapter) -> None:
     """Blogger 'Пропустить' on offer: no response recorded, keyboard removed."""
 
     order_id = UUID("00000000-0000-0000-0000-000000000748")
@@ -143,7 +147,11 @@ async def test_offer_skip_handler() -> None:
         user=FakeUser(1),
         message=message,
     )
-    await handle_offer_skip(callback)
+    await handle_offer_skip(
+        callback,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
     assert callback.answers
     assert (
         "пропущено" in callback.answers[0].lower()
@@ -192,6 +200,8 @@ async def test_offer_response_handler_success(
     order_repo,
     order_response_repo,
     interaction_repo,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Blogger can respond to offer."""
 
@@ -239,6 +249,8 @@ async def test_offer_response_handler_success(
         profile_service,
         response_service,
         interaction_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
     assert callback.answers
     responses = await order_response_repo.list_by_order(order.order_id)
@@ -907,7 +919,9 @@ async def test_offer_response_handler_exception(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_contact_order_not_found(fake_tm: object) -> None:
+async def test_send_contact_order_not_found(
+    fake_tm: object, messenger_client
+) -> None:
     """Handle missing user or profile gracefully."""
 
     user_repo = InMemoryUserRepository()
@@ -931,7 +945,7 @@ async def test_send_contact_order_not_found(fake_tm: object) -> None:
         completed_at=None,
     )
 
-    bot = FakeMessage()
+    bot = FakeMessage(user=FakeUser(1))
     await _send_contact_immediately(
         order=order,
         blogger_id=UUID("00000000-0000-0000-0000-000000001000"),
@@ -939,14 +953,16 @@ async def test_send_contact_order_not_found(fake_tm: object) -> None:
         user_role_service=user_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=bot,
+        messenger_client=messenger_client,
     )
 
     assert not bot.answers
 
 
 @pytest.mark.asyncio
-async def test_send_contact_order_not_active(fake_tm: object) -> None:
+async def test_send_contact_order_not_active(
+    fake_tm: object, messenger_client
+) -> None:
     """Skip sending contacts when advertiser is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -984,7 +1000,7 @@ async def test_send_contact_order_not_active(fake_tm: object) -> None:
         completed_at=None,
     )
 
-    bot = FakeMessage()
+    bot = FakeMessage(user=FakeUser(1))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
@@ -992,7 +1008,7 @@ async def test_send_contact_order_not_active(fake_tm: object) -> None:
         user_role_service=user_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=bot,
+        messenger_client=messenger_client,
     )
 
     assert not bot.answers
@@ -1000,7 +1016,7 @@ async def test_send_contact_order_not_active(fake_tm: object) -> None:
 
 @pytest.mark.asyncio
 async def test_maybe_send_contacts_missing_user_or_profile(
-    fake_tm: object,
+    fake_tm: object, messenger_client
 ) -> None:
     """Skip sending contacts when user or profile is missing."""
 
@@ -1036,7 +1052,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(
         completed_at=None,
     )
 
-    bot = FakeMessage()
+    bot = FakeMessage(user=FakeUser(1))
     await _send_contact_immediately(
         order=order,
         blogger_id=UUID("00000000-0000-0000-0000-000000000999"),
@@ -1044,7 +1060,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(
         user_role_service=user_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=bot,
+        messenger_client=messenger_client,
     )
 
     # Contact should not be sent when user/profile is missing
@@ -1052,7 +1068,9 @@ async def test_maybe_send_contacts_missing_user_or_profile(
 
 
 @pytest.mark.asyncio
-async def test_offer_skip_edit_reply_markup_exception() -> None:
+async def test_offer_skip_edit_reply_markup_exception(
+    messenger_client, event_adapter
+) -> None:
     """handle_offer_skip handles exception when edit_reply_markup fails."""
 
     class MessageWithFailingEdit:
@@ -1061,13 +1079,20 @@ async def test_offer_skip_edit_reply_markup_exception() -> None:
         async def edit_reply_markup(self, reply_markup=None, **kwargs):
             raise RuntimeError("edit failed")
 
+        chat = type("Chat", (), {"id": 1})()
+        message_id = 1
+
     message = MessageWithFailingEdit()
     callback = FakeCallback(
         data="offer_skip:00000000-0000-0000-0000-000000000750",
         user=FakeUser(1),
         message=message,
     )
-    await handle_offer_skip(callback)
+    await handle_offer_skip(
+        callback,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
     assert callback.answers
     assert (
         "пропущено" in callback.answers[0].lower()
@@ -1154,6 +1179,8 @@ async def test_offer_response_sends_product_link_and_what_next(
     order_repo,
     order_response_repo,
     interaction_repo,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Response succeeds: product_link and WHAT_NEXT sent."""
 
@@ -1190,12 +1217,7 @@ async def test_offer_response_sends_product_link_and_what_next(
         product_link="https://product.example.com",
     )
 
-    from tests.helpers.fakes import FakeBot
-
-    bot = FakeBot()
-    message = FakeMessage()
-    message.bot = bot
-    message.chat = type("Chat", (), {"id": 123})()
+    message = FakeMessage(user=FakeUser(123))
     callback = FakeCallback(
         data=f"offer:{order.order_id}", user=FakeUser(22), message=message
     )
@@ -1206,6 +1228,8 @@ async def test_offer_response_sends_product_link_and_what_next(
         profile_service,
         response_service,
         interaction_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert callback.answers
@@ -1224,6 +1248,7 @@ async def test_send_contact_ugc_plus_placement_format(
     order_repo,
     order_response_repo,
     interaction_repo,
+    messenger_client,
 ) -> None:
     """_send_contact_immediately shows UGC+размещение for ugc_plus_placement."""
 
@@ -1264,7 +1289,7 @@ async def test_send_contact_ugc_plus_placement_format(
         )
     )
 
-    bot = FakeMessage()
+    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
@@ -1272,10 +1297,13 @@ async def test_send_contact_ugc_plus_placement_format(
         user_role_service=user_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=bot,
+        messenger_client=messenger_client,
     )
 
-    assert any("UGC + размещение" in answer for answer in bot.answers)
+    assert any(
+        "UGC + размещение" in (a[0] if isinstance(a, tuple) else a)
+        for a in bot.answers
+    )
 
 
 @pytest.mark.asyncio
@@ -1286,6 +1314,7 @@ async def test_send_contact_empty_instagram_url(
     order_repo,
     order_response_repo,
     interaction_repo,
+    messenger_client,
 ) -> None:
     """_send_contact when instagram_url empty (no profile button)."""
 
@@ -1325,7 +1354,7 @@ async def test_send_contact_empty_instagram_url(
         )
     )
 
-    bot = FakeMessage()
+    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
@@ -1333,10 +1362,13 @@ async def test_send_contact_empty_instagram_url(
         user_role_service=user_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=bot,
+        messenger_client=messenger_client,
     )
 
-    assert any("Новый отклик" in answer for answer in bot.answers)
+    assert any(
+        "Новый отклик" in (a[0] if isinstance(a, tuple) else a)
+        for a in bot.answers
+    )
 
 
 @pytest.mark.asyncio
@@ -1347,6 +1379,7 @@ async def test_send_contact_instagram_url_without_http(
     order_repo,
     order_response_repo,
     interaction_repo,
+    messenger_client,
 ) -> None:
     """_send_contact adds https:// when instagram_url has no scheme."""
 
@@ -1389,7 +1422,7 @@ async def test_send_contact_instagram_url_without_http(
         )
     )
 
-    bot = FakeMessage()
+    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
@@ -1397,7 +1430,10 @@ async def test_send_contact_instagram_url_without_http(
         user_role_service=user_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=bot,
+        messenger_client=messenger_client,
     )
 
-    assert any("Новый отклик" in answer for answer in bot.answers)
+    assert any(
+        "Новый отклик" in (a[0] if isinstance(a, tuple) else a)
+        for a in bot.answers
+    )

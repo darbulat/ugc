@@ -52,16 +52,16 @@ def test_feedback_keyboard() -> None:
     markup_adv = _feedback_keyboard(
         "adv", UUID("00000000-0000-0000-0000-000000000950")
     )
-    first_adv = markup_adv.inline_keyboard[0][0]
+    first_adv = markup_adv.rows[0][0]
     assert "feedback:adv:" in first_adv.callback_data
     assert first_adv.text == "✅ Всё прошло нормально"
-    postpone_adv = markup_adv.inline_keyboard[2][0]
+    postpone_adv = markup_adv.rows[2][0]
     assert postpone_adv.text == "⏳ Ещё не связался"
 
     markup_blog = _feedback_keyboard(
         "blog", UUID("00000000-0000-0000-0000-000000000950")
     )
-    assert markup_blog.inline_keyboard[0][0].text == "✅ Всё прошло нормально"
+    assert markup_blog.rows[0][0].text == "✅ Всё прошло нормально"
 
 
 @pytest.mark.asyncio

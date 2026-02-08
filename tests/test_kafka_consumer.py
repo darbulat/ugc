@@ -27,6 +27,9 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
+)
 from ugc_bot.kafka_consumer import (
     _parse_order_id,
     _publish_dlq,
@@ -147,9 +150,10 @@ async def test_send_offers_sends_messages() -> None:
             self.photos_sent.append((chat_id, photo, caption))
 
     bot = FakeBot()
+    messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        bot,
+        messenger_client,
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -251,9 +255,10 @@ async def test_send_offers_with_photo_uses_send_photo() -> None:
             self.photos_sent.append((chat_id, photo, caption))
 
     bot = FakeBot()
+    messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        bot,
+        messenger_client,
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -286,9 +291,10 @@ async def test_send_offers_returns_when_order_not_found() -> None:
     order_id = UUID("00000000-0000-0000-0000-000000000999")
     bot = Mock(spec=["send_message"])
     bot.sent = []
+    messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order_id,
-        bot,
+        messenger_client,
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -329,9 +335,10 @@ async def test_send_offers_returns_when_advertiser_not_found() -> None:
     )
     bot = Mock(spec=["send_message"])
     bot.sent = []
+    messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        bot,
+        messenger_client,
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -388,9 +395,10 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
     ):
         bot = Mock(spec=["send_message"])
         bot.sent = []
+        messenger_client = TelegramMessengerClient(bot)
         await _send_offers(
             order.order_id,
-            bot,
+            messenger_client,
             offer_service,
             dlq_producer=None,
             dlq_topic="dlq",
@@ -675,9 +683,10 @@ async def test_send_offers_retries_then_succeeds() -> None:
                 raise RuntimeError("temp")
 
     bot = FlakyBot()
+    messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        bot,
+        messenger_client,
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -769,9 +778,10 @@ async def test_send_offers_sends_to_dlq(
 
     monkeypatch.setattr("ugc_bot.kafka_consumer._publish_dlq", fake_publish)
 
+    messenger_client = TelegramMessengerClient(AlwaysFailBot())
     await _send_offers(
         order.order_id,
-        AlwaysFailBot(),
+        messenger_client,
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",

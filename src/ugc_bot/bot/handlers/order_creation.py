@@ -1,19 +1,20 @@
 """Order creation flow handlers."""
 
 import logging
+from typing import cast
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    KeyboardButton,
-    Message,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
-)
+from aiogram.types import Message
 
 # Application errors are handled by ErrorHandlerMiddleware
+from ugc_bot.application.messenger.dto import Button, Keyboard
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
@@ -37,6 +38,7 @@ from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     handle_draft_choice,
     parse_user_id_from_state,
+    resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
     normalize_url,
@@ -48,6 +50,7 @@ from ugc_bot.bot.validators import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderType
+from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -81,20 +84,20 @@ class OrderCreationStates(StatesGroup):
     geography = State()
 
 
-def _order_type_keyboard() -> list[list[KeyboardButton]]:
+def _order_type_keyboard() -> list[list[Button]]:
     """Keyboard for order type: UGC only or UGC + placement."""
     return [
-        [KeyboardButton(text=ORDER_TYPE_UGC_ONLY)],
-        [KeyboardButton(text=ORDER_TYPE_UGC_PLUS_PLACEMENT)],
+        [Button(text=ORDER_TYPE_UGC_ONLY)],
+        [Button(text=ORDER_TYPE_UGC_PLUS_PLACEMENT)],
     ]
 
 
-def _cooperation_format_keyboard() -> list[list[KeyboardButton]]:
+def _cooperation_format_keyboard() -> list[list[Button]]:
     """Keyboard for cooperation format."""
     return [
-        [KeyboardButton(text=COOP_BARTER)],
-        [KeyboardButton(text=COOP_PAYMENT)],
-        [KeyboardButton(text=COOP_BOTH)],
+        [Button(text=COOP_BARTER)],
+        [Button(text=COOP_PAYMENT)],
+        [Button(text=COOP_BOTH)],
     ]
 
 
@@ -102,20 +105,20 @@ ORDER_PHOTO_ADD = "📷 Добавить фото"
 ORDER_PHOTO_SKIP = "⏭ Пропустить"
 
 
-def _order_photo_keyboard() -> list[list[KeyboardButton]]:
+def _order_photo_keyboard() -> list[list[Button]]:
     """Keyboard for optional order photo: add or skip."""
     return [
-        [KeyboardButton(text=ORDER_PHOTO_ADD)],
-        [KeyboardButton(text=ORDER_PHOTO_SKIP)],
+        [Button(text=ORDER_PHOTO_ADD)],
+        [Button(text=ORDER_PHOTO_SKIP)],
     ]
 
 
-def _bloggers_needed_keyboard() -> list[list[KeyboardButton]]:
+def _bloggers_needed_keyboard() -> list[list[Button]]:
     """Keyboard for bloggers needed: only 3, 5, 10."""
     return [
-        [KeyboardButton(text="3")],
-        [KeyboardButton(text="5")],
-        [KeyboardButton(text="10")],
+        [Button(text="3")],
+        [Button(text="5")],
+        [Button(text="10")],
     ]
 
 
@@ -131,12 +134,12 @@ CONTENT_USAGE_TO_OFFER = {
 }
 
 
-def _content_usage_keyboard() -> list[list[KeyboardButton]]:
+def _content_usage_keyboard() -> list[list[Button]]:
     """Keyboard for content usage."""
     return [
-        [KeyboardButton(text=CONTENT_USAGE_SOCIAL)],
-        [KeyboardButton(text=CONTENT_USAGE_ADS)],
-        [KeyboardButton(text=CONTENT_USAGE_BOTH)],
+        [Button(text=CONTENT_USAGE_SOCIAL)],
+        [Button(text=CONTENT_USAGE_ADS)],
+        [Button(text=CONTENT_USAGE_BOTH)],
     ]
 
 
@@ -152,20 +155,18 @@ DEADLINES_TO_OFFER = {
 }
 
 
-def _deadlines_keyboard() -> list[list[KeyboardButton]]:
+def _deadlines_keyboard() -> list[list[Button]]:
     """Keyboard for deadlines."""
     return [
-        [KeyboardButton(text=DEADLINES_3)],
-        [KeyboardButton(text=DEADLINES_7)],
-        [KeyboardButton(text=DEADLINES_14)],
+        [Button(text=DEADLINES_3)],
+        [Button(text=DEADLINES_7)],
+        [Button(text=DEADLINES_14)],
     ]
 
 
-def _keyboard_for_order_state(
-    state_key: str, data: dict
-) -> ReplyKeyboardMarkup | ReplyKeyboardRemove:
+def _keyboard_for_order_state(state_key: str, data: dict) -> Keyboard:
     """Return reply keyboard for order creation state (draft restore)."""
-    keyboards: dict[str, ReplyKeyboardMarkup | ReplyKeyboardRemove] = {
+    keyboards: dict[str, Keyboard] = {
         "OrderCreationStates:order_type": flow_keyboard(
             keyboard=_order_type_keyboard()
         ),
@@ -207,11 +208,18 @@ async def start_order_creation(
     profile_service: ProfileService,
     order_service: OrderService,
     fsm_draft_service: FsmDraftService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Start order creation flow."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
     user = await get_user_and_ensure_allowed(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
         blocked_msg="Заблокированные не могут создавать заказы.",
@@ -222,24 +230,30 @@ async def start_order_creation(
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
-        await message.answer(
-            "Профиль рекламодателя не заполнен. Команда: /advertiser"
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль рекламодателя не заполнен. Команда: /advertiser",
         )
         return
 
-    await state.update_data(user_id=user.user_id)
+    await state_store.update_data(user_id=user.user_id)
     draft = await fsm_draft_service.get_draft(user.user_id, ORDER_FLOW_TYPE)
     if draft is not None:
-        await message.answer(
-            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=DRAFT_QUESTION_TEXT,
+            keyboard=draft_choice_keyboard(),
         )
-        await state.set_state(OrderCreationStates.choosing_draft_restore)
+        await state_store.set_state(
+            OrderCreationStates.choosing_draft_restore.state
+        )
         return
-    await message.answer(
-        "Что вам нужно?",
-        reply_markup=flow_keyboard(keyboard=_order_type_keyboard()),
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Что вам нужно?",
+        keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
     )
-    await state.set_state(OrderCreationStates.order_type)
+    await state_store.set_state(OrderCreationStates.order_type.state)
 
 
 @router.message(OrderCreationStates.choosing_draft_restore)
@@ -247,15 +261,22 @@ async def order_draft_choice(
     message: Message,
     state: FSMContext,
     fsm_draft_service: FsmDraftService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle Continue or Start over when draft exists."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
     await handle_draft_choice(
-        message,
-        state,
+        incoming,
+        messenger_client,
+        AiogramStateStore(state),
         fsm_draft_service,
         flow_type=ORDER_FLOW_TYPE,
         user_id_key="user_id",
-        first_state=OrderCreationStates.order_type,
+        first_state=cast(str, OrderCreationStates.order_type.state),
         first_prompt="Что вам нужно?",
         first_keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
         session_expired_msg="Сессия истекла. Начните с «Создать заказ».",
@@ -264,273 +285,420 @@ async def order_draft_choice(
 
 
 @router.message(OrderCreationStates.order_type)
-async def handle_order_type(message: Message, state: FSMContext) -> None:
+async def handle_order_type(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store order type and ask for offer text."""
-
-    text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
     if text == ORDER_TYPE_UGC_ONLY:
         order_type = OrderType.UGC_ONLY
     elif text == ORDER_TYPE_UGC_PLUS_PLACEMENT:
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
-        await message.answer(
-            "Выберите один из вариантов на клавиатуре.",
-            reply_markup=flow_keyboard(keyboard=_order_type_keyboard()),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите один из вариантов на клавиатуре.",
+            keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
         )
         return
 
-    await state.update_data(order_type=order_type.value)
-    await message.answer(
-        "Кратко опишите задачу для креаторов.\n"
-        "Что снять и в каком формате. Пример: Видео с распаковкой.",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(order_type=order_type.value)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Кратко опишите задачу для креаторов.\n"
+            "Что снять и в каком формате. Пример: Видео с распаковкой."
+        ),
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(OrderCreationStates.offer_text)
+    await state_store.set_state(OrderCreationStates.offer_text.state)
 
 
 @router.message(OrderCreationStates.offer_text)
-async def handle_offer_text(message: Message, state: FSMContext) -> None:
+async def handle_offer_text(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Handle offer text and ask cooperation format."""
-
-    offer_text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    offer_text = (incoming.text or "").strip()
     err = validate_offer_text(offer_text)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(offer_text=offer_text)
-    await message.answer(
-        "Какой формат сотрудничества вам подходит?",
-        reply_markup=flow_keyboard(
+    await state_store.update_data(offer_text=offer_text)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Какой формат сотрудничества вам подходит?",
+        keyboard=flow_keyboard(
             keyboard=_cooperation_format_keyboard(),
         ),
     )
-    await state.set_state(OrderCreationStates.cooperation_format)
+    await state_store.set_state(OrderCreationStates.cooperation_format.state)
 
 
 @router.message(OrderCreationStates.cooperation_format)
 async def handle_cooperation_format(
-    message: Message, state: FSMContext
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Store format and ask price and/or barter description."""
-
-    text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
     if text not in (COOP_BARTER, COOP_PAYMENT, COOP_BOTH):
-        await message.answer(
-            "Выберите один из вариантов на клавиатуре.",
-            reply_markup=flow_keyboard(
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите один из вариантов на клавиатуре.",
+            keyboard=flow_keyboard(
                 keyboard=_cooperation_format_keyboard(),
             ),
         )
         return
 
-    await state.update_data(cooperation_format=text)
+    await state_store.update_data(cooperation_format=text)
     if text == COOP_PAYMENT:
-        await message.answer(
-            "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
-            reply_markup=flow_keyboard_remove(),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"
+            ),
+            keyboard=flow_keyboard_remove(),
         )
-        await state.set_state(OrderCreationStates.price)
+        await state_store.set_state(OrderCreationStates.price.state)
         return
     if text == COOP_BARTER:
-        await message.answer(
-            "Что вы предлагаете по бартеру?\n"
-            "Продукт бренда (опишите коротко) + доставка",
-            reply_markup=flow_keyboard_remove(),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Что вы предлагаете по бартеру?\n"
+                "Продукт бренда (опишите коротко) + доставка"
+            ),
+            keyboard=flow_keyboard_remove(),
         )
-        await state.set_state(OrderCreationStates.barter_description)
+        await state_store.set_state(
+            OrderCreationStates.barter_description.state
+        )
         return
     # Бартер + оплата
-    await message.answer(
-        "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000",
-        reply_markup=flow_keyboard_remove(),
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=("Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"),
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(OrderCreationStates.price)
+    await state_store.set_state(OrderCreationStates.price.state)
 
 
 @router.message(OrderCreationStates.price)
-async def handle_price(message: Message, state: FSMContext) -> None:
+async def handle_price(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Handle price and optionally ask barter description."""
-
-    raw = (message.text or "").replace(",", ".").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    raw = (incoming.text or "").replace(",", ".").strip()
     try:
         price = float(raw)
     except ValueError:
-        await message.answer("Введите число, например 1500.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id, text="Введите число, например 1500."
+        )
         return
 
     err = validate_price(price, MAX_ORDER_PRICE)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(price=price)
-    data = await state.get_data()
+    await state_store.update_data(price=price)
+    data = await state_store.get_data()
     if data.get("cooperation_format") == COOP_BOTH:
-        await message.answer(
-            "Что вы предлагаете по бартеру?\n"
-            "Продукт бренда (опишите коротко) + доставка",
-            reply_markup=flow_keyboard_remove(),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Что вы предлагаете по бартеру?\n"
+                "Продукт бренда (опишите коротко) + доставка"
+            ),
+            keyboard=flow_keyboard_remove(),
         )
-        await state.set_state(OrderCreationStates.barter_description)
+        await state_store.set_state(
+            OrderCreationStates.barter_description.state
+        )
         return
-    await message.answer(
-        "Сколько креаторов вам нужно?",
-        reply_markup=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Сколько креаторов вам нужно?",
+        keyboard=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
     )
-    await state.set_state(OrderCreationStates.bloggers_needed)
+    await state_store.set_state(OrderCreationStates.bloggers_needed.state)
 
 
 @router.message(OrderCreationStates.barter_description)
 async def handle_barter_description(
-    message: Message, state: FSMContext
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle barter description and ask bloggers needed."""
-
-    barter_description = (message.text or "").strip()
-    coop = (await state.get_data()).get("cooperation_format")
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    barter_description = (incoming.text or "").strip()
+    coop = (await state_store.get_data()).get("cooperation_format")
     required = coop == COOP_BOTH
     err = validate_barter_description(barter_description, required=required)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
-    await state.update_data(barter_description=barter_description or None)
-    await message.answer(
-        "Сколько креаторов вам нужно?",
-        reply_markup=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
+    await state_store.update_data(barter_description=barter_description or None)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Сколько креаторов вам нужно?",
+        keyboard=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
     )
-    await state.set_state(OrderCreationStates.bloggers_needed)
+    await state_store.set_state(OrderCreationStates.bloggers_needed.state)
 
 
 @router.message(OrderCreationStates.bloggers_needed)
-async def handle_bloggers_needed(message: Message, state: FSMContext) -> None:
+async def handle_bloggers_needed(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store bloggers needed (3, 5 or 10) and ask product link."""
-
-    raw = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    raw = (incoming.text or "").strip()
     if raw not in ("3", "5", "10"):
-        await message.answer(
-            "Выберите одно из значений: 3, 5 или 10.",
-            reply_markup=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите одно из значений: 3, 5 или 10.",
+            keyboard=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
         )
         return
 
     bloggers_needed = int(raw)
-    await state.update_data(bloggers_needed=bloggers_needed)
-    await message.answer(
-        "Введите ссылку на продукт (для откликнувшихся креаторов):",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(bloggers_needed=bloggers_needed)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Введите ссылку на продукт (для откликнувшихся креаторов):",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(OrderCreationStates.product_link)
+    await state_store.set_state(OrderCreationStates.product_link.state)
 
 
 @router.message(OrderCreationStates.product_link)
-async def handle_product_link(message: Message, state: FSMContext) -> None:
+async def handle_product_link(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store product link and ask content usage."""
-
-    product_link = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    product_link = (incoming.text or "").strip()
     err = validate_product_link(product_link)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(product_link=normalize_url(product_link))
-    await message.answer(
-        "Прикрепите фото (по желанию).\n"
-        "Фотография поможет креатору быстрее понять заказ и повысит отклик "
-        "на ваше предложение",
-        reply_markup=flow_keyboard(keyboard=_order_photo_keyboard()),
+    await state_store.update_data(product_link=normalize_url(product_link))
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Прикрепите фото (по желанию).\n"
+            "Фотография поможет креатору быстрее понять заказ и повысит отклик "
+            "на ваше предложение"
+        ),
+        keyboard=flow_keyboard(keyboard=_order_photo_keyboard()),
     )
-    await state.set_state(OrderCreationStates.order_photo)
+    await state_store.set_state(OrderCreationStates.order_photo.state)
 
 
 @router.message(OrderCreationStates.order_photo)
-async def handle_order_photo(message: Message, state: FSMContext) -> None:
+async def handle_order_photo(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Handle optional order photo: skip, add, or receive photo."""
-
-    text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
     if text == ORDER_PHOTO_SKIP:
-        await state.update_data(product_photo_file_id=None)
-        await message.answer(
-            "Где вы планируете использовать UGC-видео?",
-            reply_markup=flow_keyboard(
+        await state_store.update_data(product_photo_file_id=None)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Где вы планируете использовать UGC-видео?",
+            keyboard=flow_keyboard(
                 keyboard=_content_usage_keyboard(),
             ),
         )
-        await state.set_state(OrderCreationStates.content_usage)
+        await state_store.set_state(OrderCreationStates.content_usage.state)
         return
     if text == ORDER_PHOTO_ADD:
-        await message.answer(
-            "Отправьте фото продукта:",
-            reply_markup=flow_keyboard(keyboard=_order_photo_keyboard()),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Отправьте фото продукта:",
+            keyboard=flow_keyboard(keyboard=_order_photo_keyboard()),
         )
         return
 
-    if message.photo:
-        file_id = message.photo[-1].file_id
-        await state.update_data(product_photo_file_id=file_id)
-        await message.answer(
-            "Где вы планируете использовать UGC-видео?",
-            reply_markup=flow_keyboard(
+    if incoming.photo_file_ids:
+        file_id = incoming.photo_file_ids[-1]
+        await state_store.update_data(product_photo_file_id=file_id)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Где вы планируете использовать UGC-видео?",
+            keyboard=flow_keyboard(
                 keyboard=_content_usage_keyboard(),
             ),
         )
-        await state.set_state(OrderCreationStates.content_usage)
+        await state_store.set_state(OrderCreationStates.content_usage.state)
         return
 
-    await message.answer(
-        "Выберите «Добавить фото» или «Пропустить» на клавиатуре, "
-        "либо отправьте фото продукта.",
-        reply_markup=flow_keyboard(keyboard=_order_photo_keyboard()),
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Выберите «Добавить фото» или «Пропустить» на клавиатуре, "
+            "либо отправьте фото продукта."
+        ),
+        keyboard=flow_keyboard(keyboard=_order_photo_keyboard()),
     )
 
 
 @router.message(OrderCreationStates.content_usage)
-async def handle_content_usage(message: Message, state: FSMContext) -> None:
+async def handle_content_usage(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store content usage and ask deadlines."""
-
-    text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
     if text not in (
         CONTENT_USAGE_SOCIAL,
         CONTENT_USAGE_ADS,
         CONTENT_USAGE_BOTH,
     ):
-        await message.answer(
-            "Выберите один из вариантов на клавиатуре.",
-            reply_markup=flow_keyboard(keyboard=_content_usage_keyboard()),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите один из вариантов на клавиатуре.",
+            keyboard=flow_keyboard(keyboard=_content_usage_keyboard()),
         )
         return
 
     content_usage_offer = CONTENT_USAGE_TO_OFFER.get(text, text)
-    await state.update_data(content_usage=content_usage_offer)
-    await message.answer(
-        "В какие сроки вам нужен контент? Укажите, через сколько дней после "
-        "согласования вы ожидаете превью.",
-        reply_markup=flow_keyboard(keyboard=_deadlines_keyboard()),
+    await state_store.update_data(content_usage=content_usage_offer)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "В какие сроки вам нужен контент? "
+            "Укажите, через сколько дней после согласования "
+            "вы ожидаете превью."
+        ),
+        keyboard=flow_keyboard(keyboard=_deadlines_keyboard()),
     )
-    await state.set_state(OrderCreationStates.deadlines)
+    await state_store.set_state(OrderCreationStates.deadlines.state)
 
 
 @router.message(OrderCreationStates.deadlines)
-async def handle_deadlines(message: Message, state: FSMContext) -> None:
+async def handle_deadlines(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store deadlines and ask geography."""
-
-    text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
     if text not in (DEADLINES_3, DEADLINES_7, DEADLINES_14):
-        await message.answer(
-            "Выберите один из вариантов на клавиатуре.",
-            reply_markup=flow_keyboard(keyboard=_deadlines_keyboard()),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите один из вариантов на клавиатуре.",
+            keyboard=flow_keyboard(keyboard=_deadlines_keyboard()),
         )
         return
 
     deadlines_offer = DEADLINES_TO_OFFER.get(text, text)
-    await state.update_data(deadlines=deadlines_offer)
-    await message.answer(
-        "В каких городах или регионах может находиться креатор? Можно указать "
-        "от 1 до 10 городов, регионы или написать «РФ». "
-        "(Нужно для бартерных заказов и доставки продукта.)",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(deadlines=deadlines_offer)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "В каких городах или регионах может находиться креатор? "
+            "Можно указать от 1 до 10 городов, "
+            "регионы или написать «РФ». "
+            "Нужно для бартерных заказов и доставки продукта."
+        ),
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(OrderCreationStates.geography)
+    await state_store.set_state(OrderCreationStates.geography.state)
 
 
 @router.message(OrderCreationStates.geography)
@@ -540,22 +708,33 @@ async def handle_geography(
     order_service: OrderService,
     config: AppConfig,
     contact_pricing_service: ContactPricingService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle geography and create order."""
-
-    geography = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    geography = (incoming.text or "").strip()
     err = validate_geography(geography)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    data = await state.get_data()
+    data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
-        await message.answer(
-            "Сессия истекла. Начните заново с «Создать заказ»."
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Начните заново с «Создать заказ».",
         )
-        await state.clear()
+        await state_store.clear()
         return
 
     order_type_val = data.get("order_type", OrderType.UGC_ONLY.value)
@@ -591,16 +770,22 @@ async def handle_geography(
         product_photo_file_id=product_photo_file_id,
     )
 
-    await state.clear()
-    await message.answer(ORDER_CREATED_MESSAGE, parse_mode="Markdown")
+    await state_store.clear()
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=ORDER_CREATED_MESSAGE,
+        parse_mode="Markdown",
+    )
     contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
-        await message.answer(
-            "Стоимость доступа не настроена. Свяжитесь с поддержкой."
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Стоимость доступа не настроена. Свяжитесь с поддержкой.",
         )
         return
     await send_order_invoice(
-        message=message,
+        incoming_message=incoming,
+        messenger_client=messenger_client,
         order_id=order.order_id,
         offer_text=order.offer_text,
         price_value=contact_price,

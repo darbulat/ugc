@@ -35,49 +35,72 @@ from ugc_bot.domain.enums import MessengerType
 
 
 @pytest.mark.asyncio
-async def test_start_command_sends_role_keyboard(user_repo) -> None:
+async def test_start_command_sends_role_keyboard(
+    user_repo, messenger_client, event_adapter
+) -> None:
     """Ensure /start sends role keyboard and start text."""
 
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text=None, user=FakeUser(1, "test", "Alice"))
-    await start_command(message, user_role_service=service)
+    await start_command(
+        message,
+        user_role_service=service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
 
     assert message.answers
     assert "UMC — сервис для UGC" in message.answers[0][0]
     assert "Бизнесу — подбор креаторов" in message.answers[0][0]
     keyboard = message.answers[0][1]
     assert keyboard is not None
-    assert keyboard.keyboard == _role_keyboard().keyboard
+    assert keyboard.rows == _role_keyboard().rows
 
 
 @pytest.mark.asyncio
-async def test_start_command_without_from_user_returns_early(user_repo) -> None:
+async def test_start_command_without_from_user_returns_early(
+    user_repo, messenger_client, event_adapter
+) -> None:
     """Start with no from_user does not send message."""
 
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text=None, user=None)
-    await start_command(message, user_role_service=service)
+    await start_command(
+        message,
+        user_role_service=service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
     assert not message.answers
 
 
 @pytest.mark.asyncio
-async def test_change_role_button_shows_start_screen() -> None:
+async def test_change_role_button_shows_start_screen(
+    messenger_client, event_adapter
+) -> None:
     """Change role button shows start text and role keyboard."""
 
     message = FakeMessage(
         text=CHANGE_ROLE_BUTTON_TEXT, user=FakeUser(1, "u", "User")
     )
     state = FakeFSMContext(state=None)
-    await change_role_button(message, state=state)
+    await change_role_button(
+        message,
+        state=state,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
 
     assert message.answers
     assert START_TEXT in message.answers[0][0]
     assert message.answers[0][1] is not None
-    assert message.answers[0][1].keyboard == _role_keyboard().keyboard
+    assert message.answers[0][1].rows == _role_keyboard().rows
 
 
 @pytest.mark.asyncio
-async def test_choose_role_creator_persists(user_repo, blogger_repo) -> None:
+async def test_choose_role_creator_persists(
+    user_repo, blogger_repo, messenger_client, event_adapter
+) -> None:
     """Creator role persisted; no profile shows create profile."""
 
     from tests.helpers.services import build_profile_service
@@ -93,6 +116,8 @@ async def test_choose_role_creator_persists(user_repo, blogger_repo) -> None:
         user_role_service=service,
         profile_service=profile_service,
         state=state,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     user = await service.get_user("42", MessengerType.TELEGRAM)
@@ -100,12 +125,12 @@ async def test_choose_role_creator_persists(user_repo, blogger_repo) -> None:
     assert user.username == ""
     assert message.answers
     assert CREATOR_INTRO_NOT_REGISTERED in message.answers[-1][0]
-    assert message.answers[-1][1].keyboard == creator_start_keyboard().keyboard
+    assert message.answers[-1][1].rows == creator_start_keyboard().rows
 
 
 @pytest.mark.asyncio
 async def test_choose_role_creator_with_filled_profile_shows_menu(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, messenger_client, event_adapter
 ) -> None:
     """Creator with filled blogger profile: show Edit/My profile/My orders."""
 
@@ -134,19 +159,18 @@ async def test_choose_role_creator_with_filled_profile_shows_menu(
         user_role_service=service,
         profile_service=profile_service,
         state=state,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert message.answers
     assert message.answers[-1][0] == CREATOR_CHOOSE_ACTION_TEXT
-    assert (
-        message.answers[-1][1].keyboard
-        == creator_filled_profile_keyboard().keyboard
-    )
+    assert message.answers[-1][1].rows == creator_filled_profile_keyboard().rows
 
 
 @pytest.mark.asyncio
 async def test_choose_role_advertiser_with_filled_profile_shows_menu(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, messenger_client, event_adapter
 ) -> None:
     """Advertiser with filled profile: show 'Выберите действие:' and menu."""
 
@@ -177,13 +201,13 @@ async def test_choose_role_advertiser_with_filled_profile_shows_menu(
         user_role_service=service,
         profile_service=profile_service,
         state=state,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert message.answers
     assert message.answers[-1][0] == "Выберите действие:"
-    assert (
-        message.answers[-1][1].keyboard == advertiser_menu_keyboard().keyboard
-    )
+    assert message.answers[-1][1].rows == advertiser_menu_keyboard().rows
 
 
 @pytest.mark.asyncio
@@ -355,7 +379,7 @@ async def test_support_button_saves_draft_when_in_flow(
 
 @pytest.mark.asyncio
 async def test_support_button_shows_advertiser_menu_when_has_profile(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, messenger_client, event_adapter
 ) -> None:
     """Support button shows advertiser menu when user has advertiser profile."""
 
@@ -385,8 +409,10 @@ async def test_support_button_shows_advertiser_menu_when_has_profile(
         profile_service=profile_service,
         state=state,
         fsm_draft_service=draft_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert message.answers
     assert "Служба поддержки" in message.answers[0][0]
-    assert message.answers[0][1].keyboard == advertiser_menu_keyboard().keyboard
+    assert message.answers[0][1].rows == advertiser_menu_keyboard().rows

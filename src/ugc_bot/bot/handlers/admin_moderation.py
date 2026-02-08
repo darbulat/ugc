@@ -7,6 +7,11 @@ from uuid import UUID
 from aiogram import Router
 from aiogram.types import CallbackQuery
 
+from ugc_bot.application.messenger.dto import IncomingCallback
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
 from ugc_bot.application.ports import OrderRepository
 from ugc_bot.application.services.admin_notification_service import (
     MOD_ACTIVATE_CALLBACK_PREFIX,
@@ -16,8 +21,9 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
 from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import MessengerType, OrderStatus
+from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.session import TransactionManagerProtocol
 
 logger = logging.getLogger(__name__)
@@ -38,30 +44,37 @@ def _parse_order_id_from_callback(data: str) -> UUID | None:
         return None
 
 
-async def _remove_moderation_keyboard(callback: CallbackQuery) -> None:
+async def _remove_moderation_keyboard(
+    callback: IncomingCallback,
+    messenger_client: MessengerClient | None = None,
+) -> None:
     """Remove inline keyboard from moderation message after activation."""
-    if not callback.message or not hasattr(
-        callback.message, "edit_reply_markup"
-    ):
+    if messenger_client is None:
+        return
+    if not callback.message_id:
         return
     with contextlib.suppress(Exception):
-        await callback.message.edit_reply_markup(reply_markup=None)
+        await messenger_client.edit_reply_markup(
+            chat_id=callback.chat_id,
+            message_id=callback.message_id,
+            keyboard=None,
+        )
 
 
 async def _validate_and_get_order(
-    callback: CallbackQuery,
+    callback: IncomingCallback,
     user_role_service: UserRoleService,
     order_repo: OrderRepository,
     session: object,
 ) -> tuple[str | None, Order | None]:
     """Validate user/admin and load order. Returns (error_msg, order)."""
-    external_id = str(callback.from_user.id) if callback.from_user else ""
+    external_id = callback.user.external_id
     if not external_id:
         return ("Ошибка: пользователь не определён.", None)
 
     user = await user_role_service.get_user(
         external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=callback.user.messenger_type,
     )
     if user is None:
         return ("Пользователь не найден.", None)
@@ -91,14 +104,22 @@ async def handle_moderate_activate(
     order_repo: OrderRepository,
     outbox_publisher: OutboxPublisher,
     transaction_manager: TransactionManagerProtocol,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle admin click on 'Activate' button for order moderation."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
     async with transaction_manager.transaction() as session:
         err, order = await _validate_and_get_order(
-            callback, user_role_service, order_repo, session
+            incoming, user_role_service, order_repo, session
         )
         if err:
-            await callback.answer(err)
+            await messenger_client.answer_callback(
+                callback_id=incoming.callback_id, text=err
+            )
             return
         assert order is not None
 
@@ -106,13 +127,20 @@ async def handle_moderate_activate(
             msg = _format_banned_content_message(
                 order, content_moderation_service
             )
-            await callback.answer(msg, show_alert=True)
+            await messenger_client.answer_callback(
+                callback_id=incoming.callback_id,
+                text=msg,
+                show_alert=True,
+            )
             return
 
         await outbox_publisher.publish_order_activation(order, session=session)
 
-    await callback.answer("Заказ активирован, уходит блогерам.")
-    await _remove_moderation_keyboard(callback)
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text="Заказ активирован, уходит блогерам.",
+    )
+    await _remove_moderation_keyboard(incoming, messenger_client)
 
 
 def _order_has_banned_content(

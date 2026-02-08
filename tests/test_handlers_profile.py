@@ -276,12 +276,13 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    assert keyboard.keyboard is not None
+    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    assert rows is not None
     # blogger_profile_view_keyboard: Edit profile, Confirm Instagram, My profile
-    assert len(keyboard.keyboard) == 3
-    assert keyboard.keyboard[0][0].text == "Редактировать профиль"
-    assert keyboard.keyboard[1][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
-    assert keyboard.keyboard[2][0].text == MY_PROFILE_BUTTON_TEXT
+    assert len(rows) == 3
+    assert rows[0][0].text == "Редактировать профиль"
+    assert rows[1][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
+    assert rows[2][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 @pytest.mark.asyncio
@@ -305,11 +306,12 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    assert keyboard.keyboard is not None
+    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    assert rows is not None
     # blogger_profile_view_keyboard when confirmed: Edit profile, My profile
-    assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[0][0].text == "Редактировать профиль"
-    assert keyboard.keyboard[1][0].text == MY_PROFILE_BUTTON_TEXT
+    assert len(rows) == 2
+    assert rows[0][0].text == "Редактировать профиль"
+    assert rows[1][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 @pytest.mark.asyncio
@@ -330,11 +332,10 @@ async def test_show_profile_advertiser_keyboard(user_repo) -> None:
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    assert keyboard.keyboard is not None
+    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    assert rows is not None
     assert any(
-        btn.text == MY_PROFILE_BUTTON_TEXT
-        for row in keyboard.keyboard
-        for btn in row
+        btn.text == MY_PROFILE_BUTTON_TEXT for row in rows for btn in row
     )
 
 

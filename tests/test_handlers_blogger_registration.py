@@ -462,11 +462,12 @@ async def test_handle_agreements_shows_verification_button(
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    assert keyboard.keyboard is not None
+    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    assert rows is not None
     # After registration: Confirm Instagram + My profile
-    assert len(keyboard.keyboard) == 2
-    assert keyboard.keyboard[0][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
-    assert keyboard.keyboard[1][0].text == MY_PROFILE_BUTTON_TEXT
+    assert len(rows) == 2
+    assert rows[0][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
+    assert rows[1][0].text == MY_PROFILE_BUTTON_TEXT
 
 
 @pytest.mark.asyncio

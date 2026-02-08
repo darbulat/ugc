@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from tests.helpers.fakes import FakeMessengerClient
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
     notify_admins_about_new_order,
@@ -22,35 +23,6 @@ from ugc_bot.domain.enums import (
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
-
-
-class FakeBot:
-    """Bot stub that captures send_message and send_photo calls."""
-
-    def __init__(self) -> None:
-        self.messages: list[tuple[int, str, object]] = []
-        self.photos: list[tuple[int, str, str | None, object]] = []
-
-    async def send_message(
-        self,
-        chat_id: int,
-        text: str,
-        parse_mode: str | None = None,
-        reply_markup: object = None,
-        **kwargs: object,
-    ) -> None:
-        self.messages.append((chat_id, text, reply_markup))
-
-    async def send_photo(
-        self,
-        chat_id: int,
-        photo: str,
-        caption: str | None = None,
-        parse_mode: str | None = None,
-        reply_markup: object = None,
-        **kwargs: object,
-    ) -> None:
-        self.photos.append((chat_id, photo, caption, reply_markup))
 
 
 def _make_complaint(
@@ -78,13 +50,15 @@ async def test_notify_admins_no_admins_returns_early() -> None:
     """When no Telegram admins exist, return without sending."""
     user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     complaint = _make_complaint()
 
-    await notify_admins_about_complaint(complaint, bot, user_service)
+    await notify_admins_about_complaint(
+        complaint, messenger_client, user_service
+    )
 
-    assert len(bot.messages) == 0
-    assert len(bot.photos) == 0
+    assert len(messenger_client.sent_text) == 0
+    assert len(messenger_client.sent_photos) == 0
 
 
 @pytest.mark.asyncio
@@ -103,7 +77,7 @@ async def test_notify_admins_sends_message_when_no_photos() -> None:
     )
     await user_repo.save(admin)
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     reporter = User(
         user_id=uuid4(),
         external_id="111",
@@ -130,11 +104,14 @@ async def test_notify_admins_sends_message_when_no_photos() -> None:
         reason="Spam",
     )
 
-    await notify_admins_about_complaint(complaint, bot, user_service)
+    await notify_admins_about_complaint(
+        complaint, messenger_client, user_service
+    )
 
-    assert len(bot.messages) == 1
-    chat_id, text, _ = bot.messages[0]
-    assert chat_id == 123456789
+    assert len(messenger_client.sent_text) == 1
+    first = messenger_client.sent_text[0]
+    text = first["text"]
+    assert first["chat_id"] == "123456789"
     assert "Новая жалоба" in text
     assert "reporter" in text
     assert "reported" in text
@@ -157,23 +134,29 @@ async def test_notify_admins_sends_photos_when_file_ids_present() -> None:
     )
     await user_repo.save(admin)
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     complaint = _make_complaint(
         reason="Bad content",
         file_ids=["photo1", "photo2", "photo3"],
     )
 
-    await notify_admins_about_complaint(complaint, bot, user_service)
+    await notify_admins_about_complaint(
+        complaint, messenger_client, user_service
+    )
 
-    assert len(bot.photos) == 3
-    chat_id, photo1, caption, _ = bot.photos[0]
-    assert chat_id == 999
+    assert len(messenger_client.sent_photos) == 3
+    first = messenger_client.sent_photos[0]
+    assert first["chat_id"] == "999"
+    photo1 = first["file_id"]
+    caption = first["caption"]
     assert photo1 == "photo1"
     assert caption is not None
     assert "Новая жалоба" in caption
     assert "3 шт" in caption
-    assert bot.photos[1] == (999, "photo2", None, None)
-    assert bot.photos[2] == (999, "photo3", None, None)
+    assert messenger_client.sent_photos[1]["file_id"] == "photo2"
+    assert messenger_client.sent_photos[1]["caption"] is None
+    assert messenger_client.sent_photos[2]["file_id"] == "photo3"
+    assert messenger_client.sent_photos[2]["caption"] is None
 
 
 @pytest.mark.asyncio
@@ -192,7 +175,7 @@ async def test_notify_admins_uses_id_when_user_not_found() -> None:
     )
     await user_repo.save(admin)
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     reporter_id = uuid4()
     reported_id = uuid4()
     complaint = _make_complaint(
@@ -201,10 +184,12 @@ async def test_notify_admins_uses_id_when_user_not_found() -> None:
         reason="Issue",
     )
 
-    await notify_admins_about_complaint(complaint, bot, user_service)
+    await notify_admins_about_complaint(
+        complaint, messenger_client, user_service
+    )
 
-    assert len(bot.messages) == 1
-    _, text, _ = bot.messages[0]
+    assert len(messenger_client.sent_text) == 1
+    text = messenger_client.sent_text[0]["text"]
     assert str(reporter_id) in text
     assert str(reported_id) in text
 
@@ -287,16 +272,16 @@ async def test_notify_admins_about_new_order_no_admins() -> None:
     """When no admins, return without sending."""
     user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     content_moderation = ContentModerationService()
     order = _make_order()
 
     await notify_admins_about_new_order(
-        order, bot, user_service, content_moderation
+        order, messenger_client, user_service, content_moderation
     )
 
-    assert len(bot.messages) == 0
-    assert len(bot.photos) == 0
+    assert len(messenger_client.sent_text) == 0
+    assert len(messenger_client.sent_photos) == 0
 
 
 @pytest.mark.asyncio
@@ -325,17 +310,18 @@ async def test_notify_admins_about_new_order_sends_message() -> None:
     )
     await user_repo.save(advertiser)
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     content_moderation = ContentModerationService()
     order = _make_order(advertiser_id=advertiser.user_id)
 
     await notify_admins_about_new_order(
-        order, bot, user_service, content_moderation
+        order, messenger_client, user_service, content_moderation
     )
 
-    assert len(bot.messages) == 1
-    chat_id, text, _ = bot.messages[0]
-    assert chat_id == 12345
+    assert len(messenger_client.sent_text) == 1
+    first = messenger_client.sent_text[0]
+    text = first["text"]
+    assert first["chat_id"] == "12345"
     assert "Новый заказ на модерацию" in text
     assert "advertiser" in text
     assert "Test offer" in text
@@ -344,8 +330,6 @@ async def test_notify_admins_about_new_order_sends_message() -> None:
 @pytest.mark.asyncio
 async def test_notify_admins_about_new_order_includes_admin_link() -> None:
     """When admin_base_url set, message has admin link and Activate button."""
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
@@ -369,31 +353,32 @@ async def test_notify_admins_about_new_order_includes_admin_link() -> None:
     )
     await user_repo.save(advertiser)
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     content_moderation = ContentModerationService()
     order = _make_order(advertiser_id=advertiser.user_id)
 
     await notify_admins_about_new_order(
         order,
-        bot,
+        messenger_client,
         user_service,
         content_moderation,
         admin_base_url="https://admin.example.com",
     )
 
-    assert len(bot.messages) == 1
-    _, text, reply_markup = bot.messages[0]
+    assert len(messenger_client.sent_text) == 1
+    first = messenger_client.sent_text[0]
+    text = first["text"]
+    reply_markup = first["keyboard"]
     assert "Новый заказ на модерацию" in text
-    assert isinstance(reply_markup, InlineKeyboardMarkup)
-    assert len(reply_markup.inline_keyboard) >= 1
-    admin_btn = reply_markup.inline_keyboard[0][0]
-    assert isinstance(admin_btn, InlineKeyboardButton)
+    rows = reply_markup.rows if reply_markup else []
+    assert len(rows) >= 1
+    admin_btn = rows[0][0]
     assert admin_btn.text == "Открыть в админке"
     assert (
         admin_btn.url
         == f"https://admin.example.com/order-model/edit/{order.order_id}"
     )
-    activate_row = reply_markup.inline_keyboard[-1]
+    activate_row = rows[-1]
     assert len(activate_row) == 1
     activate_btn = activate_row[0]
     assert activate_btn.text == "Активировать"
@@ -426,7 +411,7 @@ async def test_notify_admins_about_new_order_includes_all_fields() -> None:
     )
     await user_repo.save(advertiser)
     user_service = UserRoleService(user_repo=user_repo)
-    bot = FakeBot()
+    messenger_client = FakeMessengerClient()
     content_moderation = ContentModerationService()
     order = _make_order(
         advertiser_id=advertiser.user_id,
@@ -438,11 +423,13 @@ async def test_notify_admins_about_new_order_includes_all_fields() -> None:
     )
 
     await notify_admins_about_new_order(
-        order, bot, user_service, content_moderation
+        order, messenger_client, user_service, content_moderation
     )
 
-    assert len(bot.messages) == 1
-    _, text, reply_markup = bot.messages[0]
+    assert len(messenger_client.sent_text) == 1
+    first = messenger_client.sent_text[0]
+    text = first["text"]
+    reply_markup = first["keyboard"]
     assert "Full offer text without truncation" in text
     assert "Product sample" in text
     assert "Stories and reels" in text
@@ -450,5 +437,6 @@ async def test_notify_admins_about_new_order_includes_all_fields() -> None:
     assert "Russia" in text
     assert "UGC-видео для бренда" in text
     assert reply_markup is not None
-    activate_btn = reply_markup.inline_keyboard[0][0]
+    rows = reply_markup.rows if reply_markup else []
+    activate_btn = rows[0][0]
     assert activate_btn.text == "Активировать"

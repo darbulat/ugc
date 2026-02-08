@@ -1,24 +1,24 @@
 """Shared helpers for bot handlers."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from uuid import UUID
 
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State
-from aiogram.types import (
-    CallbackQuery,
-    Message,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
+from ugc_bot.application.messenger.dto import (
+    IncomingCallback,
+    IncomingMessage,
+    Invoice,
+    Keyboard,
 )
-
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
+from ugc_bot.application.messenger.state import StateStore
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
 from ugc_bot.bot.handlers.keyboards import (
@@ -30,6 +30,337 @@ from ugc_bot.bot.handlers.keyboards import (
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    build_keyboard_markup,
+)
+
+
+def _resolve_user_lookup_from_message(
+    message: IncomingMessage | Any,
+    messenger_client: MessengerClient | Any,
+    user_role_service: Any | None,
+) -> tuple[
+    str,
+    MessengerType,
+    str,
+    Callable[..., Awaitable[None]] | None,
+    MessengerClient | None,
+    Any,
+]:
+    """Normalize user lookup inputs for messages."""
+    if user_role_service is None:
+        user_role_service = messenger_client
+        messenger_client = None
+    if isinstance(message, IncomingMessage):
+        external_id = message.user.external_id
+        messenger_type = message.user.messenger_type
+        chat_id = message.chat_id
+        answer = None
+    else:
+        from_user = getattr(message, "from_user", None)
+        external_id = str(getattr(from_user, "id", ""))
+        messenger_type = MessengerType.TELEGRAM
+        chat_id = external_id
+        answer = getattr(message, "answer", None)
+    return (
+        external_id,
+        messenger_type,
+        chat_id,
+        answer,
+        messenger_client,
+        user_role_service,
+    )
+
+
+def _resolve_user_lookup_from_callback(
+    callback: IncomingCallback | Any,
+    messenger_client: MessengerClient | Any,
+    user_role_service: Any | None,
+) -> tuple[
+    str,
+    MessengerType,
+    str,
+    Callable[..., Awaitable[None]] | None,
+    MessengerClient | None,
+    Any,
+]:
+    """Normalize user lookup inputs for callbacks."""
+    if user_role_service is None:
+        user_role_service = messenger_client
+        messenger_client = None
+    if isinstance(callback, IncomingCallback):
+        external_id = callback.user.external_id
+        messenger_type = callback.user.messenger_type
+        callback_id = callback.callback_id
+        answer = None
+    else:
+        from_user = getattr(callback, "from_user", None)
+        external_id = str(getattr(from_user, "id", ""))
+        messenger_type = MessengerType.TELEGRAM
+        callback_id = ""
+        answer = getattr(callback, "answer", None)
+    return (
+        external_id,
+        messenger_type,
+        callback_id,
+        answer,
+        messenger_client,
+        user_role_service,
+    )
+
+
+async def _send_text_or_answer(
+    messenger_client: MessengerClient | None,
+    *,
+    chat_id: str,
+    text: str,
+    answer: Callable[..., Awaitable[None]] | None,
+    keyboard: Keyboard | None = None,
+) -> None:
+    """Send message via messenger client or fallback answer."""
+    if messenger_client is not None:
+        await messenger_client.send_text(
+            chat_id=chat_id, text=text, keyboard=keyboard
+        )
+    elif answer is not None:
+        try:
+            if keyboard is None:
+                await answer(text)
+            else:
+                await answer(text, keyboard)
+        except TypeError:  # pragma: no cover - depends on test doubles
+            await answer(text)
+
+
+async def _answer_callback_or_fallback(
+    messenger_client: MessengerClient | None,
+    *,
+    callback_id: str,
+    text: str,
+    answer: Callable[[str], Awaitable[None]] | None,
+) -> None:
+    """Answer callback via messenger client or fallback answer."""
+    if messenger_client is not None and callback_id:
+        await messenger_client.answer_callback(
+            callback_id=callback_id, text=text
+        )
+    elif answer is not None:
+        await answer(text)
+
+
+def _normalize_draft_choice_args(
+    messenger_client: MessengerClient | StateStore,
+    state: StateStore | FsmDraftService,
+    fsm_draft_service: FsmDraftService | None,
+) -> tuple[MessengerClient | None, StateStore, FsmDraftService]:
+    """Normalize draft choice arguments for test and production calls."""
+    if fsm_draft_service is None and hasattr(messenger_client, "get_data"):
+        return (
+            None,
+            cast(StateStore, messenger_client),
+            cast(FsmDraftService, state),
+        )
+    if fsm_draft_service is None:
+        raise ValueError("fsm_draft_service is required")
+    return (
+        cast(MessengerClient | None, messenger_client),
+        cast(StateStore, state),
+        fsm_draft_service,
+    )
+
+
+async def _send_draft_text(
+    messenger_client: MessengerClient | None,
+    message: IncomingMessage | Any,
+    *,
+    text: str,
+    keyboard: Keyboard | None = None,
+) -> None:
+    """Send draft-related text via client or message.answer."""
+    if messenger_client is not None:
+        await messenger_client.send_text(
+            chat_id=message.chat_id, text=text, keyboard=keyboard
+        )
+        return
+    answer = getattr(message, "answer", None)
+    if callable(answer):
+        try:
+            if keyboard is None:
+                await answer(text)
+            else:
+                await answer(text, keyboard=keyboard)
+        except TypeError:  # pragma: no cover - depends on test doubles
+            await answer(text)
+
+
+class LegacyMessengerClient:
+    """Fallback messenger client using aiogram-like message/callback."""
+
+    def __init__(self, event: object) -> None:
+        """Initialize with aiogram-like Message or CallbackQuery."""
+        self._event = event
+
+    async def send_text(
+        self,
+        *,
+        chat_id: str,
+        text: str,
+        keyboard: object | None = None,
+        parse_mode: str | None = None,
+        disable_preview: bool | None = None,
+    ) -> None:
+        """Send a text reply using the original event when possible."""
+        _ = disable_preview
+        markup = (
+            build_keyboard_markup(keyboard)
+            if isinstance(keyboard, Keyboard)
+            else keyboard
+        )
+        message = getattr(self._event, "message", None)
+        if message is not None:
+            answer = getattr(message, "answer", None)
+            if callable(answer):
+                await answer(text, reply_markup=markup, parse_mode=parse_mode)
+                return
+        answer = getattr(self._event, "answer", None)
+        if callable(answer):
+            await answer(text, reply_markup=markup, parse_mode=parse_mode)
+            return
+        bot = getattr(self._event, "bot", None)
+        if bot and hasattr(bot, "send_message"):
+            await bot.send_message(
+                chat_id=int(chat_id),
+                text=text,
+                reply_markup=markup,
+                parse_mode=parse_mode,
+            )
+
+    async def send_photo(
+        self,
+        *,
+        chat_id: str,
+        file_id: str,
+        caption: str | None = None,
+        keyboard: object | None = None,
+        parse_mode: str | None = None,
+    ) -> None:
+        """Send a photo reply using the original event when possible."""
+        markup = (
+            build_keyboard_markup(keyboard)
+            if isinstance(keyboard, Keyboard)
+            else keyboard
+        )
+        bot = getattr(self._event, "bot", None)
+        if bot and hasattr(bot, "send_photo"):
+            await bot.send_photo(
+                chat_id=int(chat_id),
+                photo=file_id,
+                caption=caption,
+                reply_markup=markup,
+                parse_mode=parse_mode,
+            )
+
+    async def edit_text(
+        self,
+        *,
+        chat_id: str,
+        message_id: str,
+        text: str,
+        keyboard: object | None = None,
+        parse_mode: str | None = None,
+    ) -> None:
+        """Edit message text using the original event when possible."""
+        _ = chat_id, message_id
+        markup = (
+            build_keyboard_markup(keyboard)
+            if isinstance(keyboard, Keyboard)
+            else keyboard
+        )
+        message = getattr(self._event, "message", None)
+        if message is not None:
+            edit_text = getattr(message, "edit_text", None)
+            if callable(edit_text):
+                await edit_text(
+                    text, reply_markup=markup, parse_mode=parse_mode
+                )
+                return
+        edit_text = getattr(self._event, "edit_text", None)
+        if callable(edit_text):
+            await edit_text(text, reply_markup=markup, parse_mode=parse_mode)
+
+    async def edit_reply_markup(
+        self,
+        *,
+        chat_id: str,
+        message_id: str,
+        keyboard: object | None = None,
+    ) -> None:
+        """Edit message reply markup using the original event when possible."""
+        _ = chat_id, message_id
+        markup = (
+            build_keyboard_markup(keyboard)
+            if isinstance(keyboard, Keyboard)
+            else keyboard
+        )
+        message = getattr(self._event, "message", None)
+        if message is not None:
+            edit_markup = getattr(message, "edit_reply_markup", None)
+            if callable(edit_markup):
+                await edit_markup(reply_markup=markup)
+                return
+        edit_markup = getattr(self._event, "edit_reply_markup", None)
+        if callable(edit_markup):
+            await edit_markup(reply_markup=markup)
+
+    async def answer_callback(
+        self,
+        *,
+        callback_id: str,
+        text: str | None = None,
+        show_alert: bool = False,
+    ) -> None:
+        """Answer callback using the original event when possible."""
+        _ = callback_id
+        answer = getattr(self._event, "answer", None)
+        if callable(answer):
+            await answer(text=text or "", show_alert=show_alert)
+
+    async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
+        """Send invoice using bot if available."""
+        from aiogram.types import LabeledPrice
+
+        bot = getattr(self._event, "bot", None)
+        if bot and hasattr(bot, "send_invoice"):
+            prices = [
+                LabeledPrice(label=item.label, amount=item.amount_minor)
+                for item in invoice.items
+            ]
+            await bot.send_invoice(
+                chat_id=int(chat_id),
+                title=invoice.title,
+                description=invoice.description,
+                payload=invoice.payload,
+                provider_token=invoice.provider_token,
+                currency=invoice.currency,
+                prices=prices,
+            )
+
+
+def resolve_messenger_dependencies(
+    event: object,
+    messenger_client: MessengerClient | None,
+    event_adapter: MessengerEventAdapter | None,
+) -> tuple[MessengerClient, MessengerEventAdapter]:
+    """Resolve messenger dependencies for handler compatibility."""
+    resolved_client = messenger_client or LegacyMessengerClient(event)
+    resolved_adapter = cast(
+        MessengerEventAdapter,
+        event_adapter if event_adapter is not None else TelegramEventAdapter(),
+    )
+    return resolved_client, resolved_adapter
 
 
 @dataclass(slots=True)
@@ -55,8 +386,8 @@ class RateLimiter:
 
 
 async def send_with_retry(
-    bot,
-    chat_id: int,
+    messenger_client: Any,
+    chat_id: str,
     text: str,
     *,
     retries: int,
@@ -69,7 +400,19 @@ async def send_with_retry(
 
     for attempt in range(1, retries + 1):
         try:
-            await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+            if hasattr(messenger_client, "send_text"):
+                await messenger_client.send_text(
+                    chat_id=chat_id, text=text, **kwargs
+                )
+            elif hasattr(messenger_client, "send_message"):
+                payload = dict(kwargs)
+                if "keyboard" in payload and "reply_markup" not in payload:
+                    payload["reply_markup"] = payload.pop("keyboard")
+                await messenger_client.send_message(
+                    chat_id=int(chat_id), text=text, **payload
+                )
+            else:
+                raise AttributeError("Messenger client lacks send methods")
             return True
         except Exception as exc:  # pragma: no cover - depends on network errors
             logger.warning(
@@ -123,52 +466,55 @@ def format_agreements_message(
 
 
 async def handle_role_choice(
-    message: Message,
+    message: IncomingMessage,
+    messenger_client: MessengerClient,
     user_role_service: Any,
-    state: FSMContext,
+    state: StateStore,
     *,
     profile_getter: Callable[[UUID], Awaitable[object | None]],
     choose_action_text: str,
     intro_text: str,
-    menu_keyboard: Callable[[], ReplyKeyboardMarkup],
-    start_keyboard: Callable[[], ReplyKeyboardMarkup],
+    menu_keyboard: Callable[[], Keyboard],
+    start_keyboard: Callable[[], Keyboard],
 ) -> None:
     """Handle role selection: persist role, show menu or intro.
 
     Use for both creator and advertiser role choice handlers.
     """
-    if message.from_user is None:
+    if not message.user.external_id:
         return
     await state.clear()
-    external_id = str(message.from_user.id)
+    external_id = message.user.external_id
     user = await user_role_service.get_user(
         external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=message.user.messenger_type,
     )
     username = user.username if user else ""
 
     await user_role_service.set_user(
         external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=message.user.messenger_type,
         username=username,
         role_chosen=True,
-        telegram_username=message.from_user.username,
+        telegram_username=message.user.username,
     )
 
     user = await user_role_service.get_user(
         external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=message.user.messenger_type,
     )
     profile = await profile_getter(user.user_id) if user else None
     if profile is not None:
-        await message.answer(
-            choose_action_text,
-            reply_markup=menu_keyboard(),
+        await messenger_client.send_text(
+            chat_id=message.chat_id,
+            text=choose_action_text,
+            keyboard=menu_keyboard(),
         )
     else:
-        await message.answer(
-            intro_text,
-            reply_markup=start_keyboard(),
+        await messenger_client.send_text(
+            chat_id=message.chat_id,
+            text=intro_text,
+            keyboard=start_keyboard(),
         )
 
 
@@ -191,116 +537,188 @@ def parse_user_id_from_state(data: dict, key: str = "user_id") -> UUID | None:
 
 
 async def get_user_and_ensure_allowed(
-    message: Message,
-    user_role_service: Any,
+    message: IncomingMessage | Any,
+    messenger_client: MessengerClient | Any,
+    user_role_service: Any | None = None,
     *,
     user_not_found_msg: str,
     blocked_msg: str,
     pause_msg: str,
 ) -> User | None:
     """Resolve user, check blocked/pause; return None if not allowed."""
-    if message.from_user is None:
+    (
+        external_id,
+        messenger_type,
+        chat_id,
+        answer,
+        messenger_client,
+        user_role_service,
+    ) = _resolve_user_lookup_from_message(
+        message, messenger_client, user_role_service
+    )
+    if not external_id:
         return None
-    external_id = str(message.from_user.id)
     user = await user_role_service.get_user(
         external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=messenger_type,
     )
     if user is None:
-        await message.answer(user_not_found_msg)
+        await _send_text_or_answer(
+            messenger_client,
+            chat_id=chat_id,
+            text=user_not_found_msg,
+            answer=answer,
+        )
         return None
     if user.status == UserStatus.BLOCKED:
-        await message.answer(blocked_msg)
+        await _send_text_or_answer(
+            messenger_client,
+            chat_id=chat_id,
+            text=blocked_msg,
+            answer=answer,
+        )
         return None
     if user.status == UserStatus.PAUSE:
-        await message.answer(pause_msg)
+        await _send_text_or_answer(
+            messenger_client,
+            chat_id=chat_id,
+            text=pause_msg,
+            answer=answer,
+        )
         return None
     return user
 
 
 async def get_user_and_ensure_allowed_callback(
-    callback: CallbackQuery,
-    user_role_service: Any,
+    callback: IncomingCallback | Any,
+    messenger_client: MessengerClient | Any,
+    user_role_service: Any | None = None,
     *,
     user_not_found_msg: str,
     blocked_msg: str,
     pause_msg: str,
 ) -> User | None:
     """Resolve user from callback; return None if blocked/pause."""
-    if callback.from_user is None:
+    (
+        external_id,
+        messenger_type,
+        callback_id,
+        answer,
+        messenger_client,
+        user_role_service,
+    ) = _resolve_user_lookup_from_callback(
+        callback, messenger_client, user_role_service
+    )
+    if not external_id:
         return None
-    external_id = str(callback.from_user.id)
     user = await user_role_service.get_user(
         external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=messenger_type,
     )
     if user is None:
-        await callback.answer(user_not_found_msg)
+        await _answer_callback_or_fallback(
+            messenger_client,
+            callback_id=callback_id,
+            text=user_not_found_msg,
+            answer=answer,
+        )
         return None
     if user.status == UserStatus.BLOCKED:
-        await callback.answer(blocked_msg)
+        await _answer_callback_or_fallback(
+            messenger_client,
+            callback_id=callback_id,
+            text=blocked_msg,
+            answer=answer,
+        )
         return None
     if user.status == UserStatus.PAUSE:
-        await callback.answer(pause_msg)
+        await _answer_callback_or_fallback(
+            messenger_client,
+            callback_id=callback_id,
+            text=pause_msg,
+            answer=answer,
+        )
         return None
     return user
 
 
 async def handle_draft_choice(
-    message: Message,
-    state: FSMContext,
-    fsm_draft_service: FsmDraftService,
+    message: IncomingMessage | Any,
+    messenger_client: MessengerClient | StateStore,
+    state: StateStore | FsmDraftService,
+    fsm_draft_service: FsmDraftService | None = None,
     *,
     flow_type: str,
     user_id_key: str,
-    first_state: State,
+    first_state: str,
     first_prompt: str,
-    first_keyboard: ReplyKeyboardMarkup | ReplyKeyboardRemove,
+    first_keyboard: Keyboard,
     session_expired_msg: str,
     draft_used_msg: str = "Черновик использован. Начинаем с начала.",
-    keyboard_for_restored_state: Callable[
-        [str, dict], ReplyKeyboardMarkup | ReplyKeyboardRemove
-    ]
-    | None = None,
+    keyboard_for_restored_state: Callable[[str, dict], Keyboard] | None = None,
 ) -> None:
     """Handle draft restore: resume, start over, or ask to choose."""
+    resolved_client, resolved_state, resolved_service = (
+        _normalize_draft_choice_args(messenger_client, state, fsm_draft_service)
+    )
     text = (message.text or "").strip()
-    data = await state.get_data()
+    data = await resolved_state.get_data()
     user_id = parse_user_id_from_state(data, key=user_id_key)
     if user_id is None:
-        await state.clear()
-        await message.answer(session_expired_msg)
+        await resolved_state.clear()
+        await _send_draft_text(
+            resolved_client,
+            message,
+            text=session_expired_msg,
+            keyboard=first_keyboard,
+        )
         return
 
     if text == RESUME_DRAFT_BUTTON_TEXT:
-        draft = await fsm_draft_service.get_draft(user_id, flow_type)
+        draft = await resolved_service.get_draft(user_id, flow_type)
         if draft is None:
-            await message.answer(draft_used_msg)
-            await message.answer(first_prompt, reply_markup=first_keyboard)
-            await state.set_state(first_state)
+            await _send_draft_text(
+                resolved_client, message, text=draft_used_msg
+            )
+            await _send_draft_text(
+                resolved_client,
+                message,
+                text=first_prompt,
+                keyboard=first_keyboard,
+            )
+            await resolved_state.set_state(first_state)
             return
-        await fsm_draft_service.delete_draft(user_id, flow_type)
-        await state.update_data(**draft.data)
-        await state.set_state(draft.state_key)
+        await resolved_service.delete_draft(user_id, flow_type)
+        await resolved_state.update_data(**draft.data)
+        await resolved_state.set_state(draft.state_key)
         prompt = get_draft_prompt(draft.state_key, draft.data)
         reply_markup = (
             keyboard_for_restored_state(draft.state_key, draft.data)
             if keyboard_for_restored_state is not None
             else first_keyboard
         )
-        await message.answer(
-            f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
-            reply_markup=reply_markup,
+        await _send_draft_text(
+            resolved_client,
+            message,
+            text=f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
+            keyboard=reply_markup,
         )
         return
 
     if text == START_OVER_BUTTON_TEXT:
-        await fsm_draft_service.delete_draft(user_id, flow_type)
-        await message.answer(first_prompt, reply_markup=first_keyboard)
-        await state.set_state(first_state)
+        await resolved_service.delete_draft(user_id, flow_type)
+        await _send_draft_text(
+            resolved_client,
+            message,
+            text=first_prompt,
+            keyboard=first_keyboard,
+        )
+        await resolved_state.set_state(first_state)
         return
 
-    await message.answer(
-        "Выберите «Продолжить» или «Начать заново».",
-        reply_markup=draft_choice_keyboard(),
+    await _send_draft_text(
+        resolved_client,
+        message,
+        text="Выберите «Продолжить» или «Начать заново».",
+        keyboard=draft_choice_keyboard(),
     )

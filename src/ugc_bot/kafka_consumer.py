@@ -7,12 +7,13 @@ from typing import Any
 from uuid import UUID
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiokafka import (  # type: ignore[import-untyped]
     AIOKafkaConsumer,
     AIOKafkaProducer,
 )
 
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
@@ -22,6 +23,9 @@ from ugc_bot.domain.entities import Order, User
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
 )
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
@@ -46,7 +50,7 @@ async def _send_offer_to_blogger(
     blogger: User,
     order: Order,
     advertisers_status: str,
-    bot: Bot,
+    messenger_client: MessengerClient,
     offer_dispatch_service: OfferDispatchService,
     retries: int,
     retry_delay_seconds: float,
@@ -64,34 +68,35 @@ async def _send_offer_to_blogger(
             offer_text = offer_dispatch_service.format_offer(
                 order, advertisers_status
             )
-            reply_markup = InlineKeyboardMarkup(
-                inline_keyboard=[
+            reply_markup = Keyboard(
+                kind=KeyboardKind.INLINE,
+                rows=[
                     [
-                        InlineKeyboardButton(
+                        Button(
                             text="Готов снять UGC",
                             callback_data=f"offer:{order.order_id}",
                         )
                     ],
                     [
-                        InlineKeyboardButton(
+                        Button(
                             text="Пропустить",
                             callback_data=f"offer_skip:{order.order_id}",
                         )
                     ],
-                ]
+                ],
             )
             if order.product_photo_file_id:
-                await bot.send_photo(
-                    chat_id=int(blogger.external_id),
-                    photo=order.product_photo_file_id,
+                await messenger_client.send_photo(
+                    chat_id=blogger.external_id,
+                    file_id=order.product_photo_file_id,
                     caption=offer_text,
-                    reply_markup=reply_markup,
+                    keyboard=reply_markup,
                 )
             else:
-                await bot.send_message(
-                    chat_id=int(blogger.external_id),
+                await messenger_client.send_text(
+                    chat_id=blogger.external_id,
                     text=offer_text,
-                    reply_markup=reply_markup,
+                    keyboard=reply_markup,
                 )
             await offer_dispatch_service.record_offer_sent(
                 order.order_id, blogger.user_id
@@ -125,7 +130,7 @@ async def _send_offer_to_blogger(
 
 async def _send_offers(
     order_id: UUID,
-    bot: Bot,
+    messenger_client: MessengerClient,
     offer_dispatch_service: OfferDispatchService,
     dlq_producer: AIOKafkaProducer | None,
     dlq_topic: str,
@@ -160,7 +165,7 @@ async def _send_offers(
             blogger,
             order,
             advertisers_status,
-            bot,
+            messenger_client,
             offer_dispatch_service,
             retries,
             retry_delay_seconds,
@@ -205,6 +210,7 @@ async def _consume_forever(
     consumer: AIOKafkaConsumer,
     dlq_producer: AIOKafkaProducer,
     bot: Bot,
+    messenger_client: MessengerClient,
     offer_dispatch_service: OfferDispatchService,
     config: AppConfig,
 ) -> None:
@@ -226,7 +232,7 @@ async def _consume_forever(
                 continue
             await _send_offers(
                 order_id,
-                bot,
+                messenger_client,
                 offer_dispatch_service,
                 dlq_producer,
                 config.kafka.kafka_dlq_topic,
@@ -271,10 +277,12 @@ async def run_consumer() -> None:
     )
 
     bot = Bot(token=config.bot.bot_token)
+    messenger_client = TelegramMessengerClient(bot)
     await _consume_forever(
         consumer=consumer,
         dlq_producer=dlq_producer,
         bot=bot,
+        messenger_client=messenger_client,
         offer_dispatch_service=offer_dispatch_service,
         config=config,
     )

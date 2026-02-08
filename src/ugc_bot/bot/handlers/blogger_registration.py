@@ -2,14 +2,20 @@
 
 import logging
 import re
+from typing import cast
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message
+from aiogram.types import Message
 
 # Application errors are handled by ErrorHandlerMiddleware
+from ugc_bot.application.messenger.dto import Button
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -37,6 +43,7 @@ from ugc_bot.bot.handlers.utils import (
     handle_draft_choice,
     handle_role_choice,
     parse_user_id_from_state,
+    resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
     validate_audience_geo,
@@ -47,6 +54,7 @@ from ugc_bot.bot.validators import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
+from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -89,13 +97,19 @@ async def choose_creator_role(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle 'Я креатор': persist role and show menu or registration prompt."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
     await handle_role_choice(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
-        state,
+        AiogramStateStore(state),
         profile_getter=profile_service.get_blogger_profile,
         choose_action_text=CREATOR_CHOOSE_ACTION_TEXT,
         intro_text=CREATOR_INTRO_NOT_REGISTERED,
@@ -109,11 +123,18 @@ async def _start_registration_flow(
     state: FSMContext,
     user_role_service: UserRoleService,
     fsm_draft_service: FsmDraftService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Start blogger registration: check draft, then first step (name)."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
     user = await get_user_and_ensure_allowed(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Начните с /start.",
         blocked_msg="Заблокированные пользователи не могут регистрироваться.",
@@ -122,28 +143,38 @@ async def _start_registration_flow(
     if user is None:
         return
 
-    await state.update_data(user_id=user.user_id, external_id=user.external_id)
+    await state_store.update_data(
+        user_id=user.user_id, external_id=user.external_id
+    )
     draft = await fsm_draft_service.get_draft(user.user_id, BLOGGER_FLOW_TYPE)
     if draft is not None:
-        await message.answer(
-            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=DRAFT_QUESTION_TEXT,
+            keyboard=draft_choice_keyboard(),
         )
-        await state.set_state(BloggerRegistrationStates.choosing_draft_restore)
+        await state_store.set_state(
+            BloggerRegistrationStates.choosing_draft_restore.state
+        )
         return
 
     if user.username and len(user.username.strip()) >= 2:
-        await state.update_data(nickname=user.username)
-        await message.answer(
-            "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
-            reply_markup=flow_keyboard_remove(),
+        await state_store.update_data(nickname=user.username)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Прикрепите ссылку на инстаграмм в формате instagram.com/name"
+            ),
+            keyboard=flow_keyboard_remove(),
         )
-        await state.set_state(BloggerRegistrationStates.instagram)
+        await state_store.set_state(BloggerRegistrationStates.instagram.state)
     else:
-        await message.answer(
-            "Введите ваше имя:",
-            reply_markup=flow_keyboard_remove(),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Введите ваше имя:",
+            keyboard=flow_keyboard_remove(),
         )
-        await state.set_state(BloggerRegistrationStates.name)
+        await state_store.set_state(BloggerRegistrationStates.name.state)
 
 
 @router.message(
@@ -154,11 +185,18 @@ async def start_registration_button(
     state: FSMContext,
     user_role_service: UserRoleService,
     fsm_draft_service: FsmDraftService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Start blogger registration flow via Create profile button."""
 
     await _start_registration_flow(
-        message, state, user_role_service, fsm_draft_service
+        message,
+        state,
+        user_role_service,
+        fsm_draft_service,
+        messenger_client,
+        event_adapter,
     )
 
 
@@ -167,15 +205,22 @@ async def blogger_draft_choice(
     message: Message,
     state: FSMContext,
     fsm_draft_service: FsmDraftService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle Continue or Start over when draft exists."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
     await handle_draft_choice(
-        message,
-        state,
+        incoming,
+        messenger_client,
+        AiogramStateStore(state),
         fsm_draft_service,
         flow_type=BLOGGER_FLOW_TYPE,
         user_id_key="user_id",
-        first_state=BloggerRegistrationStates.name,
+        first_state=cast(str, BloggerRegistrationStates.name.state),
         first_prompt="Введите ваше имя:",
         first_keyboard=flow_keyboard_remove(),
         session_expired_msg="Сессия истекла. Начните с «Создать профиль».",
@@ -183,21 +228,35 @@ async def blogger_draft_choice(
 
 
 @router.message(BloggerRegistrationStates.name)
-async def handle_name(message: Message, state: FSMContext) -> None:
+async def handle_name(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store nickname."""
-
-    nickname = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    nickname = (incoming.text or "").strip()
     err = validate_nickname(nickname)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(nickname=nickname)
-    await message.answer(
-        "Прикрепите ссылку на инстаграмм в формате instagram.com/name",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(nickname=nickname)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Прикрепите ссылку на инстаграмм в формате instagram.com/name",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(BloggerRegistrationStates.instagram)
+    await state_store.set_state(BloggerRegistrationStates.instagram.state)
 
 
 @router.message(BloggerRegistrationStates.instagram)
@@ -205,21 +264,34 @@ async def handle_instagram(
     message: Message,
     state: FSMContext,
     blogger_registration_service: BloggerRegistrationService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Store Instagram URL."""
-
-    instagram_url = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    instagram_url = (incoming.text or "").strip()
     if not instagram_url:
-        await message.answer("Ссылка не может быть пустой. Введите снова:")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Ссылка не может быть пустой. Введите снова:",
+        )
         return
     if "instagram.com/" not in instagram_url.lower():
-        await message.answer(
-            "Неверный формат ссылки. Прикрепите instagram.com/name"
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Неверный формат ссылки. Прикрепите instagram.com/name",
         )
         return
     if not _INSTAGRAM_URL_REGEX.match(instagram_url):
-        await message.answer(
-            "Неверный формат ссылки Instagram. Пример: https://instagram.com/name"
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Неверный формат ссылки Instagram. Пример: https://instagram.com/name"
+            ),
         )
         return
 
@@ -230,73 +302,121 @@ async def handle_instagram(
         )
     )
     if existing_profile is not None:
-        await message.answer(
-            "Этот Instagram аккаунт уже зарегистрирован. "
-            "Пожалуйста, используйте другой аккаунт или обратитесь в поддержку."
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Этот Instagram аккаунт уже зарегистрирован. "
+                "Пожалуйста, используйте другой аккаунт "
+                "или обратитесь в поддержку."
+            ),
         )
         return
 
-    await state.update_data(instagram_url=instagram_url)
-    await message.answer(
-        "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(instagram_url=instagram_url)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(BloggerRegistrationStates.city)
+    await state_store.set_state(BloggerRegistrationStates.city.state)
 
 
 @router.message(BloggerRegistrationStates.city)
-async def handle_city(message: Message, state: FSMContext) -> None:
+async def handle_city(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store creator city."""
-
-    city = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    city = (incoming.text or "").strip()
     err = validate_city(city, required=True)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(city=city)
+    await state_store.update_data(city=city)
     topics_text = (
         "О чём ваш контент?\n"
         "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, "
         "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, "
         "стиль, дети, семья, технологии, гаджеты, лайфстайл, другое"
     )
-    await message.answer(topics_text, reply_markup=flow_keyboard_remove())
-    await state.set_state(BloggerRegistrationStates.topics)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=topics_text,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.topics.state)
 
 
 @router.message(BloggerRegistrationStates.topics)
-async def handle_topics(message: Message, state: FSMContext) -> None:
+async def handle_topics(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store blogger topics."""
-
-    raw = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    raw = (incoming.text or "").strip()
     topics = [
         topic.strip().lower() for topic in raw.split(",") if topic.strip()
     ]
     err = validate_topics(topics)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
-    await state.update_data(topics={"selected": topics})
+    await state_store.update_data(topics={"selected": topics})
 
-    await message.answer(
-        "Кто в основном смотрит ваш контент? По наблюдениям или статистике",
-        reply_markup=flow_keyboard(
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Кто в основном смотрит ваш контент? "
+            "По наблюдениям или статистике"
+        ),
+        keyboard=flow_keyboard(
             keyboard=[
-                [KeyboardButton(text="👩 В основном женщины")],
-                [KeyboardButton(text="👨 В основном мужчины")],
-                [KeyboardButton(text="👥 Примерно поровну")],
+                [Button(text="👩 В основном женщины")],
+                [Button(text="👨 В основном мужчины")],
+                [Button(text="👥 Примерно поровну")],
             ],
         ),
     )
-    await state.set_state(BloggerRegistrationStates.audience_gender)
+    await state_store.set_state(BloggerRegistrationStates.audience_gender.state)
 
 
 @router.message(BloggerRegistrationStates.audience_gender)
-async def handle_gender(message: Message, state: FSMContext) -> None:
+async def handle_gender(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store audience gender."""
-
-    gender_text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    gender_text = (incoming.text or "").strip()
     gender_map = {
         "в основном женщины": AudienceGender.FEMALE,
         "в основном мужчины": AudienceGender.MALE,
@@ -304,25 +424,29 @@ async def handle_gender(message: Message, state: FSMContext) -> None:
     }
     key = gender_text[2:].lower()
     if key not in gender_map:
-        await message.answer(
-            "Выберите: В основном женщины, мужчины или Примерно поровну."
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Выберите: В основном женщины, мужчины или Примерно поровну."
+            ),
         )
         return
 
-    await state.update_data(audience_gender=gender_map[key])
-    await message.answer(
-        "Основной возраст вашей аудитории?",
-        reply_markup=flow_keyboard(
+    await state_store.update_data(audience_gender=gender_map[key])
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Основной возраст вашей аудитории?",
+        keyboard=flow_keyboard(
             keyboard=[
-                [KeyboardButton(text="до 18")],
-                [KeyboardButton(text="18–24")],
-                [KeyboardButton(text="25–34")],
-                [KeyboardButton(text="35–44")],
-                [KeyboardButton(text="45+")],
+                [Button(text="до 18")],
+                [Button(text="18–24")],
+                [Button(text="25–34")],
+                [Button(text="35–44")],
+                [Button(text="45+")],
             ],
         ),
     )
-    await state.set_state(BloggerRegistrationStates.audience_age)
+    await state_store.set_state(BloggerRegistrationStates.audience_age.state)
 
 
 _AGE_BUTTONS: dict[str, tuple[int, int]] = {
@@ -335,103 +459,168 @@ _AGE_BUTTONS: dict[str, tuple[int, int]] = {
 
 
 @router.message(BloggerRegistrationStates.audience_age)
-async def handle_age(message: Message, state: FSMContext) -> None:
+async def handle_age(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store audience age from button choice."""
-
-    raw = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    raw = (incoming.text or "").strip()
     if raw not in _AGE_BUTTONS:
-        await message.answer("Выберите одну из кнопок возраста.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите одну из кнопок возраста.",
+        )
         return
 
     min_age, max_age = _AGE_BUTTONS[raw]
-    await state.update_data(audience_age_min=min_age, audience_age_max=max_age)
-    await message.answer(
-        "Где находится основная аудитория? Укажите до 3 городов через запятую: "
-        "Москва, Казань, Санкт‑Петербург",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(
+        audience_age_min=min_age, audience_age_max=max_age
     )
-    await state.set_state(BloggerRegistrationStates.audience_geo)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Где находится основная аудитория? "
+            "Укажите до 3 городов через запятую: "
+            "Москва, Казань, Санкт‑Петербург"
+        ),
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.audience_geo.state)
 
 
 @router.message(BloggerRegistrationStates.audience_geo)
-async def handle_geo(message: Message, state: FSMContext) -> None:
+async def handle_geo(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store audience geography (up to 3 cities)."""
-
-    geo = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    geo = (incoming.text or "").strip()
     err = validate_audience_geo(geo)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
     cities = [c.strip() for c in geo.split(",") if c.strip()]
     if len(cities) > 3:
-        await message.answer(
-            "Укажите не более 3 городов через запятую.",
-            reply_markup=flow_keyboard_remove(),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Укажите не более 3 городов через запятую.",
+            keyboard=flow_keyboard_remove(),
         )
         return
 
-    await state.update_data(audience_geo=geo)
-    await message.answer(
-        "Сколько стоит 1 UGC‑видео? Укажите цену в рублях: 500, 1000, 2000",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(audience_geo=geo)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Сколько стоит 1 UGC‑видео? Укажите цену в рублях: 500, 1000, 2000"
+        ),
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(BloggerRegistrationStates.price)
+    await state_store.set_state(BloggerRegistrationStates.price.state)
 
 
 @router.message(BloggerRegistrationStates.price)
-async def handle_price(message: Message, state: FSMContext) -> None:
+async def handle_price(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store price."""
-
-    raw = (message.text or "").replace(",", ".").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    raw = (incoming.text or "").replace(",", ".").strip()
     try:
         price = float(raw)
     except ValueError:
-        await message.answer("Введите число, например 500, 1000, 2000.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Введите число, например 500, 1000, 2000.",
+        )
         return
 
     err = validate_price(price, MAX_ORDER_PRICE)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(price=price)
-    await message.answer(
-        "Иногда вы готовы работать с брендами по бартеру?",
-        reply_markup=flow_keyboard(
+    await state_store.update_data(price=price)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Иногда вы готовы работать с брендами по бартеру?",
+        keyboard=flow_keyboard(
             keyboard=[
-                [KeyboardButton(text="Да")],
-                [KeyboardButton(text="Нет")],
+                [Button(text="Да")],
+                [Button(text="Нет")],
             ],
         ),
     )
-    await state.set_state(BloggerRegistrationStates.barter)
+    await state_store.set_state(BloggerRegistrationStates.barter.state)
 
 
 @router.message(BloggerRegistrationStates.barter)
-async def handle_barter(message: Message, state: FSMContext) -> None:
+async def handle_barter(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store barter preference."""
-
-    text = (message.text or "").strip().lower()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip().lower()
     if text == "да":
         barter = True
     elif text == "нет":
         barter = False
     else:
-        await message.answer("Выберите Да или Нет.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите Да или Нет.",
+        )
         return
 
-    await state.update_data(barter=barter)
-    await message.answer(
-        "Помимо UGC, как ещё вы готовы работать с брендами?",
-        reply_markup=flow_keyboard(
+    await state_store.update_data(barter=barter)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Помимо UGC, как ещё вы готовы работать с брендами?",
+        keyboard=flow_keyboard(
             keyboard=[
-                [KeyboardButton(text=WORK_FORMAT_ADS_BUTTON_TEXT)],
-                [KeyboardButton(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT)],
+                [Button(text=WORK_FORMAT_ADS_BUTTON_TEXT)],
+                [Button(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT)],
             ],
         ),
     )
-    await state.set_state(BloggerRegistrationStates.work_format)
+    await state_store.set_state(BloggerRegistrationStates.work_format.state)
 
 
 @router.message(BloggerRegistrationStates.work_format)
@@ -439,35 +628,45 @@ async def handle_work_format(
     message: Message,
     state: FSMContext,
     config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Store work format and show agreements step."""
-
-    text = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
     if text == WORK_FORMAT_ADS_BUTTON_TEXT:
         work_format = WorkFormat.ADS_IN_ACCOUNT
     elif text == WORK_FORMAT_UGC_ONLY_BUTTON_TEXT:
         work_format = WorkFormat.UGC_ONLY
     else:
-        await message.answer(
-            "Выберите одну из кнопок: Размещать рекламу у себя в аккаунте "
-            "или Только UGC (без размещения)."
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Выберите одну из кнопок: Размещать рекламу у себя в аккаунте "
+                "или Только UGC (без размещения)."
+            ),
         )
         return
 
-    await state.update_data(work_format=work_format)
+    await state_store.update_data(work_format=work_format)
 
     agreements_text = format_agreements_message(
         config,
         intro="Пожалуйста, ознакомьтесь с документами и подтвердите согласие.",
     )
-    await message.answer(
-        agreements_text,
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=agreements_text,
         parse_mode="HTML",
-        reply_markup=flow_keyboard(
-            keyboard=[[KeyboardButton(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+        keyboard=flow_keyboard(
+            keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
         ),
     )
-    await state.set_state(BloggerRegistrationStates.agreements)
+    await state_store.set_state(BloggerRegistrationStates.agreements.state)
 
 
 @router.message(BloggerRegistrationStates.agreements)
@@ -476,22 +675,32 @@ async def handle_agreements(
     state: FSMContext,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Finalize registration after user confirms agreement via button."""
-
-    if (message.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
-        await message.answer("Нажмите кнопку «Подтвердить согласие».")
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    if (incoming.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Нажмите кнопку «Подтвердить согласие».",
+        )
         return
 
-    data = await state.get_data()
+    data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
-        await message.answer("Сессия истекла. Начните заново.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Начните заново.",
+        )
         return
     try:
-        telegram_username = (
-            message.from_user.username if message.from_user else None
-        )
+        telegram_username = incoming.user.username
         await user_role_service.set_user(
             external_id=data["external_id"],
             messenger_type=MessengerType.TELEGRAM,
@@ -521,14 +730,17 @@ async def handle_agreements(
                     "instagram_url": data.get("instagram_url"),
                 },
             )
-            await message.answer(
-                "Этот Instagram уже зарегистрирован. "
-                "Используйте другой или обратитесь в поддержку."
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=(
+                    "Этот Instagram уже зарегистрирован. "
+                    "Используйте другой или обратитесь в поддержку."
+                ),
             )
             return
         raise
 
-    await state.clear()
+    await state_store.clear()
     profile_created_text = (
         "Профиль создан 👍\n\n"
         "Остался последний шаг — подтвердить Instagram‑аккаунт.\n"
@@ -537,9 +749,10 @@ async def handle_agreements(
         "— повысить доверие к вашему профилю\n"
         "— быстрее получать заказы"
     )
-    await message.answer(
-        profile_created_text,
-        reply_markup=blogger_after_registration_keyboard(),
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=profile_created_text,
+        keyboard=blogger_after_registration_keyboard(),
     )
 
 

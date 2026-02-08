@@ -6,13 +6,17 @@ from typing import Optional
 
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import CallbackQuery, Message
 
+from ugc_bot.application.messenger.dto import (
+    Button,
+    Keyboard,
+    KeyboardKind,
+)
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
@@ -23,6 +27,7 @@ from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
+    resolve_messenger_dependencies,
 )
 from ugc_bot.domain.entities import Order, OrderResponse
 from ugc_bot.domain.enums import OrderStatus, OrderType
@@ -78,11 +83,17 @@ async def show_my_orders(
     profile_service: ProfileService,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Show advertiser and blogger orders in two separate messages."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
     user = await get_user_and_ensure_allowed(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
         blocked_msg="Заблокированные не могут просматривать заказы.",
@@ -95,9 +106,12 @@ async def show_my_orders(
     blogger = await profile_service.get_blogger_profile(user.user_id)
 
     if advertiser is None and blogger is None:
-        await message.answer(
-            "Заполните профиль (/advertiser или /creator), "
-            "чтобы видеть заказы."
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Заполните профиль (/advertiser или /creator), "
+                "чтобы видеть заказы."
+            ),
         )
         return
 
@@ -111,9 +125,14 @@ async def show_my_orders(
             text, keyboard = await _render_page(
                 orders, page=1, offer_response_service=offer_response_service
             )
-            await message.answer(text, reply_markup=keyboard)
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id, text=text, keyboard=keyboard
+            )
         else:
-            await message.answer("У вас пока нет заказов. /create_order")
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text="У вас пока нет заказов. /create_order",
+            )
 
     if blogger is not None:
         responses = await offer_response_service.list_by_blogger(user.user_id)
@@ -128,10 +147,13 @@ async def show_my_orders(
             text, keyboard = _render_blogger_orders_page(
                 order_responses, page=1
             )
-            await message.answer(text, reply_markup=keyboard)
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id, text=text, keyboard=keyboard
+            )
         else:
-            await message.answer(
-                "Вы пока не откликались. Предложения приходят в бот."
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text="Вы пока не откликались. Предложения приходят в бот.",
             )
 
 
@@ -148,11 +170,17 @@ async def paginate_orders(
     profile_service: ProfileService,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle pagination for advertiser and blogger orders."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
     user = await get_user_and_ensure_allowed_callback(
-        callback,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден.",
         blocked_msg="Заблокированные не могут просматривать заказы.",
@@ -161,12 +189,15 @@ async def paginate_orders(
     if user is None:
         return
 
-    data = callback.data or ""
+    data = incoming.data or ""
     if data.startswith(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX):
         raw = data.split(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX, 1)[-1]
         blogger = await profile_service.get_blogger_profile(user.user_id)
         if blogger is None:
-            await callback.answer("Профиль блогера не заполнен.")
+            await messenger_client.answer_callback(
+                callback_id=incoming.callback_id,
+                text="Профиль блогера не заполнен.",
+            )
             return
         try:
             page = int(raw)
@@ -185,7 +216,10 @@ async def paginate_orders(
         raw = data.split(_MY_ORDERS_CALLBACK_PREFIX, 1)[-1]
         advertiser = await profile_service.get_advertiser_profile(user.user_id)
         if advertiser is None:
-            await callback.answer("Профиль рекламодателя не заполнен.")
+            await messenger_client.answer_callback(
+                callback_id=incoming.callback_id,
+                text="Профиль рекламодателя не заполнен.",
+            )
             return
         try:
             page = int(raw)
@@ -200,15 +234,19 @@ async def paginate_orders(
             orders, page=page, offer_response_service=offer_response_service
         )
 
-    message = callback.message
-    if message and hasattr(message, "edit_text"):
-        await message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
+    if incoming.message_id:
+        await messenger_client.edit_text(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            text=text,
+            keyboard=keyboard,
+        )
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
 
 async def _render_page(
     orders, page: int, offer_response_service: OfferResponseService
-) -> tuple[str, InlineKeyboardMarkup]:
+) -> tuple[str, Keyboard]:
     """Render paginated orders list."""
 
     total_pages = max(1, ceil(len(orders) / _PAGE_SIZE))
@@ -218,7 +256,7 @@ async def _render_page(
     slice_orders = orders[start:end]
 
     lines = [f"Ваши заказы (страница {page}/{total_pages}):"]
-    buttons_rows: list[list[InlineKeyboardButton]] = []
+    buttons_rows: list[list[Button]] = []
 
     for idx, order in enumerate(slice_orders):
         # Нумерация по дате создания: 1 = первый созданный (самый старый)
@@ -240,17 +278,17 @@ async def _render_page(
         lines.append("\n".join(order_lines))
 
     # Pagination buttons
-    nav_buttons: list[InlineKeyboardButton] = []
+    nav_buttons: list[Button] = []
     if page > 1:
         nav_buttons.append(
-            InlineKeyboardButton(
+            Button(
                 text="⬅️ Назад",
                 callback_data=f"{_MY_ORDERS_CALLBACK_PREFIX}{page - 1}",
             )
         )
     if page < total_pages:
         nav_buttons.append(
-            InlineKeyboardButton(
+            Button(
                 text="Вперед ➡️",
                 callback_data=f"{_MY_ORDERS_CALLBACK_PREFIX}{page + 1}",
             )
@@ -258,14 +296,14 @@ async def _render_page(
     if nav_buttons:
         buttons_rows.append(nav_buttons)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons_rows)
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons_rows)
     return "\n\n".join(lines), keyboard
 
 
 def _render_blogger_orders_page(
     order_responses: list[tuple[Order, OrderResponse]],
     page: int = 1,
-) -> tuple[str, InlineKeyboardMarkup]:
+) -> tuple[str, Keyboard]:
     """Render paginated list of orders the blogger responded to."""
 
     total_pages = max(1, ceil(len(order_responses) / _PAGE_SIZE))
@@ -286,7 +324,7 @@ def _render_blogger_orders_page(
     lines = [
         f"Заказы, на которые вы откликнулись (страница {page}/{total_pages}):"
     ]
-    buttons_rows: list[list[InlineKeyboardButton]] = []
+    buttons_rows: list[list[Button]] = []
 
     for order, _response in slice_pairs:
         creation_number = order_id_to_number.get(order.order_id, 0)
@@ -300,17 +338,17 @@ def _render_blogger_orders_page(
         ]
         lines.append("\n".join(order_lines))
 
-    nav_buttons: list[InlineKeyboardButton] = []
+    nav_buttons: list[Button] = []
     if page > 1:
         nav_buttons.append(
-            InlineKeyboardButton(
+            Button(
                 text="⬅️ Назад",
                 callback_data=f"{_MY_ORDERS_BLOGGER_CALLBACK_PREFIX}{page - 1}",
             )
         )
     if page < total_pages:
         nav_buttons.append(
-            InlineKeyboardButton(
+            Button(
                 text="Вперед ➡️",
                 callback_data=f"{_MY_ORDERS_BLOGGER_CALLBACK_PREFIX}{page + 1}",
             )
@@ -318,5 +356,5 @@ def _render_blogger_orders_page(
     if nav_buttons:
         buttons_rows.append(nav_buttons)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons_rows)
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons_rows)
     return "\n\n".join(lines), keyboard

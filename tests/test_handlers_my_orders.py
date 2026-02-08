@@ -787,6 +787,8 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
     order_repo,
     blogger_repo,
     order_response_repo,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """paginate_orders does not call edit_text when message has no edit_text."""
 
@@ -809,7 +811,13 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    message_without_edit = object()
+
+    class MessageWithoutEdit:
+        def __init__(self) -> None:
+            self.chat = type("Chat", (), {"id": 1})()
+            self.message_id = 1
+
+    message_without_edit = MessageWithoutEdit()
     callback = FakeCallback(
         data="my_orders:1", user=FakeUser(1), message=message_without_edit
     )
@@ -819,6 +827,8 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
         profile_service,
         order_service,
         offer_response_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
     await callback.answer()
     assert callback.answers
@@ -877,6 +887,8 @@ async def test_my_orders_page_one_shows_forward_button(
     order_repo,
     blogger_repo,
     order_response_repo,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Page 1 with multiple pages shows 'Вперед' (covers forward nav)."""
 
@@ -918,15 +930,25 @@ async def test_my_orders_page_one_shows_forward_button(
         profile_service,
         order_service,
         offer_response_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
     assert message.answers
     last = message.answers[-1]
     text = last[0] if isinstance(last, tuple) else last
     assert "страница 1/2" in text
     if isinstance(last, tuple) and last[1] is not None:
-        assert any(
-            b.text == "Вперед ➡️" for row in last[1].inline_keyboard for b in row
-        )
+        keyboard = last[1]
+        if hasattr(keyboard, "inline_keyboard"):
+            assert any(
+                b.text == "Вперед ➡️"
+                for row in keyboard.inline_keyboard
+                for b in row
+            )
+        else:
+            assert any(
+                b.text == "Вперед ➡️" for row in keyboard.rows for b in row
+            )
 
 
 @pytest.mark.asyncio
@@ -937,6 +959,8 @@ async def test_my_orders_pagination(
     order_repo,
     blogger_repo,
     order_response_repo,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Paginate orders list."""
 
@@ -980,6 +1004,8 @@ async def test_my_orders_pagination(
         profile_service,
         order_service,
         offer_response_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert message.answers
@@ -1079,6 +1105,8 @@ async def test_paginate_orders_blogger(
     order_repo,
     blogger_repo,
     order_response_repo,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Paginate blogger's responded orders (my_orders_blogger:page)."""
 
@@ -1137,6 +1165,8 @@ async def test_paginate_orders_blogger(
         profile_service,
         order_service,
         offer_response_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert message.answers

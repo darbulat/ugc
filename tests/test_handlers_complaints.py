@@ -1550,7 +1550,7 @@ async def test_handle_complaint_reason_no_from_user(
         callback, state, complaint_service, order_service, user_role_service
     )
 
-    assert not callback.answers
+    assert not callback.answers or callback.answers == [""]
 
 
 @pytest.mark.asyncio

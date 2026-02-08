@@ -36,6 +36,10 @@ def test_reminder_cutoff_returns_utc_datetime() -> None:
 async def test_run_once_sends_reminder_and_updates_timestamp(fake_tm) -> None:
     """run_once sends reminder to pending user, updates last_role_reminder."""
 
+    from ugc_bot.infrastructure.messenger.telegram.client import (
+        TelegramMessengerClient,
+    )
+
     repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
@@ -53,15 +57,16 @@ async def test_run_once_sends_reminder_and_updates_timestamp(fake_tm) -> None:
     service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
     cutoff = datetime.now(timezone.utc)
     bot = MagicMock()
+    messenger_client = TelegramMessengerClient(bot)
 
     with patch(
         "ugc_bot.role_reminder_scheduler.send_with_retry",
         new_callable=AsyncMock,
     ) as mock_send:
-        await run_once(bot, service, cutoff)
+        await run_once(messenger_client, service, cutoff)
 
         mock_send.assert_called_once()
-        assert mock_send.call_args[1]["chat_id"] == 123
+        assert mock_send.call_args[1]["chat_id"] == "123"
         updated = await service.get_user_by_id(user.user_id)
         assert updated is not None
         assert updated.last_role_reminder_at is not None
@@ -70,6 +75,10 @@ async def test_run_once_sends_reminder_and_updates_timestamp(fake_tm) -> None:
 @pytest.mark.asyncio
 async def test_run_once_skips_non_telegram_messenger(fake_tm) -> None:
     """run_once only processes telegram users (external_id is digit)."""
+
+    from ugc_bot.infrastructure.messenger.telegram.client import (
+        TelegramMessengerClient,
+    )
 
     repo = InMemoryUserRepository()
     user = User(
@@ -88,12 +97,13 @@ async def test_run_once_skips_non_telegram_messenger(fake_tm) -> None:
     service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
     cutoff = datetime.now(timezone.utc)
     bot = MagicMock()
+    messenger_client = TelegramMessengerClient(bot)
 
     with patch(
         "ugc_bot.role_reminder_scheduler.send_with_retry",
         new_callable=AsyncMock,
     ) as mock_send:
-        await run_once(bot, service, cutoff)
+        await run_once(messenger_client, service, cutoff)
         mock_send.assert_not_called()
 
 
@@ -136,6 +146,10 @@ def test_main_exits_when_no_database_url() -> None:
 async def test_run_once_handles_send_failure(fake_tm) -> None:
     """run_once logs warning and does not update when send_with_retry raises."""
 
+    from ugc_bot.infrastructure.messenger.telegram.client import (
+        TelegramMessengerClient,
+    )
+
     repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
@@ -153,13 +167,14 @@ async def test_run_once_handles_send_failure(fake_tm) -> None:
     service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
     cutoff = datetime.now(timezone.utc)
     bot = MagicMock()
+    messenger_client = TelegramMessengerClient(bot)
 
     with patch(
         "ugc_bot.role_reminder_scheduler.send_with_retry",
         new_callable=AsyncMock,
         side_effect=Exception("send failed"),
     ):
-        await run_once(bot, service, cutoff)
+        await run_once(messenger_client, service, cutoff)
 
     updated = await service.get_user_by_id(user.user_id)
     assert updated is not None

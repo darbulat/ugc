@@ -8,6 +8,11 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
+
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
@@ -18,8 +23,12 @@ from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     blogger_verification_sent_keyboard,
 )
-from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
+from ugc_bot.bot.handlers.utils import (
+    get_user_and_ensure_allowed,
+    resolve_messenger_dependencies,
+)
 from ugc_bot.config import AppConfig
+from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -56,11 +65,18 @@ async def start_verification(
     profile_service: ProfileService,
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Start Instagram verification: instruction then code."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
     user = await get_user_and_ensure_allowed(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Начните с /start.",
         blocked_msg="Заблокированные не могут подтверждать аккаунт.",
@@ -70,21 +86,25 @@ async def start_verification(
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
-        await message.answer(
-            "Профиль не заполнен. «Создать профиль» или /creator"
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль не заполнен. «Создать профиль» или /creator",
         )
         return
 
     verification = await instagram_verification_service.generate_code(
         user.user_id
     )
-    await state.clear()
+    await state_store.clear()
 
     instruction = _verification_instruction_text(
         config.instagram.admin_instagram_username
     )
-    await message.answer(instruction, parse_mode="HTML")
-    await message.answer(
-        verification.code,
-        reply_markup=blogger_verification_sent_keyboard(),
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id, text=instruction, parse_mode="HTML"
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=verification.code,
+        keyboard=blogger_verification_sent_keyboard(),
     )

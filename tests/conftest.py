@@ -25,6 +25,10 @@ _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
+from tests.helpers.fakes import (  # noqa: E402
+    FakeMessengerClient,
+    clear_fake_registries,
+)
 from tests.helpers.repositories import (  # noqa: E402, F401
     advertiser_repo,
     blogger_repo,
@@ -38,6 +42,9 @@ from tests.helpers.repositories import (  # noqa: E402, F401
     pricing_repo,
     repos,
     user_repo,
+)
+from ugc_bot.infrastructure.messenger.telegram.adapter import (  # noqa: E402
+    TelegramEventAdapter,
 )
 
 
@@ -124,6 +131,24 @@ def _silence_noisy_library_loggers() -> None:
     """
 
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+
+
+@pytest.fixture(autouse=True)
+def _clear_fake_messenger_registries() -> None:
+    """Clear fake message/callback registries between tests."""
+    clear_fake_registries()
+
+
+@pytest.fixture
+def messenger_client() -> FakeMessengerClient:
+    """Fake messenger client for handler tests."""
+    return FakeMessengerClient()
+
+
+@pytest.fixture
+def event_adapter() -> TelegramEventAdapter:
+    """Telegram event adapter for fake aiogram objects."""
+    return TelegramEventAdapter()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

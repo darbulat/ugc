@@ -166,6 +166,9 @@ async def _notify_user_verification_success(
         from aiogram import Bot
 
         from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
+        from ugc_bot.infrastructure.messenger.telegram.client import (
+            TelegramMessengerClient,
+        )
 
         (
             user,
@@ -188,14 +191,15 @@ async def _notify_user_verification_success(
         confirmed = blogger_profile.confirmed if blogger_profile else False
 
         bot = Bot(token=config.bot.bot_token)
+        messenger_client = TelegramMessengerClient(bot)
         try:
-            await bot.send_message(
-                chat_id=int(user.external_id),
+            await messenger_client.send_text(
+                chat_id=user.external_id,
                 text=(
                     "Instagram подтверждён ✅. "
                     "Бренды могут отправлять предложения."
                 ),
-                reply_markup=blogger_menu_keyboard(confirmed=confirmed),
+                keyboard=blogger_menu_keyboard(confirmed=confirmed),
             )
         finally:
             await bot.session.close()

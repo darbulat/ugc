@@ -1,14 +1,20 @@
 """Advertiser registration flow handlers."""
 
 import logging
+from typing import cast
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import Message
 
 # Application errors are handled by ErrorHandlerMiddleware
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -31,6 +37,7 @@ from ugc_bot.bot.handlers.utils import (
     handle_draft_choice,
     handle_role_choice,
     parse_user_id_from_state,
+    resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
     normalize_url,
@@ -42,6 +49,7 @@ from ugc_bot.bot.validators import (
     validate_site_link,
 )
 from ugc_bot.config import AppConfig
+from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -62,13 +70,19 @@ async def choose_advertiser_role(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle 'Мне нужны UGC‑креаторы': persist role, show menu or reg."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
     await handle_role_choice(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
-        state,
+        AiogramStateStore(state),
         profile_getter=profile_service.get_advertiser_profile,
         choose_action_text=ADVERTISER_CHOOSE_ACTION_TEXT,
         intro_text=ADVERTISER_INTRO_TEXT,
@@ -90,13 +104,20 @@ class AdvertiserRegistrationStates(StatesGroup):
     agreements = State()
 
 
-async def _ask_name(message: Message, state: FSMContext) -> None:
+async def _ask_name(
+    message: Message,
+    messenger_client: MessengerClient,
+    state_store: AiogramStateStore,
+    event_adapter: MessengerEventAdapter,
+) -> None:
     """Send name prompt and set state to name."""
-    await message.answer(
-        "Как вас зовут?",
-        reply_markup=flow_keyboard_remove(),
+    incoming = event_adapter.from_message(message)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Как вас зовут?",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(AdvertiserRegistrationStates.name)
+    await state_store.set_state(AdvertiserRegistrationStates.name.state)
 
 
 @router.message(
@@ -108,11 +129,18 @@ async def handle_advertiser_start(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     fsm_draft_service: FsmDraftService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle 'Начать' after advertiser role: menu or start registration."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
     user = await get_user_and_ensure_allowed(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Начните с /start.",
         blocked_msg="Заблокированные пользователи не могут регистрироваться.",
@@ -123,33 +151,45 @@ async def handle_advertiser_start(
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is not None:
-        await message.answer(
-            "Выберите действие:",
-            reply_markup=advertiser_menu_keyboard(),
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите действие:",
+            keyboard=advertiser_menu_keyboard(),
         )
         return
 
-    await state.update_data(user_id=user.user_id)
+    await state_store.update_data(user_id=user.user_id)
     draft = await fsm_draft_service.get_draft(
         user.user_id, ADVERTISER_FLOW_TYPE
     )
     if draft is not None:
-        await message.answer(
-            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=DRAFT_QUESTION_TEXT,
+            keyboard=draft_choice_keyboard(),
         )
-        await state.set_state(
-            AdvertiserRegistrationStates.choosing_draft_restore
+        await state_store.set_state(
+            AdvertiserRegistrationStates.choosing_draft_restore.state
         )
         return
     if user.username and len(user.username.strip()) >= 2:
-        await state.update_data(name=user.username)
-        await message.answer(
-            "Укажите номер телефона для связи по заказу.\nПример: 89001110777",
-            reply_markup=flow_keyboard_remove(),
+        await state_store.update_data(name=user.username)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Укажите номер телефона для связи по заказу.\n"
+                "Пример: 89001110777"
+            ),
+            keyboard=flow_keyboard_remove(),
         )
-        await state.set_state(AdvertiserRegistrationStates.phone)
+        await state_store.set_state(AdvertiserRegistrationStates.phone.state)
     else:
-        await _ask_name(message, state)
+        await _ask_name(
+            message,
+            messenger_client,
+            state_store,
+            event_adapter,
+        )
 
 
 @router.message(AdvertiserRegistrationStates.choosing_draft_restore)
@@ -157,15 +197,22 @@ async def advertiser_draft_choice(
     message: Message,
     state: FSMContext,
     fsm_draft_service: FsmDraftService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle Continue or Start over when draft exists."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
     await handle_draft_choice(
-        message,
-        state,
+        incoming,
+        messenger_client,
+        AiogramStateStore(state),
         fsm_draft_service,
         flow_type=ADVERTISER_FLOW_TYPE,
         user_id_key="user_id",
-        first_state=AdvertiserRegistrationStates.name,
+        first_state=cast(str, AdvertiserRegistrationStates.name.state),
         first_prompt="Как вас зовут?",
         first_keyboard=flow_keyboard_remove(),
         session_expired_msg="Сессия истекла. Начните снова.",
@@ -173,99 +220,174 @@ async def advertiser_draft_choice(
 
 
 @router.message(AdvertiserRegistrationStates.name)
-async def handle_name(message: Message, state: FSMContext) -> None:
+async def handle_name(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store name and ask for phone."""
-
-    name = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    name = (incoming.text or "").strip()
     err = validate_name(name)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(name=name)
-    await message.answer(
-        "Укажите номер телефона для связи по заказу.\nПример: 89001110777",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(name=name)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Укажите номер телефона для связи по заказу.\nПример: 89001110777"
+        ),
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(AdvertiserRegistrationStates.phone)
+    await state_store.set_state(AdvertiserRegistrationStates.phone.state)
 
 
 @router.message(AdvertiserRegistrationStates.phone)
-async def handle_phone(message: Message, state: FSMContext) -> None:
+async def handle_phone(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store phone and ask for city."""
-
-    phone = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    phone = (incoming.text or "").strip()
     err = validate_phone(phone)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(phone=phone)
-    await message.answer(
-        "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(phone=phone)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(AdvertiserRegistrationStates.city)
+    await state_store.set_state(AdvertiserRegistrationStates.city.state)
 
 
 @router.message(AdvertiserRegistrationStates.city)
-async def handle_city(message: Message, state: FSMContext) -> None:
+async def handle_city(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store city and ask for brand."""
-
-    city = (message.text or "").strip() or None
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    city = (incoming.text or "").strip() or None
     err = validate_city(city, required=False)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
-    await state.update_data(city=city)
-    await message.answer(
-        "Название вашего бренда / компании / бизнеса:",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(city=city)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Название вашего бренда / компании / бизнеса:",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(AdvertiserRegistrationStates.brand)
+    await state_store.set_state(AdvertiserRegistrationStates.brand.state)
 
 
 @router.message(AdvertiserRegistrationStates.brand)
-async def handle_brand(message: Message, state: FSMContext) -> None:
+async def handle_brand(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store brand and ask for company activity."""
-
-    brand = (message.text or "").strip()
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    brand = (incoming.text or "").strip()
     err = validate_brand(brand)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
 
-    await state.update_data(brand=brand)
-    await message.answer(
-        "Чем занимается ваша компания?",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(brand=brand)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Чем занимается ваша компания?",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(AdvertiserRegistrationStates.company_activity)
+    await state_store.set_state(
+        AdvertiserRegistrationStates.company_activity.state
+    )
 
 
 @router.message(AdvertiserRegistrationStates.company_activity)
-async def handle_company_activity(message: Message, state: FSMContext) -> None:
+async def handle_company_activity(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Store company activity and ask for site link."""
-
-    company_activity = (message.text or "").strip() or None
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    company_activity = (incoming.text or "").strip() or None
     err = validate_company_activity(company_activity)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
-    await state.update_data(company_activity=company_activity)
-    await message.answer(
-        "Ссылка на сайт, продукт или соцсети бренда:",
-        reply_markup=flow_keyboard_remove(),
+    await state_store.update_data(company_activity=company_activity)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Ссылка на сайт, продукт или соцсети бренда:",
+        keyboard=flow_keyboard_remove(),
     )
-    await state.set_state(AdvertiserRegistrationStates.site_link)
+    await state_store.set_state(AdvertiserRegistrationStates.site_link.state)
 
 
-def _agreements_keyboard() -> ReplyKeyboardMarkup:
+def _agreements_keyboard() -> Keyboard:
     """Keyboard with single 'Confirm agreement' button."""
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
+    return Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+        resize=True,
+        one_time=True,
     )
 
 
@@ -274,25 +396,36 @@ async def handle_site_link(
     message: Message,
     state: FSMContext,
     config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Store site_link and show agreements step."""
-
-    site_link = (message.text or "").strip() or None
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    site_link = (incoming.text or "").strip() or None
     err = validate_site_link(site_link)
     if err is not None:
-        await message.answer(err, reply_markup=flow_keyboard_remove())
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
         return
-    await state.update_data(
+    await state_store.update_data(
         site_link=normalize_url(site_link) if site_link else None
     )
 
     text = format_agreements_message(config)
-    await message.answer(
-        text,
-        reply_markup=_agreements_keyboard(),
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=text,
+        keyboard=_agreements_keyboard(),
         parse_mode="HTML",
     )
-    await state.set_state(AdvertiserRegistrationStates.agreements)
+    await state_store.set_state(AdvertiserRegistrationStates.agreements.state)
 
 
 @router.message(AdvertiserRegistrationStates.agreements)
@@ -301,21 +434,31 @@ async def handle_agreements_confirm(
     state: FSMContext,
     advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """On 'Confirm agreement' create profile and show success."""
-
-    if (message.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
-        await message.answer(
-            "Нажмите «Подтвердить согласие» для завершения регистрации.",
-            reply_markup=_agreements_keyboard(),
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    if (incoming.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Нажмите «Подтвердить согласие» для завершения регистрации.",
+            keyboard=_agreements_keyboard(),
         )
         return
 
-    data = await state.get_data()
+    data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
-        await message.answer("Сессия истекла. Начните заново.")
-        await state.clear()
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Начните заново.",
+        )
+        await state_store.clear()
         return
     name = data["name"]
     phone = data["phone"]
@@ -343,8 +486,9 @@ async def handle_agreements_confirm(
         company_activity=company_activity,
     )
 
-    await state.clear()
-    await message.answer(
-        "Теперь вы можете разместить заказ и найти UGC-креаторов.",
-        reply_markup=advertiser_menu_keyboard(),
+    await state_store.clear()
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Теперь вы можете разместить заказ и найти UGC-креаторов.",
+        keyboard=advertiser_menu_keyboard(),
     )

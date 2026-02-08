@@ -17,6 +17,15 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from ugc_bot.app import build_dispatcher, create_storage
 from ugc_bot.config import load_config
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
+)
+from ugc_bot.infrastructure.messenger.telegram.payments import (
+    TelegramPaymentProvider,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.metrics.collector import (
     record_http_request,
@@ -48,11 +57,18 @@ async def _lifespan(app: FastAPI):
     storage = await create_storage(config)
     dispatcher = build_dispatcher(config, storage=storage)
     bot = Bot(token=config.bot.bot_token)
+    messenger_client = TelegramMessengerClient(bot)
+    event_adapter = TelegramEventAdapter()
+    payment_provider = TelegramPaymentProvider(bot)
 
     webhook_url = f"{base_url}/webhook/telegram"
     secret = config.webhook.webhook_secret.strip() or None
     await bot.set_webhook(webhook_url, secret_token=secret)
     logger.info("Webhook registered", extra={"url": webhook_url})
+
+    dispatcher["messenger_client"] = messenger_client
+    dispatcher["event_adapter"] = event_adapter
+    dispatcher["payment_provider"] = payment_provider
 
     app.state.dispatcher = dispatcher
     app.state.bot = bot

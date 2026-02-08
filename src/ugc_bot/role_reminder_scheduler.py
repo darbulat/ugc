@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 
+from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.start import START_TEXT, _role_keyboard
 from ugc_bot.bot.handlers.utils import send_with_retry
@@ -15,6 +16,9 @@ from ugc_bot.infrastructure.db.repositories import SqlAlchemyUserRepository
 from ugc_bot.infrastructure.db.session import (
     SessionTransactionManager,
     create_session_factory,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
 )
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
@@ -39,7 +43,7 @@ def _reminder_cutoff(config) -> datetime:
 
 
 async def run_once(
-    bot: Bot,
+    messenger_client: MessengerClient,
     user_role_service: UserRoleService,
     reminder_cutoff: datetime,
 ) -> None:
@@ -52,10 +56,10 @@ async def run_once(
         try:
             chat_id = int(user.external_id)
             await send_with_retry(
-                bot,
-                chat_id=chat_id,
+                messenger_client,
+                chat_id=str(chat_id),
                 text=START_TEXT,
-                reply_markup=_role_keyboard(),
+                keyboard=_role_keyboard(),
                 retries=_send_retries,
                 delay_seconds=_send_retry_delay_seconds,
                 logger=logger,
@@ -103,7 +107,15 @@ def main() -> None:  # pragma: no cover
     )
     reminder_cutoff = _reminder_cutoff(config)
     bot = Bot(token=config.bot.bot_token)
-    asyncio.run(run_once(bot, user_role_service, reminder_cutoff))
+    messenger_client = TelegramMessengerClient(bot)
+    try:
+        asyncio.run(
+            run_once(messenger_client, user_role_service, reminder_cutoff)
+        )
+    finally:
+        session = getattr(bot, "session", None)
+        if session is not None:
+            asyncio.run(session.close())
 
 
 if __name__ == "__main__":  # pragma: no cover

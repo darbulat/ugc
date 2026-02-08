@@ -617,7 +617,13 @@ async def test_feedback_handler_exception(
 
 @pytest.mark.asyncio
 async def test_feedback_handler_no_deal_shows_reason_keyboard(
-    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """When user selects no_deal, show reason keyboard (do not record yet)."""
 
@@ -650,6 +656,8 @@ async def test_feedback_handler_no_deal_shows_reason_keyboard(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert callback.message.answers
@@ -702,7 +710,7 @@ async def test_feedback_handler_nps_saves_score(
 
 @pytest.mark.asyncio
 async def test_handle_nps_shows_branch_prompt_score_5_adv(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, messenger_client, event_adapter
 ) -> None:
     """NPS score 5 with adv kind shows advertiser-specific prompt."""
 
@@ -728,7 +736,14 @@ async def test_handle_nps_shows_branch_prompt_score_5_adv(
     )
     callback.message = FakeMessage(user=FakeUser(1010))
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback,
+        state,
+        user_service,
+        nps_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
 
     assert callback.message.answers
     prompt = str(callback.message.answers[-1])
@@ -738,7 +753,7 @@ async def test_handle_nps_shows_branch_prompt_score_5_adv(
 
 @pytest.mark.asyncio
 async def test_handle_nps_shows_branch_prompt_score_5_blog(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, messenger_client, event_adapter
 ) -> None:
     """NPS score 5 with blog kind shows blogger-specific prompt."""
 
@@ -764,7 +779,14 @@ async def test_handle_nps_shows_branch_prompt_score_5_blog(
     )
     callback.message = FakeMessage(user=FakeUser(1020))
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback,
+        state,
+        user_service,
+        nps_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
 
     assert callback.message.answers
     prompt = str(callback.message.answers[-1])
@@ -774,7 +796,7 @@ async def test_handle_nps_shows_branch_prompt_score_5_blog(
 
 @pytest.mark.asyncio
 async def test_handle_nps_shows_branch_prompt_score_1_adv(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, messenger_client, event_adapter
 ) -> None:
     """NPS score 1 with adv kind shows advertiser-specific prompt."""
 
@@ -793,7 +815,14 @@ async def test_handle_nps_shows_branch_prompt_score_1_adv(
     )
     callback.message = FakeMessage(user=FakeUser(1030))
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback,
+        state,
+        user_service,
+        nps_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
 
     assert callback.message.answers
     prompt = str(callback.message.answers[-1])
@@ -1195,7 +1224,13 @@ async def test_feedback_reason_records_and_marks_blogger(
 
 @pytest.mark.asyncio
 async def test_feedback_handler_issue_sets_state_and_sends_prompt(
-    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """User selects issue: set FSM state and send prompt for description."""
 
@@ -1228,6 +1263,8 @@ async def test_feedback_handler_issue_sets_state_and_sends_prompt(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert callback.answers
@@ -1669,6 +1706,8 @@ async def test_feedback_reason_other_sets_state(
     nps_service,
     order_response_repo,
     order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """When user selects no_deal reason 'Другое', set FSM and ask for text."""
 
@@ -1715,6 +1754,8 @@ async def test_feedback_reason_other_sets_state(
         blogger_registration_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert callback.message.answers
@@ -2811,6 +2852,8 @@ async def test_handle_feedback_advertiser_ok_shows_nps_keyboard(
     order_response_repo,
     order_repo,
     order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Advertiser ok: NPS keyboard shown (advertiser is last blogger)."""
 
@@ -2845,11 +2888,9 @@ async def test_handle_feedback_advertiser_ok_shows_nps_keyboard(
     )
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
-    bot = FakeBot()
     callback = FakeCallback(
         data=f"feedback:adv:{interaction.interaction_id}:ok",
         user=FakeUser(1195),
-        bot=bot,
     )
     state = FakeFSMContext()
     await handle_feedback(
@@ -2859,14 +2900,13 @@ async def test_handle_feedback_advertiser_ok_shows_nps_keyboard(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert callback.answers
     assert callback.message.answers
-    nps_messages = [
-        m for m in bot.messages if len(m) >= 3 and m[2] and "nps:" in str(m[2])
-    ]
-    assert nps_messages, "NPS keyboard should be sent to advertiser"
+    assert any("nps:" in str(a) for a in callback.message.answers)
 
 
 @pytest.mark.asyncio
@@ -2877,6 +2917,8 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
     order_response_repo,
     order_repo,
     order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Advertiser gets NPS after feedback to all bloggers in order."""
 
@@ -2921,12 +2963,10 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
     )
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
-    bot = FakeBot()
 
     callback1 = FakeCallback(
         data=f"feedback:adv:{interaction1.interaction_id}:ok",
         user=FakeUser(4768),
-        bot=bot,
     )
     await handle_feedback(
         callback1,
@@ -2935,10 +2975,10 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
-    nps_after_first = [
-        m for m in bot.messages if len(m) >= 3 and m[2] and "nps:" in str(m[2])
-    ]
+    nps_after_first = [a for a in callback1.message.answers if "nps:" in str(a)]
     assert (
         not nps_after_first
     ), "Advertiser should NOT get NPS after first blogger only"
@@ -2946,7 +2986,6 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
     callback2 = FakeCallback(
         data=f"feedback:adv:{interaction2.interaction_id}:ok",
         user=FakeUser(4768),
-        bot=bot,
     )
     await handle_feedback(
         callback2,
@@ -2955,10 +2994,10 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
-    nps_after_all = [
-        m for m in bot.messages if len(m) >= 3 and m[2] and "nps:" in str(m[2])
-    ]
+    nps_after_all = [a for a in callback2.message.answers if "nps:" in str(a)]
     assert (
         nps_after_all
     ), "Advertiser should get NPS after feedback to all bloggers"
@@ -2966,7 +3005,13 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_no_deal_blogger(
-    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Blogger no_deal: gets reason question with blogger-specific text."""
 
@@ -2998,6 +3043,8 @@ async def test_handle_feedback_no_deal_blogger(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     assert callback.message.answers
@@ -3046,7 +3093,13 @@ async def test_handle_feedback_invalid_status(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_issue_sets_state(
-    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Advertiser selects issue, state set to waiting_issue_description."""
 
@@ -3078,6 +3131,8 @@ async def test_handle_feedback_issue_sets_state(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
     from ugc_bot.bot.handlers.feedback import FeedbackStates
@@ -3407,7 +3462,7 @@ async def test_handle_issue_description_send_button_blogger(
 
 @pytest.mark.asyncio
 async def test_handle_nps_invalid_kind_defaults_to_blog(
-    user_repo, nps_service
+    user_repo, nps_service, messenger_client, event_adapter
 ) -> None:
     """When kind is invalid, default to blog."""
 
@@ -3424,7 +3479,14 @@ async def test_handle_nps_invalid_kind_defaults_to_blog(
         data=f"nps:{user.user_id.hex}:5:invalid_kind", user=FakeUser(1340)
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback,
+        state,
+        user_service,
+        nps_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
     assert callback.message.answers
     assert (
         "5" in str(callback.message.answers[0])
@@ -3534,7 +3596,13 @@ async def test_handle_feedback_no_deal_invalid_uuid(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_issue_blogger(
-    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Blogger can select issue and get prompt."""
 
@@ -3565,6 +3633,8 @@ async def test_handle_feedback_issue_blogger(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
     assert callback.message.answers
     assert any(
@@ -3575,7 +3645,13 @@ async def test_handle_feedback_issue_blogger(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_postpone_blogger_message(
-    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Postpone from blogger shows blogger-specific message."""
 
@@ -3609,6 +3685,8 @@ async def test_handle_feedback_postpone_blogger_message(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
     assert callback.message.answers
     assert any("заказчик" in str(a).lower() for a in callback.message.answers)
@@ -3616,7 +3694,13 @@ async def test_handle_feedback_postpone_blogger_message(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_postpone_advertiser_message(
-    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    order_response_repo,
+    order_service,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """Postpone from advertiser shows advertiser-specific message."""
 
@@ -3650,6 +3734,8 @@ async def test_handle_feedback_postpone_advertiser_message(
         interaction_service,
         nps_service,
         order_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
     assert callback.message.answers
     assert any("креатор" in str(a).lower() for a in callback.message.answers)

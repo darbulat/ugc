@@ -9,10 +9,15 @@ such as tokens, passwords, or full message payloads.
 """
 
 import logging
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Message, TelegramObject
+from aiogram.types import (
+    CallbackQuery,
+    Message,
+    PreCheckoutQuery,
+    TelegramObject,
+)
 
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
@@ -23,6 +28,14 @@ from ugc_bot.application.errors import (
     InteractionNotFoundError,
     OrderCreationError,
     UserNotFoundError,
+)
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+    PaymentProvider,
+)
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
 )
 from ugc_bot.metrics.collector import MetricsCollector
 
@@ -99,17 +112,63 @@ def _get_user_id(event: TelegramObject) -> str | None:
         return str(event.from_user.id)
     if isinstance(event, CallbackQuery) and event.from_user:
         return str(event.from_user.id)
+    if isinstance(event, PreCheckoutQuery) and event.from_user:
+        return str(event.from_user.id)
     return None  # pragma: no cover - defensive fallback for test fixtures
 
 
-async def _send_error_message(event: TelegramObject, message: str) -> None:
-    """Send error message to user."""
+async def _send_via_messenger_client(
+    event: TelegramObject,
+    message: str,
+    messenger_client: MessengerClient,
+    event_adapter: MessengerEventAdapter,
+    payment_provider: PaymentProvider | None,
+) -> bool:
+    """Send error via MessengerClient. Return True if sent."""
+    try:
+        if isinstance(event, Message):
+            incoming_msg = event_adapter.from_message(event)
+            await messenger_client.send_text(
+                chat_id=incoming_msg.chat_id, text=message
+            )
+            return True
+        if isinstance(event, CallbackQuery):
+            incoming_cb = event_adapter.from_callback(event)
+            await messenger_client.answer_callback(
+                callback_id=incoming_cb.callback_id,
+                text=message,
+                show_alert=False,
+            )
+            return True
+        if isinstance(event, PreCheckoutQuery) and payment_provider:
+            await payment_provider.reject_pre_checkout(
+                query_id=event.id, error_message=message[:255]
+            )
+            return True
+    except Exception:
+        pass
+    return False
+
+
+async def _send_error_message(
+    event: TelegramObject,
+    message: str,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+    payment_provider: PaymentProvider | None = None,
+) -> None:
+    """Send error message to user via MessengerClient or event.answer."""
+    if messenger_client and event_adapter:
+        sent = await _send_via_messenger_client(
+            event, message, messenger_client, event_adapter, payment_provider
+        )
+        if sent:
+            return
     if isinstance(event, Message):
         await event.answer(message)
     elif isinstance(event, CallbackQuery):
         await event.answer(message, show_alert=False)
     elif hasattr(event, "answer"):
-        # Support test fixtures and other objects with answer method
         answer_method = event.answer
         if callable(answer_method):
             try:
@@ -138,6 +197,15 @@ class ErrorHandlerMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         """Process handler and catch application errors."""
+        messenger_client = data.get("messenger_client")
+        event_adapter = data.get("event_adapter")
+        payment_provider = data.get("payment_provider")
+        resolved_adapter = cast(
+            MessengerEventAdapter,
+            event_adapter
+            if event_adapter is not None
+            else TelegramEventAdapter(),
+        )
         try:
             return await handler(event, data)
         except (
@@ -175,7 +243,13 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 )
 
             user_message = _get_user_message(exc)
-            await _send_error_message(event, user_message)
+            await _send_error_message(
+                event,
+                user_message,
+                messenger_client,
+                resolved_adapter,
+                payment_provider,
+            )
             return None
 
         except Exception as exc:
@@ -202,6 +276,10 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 )
 
             await _send_error_message(
-                event, "Произошла неожиданная ошибка. Попробуйте позже."
+                event,
+                "Произошла неожиданная ошибка. Попробуйте позже.",
+                messenger_client,
+                resolved_adapter,
+                payment_provider,
             )
             return None

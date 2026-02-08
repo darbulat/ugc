@@ -2,15 +2,22 @@
 
 import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import cast
 from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import LabeledPrice, Message, PreCheckoutQuery
+from aiogram.types import Message, PreCheckoutQuery
 
 from ugc_bot.application.errors import (  # noqa: F401 - used in except
     OrderCreationError,
     UserNotFoundError,
+)
+from ugc_bot.application.messenger.dto import Invoice, InvoiceItem
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+    PaymentProvider,
 )
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_new_order,
@@ -30,24 +37,31 @@ from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_AFTER_PAYMENT_SUCCESS,
     ADVERTISER_AFTER_PAYMENT_WHAT_NEXT,
 )
-from ugc_bot.bot.handlers.utils import get_user_and_ensure_allowed
+from ugc_bot.bot.handlers.utils import (
+    get_user_and_ensure_allowed,
+    resolve_messenger_dependencies,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 
 async def send_order_invoice(
-    message: Message,
+    incoming_message,
+    messenger_client: MessengerClient,
     order_id: UUID,
     offer_text: str,
     price_value: float,
     config: AppConfig,
 ) -> None:
-    """Send Telegram invoice for order."""
+    """Send invoice for order."""
 
-    if message.bot is None:
+    if not incoming_message.chat_id:
         return
 
     try:
@@ -55,37 +69,48 @@ async def send_order_invoice(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
     except InvalidOperation:
-        await message.answer("Некорректная сумма заказа.")
+        await messenger_client.send_text(
+            chat_id=incoming_message.chat_id,
+            text="Некорректная сумма заказа.",
+        )
         return
 
     price = int(price_decimal * 100)
     if price > 100_000_000:
-        await message.answer(
-            "Сумма заказа слишком большая для выставления счета в Telegram."
+        await messenger_client.send_text(
+            chat_id=incoming_message.chat_id,
+            text=(
+                "Сумма заказа слишком большая для выставления счета в Telegram."
+            ),
         )
         return
 
     try:
-        await message.bot.send_invoice(
-            chat_id=message.chat.id,
-            title="Оплата заказа",
-            description=offer_text[:255],
-            payload=str(order_id),
-            provider_token=config.bot.telegram_provider_token,
-            currency="RUB",
-            prices=[
-                LabeledPrice(
-                    label=f"💳 Заплатить {int(price_value)} ₽",
-                    amount=price,
-                )
-            ],
+        await messenger_client.send_invoice(
+            chat_id=incoming_message.chat_id,
+            invoice=Invoice(
+                title="Оплата заказа",
+                description=offer_text[:255],
+                payload=str(order_id),
+                provider_token=config.bot.telegram_provider_token,
+                currency="RUB",
+                items=[
+                    InvoiceItem(
+                        label=f"💳 Заплатить {int(price_value)} ₽",
+                        amount_minor=price,
+                    )
+                ],
+            ),
         )
     except Exception:
         logger.exception(
             "Failed to send invoice",
             extra={"order_id": str(order_id), "price_minor": price},
         )
-        await message.answer("Не удалось создать счет. Попробуйте позже.")
+        await messenger_client.send_text(
+            chat_id=incoming_message.chat_id,
+            text="Не удалось создать счет. Попробуйте позже.",
+        )
 
 
 @router.message(Command("pay_order"))
@@ -96,11 +121,17 @@ async def pay_order(
     payment_service: PaymentService,
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Send Telegram invoice for an order."""
-
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
     user = await get_user_and_ensure_allowed(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
         blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
@@ -111,48 +142,69 @@ async def pay_order(
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
-        await message.answer(
-            "Профиль рекламодателя не заполнен. Команда: /advertiser"
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль рекламодателя не заполнен. Команда: /advertiser",
         )
         return
 
-    args = (message.text or "").split()
+    args = (incoming.text or "").split()
     if len(args) < 2:
-        await message.answer("Использование: /pay_order <order_id>")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Использование: /pay_order <order_id>",
+        )
         return
 
     try:
         order_id = UUID(args[1])
     except ValueError:
-        await message.answer("Неверный формат order_id.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Неверный формат order_id.",
+        )
         return
 
     order = await payment_service.get_order(order_id)
     if order is None:
-        await message.answer("Заказ не найден.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Заказ не найден.",
+        )
         return
     if order.advertiser_id != user.user_id:
-        await message.answer("Заказ не принадлежит рекламодателю.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Заказ не принадлежит рекламодателю.",
+        )
         return
     if order.status != OrderStatus.NEW:
-        await message.answer("Заказ не в статусе NEW.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Заказ не в статусе NEW.",
+        )
         return
 
     contact_price = await contact_pricing_service.get_price(
         order.bloggers_needed
     )
     if contact_price is None:
-        await message.answer(
-            "Стоимость доступа не настроена. Свяжитесь с поддержкой."
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Стоимость доступа не настроена. Свяжитесь с поддержкой.",
         )
         return
 
     if not config.bot.telegram_provider_token:
-        await message.answer("Платежный провайдер не настроен.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Платежный провайдер не настроен.",
+        )
         return
 
     await send_order_invoice(
-        message=message,
+        incoming_message=incoming,
+        messenger_client=messenger_client,
         order_id=order.order_id,
         offer_text=order.offer_text,
         price_value=contact_price,
@@ -163,14 +215,16 @@ async def pay_order(
 @router.pre_checkout_query()
 async def pre_checkout_query_handler(
     pre_checkout_query: PreCheckoutQuery,
+    payment_provider: PaymentProvider,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Confirm pre-checkout query from Telegram."""
-
-    if pre_checkout_query.bot is None:
-        return
-    await pre_checkout_query.bot.answer_pre_checkout_query(
-        pre_checkout_query_id=pre_checkout_query.id, ok=True
+    adapter = cast(
+        MessengerEventAdapter,
+        event_adapter if event_adapter is not None else TelegramEventAdapter(),
     )
+    incoming = adapter.from_pre_checkout(pre_checkout_query)
+    await payment_provider.confirm_pre_checkout(query_id=incoming.query_id)
 
 
 @router.message(F.successful_payment)
@@ -180,14 +234,20 @@ async def successful_payment_handler(
     payment_service: PaymentService,
     content_moderation_service: ContentModerationService,
     config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle successful Telegram payment."""
-
-    if message.successful_payment is None:
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    if incoming.successful_payment is None:
         return
 
     user = await get_user_and_ensure_allowed(
-        message,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
         blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
@@ -196,11 +256,14 @@ async def successful_payment_handler(
     if user is None:
         return
 
-    payload = message.successful_payment.invoice_payload
+    payload = incoming.successful_payment.invoice_payload
     try:
         order_id = UUID(payload)
     except ValueError:
-        await message.answer("Не удалось определить заказ.")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Не удалось определить заказ.",
+        )
         return
 
     try:
@@ -208,10 +271,10 @@ async def successful_payment_handler(
             user_id=user.user_id,
             order_id=order_id,
             provider_payment_charge_id=(
-                message.successful_payment.provider_payment_charge_id
+                incoming.successful_payment.provider_payment_charge_id
             ),
-            total_amount=message.successful_payment.total_amount,
-            currency=message.successful_payment.currency,
+            total_amount=incoming.successful_payment.total_amount,
+            currency=incoming.successful_payment.currency,
         )
     except (OrderCreationError, UserNotFoundError) as exc:
         # Record failed payment metric (middleware logs and shows user message)
@@ -227,21 +290,27 @@ async def successful_payment_handler(
         raise
 
     order = await payment_service.get_order(order_id)
-    if order and message.bot:
+    if order:
         await notify_admins_about_new_order(
             order=order,
-            bot=message.bot,
+            messenger_client=messenger_client,
             user_role_service=user_role_service,
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
         )
 
-    await message.answer(ADVERTISER_AFTER_PAYMENT_SUCCESS)
-    await message.answer(
-        ADVERTISER_AFTER_PAYMENT_WHAT_NEXT, parse_mode="Markdown"
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=ADVERTISER_AFTER_PAYMENT_SUCCESS,
     )
-    await message.answer(
-        ADVERTISER_AFTER_PAYMENT_IMPORTANT,
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=ADVERTISER_AFTER_PAYMENT_WHAT_NEXT,
         parse_mode="Markdown",
-        reply_markup=advertiser_after_payment_keyboard(),
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=ADVERTISER_AFTER_PAYMENT_IMPORTANT,
+        parse_mode="Markdown",
+        keyboard=advertiser_after_payment_keyboard(),
     )

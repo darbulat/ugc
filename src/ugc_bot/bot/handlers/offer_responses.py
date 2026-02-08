@@ -5,12 +5,13 @@ import logging
 from uuid import UUID
 
 from aiogram import Router
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+from aiogram.types import CallbackQuery
 
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    MessengerEventAdapter,
+)
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
@@ -25,6 +26,7 @@ from ugc_bot.bot.handlers.security_warnings import (
 from ugc_bot.bot.handlers.utils import (
     RateLimiter,
     get_user_and_ensure_allowed_callback,
+    resolve_messenger_dependencies,
     send_with_retry,
 )
 from ugc_bot.domain.entities import Order
@@ -39,21 +41,29 @@ _send_retry_delay_seconds = 0.5
 @router.callback_query(
     lambda callback: callback.data and callback.data.startswith("offer_skip:")
 )
-async def handle_offer_skip(callback: CallbackQuery) -> None:
+async def handle_offer_skip(
+    callback: CallbackQuery,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
     """Handle blogger pressing 'Пропустить' on offer (no response recorded).
 
     Removes inline keyboard so 'Готов снять UGC' can no longer be pressed.
     """
-    await callback.answer("Ок, пропущено.")
-    msg = callback.message
-    edit_reply_markup = getattr(msg, "edit_reply_markup", None) if msg else None
-    if (
-        msg
-        and getattr(msg, "reply_markup", None)
-        and callable(edit_reply_markup)
-    ):
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id, text="Ок, пропущено."
+    )
+    if incoming.message_id:
         with contextlib.suppress(Exception):
-            await edit_reply_markup(reply_markup=None)
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
 
 
 @router.callback_query(
@@ -65,11 +75,18 @@ async def handle_offer_response(
     profile_service: ProfileService,
     offer_response_service: OfferResponseService,
     interaction_service: InteractionService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     """Handle blogger response to offer."""
 
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
     user = await get_user_and_ensure_allowed_callback(
-        callback,
+        incoming,
+        messenger_client,
         user_role_service,
         user_not_found_msg="Пользователь не найден.",
         blocked_msg="Заблокированные пользователи не могут откликаться.",
@@ -79,21 +96,33 @@ async def handle_offer_response(
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
-        await callback.answer("Профиль блогера не заполнен. Команда: /creator")
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Профиль блогера не заполнен. Команда: /creator",
+        )
         return
     if not blogger_profile.confirmed:
-        await callback.answer("Подтвердите Instagram перед откликом.")
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Подтвердите Instagram перед откликом.",
+        )
         return
 
     if not _rate_limiter.allow(user.external_id):
-        await callback.answer("Слишком много запросов. Попробуйте позже.")
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Слишком много запросов. Попробуйте позже.",
+        )
         return
 
-    raw = callback.data.split("offer:", 1)[-1] if callback.data else ""
+    raw = incoming.data.split("offer:", 1)[-1] if incoming.data else ""
     try:
         order_id = UUID(raw)
     except ValueError:
-        await callback.answer("Неверный идентификатор заказа.")
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Неверный идентификатор заказа.",
+        )
         return
 
     # Middleware handles OrderCreationError and other exceptions
@@ -101,23 +130,26 @@ async def handle_offer_response(
         order_id, user.user_id
     )
 
-    await callback.answer("Отклик принят! Ожидайте связи от рекламодателя.")
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text="Отклик принят! Ожидайте связи от рекламодателя.",
+    )
 
-    # Remove inline keyboard so buttons can no longer be pressed
-    msg = callback.message
-    edit_reply_markup = getattr(msg, "edit_reply_markup", None) if msg else None
-    if (
-        msg
-        and getattr(msg, "reply_markup", None)
-        and callable(edit_reply_markup)
-    ):
+    if incoming.message_id:
         with contextlib.suppress(Exception):
-            await edit_reply_markup(reply_markup=None)
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
 
-    if callback.message and callback.message.bot:
-        if result.order.product_link:
-            await callback.message.answer(result.order.product_link)
-        await callback.message.answer(BLOGGER_AFTER_RESPONSE_WHAT_NEXT)
+    if result.order.product_link:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id, text=result.order.product_link
+        )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id, text=BLOGGER_AFTER_RESPONSE_WHAT_NEXT
+    )
 
     # Send contact immediately after each response
     await _send_contact_immediately(
@@ -127,7 +159,7 @@ async def handle_offer_response(
         user_role_service=user_role_service,
         profile_service=profile_service,
         interaction_service=interaction_service,
-        bot=callback.message.bot if callback.message else None,
+        messenger_client=messenger_client,
     )
 
 
@@ -145,7 +177,7 @@ async def _send_contact_immediately(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     interaction_service: InteractionService | None,
-    bot,
+    messenger_client: MessengerClient,
 ) -> None:
     """Send contact to advertiser after each response (TZ format)."""
 
@@ -173,27 +205,20 @@ async def _send_contact_immediately(
     profile_url = profile.instagram_url.strip()
     if profile_url and not profile_url.startswith("http"):
         profile_url = "https://" + profile_url
-    open_profile_kb = (
-        InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🔗 Открыть профиль", url=profile_url
-                    )
-                ]
-            ]
+    open_profile_kb = None
+    if profile_url.startswith("http"):
+        open_profile_kb = Keyboard(
+            kind=KeyboardKind.INLINE,
+            rows=[[Button(text="🔗 Открыть профиль", url=profile_url)]],
         )
-        if profile_url.startswith("http")
-        else None
-    )
 
     advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
-    if advertiser and bot and advertiser.external_id.isdigit():
+    if advertiser and advertiser.external_id.isdigit():
         await send_with_retry(
-            bot,
-            chat_id=int(advertiser.external_id),
+            messenger_client,
+            chat_id=advertiser.external_id,
             text=contact_text,
-            reply_markup=open_profile_kb,
+            keyboard=open_profile_kb,
             retries=_send_retries,
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
@@ -201,8 +226,8 @@ async def _send_contact_immediately(
         )
         if response_count == 1:
             await send_with_retry(
-                bot,
-                chat_id=int(advertiser.external_id),
+                messenger_client,
+                chat_id=advertiser.external_id,
                 text=ADVERTISER_CONTACTS_WARNING,
                 parse_mode="Markdown",
                 retries=_send_retries,

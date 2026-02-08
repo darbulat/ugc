@@ -1,5 +1,164 @@
 """Fake objects for testing handlers and services."""
 
+from dataclasses import dataclass, field
+from typing import Any
+
+from ugc_bot.application.messenger.dto import Invoice
+
+_MESSAGE_REGISTRY: dict[str, "FakeMessage"] = {}
+_CALLBACK_REGISTRY: dict[str, "FakeCallback"] = {}
+
+
+def _register_message(message: "FakeMessage") -> None:
+    """Register a fake message by chat ID."""
+    _MESSAGE_REGISTRY[str(message.chat.id)] = message
+
+
+def _register_callback(callback: "FakeCallback") -> None:
+    """Register a fake callback by callback ID."""
+    _CALLBACK_REGISTRY[str(callback.id)] = callback
+
+
+def clear_fake_registries() -> None:
+    """Clear message/callback registries between tests if needed."""
+    _MESSAGE_REGISTRY.clear()
+    _CALLBACK_REGISTRY.clear()
+
+
+@dataclass
+class FakeMessengerClient:
+    """MessengerClient stub that records calls and updates fake objects."""
+
+    sent_text: list[dict[str, Any]] = field(default_factory=list)
+    sent_photos: list[dict[str, Any]] = field(default_factory=list)
+    edited_text: list[dict[str, Any]] = field(default_factory=list)
+    edited_reply_markups: list[dict[str, Any]] = field(default_factory=list)
+    answered_callbacks: list[dict[str, Any]] = field(default_factory=list)
+    sent_invoices: list[dict[str, Any]] = field(default_factory=list)
+
+    async def send_text(
+        self,
+        *,
+        chat_id: str,
+        text: str,
+        keyboard: object | None = None,
+        parse_mode: str | None = None,
+        disable_preview: bool | None = None,
+    ) -> None:
+        """Record send_text calls and append to message answers."""
+        self.sent_text.append(
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "keyboard": keyboard,
+                "parse_mode": parse_mode,
+                "disable_preview": disable_preview,
+            }
+        )
+        msg = _MESSAGE_REGISTRY.get(str(chat_id))
+        if msg is not None:
+            if keyboard is not None:
+                msg.answers.append((text, keyboard))
+                msg.reply_markups.append(keyboard)
+            else:
+                msg.answers.append(text)
+
+    async def send_photo(
+        self,
+        *,
+        chat_id: str,
+        file_id: str,
+        caption: str | None = None,
+        keyboard: object | None = None,
+        parse_mode: str | None = None,
+    ) -> None:
+        """Record send_photo calls and append to message answers."""
+        self.sent_photos.append(
+            {
+                "chat_id": chat_id,
+                "file_id": file_id,
+                "caption": caption,
+                "keyboard": keyboard,
+                "parse_mode": parse_mode,
+            }
+        )
+        msg = _MESSAGE_REGISTRY.get(str(chat_id))
+        if msg is not None and caption is not None:
+            if keyboard is not None:
+                msg.answers.append((caption, keyboard))
+                msg.reply_markups.append(keyboard)
+            else:
+                msg.answers.append(caption)
+
+    async def edit_text(
+        self,
+        *,
+        chat_id: str,
+        message_id: str,
+        text: str,
+        keyboard: object | None = None,
+        parse_mode: str | None = None,
+    ) -> None:
+        """Record edit_text calls and append to message answers."""
+        self.edited_text.append(
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "keyboard": keyboard,
+                "parse_mode": parse_mode,
+            }
+        )
+        msg = _MESSAGE_REGISTRY.get(str(chat_id))
+        if msg is not None:
+            if keyboard is not None:
+                msg.answers.append((text, keyboard))
+                msg.reply_markups.append(keyboard)
+            else:
+                msg.answers.append(text)
+
+    async def edit_reply_markup(
+        self,
+        *,
+        chat_id: str,
+        message_id: str,
+        keyboard: object | None = None,
+    ) -> None:
+        """Record edit_reply_markup calls and append to message."""
+        self.edited_reply_markups.append(
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "keyboard": keyboard,
+            }
+        )
+        msg = _MESSAGE_REGISTRY.get(str(chat_id))
+        if msg is not None:
+            msg.edit_reply_markup_calls.append(keyboard)
+
+    async def answer_callback(
+        self,
+        *,
+        callback_id: str,
+        text: str | None = None,
+        show_alert: bool = False,
+    ) -> None:
+        """Record callback answers and append to FakeCallback answers."""
+        self.answered_callbacks.append(
+            {
+                "callback_id": callback_id,
+                "text": text,
+                "show_alert": show_alert,
+            }
+        )
+        cb = _CALLBACK_REGISTRY.get(str(callback_id))
+        if cb is not None and text is not None:
+            cb.answers.append(text)
+
+    async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
+        """Record invoice send calls."""
+        self.sent_invoices.append({"chat_id": chat_id, "invoice": invoice})
+
 
 class FakeUser:
     """Minimal user stub for tests."""
@@ -67,6 +226,7 @@ class FakeMessage:
         bot: FakeBot | None = None,
         photo: list | None = None,
         caption: str | None = None,
+        message_id: int = 1,
     ) -> None:
         """Initialize fake message.
 
@@ -82,12 +242,14 @@ class FakeMessage:
         self.from_user = user
         self.bot = bot
         self.photo = photo or []
+        self.message_id = message_id
         self.answers: list[str | tuple[str, object | None]] = []
         self.reply_markups: list = []
         self.reply_markup = None
         self.chat = type("Chat", (), {"id": user.id if user else 0})()
         self.successful_payment = None
         self.edit_reply_markup_calls: list[object] = []
+        _register_message(self)
 
     async def answer(self, text: str, reply_markup=None, **kwargs) -> None:  # type: ignore[no-untyped-def]
         """Capture response text and optional reply markup."""
@@ -125,6 +287,7 @@ class FakeCallback:
         user: FakeUser,
         message: FakeMessage | None = None,
         bot: object | None = None,
+        callback_id: str | None = None,
     ) -> None:
         """Initialize fake callback.
 
@@ -139,6 +302,8 @@ class FakeCallback:
         self.message = message or FakeMessage()
         self.answers: list[str] = []
         self.bot = bot
+        self.id = callback_id or f"cb-{len(_CALLBACK_REGISTRY) + 1}"
+        _register_callback(self)
 
     async def answer(
         self, text: str = "", show_alert: bool = False, **kwargs: object
@@ -247,15 +412,23 @@ class FakeBotWithSession(FakeBot):
 class FakePreCheckoutQuery:
     """Minimal pre-checkout query stub."""
 
-    def __init__(self, query_id: str, bot: FakeBot) -> None:
+    def __init__(
+        self,
+        query_id: str,
+        bot: FakeBot | None,
+        user: FakeUser | None = None,
+    ) -> None:
         """Initialize fake pre-checkout query.
 
         Args:
             query_id: Query ID
             bot: Bot instance
+            user: Optional user who initiated checkout
         """
         self.id = query_id
         self.bot = bot
+        self.from_user = user or FakeUser(1)
+        self.invoice_payload = "payload"
 
 
 class FakeSuccessfulPayment:

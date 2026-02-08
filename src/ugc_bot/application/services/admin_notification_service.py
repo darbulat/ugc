@@ -2,10 +2,10 @@
 
 import html
 import logging
-from typing import TYPE_CHECKING
+from typing import Any
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
@@ -13,12 +13,65 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import Complaint, Order
 from ugc_bot.domain.enums import MessengerType, OrderType
 
-if TYPE_CHECKING:
-    from aiogram import Bot
-
 logger = logging.getLogger(__name__)
 
 MOD_ACTIVATE_CALLBACK_PREFIX = "mod_activate:"
+
+
+async def _send_admin_text(
+    messenger_client: Any,
+    *,
+    chat_id: str,
+    text: str,
+    keyboard: Keyboard | None = None,
+    parse_mode: str | None = None,
+) -> None:
+    """Send text using messenger client or raw bot."""
+    if hasattr(messenger_client, "send_text"):
+        await messenger_client.send_text(
+            chat_id=chat_id, text=text, keyboard=keyboard, parse_mode=parse_mode
+        )
+        return
+    if hasattr(messenger_client, "send_message"):
+        await messenger_client.send_message(
+            chat_id=int(chat_id),
+            text=text,
+            reply_markup=keyboard,
+            parse_mode=parse_mode,
+        )
+        return
+    raise AttributeError("Messenger client lacks send methods")
+
+
+async def _send_admin_photo(
+    messenger_client: Any,
+    *,
+    chat_id: str,
+    file_id: str,
+    caption: str | None,
+    keyboard: Keyboard | None = None,
+    parse_mode: str | None = None,
+) -> None:
+    """Send photo using messenger client or raw bot."""
+    if hasattr(messenger_client, "send_text"):
+        await messenger_client.send_photo(
+            chat_id=chat_id,
+            file_id=file_id,
+            caption=caption,
+            parse_mode=parse_mode,
+            keyboard=keyboard,
+        )
+        return
+    if hasattr(messenger_client, "send_photo"):
+        await messenger_client.send_photo(
+            chat_id=int(chat_id),
+            photo=file_id,
+            caption=caption,
+            reply_markup=keyboard,
+            parse_mode=parse_mode,
+        )
+        return
+    raise AttributeError("Messenger client lacks send_photo")
 
 
 def _format_order_type_for_moderation(order: Order) -> str:
@@ -35,14 +88,14 @@ def _format_optional_field(value: str | None) -> str:
 
 async def notify_admins_about_complaint(
     complaint: Complaint,
-    bot: "Bot",
+    messenger_client: MessengerClient,
     user_role_service: UserRoleService,
 ) -> None:
     """Send complaint details to all Telegram admins.
 
     Args:
         complaint: The created complaint.
-        bot: Telegram Bot instance for sending messages.
+        messenger_client: Messenger client for sending messages.
         user_role_service: Service to fetch admin list and usernames.
     """
     admins = await user_role_service.list_admins(
@@ -74,21 +127,25 @@ async def notify_admins_about_complaint(
 
     for admin in admins:
         try:
-            chat_id = int(admin.external_id)
+            chat_id = admin.external_id
             if complaint.file_ids:
-                await bot.send_photo(
+                await _send_admin_photo(
+                    messenger_client,
                     chat_id=chat_id,
-                    photo=complaint.file_ids[0],
+                    file_id=complaint.file_ids[0],
                     caption=text,
                     parse_mode="Markdown",
                 )
                 for file_id in complaint.file_ids[1:]:
-                    await bot.send_photo(
+                    await _send_admin_photo(
+                        messenger_client,
                         chat_id=chat_id,
-                        photo=file_id,
+                        file_id=file_id,
+                        caption=None,
                     )
             else:
-                await bot.send_message(
+                await _send_admin_text(
+                    messenger_client,
                     chat_id=chat_id,
                     text=text,
                     parse_mode="Markdown",
@@ -106,7 +163,7 @@ async def notify_admins_about_complaint(
 
 async def notify_admins_about_new_order(
     order: Order,
-    bot: "Bot",
+    messenger_client: MessengerClient,
     user_role_service: UserRoleService,
     content_moderation: ContentModerationService,
     admin_base_url: str = "",
@@ -143,27 +200,20 @@ async def notify_admins_about_new_order(
         banned_warning = "\n\n⚠️ <b>Обнаружен возможный запрещённый контент</b>"
 
     order_id_hex = order.order_id.hex
-    buttons: list[list[InlineKeyboardButton]] = []
+    buttons: list[list[Button]] = []
     if admin_base_url and admin_base_url.rstrip("/"):
         base = admin_base_url.rstrip("/")
         link_url = f"{base}/order-model/edit/{order.order_id}"
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text="Открыть в админке",
-                    url=link_url,
-                )
-            ]
-        )
+        buttons.append([Button(text="Открыть в админке", url=link_url)])
     buttons.append(
         [
-            InlineKeyboardButton(
+            Button(
                 text="Активировать",
                 callback_data=f"{MOD_ACTIVATE_CALLBACK_PREFIX}{order_id_hex}",
             )
         ]
     )
-    reply_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    reply_markup = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
 
     advertiser_esc = html.escape(advertiser_name)
     offer_esc = html.escape(order.offer_text or "")
@@ -193,21 +243,23 @@ async def notify_admins_about_new_order(
 
     for admin in admins:
         try:
-            chat_id = int(admin.external_id)
+            chat_id = admin.external_id
             if order.product_photo_file_id:
-                await bot.send_photo(
+                await _send_admin_photo(
+                    messenger_client,
                     chat_id=chat_id,
-                    photo=order.product_photo_file_id,
+                    file_id=order.product_photo_file_id,
                     caption=text,
                     parse_mode="HTML",
-                    reply_markup=reply_markup,
+                    keyboard=reply_markup,
                 )
             else:
-                await bot.send_message(
+                await _send_admin_text(
+                    messenger_client,
                     chat_id=chat_id,
                     text=text,
                     parse_mode="HTML",
-                    reply_markup=reply_markup,
+                    keyboard=reply_markup,
                 )
         except Exception as exc:
             logger.warning(

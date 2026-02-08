@@ -39,6 +39,22 @@ class FakeConfig(AppConfig):
     """Config stub with provider token."""
 
 
+class DummyPaymentProvider:
+    """PaymentProvider stub for pre-checkout tests."""
+
+    def __init__(self) -> None:
+        self.confirmed: list[str] = []
+        self.rejected: list[tuple[str, str]] = []
+
+    async def confirm_pre_checkout(self, *, query_id: str) -> None:
+        self.confirmed.append(query_id)
+
+    async def reject_pre_checkout(
+        self, *, query_id: str, error_message: str
+    ) -> None:
+        self.rejected.append((query_id, error_message))
+
+
 @pytest.mark.asyncio
 async def test_pay_order_success(
     monkeypatch: pytest.MonkeyPatch,
@@ -699,8 +715,9 @@ async def test_pre_checkout_query_ok(
 
     bot = FakeBot()
     query = FakePreCheckoutQuery("q1", bot)
-    await pre_checkout_query_handler(query)
-    assert bot.pre_checkout_answers
+    provider = DummyPaymentProvider()
+    await pre_checkout_query_handler(query, payment_provider=provider)
+    assert provider.confirmed == ["q1"]
 
 
 @pytest.mark.asyncio
@@ -716,7 +733,9 @@ async def test_pre_checkout_query_without_bot(
     """Skip when bot is missing."""
 
     query = FakePreCheckoutQuery("q1", None)
-    await pre_checkout_query_handler(query)
+    provider = DummyPaymentProvider()
+    await pre_checkout_query_handler(query, payment_provider=provider)
+    assert provider.confirmed == ["q1"]
 
 
 @pytest.mark.asyncio
@@ -887,7 +906,9 @@ async def test_successful_payment_user_not_found(
 
 
 @pytest.mark.asyncio
-async def test_send_order_invoice_bot_none_returns_early() -> None:
+async def test_send_order_invoice_bot_none_returns_early(
+    messenger_client, event_adapter
+) -> None:
     """send_order_invoice returns when message.bot is None."""
     message = FakeMessage(text="/pay", user=FakeUser(1), bot=None)
     message.chat = type("Chat", (), {"id": 1})()
@@ -898,8 +919,10 @@ async def test_send_order_invoice_bot_none_returns_early() -> None:
             "TELEGRAM_PROVIDER_TOKEN": "provider",
         }
     )
+    incoming = event_adapter.from_message(message)
     await send_order_invoice(
-        message,
+        incoming,
+        messenger_client,
         UUID("00000000-0000-0000-0000-000000000530"),
         "Offer",
         1000.0,
@@ -909,7 +932,9 @@ async def test_send_order_invoice_bot_none_returns_early() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_order_invoice_price_too_large() -> None:
+async def test_send_order_invoice_price_too_large(
+    messenger_client, event_adapter
+) -> None:
     """send_order_invoice rejects price over 100M."""
     bot = FakeBot()
     message = FakeMessage(text="/pay", user=FakeUser(1), bot=bot)
@@ -921,8 +946,10 @@ async def test_send_order_invoice_price_too_large() -> None:
             "TELEGRAM_PROVIDER_TOKEN": "provider",
         }
     )
+    incoming = event_adapter.from_message(message)
     await send_order_invoice(
-        message,
+        incoming,
+        messenger_client,
         UUID("00000000-0000-0000-0000-000000000532"),
         "Offer",
         150_000_000.0,
@@ -980,7 +1007,9 @@ async def test_successful_payment_handler_no_payment_returns(
 
 
 @pytest.mark.asyncio
-async def test_send_order_invoice_invalid_price() -> None:
+async def test_send_order_invoice_invalid_price(
+    messenger_client, event_adapter
+) -> None:
     """send_order_invoice rejects invalid price (InvalidOperation)."""
 
     class BadPrice:
@@ -997,8 +1026,10 @@ async def test_send_order_invoice_invalid_price() -> None:
             "TELEGRAM_PROVIDER_TOKEN": "provider",
         }
     )
+    incoming = event_adapter.from_message(message)
     await send_order_invoice(
-        message,
+        incoming,
+        messenger_client,
         UUID("00000000-0000-0000-0000-000000000533"),
         "Offer",
         BadPrice(),
@@ -1016,10 +1047,24 @@ class FakeBotRaisingInvoice(FakeBot):
 
 
 @pytest.mark.asyncio
-async def test_send_order_invoice_send_fails() -> None:
+async def test_send_order_invoice_send_fails(
+    event_adapter,
+) -> None:
     """send_order_invoice handles send_invoice exception."""
-    bot = FakeBotRaisingInvoice()
-    message = FakeMessage(text="/pay", user=FakeUser(1), bot=bot)
+
+    class FailingMessengerClient:
+        def __init__(self, msg: FakeMessage) -> None:
+            self._msg = msg
+
+        async def send_invoice(self, *, chat_id: str, invoice) -> None:  # type: ignore[no-untyped-def]
+            raise RuntimeError("send_invoice failed")
+
+        async def send_text(self, *, chat_id: str, text: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            self._msg.answers.append(text)
+
+    message = FakeMessage(
+        text="/pay", user=FakeUser(1), bot=FakeBotRaisingInvoice()
+    )
     message.chat = type("Chat", (), {"id": 1})()
     config = FakeConfig.model_validate(
         {
@@ -1028,8 +1073,10 @@ async def test_send_order_invoice_send_fails() -> None:
             "TELEGRAM_PROVIDER_TOKEN": "provider",
         }
     )
+    incoming = event_adapter.from_message(message)
     await send_order_invoice(
-        message,
+        incoming,
+        FailingMessengerClient(message),
         UUID("00000000-0000-0000-0000-000000000534"),
         "Offer",
         1000.0,
