@@ -147,9 +147,9 @@ def _register_dashboard_routes(  # noqa: C901
         period_key = _normalize_period(period)
         payload = await dashboard_service.get_dashboard(period_key)
         return templates.TemplateResponse(
+            request,
             "dashboard.html",
             {
-                "request": request,
                 "payload": payload,
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
@@ -175,9 +175,9 @@ def _register_dashboard_routes(  # noqa: C901
             only_with_complaints=with_complaints,
         )
         return templates.TemplateResponse(
+            request,
             "creators.html",
             {
-                "request": request,
                 "creators": creators,
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
@@ -193,8 +193,9 @@ def _register_dashboard_routes(  # noqa: C901
             return RedirectResponse(url="/admin/login")
         advertisers = await dashboard_service.list_advertisers()
         return templates.TemplateResponse(
+            request,
             "advertisers.html",
-            {"request": request, "advertisers": advertisers},
+            {"advertisers": advertisers},
         )
 
     @app.get("/admin/orders", response_class=HTMLResponse)
@@ -211,9 +212,9 @@ def _register_dashboard_routes(  # noqa: C901
             period=period_key, status_filter=status
         )
         return templates.TemplateResponse(
+            request,
             "orders.html",
             {
-                "request": request,
                 "orders": orders,
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
@@ -231,9 +232,9 @@ def _register_dashboard_routes(  # noqa: C901
         if order is None:
             raise HTTPException(status_code=404, detail="Order not found")
         return templates.TemplateResponse(
+            request,
             "order_detail.html",
             {
-                "request": request,
                 "order": order,
                 "status_labels": _STATUS_LABELS,
             },
