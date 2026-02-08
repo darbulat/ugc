@@ -39,10 +39,17 @@ def _parse_order_id(data: dict[str, Any]) -> UUID | None:
         return None
     raw = data.get("order_id")
     if not raw:
+        logger.debug(
+            "order_activation event missing order_id", extra={"data": data}
+        )
         return None
     try:
         return UUID(raw)
     except ValueError:
+        logger.warning(
+            "Invalid order_id in order_activation event",
+            extra={"order_id_raw": raw, "error": "invalid UUID format"},
+        )
         return None
 
 
@@ -59,8 +66,16 @@ async def _send_offer_to_blogger(
 ) -> None:
     """Send offer to one blogger with retries."""
     if blogger.user_id == order.advertiser_id:
+        logger.debug(
+            "Skipping blogger: is advertiser",
+            extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
+        )
         return
     if not blogger.external_id.isdigit():
+        logger.debug(
+            "Skipping blogger: invalid external_id",
+            extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
+        )
         return
 
     for attempt in range(1, retries + 1):
@@ -101,6 +116,14 @@ async def _send_offer_to_blogger(
             await offer_dispatch_service.record_offer_sent(
                 order.order_id, blogger.user_id
             )
+            logger.info(
+                "Offer sent to blogger",
+                extra={
+                    "order_id": order.order_id,
+                    "blogger_id": blogger.user_id,
+                    "attempt": attempt,
+                },
+            )
             return
         except Exception as exc:
             logger.warning(
@@ -113,6 +136,14 @@ async def _send_offer_to_blogger(
                 },
             )
             if attempt >= retries:
+                logger.error(
+                    "All retries failed for offer send, publishing to DLQ",
+                    extra={
+                        "order_id": order.order_id,
+                        "blogger_id": blogger.user_id,
+                        "retries": retries,
+                    },
+                )
                 await _publish_dlq(
                     dlq_producer,
                     dlq_topic,
@@ -154,6 +185,13 @@ async def _send_offers(
 
     advertisers_status = advertiser.status.value.upper()
     bloggers = await offer_dispatch_service.dispatch(order_id)
+    logger.info(
+        "Processing order activation",
+        extra={
+            "order_id": order_id,
+            "bloggers_count": len(bloggers) if bloggers else 0,
+        },
+    )
     if not bloggers:
         logger.info(
             "No verified bloggers for offer", extra={"order_id": order_id}
@@ -179,9 +217,14 @@ async def _publish_dlq(
 ) -> None:
     """Publish a message to the DLQ topic (best-effort)."""
     if producer is None:
+        logger.debug("DLQ producer disabled, skipping publish")
         return
     try:
         await producer.send_and_wait(topic, payload)
+        logger.info(
+            "DLQ message published",
+            extra={"topic": topic, "event": payload.get("event")},
+        )
     except Exception:
         logger.exception("Failed to publish DLQ message")
 
@@ -220,16 +263,29 @@ async def _consume_forever(
     try:
         await dlq_producer.start()
         producer_started = True
+        logger.info("Kafka DLQ producer started")
         await consumer.start()
         consumer_started = True
+        logger.info("Kafka consumer subscribed, waiting for messages")
 
         async for msg in consumer:
             val = getattr(msg, "value", None)
             if not isinstance(val, dict):  # pragma: no cover
+                logger.debug(
+                    "Skipping non-dict message", extra={"msg": str(msg)}
+                )
                 continue
             order_id = _parse_order_id(val)
             if order_id is None:  # pragma: no cover
                 continue
+            logger.info(
+                "Received order_activation event",
+                extra={
+                    "order_id": order_id,
+                    "partition": getattr(msg, "partition", None),
+                    "offset": getattr(msg, "offset", None),
+                },
+            )
             await _send_offers(
                 order_id,
                 messenger_client,
@@ -240,12 +296,15 @@ async def _consume_forever(
                 config.kafka.kafka_send_retry_delay_seconds,
             )
     finally:
+        logger.info("Stopping Kafka consumer")
         try:
             if consumer_started:
                 await consumer.stop()
+                logger.info("Kafka consumer stopped")
         finally:
             if producer_started:
                 await dlq_producer.stop()
+                logger.info("Kafka DLQ producer stopped")
             await bot.session.close()
 
 
