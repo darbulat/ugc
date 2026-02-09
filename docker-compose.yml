@@ -162,7 +162,7 @@ services:
       db:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
     command: ["python", "-m", "ugc_bot.kafka_consumer"]
     restart: unless-stopped
 
@@ -182,7 +182,7 @@ services:
       db:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
     command: ["python", "-m", "ugc_bot.outbox_processor"]
     restart: unless-stopped
 

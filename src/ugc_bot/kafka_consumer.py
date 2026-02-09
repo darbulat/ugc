@@ -11,6 +11,10 @@ from aiokafka import (  # type: ignore[import-untyped]
     AIOKafkaConsumer,
     AIOKafkaProducer,
 )
+from aiokafka.errors import (  # type: ignore[import-untyped]
+    KafkaConnectionError,
+    NoBrokersAvailable,
+)
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import MessengerClient
@@ -31,6 +35,50 @@ from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
+
+_KAFKA_BOOTSTRAP_MAX_RETRIES = 10
+_KAFKA_BOOTSTRAP_RETRY_DELAY_SECONDS = 2.0
+
+
+async def _start_kafka_client_with_retry(
+    start_fn: object,
+    client_name: str,
+) -> None:
+    """Start Kafka client with retry on connection errors."""
+    if not callable(start_fn):
+        raise TypeError("start_fn must be callable")
+    last_exc: Exception | None = None
+    for attempt in range(1, _KAFKA_BOOTSTRAP_MAX_RETRIES + 1):
+        try:
+            result = start_fn()
+            if asyncio.iscoroutine(result):
+                await result
+            logger.info(
+                "%s started successfully",
+                client_name,
+                extra={"attempt": attempt},
+            )
+            return
+        except (KafkaConnectionError, NoBrokersAvailable) as exc:
+            last_exc = exc
+            if attempt == _KAFKA_BOOTSTRAP_MAX_RETRIES:
+                logger.error(
+                    "%s failed after %d attempts",
+                    client_name,
+                    _KAFKA_BOOTSTRAP_MAX_RETRIES,
+                    extra={"error": str(exc)},
+                )
+                raise
+            wait_sec = _KAFKA_BOOTSTRAP_RETRY_DELAY_SECONDS * attempt
+            logger.warning(
+                "Kafka bootstrap failed for %s, retrying in %.1fs",
+                client_name,
+                wait_sec,
+                extra={"attempt": attempt, "error": str(exc)},
+            )
+            await asyncio.sleep(wait_sec)
+    if last_exc:
+        raise last_exc
 
 
 def _parse_order_id(data: dict[str, Any]) -> UUID | None:
@@ -261,10 +309,11 @@ async def _consume_forever(
     producer_started = False
     consumer_started = False
     try:
-        await dlq_producer.start()
+        await _start_kafka_client_with_retry(
+            dlq_producer.start, "Kafka DLQ producer"
+        )
         producer_started = True
-        logger.info("Kafka DLQ producer started")
-        await consumer.start()
+        await _start_kafka_client_with_retry(consumer.start, "Kafka consumer")
         consumer_started = True
         logger.info("Kafka consumer subscribed, waiting for messages")
 

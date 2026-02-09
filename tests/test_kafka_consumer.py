@@ -34,6 +34,7 @@ from ugc_bot.kafka_consumer import (
     _parse_order_id,
     _publish_dlq,
     _send_offers,
+    _start_kafka_client_with_retry,
     main,
     run_consumer,
 )
@@ -789,3 +790,54 @@ async def test_send_offers_sends_to_dlq(
         retry_delay_seconds=0.0,
     )
     assert published["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_start_kafka_client_with_retry_succeeds_after_connection_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kafka client start retries on KafkaConnectionError, succeeds on retry."""
+    from aiokafka.errors import KafkaConnectionError
+
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer._KAFKA_BOOTSTRAP_MAX_RETRIES", 3
+    )
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer._KAFKA_BOOTSTRAP_RETRY_DELAY_SECONDS", 0.01
+    )
+
+    calls = []
+
+    async def flaky_start() -> None:
+        calls.append(1)
+        if len(calls) < 2:
+            raise KafkaConnectionError("Unable to bootstrap")
+
+    with patch("ugc_bot.kafka_consumer.asyncio.sleep", new_callable=AsyncMock):
+        await _start_kafka_client_with_retry(flaky_start, "test client")
+
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_start_kafka_client_with_retry_raises_after_max_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kafka client start re-raises after exhausting retries."""
+    from aiokafka.errors import KafkaConnectionError
+
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer._KAFKA_BOOTSTRAP_MAX_RETRIES", 3
+    )
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer._KAFKA_BOOTSTRAP_RETRY_DELAY_SECONDS", 0.01
+    )
+
+    async def always_fail() -> None:
+        raise KafkaConnectionError("Unable to bootstrap")
+
+    with (
+        patch("ugc_bot.kafka_consumer.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(KafkaConnectionError),
+    ):
+        await _start_kafka_client_with_retry(always_fail, "test client")
