@@ -7,7 +7,7 @@ can receive updates via webhook (no polling conflict).
 import asyncio
 import logging
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
@@ -54,32 +54,37 @@ async def _lifespan(app: FastAPI):
             "Set it to your public HTTPS URL (e.g. https://bot.example.com)"
         )
 
-    storage = await create_storage(config)
-    dispatcher = build_dispatcher(config, storage=storage)
-    bot = Bot(token=config.bot.bot_token)
-    messenger_client = TelegramMessengerClient(bot)
-    event_adapter = TelegramEventAdapter()
-    payment_provider = TelegramPaymentProvider(bot)
+    storage = None
+    bot = None
+    try:
+        storage = await create_storage(config)
+        dispatcher = build_dispatcher(config, storage=storage)
+        bot = Bot(token=config.bot.bot_token)
+        messenger_client = TelegramMessengerClient(bot)
+        event_adapter = TelegramEventAdapter()
+        payment_provider = TelegramPaymentProvider(bot)
 
-    webhook_url = f"{base_url}/webhook/telegram"
-    secret = config.webhook.webhook_secret.strip() or None
-    await bot.set_webhook(webhook_url, secret_token=secret)
-    logger.info("Webhook registered", extra={"url": webhook_url})
+        webhook_url = f"{base_url}/webhook/telegram"
+        secret = config.webhook.webhook_secret.strip() or None
+        await bot.set_webhook(webhook_url, secret_token=secret)
+        logger.info("Webhook registered", extra={"url": webhook_url})
 
-    dispatcher["messenger_client"] = messenger_client
-    dispatcher["event_adapter"] = event_adapter
-    dispatcher["payment_provider"] = payment_provider
+        dispatcher["messenger_client"] = messenger_client
+        dispatcher["event_adapter"] = event_adapter
+        dispatcher["payment_provider"] = payment_provider
 
-    app.state.dispatcher = dispatcher
-    app.state.bot = bot
-    app.state.storage = storage
+        app.state.dispatcher = dispatcher
+        app.state.bot = bot
+        app.state.storage = storage
 
-    yield
-
-    await bot.delete_webhook()
-    if hasattr(storage, "close"):
-        await storage.close()
-    await bot.session.close()
+        yield
+    finally:
+        if bot is not None:
+            with suppress(Exception):
+                await bot.delete_webhook()
+            await bot.session.close()
+        if storage is not None and hasattr(storage, "close"):
+            await storage.close()
 
 
 app = FastAPI(title="Telegram Webhook", lifespan=_lifespan)
