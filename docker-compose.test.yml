@@ -58,8 +58,7 @@ services:
   e2e:
     build:
       context: .
-      target: e2e
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.e2e
     environment:
       E2E_BASE_URL: http://admin_test:8001
     depends_on:
@@ -71,7 +70,6 @@ services:
   test:
     build:
       context: .
-      target: e2e
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.e2e
     command: ["python", "-m", "pytest", "-m", "not e2e", "--cov=ugc_bot", "--cov-report=term-missing"]
     restart: "no"
