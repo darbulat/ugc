@@ -366,6 +366,33 @@ def test_admin_order_detail_redirect_when_not_authenticated(
     assert "/admin/login" in response.headers.get("location", "")
 
 
+def test_order_model_edit_redirects_when_not_authenticated(
+    monkeypatch,
+) -> None:
+    """SQLAdmin order-model edit redirects to login when not authenticated."""
+    from uuid import uuid4
+
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "password")
+    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+
+    app = create_admin_app()
+    client = TestClient(app)
+
+    order_id = uuid4()
+    response = client.get(
+        f"/admin/order-model/edit/{order_id}",
+        follow_redirects=False,
+    )
+    assert response.status_code in (302, 307)
+    assert "/admin/login" in response.headers.get("location", "")
+
+
 def test_admin_order_detail_404_when_not_found(monkeypatch) -> None:
     """Order detail page returns 404 when order not found."""
     from uuid import uuid4

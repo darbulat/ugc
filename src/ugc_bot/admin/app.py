@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException
 from sqladmin import Admin, ModelView
+from sqladmin.authentication import login_required
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -687,6 +688,7 @@ class EnumAwareAdmin(Admin):
                 data[prop_name] = value
         return data
 
+    @login_required
     async def edit(self, request: Request):  # pragma: no cover
         """Override edit to pass enum .value for correct select display."""
         from starlette.exceptions import HTTPException
