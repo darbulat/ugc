@@ -6,12 +6,9 @@ from uuid import UUID
 import pytest
 from aiogram import Router
 
-from ugc_bot.app import (
-    _json_dumps,
-    build_dispatcher,
-    create_storage,
-)
+from ugc_bot.app import build_dispatcher, create_storage
 from ugc_bot.config import AppConfig
+from ugc_bot.infrastructure.fsm_json import fsm_json_dumps
 
 
 def test_build_dispatcher_requires_database_url() -> None:
@@ -81,18 +78,18 @@ def test_build_dispatcher_includes_routers(
 
 
 def test_json_dumps_serializes_uuid_and_datetime() -> None:
-    """_json_dumps handles UUID and datetime in dict."""
+    """fsm_json_dumps handles UUID and datetime in dict."""
     uid = UUID("00000000-0000-0000-0000-000000000001")
     dt = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-    result = _json_dumps({"id": uid, "at": dt})
+    result = fsm_json_dumps({"id": uid, "at": dt})
     assert '"00000000-0000-0000-0000-000000000001"' in result
     assert "2025-01-15" in result
 
 
 def test_json_dumps_default_raises_for_other_types() -> None:
-    """_json_dumps default() calls super().default for non-UUID/datetime."""
+    """fsm_json_dumps default() calls super().default for non-UUID/datetime."""
     with pytest.raises(TypeError):
-        _json_dumps({"bad": object()})
+        fsm_json_dumps({"bad": object()})
 
 
 def _redis_import_works() -> bool:

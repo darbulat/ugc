@@ -88,6 +88,13 @@ class Container:
             self._config, repos, self._transaction_manager
         )
 
+    def build_feedback_scheduler_deps(self) -> dict:
+        """Deps for feedback scheduler: repos and services."""
+        repos = self.build_repos()
+        return service_factory.build_feedback_scheduler_deps(
+            self._config, repos, self._transaction_manager
+        )
+
     def build_instagram_verification_service(
         self,
     ) -> InstagramVerificationService:

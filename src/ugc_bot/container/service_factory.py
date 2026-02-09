@@ -74,6 +74,33 @@ def build_outbox_deps(config: AppConfig, repos, transaction_manager):
     return (outbox_publisher, kafka_publisher)
 
 
+def build_feedback_scheduler_deps(
+    config: AppConfig, repos, transaction_manager
+):
+    """Build deps for feedback scheduler: services and repos."""
+    return {
+        "interaction_repo": repos["interaction_repo"],
+        "order_repo": repos["order_repo"],
+        "transaction_manager": transaction_manager,
+        "interaction_service": InteractionService(
+            interaction_repo=repos["interaction_repo"],
+            postpone_delay_minutes=config.feedback.feedback_delay_minutes,
+            transaction_manager=transaction_manager,
+            feedback_config=config.feedback,
+        ),
+        "user_role_service": UserRoleService(
+            user_repo=repos["user_repo"],
+            transaction_manager=transaction_manager,
+        ),
+        "profile_service": ProfileService(
+            user_repo=repos["user_repo"],
+            blogger_repo=repos["blogger_repo"],
+            advertiser_repo=repos["advertiser_repo"],
+            transaction_manager=transaction_manager,
+        ),
+    }
+
+
 def build_instagram_verification_service(
     repos, instagram_api_client, transaction_manager
 ):

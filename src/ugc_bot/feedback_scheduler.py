@@ -19,23 +19,13 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.config import FeedbackConfig, load_config
-from ugc_bot.domain.entities import Interaction, Order
+from ugc_bot.container import Container
+from ugc_bot.domain.entities import BloggerProfile, Interaction, Order, User
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
 )
-from ugc_bot.infrastructure.db.repositories import (
-    SqlAlchemyAdvertiserProfileRepository,
-    SqlAlchemyBloggerProfileRepository,
-    SqlAlchemyInteractionRepository,
-    SqlAlchemyOrderRepository,
-    SqlAlchemyUserRepository,
-)
-from ugc_bot.infrastructure.db.session import (
-    SessionTransactionManager,
-    create_session_factory,
-    with_optional_tx,
-)
+from ugc_bot.infrastructure.db.session import with_optional_tx
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
@@ -102,6 +92,83 @@ async def _iter_due_interactions(
     return interactions_list
 
 
+async def _send_advertiser_feedback(
+    messenger_client: MessengerClient,
+    interaction: Interaction,
+    advertiser: User,
+    blogger_profile: Optional[BloggerProfile],
+) -> bool:
+    """Send feedback request to advertiser. Return True if sent."""
+    creator_link = ""
+    if blogger_profile and blogger_profile.instagram_url:
+        url = blogger_profile.instagram_url.strip()
+        if url and not url.startswith("http"):
+            url = "https://" + url
+        creator_link = f" [{url}]({url})"
+    text = (
+        "Хотим убедиться, что всё прошло корректно 🙌\n"
+        f"Удалось ли вам связаться с креатором{creator_link}?\n"
+        "Выберите подходящий вариант:"
+    )
+    await send_with_retry(
+        messenger_client,
+        chat_id=advertiser.external_id,
+        text=text,
+        parse_mode="Markdown",
+        keyboard=_feedback_keyboard("adv", interaction.interaction_id),
+        retries=_send_retries,
+        delay_seconds=_send_retry_delay_seconds,
+        logger=logger,
+        extra={"interaction_id": str(interaction.interaction_id)},
+    )
+    logger.info(
+        "Sent interaction feedback request to advertiser",
+        extra={
+            "interaction_id": str(interaction.interaction_id),
+            "advertiser_id": str(advertiser.user_id),
+        },
+    )
+    return True
+
+
+async def _send_blogger_feedback(
+    messenger_client: MessengerClient,
+    interaction: Interaction,
+    blogger: User,
+    order: Optional[Order],
+) -> bool:
+    """Send feedback request to blogger. Return True if sent."""
+    order_link_part = "по заказу?"
+    if order and order.product_link:
+        url = order.product_link.strip()
+        if url and not url.startswith("http"):
+            url = "https://" + url
+        order_link_part = f"[по заказу]({url})?"
+    text = (
+        "Мы хотим убедиться, что всё прошло корректно 🙌\n"
+        f"Удалось ли вам связаться с заказчиком {order_link_part}"
+    )
+    await send_with_retry(
+        messenger_client,
+        chat_id=blogger.external_id,
+        text=text,
+        parse_mode="Markdown",
+        keyboard=_feedback_keyboard("blog", interaction.interaction_id),
+        retries=_send_retries,
+        delay_seconds=_send_retry_delay_seconds,
+        logger=logger,
+        extra={"interaction_id": str(interaction.interaction_id)},
+    )
+    logger.info(
+        "Sent interaction feedback request to blogger",
+        extra={
+            "interaction_id": str(interaction.interaction_id),
+            "blogger_id": str(interaction.blogger_id),
+        },
+    )
+    return True
+
+
 async def _send_feedback_requests(
     messenger_client: MessengerClient,
     interaction: Interaction,
@@ -134,6 +201,8 @@ async def _send_feedback_requests(
             "Skipping advertiser feedback: user not found",
             extra={"advertiser_id": str(interaction.advertiser_id)},
         )
+    if not blogger and not advertiser:
+        return
     blogger_profile = (
         await profile_service.get_blogger_profile(interaction.blogger_id)
         if profile_service
@@ -148,35 +217,8 @@ async def _send_feedback_requests(
         and needs_feedback_reminder(interaction.from_advertiser)
         and advertiser.external_id.isdigit()
     ):
-        creator_link = ""
-        if blogger_profile and blogger_profile.instagram_url:
-            url = blogger_profile.instagram_url.strip()
-            if url and not url.startswith("http"):
-                url = "https://" + url
-            creator_link = f" [{url}]({url})"
-        text = (
-            "Хотим убедиться, что всё прошло корректно 🙌\n"
-            f"Удалось ли вам связаться с креатором{creator_link}?\n"
-            "Выберите подходящий вариант:"
-        )
-        await send_with_retry(
-            messenger_client,
-            chat_id=advertiser.external_id,
-            text=text,
-            parse_mode="Markdown",
-            keyboard=_feedback_keyboard("adv", interaction.interaction_id),
-            retries=_send_retries,
-            delay_seconds=_send_retry_delay_seconds,
-            logger=logger,
-            extra={"interaction_id": str(interaction.interaction_id)},
-        )
-        sent_to_adv = True
-        logger.info(
-            "Sent interaction feedback request to advertiser",
-            extra={
-                "interaction_id": str(interaction.interaction_id),
-                "advertiser_id": str(advertiser.user_id),
-            },
+        sent_to_adv = await _send_advertiser_feedback(
+            messenger_client, interaction, advertiser, blogger_profile
         )
 
     if (
@@ -184,34 +226,8 @@ async def _send_feedback_requests(
         and needs_feedback_reminder(interaction.from_blogger)
         and blogger.external_id.isdigit()
     ):
-        order_link_part = "по заказу?"
-        if order and order.product_link:
-            url = order.product_link.strip()
-            if url and not url.startswith("http"):
-                url = "https://" + url
-            order_link_part = f"[по заказу]({url})?"
-        text = (
-            "Мы хотим убедиться, что всё прошло корректно 🙌\n"
-            f"Удалось ли вам связаться с заказчиком {order_link_part}"
-        )
-        await send_with_retry(
-            messenger_client,
-            chat_id=blogger.external_id,
-            text=text,
-            parse_mode="Markdown",
-            keyboard=_feedback_keyboard("blog", interaction.interaction_id),
-            retries=_send_retries,
-            delay_seconds=_send_retry_delay_seconds,
-            logger=logger,
-            extra={"interaction_id": str(interaction.interaction_id)},
-        )
-        sent_to_blog = True
-        logger.info(
-            "Sent interaction feedback request to blogger",
-            extra={
-                "interaction_id": str(interaction.interaction_id),
-                "blogger_id": str(interaction.blogger_id),
-            },
+        sent_to_blog = await _send_blogger_feedback(
+            messenger_client, interaction, blogger, order
         )
 
     if sent_to_adv or sent_to_blog:
@@ -355,6 +371,10 @@ def main() -> None:
         logger.info("Feedback scheduler disabled by config")
         return
 
+    if not config.db.database_url:
+        logger.error("DATABASE_URL is required for feedback scheduler")
+        return
+
     logger.info(
         "Initializing feedback scheduler",
         extra={
@@ -364,40 +384,8 @@ def main() -> None:
             ),
         },
     )
-    session_factory = create_session_factory(
-        config.db.database_url,
-        pool_size=config.db.pool_size,
-        max_overflow=config.db.max_overflow,
-        pool_timeout=config.db.pool_timeout,
-    )
-    transaction_manager = SessionTransactionManager(session_factory)
-    user_repo = SqlAlchemyUserRepository(session_factory=session_factory)
-    interaction_repo = SqlAlchemyInteractionRepository(
-        session_factory=session_factory
-    )
-    order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
-    blogger_repo = SqlAlchemyBloggerProfileRepository(
-        session_factory=session_factory
-    )
-    advertiser_repo = SqlAlchemyAdvertiserProfileRepository(
-        session_factory=session_factory
-    )
-
-    user_role_service = UserRoleService(
-        user_repo=user_repo, transaction_manager=transaction_manager
-    )
-    interaction_service = InteractionService(
-        interaction_repo=interaction_repo,
-        postpone_delay_minutes=config.feedback.feedback_delay_minutes,
-        transaction_manager=transaction_manager,
-        feedback_config=config.feedback,
-    )
-    profile_service = ProfileService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        advertiser_repo=advertiser_repo,
-        transaction_manager=transaction_manager,
-    )
+    container = Container(config)
+    deps = container.build_feedback_scheduler_deps()
 
     bot = Bot(token=config.bot.bot_token)
     messenger_client = TelegramMessengerClient(bot)
@@ -405,14 +393,14 @@ def main() -> None:
         asyncio.run(
             run_loop(
                 messenger_client,
-                interaction_repo,
-                interaction_service,
-                user_role_service,
-                profile_service,
-                order_repo,
+                deps["interaction_repo"],
+                deps["interaction_service"],
+                deps["user_role_service"],
+                deps["profile_service"],
+                deps["order_repo"],
                 config.feedback,
                 interval_seconds=config.feedback.feedback_poll_interval_seconds,
-                transaction_manager=transaction_manager,
+                transaction_manager=deps["transaction_manager"],
             )
         )
     finally:

@@ -33,32 +33,7 @@ from ugc_bot.bot.handlers.start import router as start_router
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
-
-
-def _json_dumps(obj: dict) -> str:
-    """Custom JSON dumps that handles UUID and other non-serializable types."""
-    import json
-    from datetime import datetime
-    from uuid import UUID
-
-    class UUIDEncoder(json.JSONEncoder):
-        """JSON encoder that handles UUID and datetime objects."""
-
-        def default(self, obj):  # type: ignore[no-untyped-def]
-            if isinstance(obj, UUID):
-                return str(obj)
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            return super().default(obj)
-
-    return json.dumps(obj, cls=UUIDEncoder)
-
-
-def _json_loads(data: str) -> dict:
-    """Custom JSON loads for FSM data."""
-    import json
-
-    return json.loads(data)
+from ugc_bot.infrastructure.fsm_json import fsm_json_dumps, fsm_json_loads
 
 
 async def create_storage(config: AppConfig):
@@ -73,8 +48,8 @@ async def create_storage(config: AppConfig):
             )
             return RedisStorage(
                 redis=redis,
-                json_dumps=_json_dumps,
-                json_loads=_json_loads,
+                json_dumps=fsm_json_dumps,
+                json_loads=fsm_json_loads,
             )
         except ImportError:
             logging.getLogger(__name__).warning(

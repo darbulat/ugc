@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from ugc_bot.app import _json_dumps, _json_loads
+from ugc_bot.infrastructure.fsm_json import fsm_json_dumps, fsm_json_loads
 
 
 def test_json_dumps_with_uuid() -> None:
@@ -12,7 +12,7 @@ def test_json_dumps_with_uuid() -> None:
     user_id = uuid4()
     data = {"user_id": user_id, "name": "test"}
 
-    result = _json_dumps(data)
+    result = fsm_json_dumps(data)
     parsed = json.loads(result)
 
     assert parsed["user_id"] == str(user_id)
@@ -24,7 +24,7 @@ def test_json_dumps_with_datetime() -> None:
     now = datetime.now(timezone.utc)
     data = {"timestamp": now, "value": 123}
 
-    result = _json_dumps(data)
+    result = fsm_json_dumps(data)
     parsed = json.loads(result)
 
     assert parsed["timestamp"] == now.isoformat()
@@ -44,7 +44,7 @@ def test_json_dumps_with_mixed_types() -> None:
         "is_new": True,
     }
 
-    result = _json_dumps(data)
+    result = fsm_json_dumps(data)
     parsed = json.loads(result)
 
     assert parsed["user_id"] == str(user_id)
@@ -59,7 +59,7 @@ def test_json_loads() -> None:
     data = {"user_id": "550e8400-e29b-41d4-a716-446655440000", "value": 123}
     json_str = json.dumps(data)
 
-    result = _json_loads(json_str)
+    result = fsm_json_loads(json_str)
 
     assert result == data
 
@@ -78,10 +78,10 @@ def test_json_roundtrip() -> None:
     }
 
     # Serialize
-    json_str = _json_dumps(original_data)
+    json_str = fsm_json_dumps(original_data)
 
     # Deserialize
-    deserialized = _json_loads(json_str)
+    deserialized = fsm_json_loads(json_str)
 
     # Check that UUIDs are strings
     assert isinstance(deserialized["user_id"], str)

@@ -864,10 +864,22 @@ def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "DATABASE_URL", "postgresql://user:pass@localhost:5432/db"
     )
-    monkeypatch.setattr(
-        "ugc_bot.feedback_scheduler.create_session_factory",
-        lambda _, **__: object(),
-    )
+
+    class FakeContainer:
+        def __init__(self, config: object) -> None:
+            pass
+
+        def build_feedback_scheduler_deps(self) -> dict:
+            return {
+                "interaction_repo": Mock(),
+                "order_repo": Mock(),
+                "transaction_manager": Mock(),
+                "interaction_service": Mock(),
+                "user_role_service": Mock(),
+                "profile_service": Mock(),
+            }
+
+    monkeypatch.setattr("ugc_bot.feedback_scheduler.Container", FakeContainer)
 
     def _run(coro) -> None:  # type: ignore[no-untyped-def]
         coro.close()
@@ -1067,17 +1079,17 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
 def test_main_feedback_disabled_returns_early(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Main returns without creating session when feedback is disabled."""
+    """Main returns without creating Container when feedback is disabled."""
 
     monkeypatch.setenv("FEEDBACK_ENABLED", "false")
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF1234567890abcdef1234567890")
     monkeypatch.setenv(
         "DATABASE_URL", "postgresql://user:pass@localhost:5432/db"
     )
-    create_session_factory_mock = Mock()
+    container_mock = Mock()
     monkeypatch.setattr(
-        "ugc_bot.feedback_scheduler.create_session_factory",
-        create_session_factory_mock,
+        "ugc_bot.feedback_scheduler.Container",
+        container_mock,
     )
     main()
-    create_session_factory_mock.assert_not_called()
+    container_mock.assert_not_called()

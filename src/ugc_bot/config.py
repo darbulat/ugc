@@ -324,5 +324,10 @@ class AppConfig(BaseModel):
 
 
 def load_config() -> AppConfig:
-    """Load config from env (.env)."""
+    """Load config from environment variables and .env file.
+
+    Environment variables are read via pydantic-settings (BaseSettings).
+    AppConfig.model_validate({}) triggers _handle_flat_dict which
+    loads from env through nested section configs (BotConfig, DbConfig, etc.).
+    """
     return AppConfig.model_validate({})
