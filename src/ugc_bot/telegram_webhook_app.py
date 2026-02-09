@@ -10,6 +10,7 @@ import time
 from contextlib import asynccontextmanager, suppress
 
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -35,6 +36,33 @@ from ugc_bot.metrics.collector import (
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
+
+_MAX_WEBHOOK_RETRIES = 5
+
+
+async def _set_webhook_with_retry(
+    bot: Bot, webhook_url: str, secret_token: str | None
+) -> None:
+    """Register webhook with retry on Telegram flood control (429)."""
+    for attempt in range(_MAX_WEBHOOK_RETRIES):
+        try:
+            await bot.set_webhook(webhook_url, secret_token=secret_token)
+            return
+        except TelegramRetryAfter as exc:
+            if attempt == _MAX_WEBHOOK_RETRIES - 1:
+                logger.error(
+                    "set_webhook failed after %d retries (flood control)",
+                    _MAX_WEBHOOK_RETRIES,
+                    extra={"retry_after": exc.retry_after},
+                )
+                raise
+            wait_sec = exc.retry_after + 1
+            logger.warning(
+                "Telegram flood control on set_webhook, retrying in %ds",
+                wait_sec,
+                extra={"retry_after": exc.retry_after, "attempt": attempt + 1},
+            )
+            await asyncio.sleep(wait_sec)
 
 
 @asynccontextmanager
@@ -66,7 +94,7 @@ async def _lifespan(app: FastAPI):
 
         webhook_url = f"{base_url}/webhook/telegram"
         secret = config.webhook.webhook_secret.strip() or None
-        await bot.set_webhook(webhook_url, secret_token=secret)
+        await _set_webhook_with_retry(bot, webhook_url, secret)
         logger.info("Webhook registered", extra={"url": webhook_url})
 
         dispatcher["messenger_client"] = messenger_client

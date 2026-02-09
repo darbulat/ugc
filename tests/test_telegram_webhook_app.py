@@ -3,10 +3,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiogram.exceptions import TelegramRetryAfter
 from fastapi.testclient import TestClient
 
 from ugc_bot.config import AppConfig
-from ugc_bot.telegram_webhook_app import app
+from ugc_bot.telegram_webhook_app import _set_webhook_with_retry, app
 
 
 def _test_config() -> AppConfig:
@@ -362,3 +363,54 @@ def test_webhook_rejects_invalid_secret() -> None:
                 headers={"X-Telegram-Bot-Api-Secret-Token": "my_secret"},
             )
             assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_set_webhook_with_retry_succeeds_after_flood_control() -> None:
+    """set_webhook retries on TelegramRetryAfter, succeeds on second attempt."""
+    bot = MagicMock()
+    set_webhook = AsyncMock(
+        side_effect=[
+            TelegramRetryAfter(
+                method="SetWebhook",
+                message="Too Many Requests: retry after 1",
+                retry_after=1,
+            ),
+            True,
+        ]
+    )
+    bot.set_webhook = set_webhook
+
+    with patch(
+        "ugc_bot.telegram_webhook_app.asyncio.sleep", new_callable=AsyncMock
+    ):
+        await _set_webhook_with_retry(
+            bot, "https://test.example.com/webhook", None
+        )
+
+    assert set_webhook.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_set_webhook_with_retry_raises_after_max_retries() -> None:
+    """set_webhook re-raises TelegramRetryAfter after exhausting retries."""
+    bot = MagicMock()
+    bot.set_webhook = AsyncMock(
+        side_effect=TelegramRetryAfter(
+            method="SetWebhook",
+            message="Too Many Requests: retry after 1",
+            retry_after=1,
+        )
+    )
+
+    with (
+        patch(
+            "ugc_bot.telegram_webhook_app.asyncio.sleep", new_callable=AsyncMock
+        ),
+        pytest.raises(TelegramRetryAfter),
+    ):
+        await _set_webhook_with_retry(
+            bot, "https://test.example.com/webhook", None
+        )
+
+    assert bot.set_webhook.call_count == 5
