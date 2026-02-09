@@ -20,7 +20,7 @@ COPY tests /app/tests
 
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install -r requirements.txt && \
-    pip install -e ".[dev]" && \
+    pip install -e ".[dev,telegram-e2e]" && \
     pip install pytest pytest-cov pytest-asyncio pytest-timeout
 
 RUN python -m playwright install --with-deps chromium

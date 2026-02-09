@@ -73,3 +73,18 @@ services:
       dockerfile: Dockerfile.e2e
     command: ["python", "-m", "pytest", "-m", "not e2e", "--cov=ugc_bot", "--cov-report=term-missing"]
     restart: "no"
+
+  # E2E with real Telegram: requires TELEGRAM_E2E_* in .env or environment
+  # Bot must be running with webhook. Use: make e2e-telegram-docker
+  e2e-telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    environment:
+      TELEGRAM_E2E_BOT_TOKEN: ${TELEGRAM_E2E_BOT_TOKEN:-}
+      TELEGRAM_E2E_BOT_USERNAME: ${TELEGRAM_E2E_BOT_USERNAME:-}
+      TELEGRAM_E2E_API_ID: ${TELEGRAM_E2E_API_ID:-}
+      TELEGRAM_E2E_API_HASH: ${TELEGRAM_E2E_API_HASH:-}
+      TELEGRAM_E2E_PHONE: ${TELEGRAM_E2E_PHONE:-}
+    command: ["python", "-m", "pytest", "tests/e2e", "-m", "e2e_telegram", "-v", "--timeout=90"]
+    restart: "no"

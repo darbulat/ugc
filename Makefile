@@ -1,4 +1,4 @@
-.PHONY: install-dev lint typecheck test coverage e2e e2e-docker test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db list-backups
+.PHONY: install-dev lint typecheck test coverage e2e e2e-docker e2e-telegram e2e-telegram-docker test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db list-backups
 
 export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
@@ -28,6 +28,9 @@ e2e:
 e2e-telegram:
 	uv sync --extra dev --extra telegram-e2e
 	uv run pytest tests/e2e -m e2e_telegram -v --timeout=90
+
+e2e-telegram-docker:
+	docker compose -f docker-compose.test.yml run --rm e2e-telegram
 
 e2e-docker:
 	docker compose -f docker-compose.test.yml run --rm e2e
