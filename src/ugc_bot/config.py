@@ -140,12 +140,38 @@ class DbConfig(BaseSettings):
     pool_timeout: int = Field(default=30, alias="DB_POOL_TIMEOUT")
 
 
+_WEAK_ADMIN_VALUES = frozenset(
+    {"admin", "change_me", "changeme", "password", "secret"}
+)
+
+
 class AdminConfig(BaseSettings):
     model_config = _ENV
 
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     admin_secret: str = Field(default="", alias="ADMIN_SECRET")
+
+    @field_validator("admin_password")
+    @classmethod
+    def validate_admin_password(cls, v: str) -> str:
+        if v and v.strip().lower() in _WEAK_ADMIN_VALUES:
+            raise ValueError(
+                "ADMIN_PASSWORD must not use default/weak values. "
+                "Set a strong password for production.",
+            )
+        return v
+
+    @field_validator("admin_secret")
+    @classmethod
+    def validate_admin_secret(cls, v: str) -> str:
+        if v and v.strip().lower() in _WEAK_ADMIN_VALUES:
+            raise ValueError(
+                "ADMIN_SECRET must not use default/weak values. "
+                "Set a secure random secret for production.",
+            )
+        return v
+
     admin_site_name: str = Field(default="UGC Admin", alias="ADMIN_SITE_NAME")
     admin_base_url: str = Field(
         default="", alias="ADMIN_BASE_URL"

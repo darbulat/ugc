@@ -32,6 +32,15 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     config = load_config()
+    if (
+        not config.instagram.instagram_app_secret
+        or not config.instagram.instagram_app_secret.strip()
+    ):
+        raise ValueError(
+            "INSTAGRAM_APP_SECRET is required for production. "
+            "Set it to verify webhook signatures from Meta.",
+        )
+    app.state.config = config
     log_startup_info(
         logger=logger, service_name="instagram-webhook", config=config
     )
@@ -81,10 +90,15 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _get_config(request: Request) -> AppConfig:
+    """Get config from app state (set in lifespan) or load fresh."""
+    return getattr(request.app.state, "config", None) or load_config()
+
+
 @app.get("/webhook/instagram")
 async def verify_webhook(request: Request) -> Response:
     """Handle webhook verification request from Meta."""
-    config = load_config()
+    config = _get_config(request)
 
     # FastAPI: query params with dots; use request.query_params
     hub_mode = request.query_params.get("hub.mode")
@@ -113,7 +127,7 @@ async def handle_webhook(
     x_hub_signature_256: str | None = Header(None, alias="X-Hub-Signature-256"),
 ) -> dict[str, str]:
     """Handle webhook event notifications from Instagram."""
-    config = load_config()
+    config = _get_config(request)
 
     # Read raw payload for signature verification
     payload_bytes = await request.body()

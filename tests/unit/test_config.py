@@ -97,3 +97,29 @@ def test_bot_config_empty_token_raises() -> None:
 
     with pytest.raises(ValueError, match="BOT_TOKEN is required"):
         BotConfig.model_validate({"BOT_TOKEN": "   "})
+
+
+def test_admin_config_rejects_weak_password() -> None:
+    """AdminConfig rejects weak admin password values."""
+    base = {
+        "BOT_TOKEN": "t",
+        "DATABASE_URL": "db",
+        "ADMIN_USERNAME": "a",
+        "ADMIN_SECRET": "strong_secret_xyz",
+    }
+    for weak in ("admin", "change_me", "changeme", "password", "secret"):
+        with pytest.raises(ValueError, match="ADMIN_PASSWORD"):
+            AppConfig.model_validate({**base, "ADMIN_PASSWORD": weak})
+
+
+def test_admin_config_rejects_weak_secret() -> None:
+    """AdminConfig rejects weak admin secret values."""
+    base = {
+        "BOT_TOKEN": "t",
+        "DATABASE_URL": "db",
+        "ADMIN_USERNAME": "a",
+        "ADMIN_PASSWORD": "strong_password_xyz",
+    }
+    for weak in ("admin", "change_me", "changeme", "password", "secret"):
+        with pytest.raises(ValueError, match="ADMIN_SECRET"):
+            AppConfig.model_validate({**base, "ADMIN_SECRET": weak})

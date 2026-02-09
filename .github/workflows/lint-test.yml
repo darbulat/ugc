@@ -45,7 +45,7 @@ jobs:
       - name: Run linters (format check, lint, typecheck)
         run: |
           source .venv/bin/activate
-          make lint typecheck
+          make format-check lint typecheck
 
       - name: Run tests with coverage
         run: |

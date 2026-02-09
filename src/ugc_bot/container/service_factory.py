@@ -125,6 +125,7 @@ def build_bot_services(
     instagram_api_client: Any,
     outbox_publisher: OutboxPublisher,
     issue_lock_manager: Any,
+    offer_response_rate_limiter: Any,
 ) -> BotServices:
     """Build all services and repos for the bot dispatcher."""
     return {
@@ -215,6 +216,7 @@ def build_bot_services(
             transaction_manager=transaction_manager,
         ),
         "issue_lock_manager": issue_lock_manager,
+        "offer_response_rate_limiter": offer_response_rate_limiter,
         "order_repo": repos["order_repo"],
         "order_response_repo": repos["order_response_repo"],
         "interaction_repo": repos["interaction_repo"],

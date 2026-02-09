@@ -2,6 +2,7 @@
 
 import contextlib
 import logging
+from typing import Any
 from uuid import UUID
 
 from aiogram import Router
@@ -24,7 +25,6 @@ from ugc_bot.bot.handlers.security_warnings import (
     BLOGGER_AFTER_RESPONSE_WHAT_NEXT,
 )
 from ugc_bot.bot.handlers.utils import (
-    RateLimiter,
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
     send_with_retry,
@@ -33,7 +33,6 @@ from ugc_bot.domain.entities import Order
 
 router = Router()
 logger = logging.getLogger(__name__)
-_rate_limiter = RateLimiter(limit=5, window_seconds=10.0)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
 
@@ -75,6 +74,7 @@ async def handle_offer_response(
     profile_service: ProfileService,
     offer_response_service: OfferResponseService,
     interaction_service: InteractionService,
+    offer_response_rate_limiter: Any,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -108,7 +108,7 @@ async def handle_offer_response(
         )
         return
 
-    if not _rate_limiter.allow(user.external_id):
+    if not await offer_response_rate_limiter.allow_async(user.external_id):
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
             text="Слишком много запросов. Попробуйте позже.",

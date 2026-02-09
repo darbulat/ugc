@@ -56,6 +56,14 @@ from ugc_bot.startup_logging import log_startup_info
 logger = logging.getLogger(__name__)
 
 
+_admin_container: Container | None = None
+
+
+def _get_admin_container() -> Container | None:
+    """Return container set at app creation."""
+    return _admin_container
+
+
 def _get_services(
     container: Container,
 ) -> tuple[UserRoleService, ComplaintService, InteractionService]:
@@ -345,7 +353,7 @@ class UserAdmin(ModelView, model=UserModel):
         # If status changed to BLOCKED, log it
         if old_status != new_status and new_status == UserStatus.BLOCKED:
             try:
-                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                container = _get_admin_container()
                 if container:
                     user_role_service, _, _ = _get_services(container)
                     user = await user_role_service.get_user_by_id(UUID(pk))
@@ -442,7 +450,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         )
 
         if new_status_active and old_status == OrderStatus.PENDING_MODERATION:
-            container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+            container = _get_admin_container()
             if container:
                 content_moderation, _, _ = _get_order_moderation_deps(container)
                 if content_moderation.order_contains_banned_content(
@@ -474,7 +482,7 @@ class OrderAdmin(ModelView, model=OrderModel):
             and new_status == OrderStatus.ACTIVE
         ):
             try:
-                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                container = _get_admin_container()
                 if container:
                     _, outbox_publisher, order_repo = (
                         _get_order_moderation_deps(container)
@@ -545,7 +553,7 @@ class InteractionAdmin(ModelView, model=InteractionModel):
             InteractionStatus.NO_DEAL,
         ):
             try:
-                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                container = _get_admin_container()
                 if container:
                     _, _, interaction_service = _get_services(container)
                     await interaction_service.manually_resolve_issue(
@@ -610,7 +618,7 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
             and reported_id
         ):
             try:
-                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                container = _get_admin_container()
                 if container:
                     user_role_service, complaint_service, _ = _get_services(
                         container
@@ -630,7 +638,7 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
             old_status != new_status and new_status == ComplaintStatus.DISMISSED
         ):
             try:
-                container = getattr(self, "_container", None)  # type: ignore[attr-defined]
+                container = _get_admin_container()
                 if container:
                     _, complaint_service, _ = _get_services(container)
                     # Update complaint status via service (sets reviewed_at)
@@ -795,11 +803,9 @@ def create_admin_app() -> FastAPI:  # noqa: C901
         app, engine, authentication_backend=auth, base_url="/admin"
     )
 
-    # Store container in admin views for service access
-    UserAdmin._container = container  # type: ignore[attr-defined]
-    InteractionAdmin._container = container  # type: ignore[attr-defined]
-    ComplaintAdmin._container = container  # type: ignore[attr-defined]
-    OrderAdmin._container = container  # type: ignore[attr-defined]
+    # Store container for service access in admin views
+    global _admin_container
+    _admin_container = container
 
     admin.add_view(UserAdmin)
     admin.add_view(BloggerProfileAdmin)

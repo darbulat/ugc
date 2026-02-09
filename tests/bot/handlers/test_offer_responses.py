@@ -22,6 +22,7 @@ from ugc_bot.bot.handlers.offer_responses import (
     handle_offer_response,
     handle_offer_skip,
 )
+from ugc_bot.bot.handlers.utils import RateLimiter
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.domain.entities import Order, OrderResponse, User
 from ugc_bot.domain.enums import (
@@ -38,6 +39,18 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.metrics.collector import MetricsCollector
+
+
+@pytest.fixture
+def offer_response_rate_limiter() -> RateLimiter:
+    """Permissive rate limiter for most tests."""
+    return RateLimiter(limit=100, window_seconds=10.0)
+
+
+@pytest.fixture
+def strict_rate_limiter() -> RateLimiter:
+    """Strict rate limiter (5 per 10s) for rate limit tests."""
+    return RateLimiter(limit=5, window_seconds=10.0)
 
 
 async def _call_handler_with_middleware(handler, *args, **kwargs):
@@ -202,6 +215,7 @@ async def test_offer_response_handler_success(
     interaction_repo,
     messenger_client,
     event_adapter,
+    offer_response_rate_limiter,
 ) -> None:
     """Blogger can respond to offer."""
 
@@ -249,6 +263,7 @@ async def test_offer_response_handler_success(
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -267,6 +282,7 @@ async def test_offer_response_handler_blocked_user(
     order_repo,
     order_response_repo,
     interaction_repo,
+    offer_response_rate_limiter,
 ) -> None:
     """Reject blocked bloggers early."""
 
@@ -301,6 +317,7 @@ async def test_offer_response_handler_blocked_user(
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -308,7 +325,10 @@ async def test_offer_response_handler_blocked_user(
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_order_not_active(fake_tm: object) -> None:
+async def test_offer_response_handler_order_not_active(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Reject responses for inactive orders."""
 
     user_repo = InMemoryUserRepository()
@@ -372,6 +392,7 @@ async def test_offer_response_handler_order_not_active(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -379,7 +400,10 @@ async def test_offer_response_handler_order_not_active(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_order_not_found(fake_tm: object) -> None:
+async def test_offer_response_handler_order_not_found(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Reject responses for unknown order."""
 
     user_repo = InMemoryUserRepository()
@@ -422,6 +446,7 @@ async def test_offer_response_handler_order_not_found(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -431,6 +456,7 @@ async def test_offer_response_handler_order_not_found(fake_tm: object) -> None:
 @pytest.mark.asyncio
 async def test_offer_response_handler_already_responded(
     fake_tm: object,
+    offer_response_rate_limiter,
 ) -> None:
     """Reject duplicate responses."""
 
@@ -503,6 +529,7 @@ async def test_offer_response_handler_already_responded(
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -510,7 +537,10 @@ async def test_offer_response_handler_already_responded(
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_limit_reached(fake_tm: object) -> None:
+async def test_offer_response_handler_limit_reached(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Reject responses when limit reached."""
 
     user_repo = InMemoryUserRepository()
@@ -582,6 +612,7 @@ async def test_offer_response_handler_limit_reached(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -589,7 +620,10 @@ async def test_offer_response_handler_limit_reached(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_no_from_user(fake_tm: object) -> None:
+async def test_offer_response_handler_no_from_user(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Handle callback without from_user."""
 
     user_repo = InMemoryUserRepository()
@@ -616,13 +650,17 @@ async def test_offer_response_handler_no_from_user(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert not callback.answers
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_user_not_found(fake_tm: object) -> None:
+async def test_offer_response_handler_user_not_found(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Reject when user is missing."""
 
     user_repo = InMemoryUserRepository()
@@ -648,6 +686,7 @@ async def test_offer_response_handler_user_not_found(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -655,7 +694,10 @@ async def test_offer_response_handler_user_not_found(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_paused_user(fake_tm: object) -> None:
+async def test_offer_response_handler_paused_user(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Reject paused bloggers."""
 
     user_repo = InMemoryUserRepository()
@@ -691,6 +733,7 @@ async def test_offer_response_handler_paused_user(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -700,6 +743,7 @@ async def test_offer_response_handler_paused_user(fake_tm: object) -> None:
 @pytest.mark.asyncio
 async def test_offer_response_handler_no_blogger_profile(
     fake_tm: object,
+    offer_response_rate_limiter,
 ) -> None:
     """Reject when blogger profile is missing."""
 
@@ -736,6 +780,7 @@ async def test_offer_response_handler_no_blogger_profile(
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -745,6 +790,7 @@ async def test_offer_response_handler_no_blogger_profile(
 @pytest.mark.asyncio
 async def test_offer_response_handler_unconfirmed_profile(
     fake_tm: object,
+    offer_response_rate_limiter,
 ) -> None:
     """Reject when Instagram is not confirmed."""
 
@@ -784,6 +830,7 @@ async def test_offer_response_handler_unconfirmed_profile(
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -791,7 +838,10 @@ async def test_offer_response_handler_unconfirmed_profile(
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_invalid_uuid(fake_tm: object) -> None:
+async def test_offer_response_handler_invalid_uuid(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Reject invalid UUID in callback data."""
 
     user_repo = InMemoryUserRepository()
@@ -830,6 +880,7 @@ async def test_offer_response_handler_invalid_uuid(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -837,7 +888,10 @@ async def test_offer_response_handler_invalid_uuid(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_exception(fake_tm: object) -> None:
+async def test_offer_response_handler_exception(
+    fake_tm: object,
+    offer_response_rate_limiter,
+) -> None:
     """Handle exceptions gracefully."""
 
     user_repo = InMemoryUserRepository()
@@ -909,6 +963,7 @@ async def test_offer_response_handler_exception(fake_tm: object) -> None:
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
     )
 
     assert callback.answers
@@ -1108,6 +1163,7 @@ async def test_offer_response_handler_rate_limited(
     order_repo,
     order_response_repo,
     interaction_repo,
+    strict_rate_limiter,
 ) -> None:
     """Reject when rate limit exceeded."""
 
@@ -1166,6 +1222,7 @@ async def test_offer_response_handler_rate_limited(
             profile_service,
             response_service,
             interaction_service,
+            strict_rate_limiter,
         )
 
     assert any("Слишком много запросов" in ans for ans in callback.answers)
@@ -1181,6 +1238,7 @@ async def test_offer_response_sends_product_link_and_what_next(
     interaction_repo,
     messenger_client,
     event_adapter,
+    offer_response_rate_limiter,
 ) -> None:
     """Response succeeds: product_link and WHAT_NEXT sent."""
 
@@ -1228,6 +1286,7 @@ async def test_offer_response_sends_product_link_and_what_next(
         profile_service,
         response_service,
         interaction_service,
+        offer_response_rate_limiter,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

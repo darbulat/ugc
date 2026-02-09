@@ -437,48 +437,28 @@ def test_webhook_event_invalid_json(
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
-@patch("ugc_bot.instagram_webhook_app.Container")
-def test_webhook_event_no_app_secret(
-    mock_container_cls: MagicMock,
+@pytest.mark.asyncio
+async def test_webhook_startup_fails_without_app_secret(
     mock_load_config: MagicMock,
-    client: TestClient,
 ) -> None:
-    """Test webhook event processing when app secret is not configured."""
-    # Create config without app secret
+    """App fails to start when INSTAGRAM_APP_SECRET is not configured."""
     config_without_secret = AppConfig.model_validate(
         {
             "BOT_TOKEN": "test_token",
             "DATABASE_URL": "sqlite:///:memory:",
             "INSTAGRAM_WEBHOOK_VERIFY_TOKEN": "test_verify_token",
-            "INSTAGRAM_APP_SECRET": "",  # Empty secret
+            "INSTAGRAM_APP_SECRET": "",  # Empty secret - required for prod
             "ADMIN_INSTAGRAM_USERNAME": "admin_test",
         }
     )
     mock_load_config.return_value = config_without_secret
 
-    verification_service = InstagramVerificationService(
-        user_repo=InMemoryUserRepository(),
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        verification_repo=InMemoryInstagramVerificationRepository(),
-        instagram_api_client=None,
-    )
-    mock_build = (
-        mock_container_cls.return_value.build_instagram_verification_service
-    )
-    mock_build.return_value = verification_service
+    from ugc_bot.instagram_webhook_app import lifespan
 
-    payload = {"object": "instagram", "entry": []}
-    payload_bytes = json.dumps(payload).encode("utf-8")
-
-    # Should succeed without signature when secret is empty
-    response = client.post(
-        "/webhook/instagram",
-        content=payload_bytes,
-    )
-
-    # Should return 200 because signature verification is skipped
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    test_app = FastAPI()
+    with pytest.raises(ValueError, match="INSTAGRAM_APP_SECRET is required"):
+        async with lifespan(test_app):
+            pass
 
 
 @patch("ugc_bot.instagram_webhook_app._notify_user_verification_success")

@@ -382,8 +382,7 @@ class RateLimiter:
     _events: dict[str, list[float]] = field(default_factory=dict)
 
     def allow(self, key: str) -> bool:
-        """Return True when request is allowed."""
-
+        """Return True when request is allowed (sync)."""
         now = monotonic()
         window_start = now - self.window_seconds
         events = [ts for ts in self._events.get(key, []) if ts >= window_start]
@@ -393,6 +392,10 @@ class RateLimiter:
         events.append(now)
         self._events[key] = events
         return True
+
+    async def allow_async(self, key: str) -> bool:
+        """Return True when request is allowed (async)."""
+        return self.allow(key)
 
 
 async def send_with_retry(

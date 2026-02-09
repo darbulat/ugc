@@ -59,6 +59,20 @@ def build_issue_lock_manager(config: AppConfig) -> IssueDescriptionLockManager:
     return IssueDescriptionLockManager(redis_url=redis_url)
 
 
+def build_offer_response_rate_limiter(config: AppConfig):
+    """Create rate limiter for offer responses (Redis or in-memory)."""
+    from ugc_bot.bot.handlers.utils import RateLimiter
+    from ugc_bot.infrastructure.redis_rate_limiter import RedisRateLimiter
+
+    if config.redis.use_redis_storage and config.redis.redis_url:
+        return RedisRateLimiter(
+            redis_url=config.redis.redis_url,
+            limit=5,
+            window_seconds=10.0,
+        )
+    return RateLimiter(limit=5, window_seconds=10.0)
+
+
 def build_instagram_api_client(config: AppConfig):
     """Create Instagram Graph API client if configured."""
     if (

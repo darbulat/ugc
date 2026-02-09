@@ -107,6 +107,7 @@ async def _lifespan(app: FastAPI):
         dispatcher["event_adapter"] = event_adapter
         dispatcher["payment_provider"] = payment_provider
 
+        app.state.config = config
         app.state.dispatcher = dispatcher
         app.state.bot = bot
         app.state.storage = storage
@@ -192,7 +193,7 @@ async def handle_webhook(
     ),
 ) -> dict[str, str]:
     """Receive updates from Telegram. Process in background, return 200."""
-    config = load_config()
+    config = request.app.state.config
     secret = config.webhook.webhook_secret.strip()
     if not secret or x_telegram_bot_api_secret_token != secret:
         logger.warning("Invalid or missing webhook secret token")

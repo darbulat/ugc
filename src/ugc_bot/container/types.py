@@ -54,6 +54,7 @@ class BotServices(TypedDict):
     fsm_draft_service: FsmDraftService
     nps_service: NpsService
     issue_lock_manager: Any
+    offer_response_rate_limiter: Any
     order_repo: Any
     order_response_repo: Any
     interaction_repo: Any

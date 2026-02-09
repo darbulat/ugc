@@ -236,6 +236,11 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         postpone_delay_minutes=config.feedback.feedback_delay_minutes,
         transaction_manager=transaction_manager,
     )
+    from ugc_bot.bot.handlers.utils import RateLimiter
+
+    dispatcher["offer_response_rate_limiter"] = RateLimiter(
+        limit=100, window_seconds=10.0
+    )
     from ugc_bot.application.services.content_moderation_service import (
         ContentModerationService,
     )

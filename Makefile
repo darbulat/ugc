@@ -12,6 +12,9 @@ lint:
 format:
 	uv run ruff format src tests
 
+format-check:
+	uv run ruff format --check src tests
+
 typecheck:
 	uv run mypy src
 

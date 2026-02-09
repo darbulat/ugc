@@ -118,6 +118,12 @@ class Container:
         """Create lock manager for issue description (Redis or in-memory)."""
         return infrastructure_factory.build_issue_lock_manager(self._config)
 
+    def build_offer_response_rate_limiter(self):
+        """Create rate limiter for offer responses (Redis or in-memory)."""
+        return infrastructure_factory.build_offer_response_rate_limiter(
+            self._config
+        )
+
     def build_instagram_api_client(self):
         """Create Instagram Graph API client if configured."""
         return infrastructure_factory.build_instagram_api_client(self._config)
@@ -130,6 +136,7 @@ class Container:
         metrics_collector = self.build_metrics_collector()
         instagram_api_client = self.build_instagram_api_client()
         issue_lock_manager = self.build_issue_lock_manager()
+        offer_response_rate_limiter = self.build_offer_response_rate_limiter()
         outbox_publisher = OutboxPublisher(
             outbox_repo=repos["outbox_repo"],
             order_repo=repos["order_repo"],
@@ -143,4 +150,5 @@ class Container:
             instagram_api_client,
             outbox_publisher,
             issue_lock_manager,
+            offer_response_rate_limiter,
         )

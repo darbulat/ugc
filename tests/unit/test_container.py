@@ -171,6 +171,7 @@ def test_container_build_bot_services() -> None:
     assert "order_service" in services
     assert "offer_dispatch_service" in services
     assert "offer_response_service" in services
+    assert "offer_response_rate_limiter" in services
     assert "interaction_service" in services
     assert "payment_service" in services
     assert "contact_pricing_service" in services

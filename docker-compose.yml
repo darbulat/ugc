@@ -84,7 +84,7 @@ services:
         "config/uvicorn_log_config.json",
         "--proxy-headers",
         "--forwarded-allow-ips",
-        "*",
+        "127.0.0.1,172.16.0.0/12,10.0.0.0/8",
       ]
     ports:
       - "8001:8001"
@@ -189,15 +189,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ugc
-      POSTGRES_USER: ugc
-      POSTGRES_PASSWORD: ugc
+      POSTGRES_DB: ${POSTGRES_DB:-ugc}
+      POSTGRES_USER: ${POSTGRES_USER:-ugc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ugc}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ugc -d ugc"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-ugc}\" -d \"$${POSTGRES_DB:-ugc}\""]
       interval: 5s
       timeout: 5s
       retries: 5
