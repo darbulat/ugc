@@ -34,6 +34,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
     PaymentProvider,
 )
+from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
@@ -62,8 +63,8 @@ ERROR_MESSAGES = {
         "Order does not belong to advertiser.": (
             "Заказ не принадлежит рекламодателю."
         ),
-        "Price exceeds maximum (99,999,999).": (
-            "Сумма превышает максимум (99 999 999 ₽)."
+        f"Price exceeds maximum ({MAX_ORDER_PRICE:,.0f}).": (
+            f"Сумма превышает максимум ({MAX_ORDER_PRICE:,.0f} ₽)."
         ),
         "default": "Ошибка создания заказа.",
     },

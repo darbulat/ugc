@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
@@ -42,6 +42,24 @@ def _reminder_cutoff(config) -> datetime:
     return today_at_time.astimezone(timezone.utc)
 
 
+def _seconds_until_next_run(config) -> float:
+    """Seconds until next run (same time tomorrow if already passed today)."""
+
+    tz = ZoneInfo(config.role_reminder.role_reminder_timezone)
+    now_local = datetime.now(tz)
+    today_at_time = now_local.replace(
+        hour=config.role_reminder.role_reminder_hour,
+        minute=config.role_reminder.role_reminder_minute,
+        second=0,
+        microsecond=0,
+    )
+    if now_local < today_at_time:
+        next_run = today_at_time
+    else:
+        next_run = today_at_time + timedelta(days=1)
+    return (next_run - now_local).total_seconds()
+
+
 async def run_once(
     messenger_client: MessengerClient,
     user_role_service: UserRoleService,
@@ -77,8 +95,26 @@ async def run_once(
             )
 
 
+async def run_loop(
+    messenger_client: MessengerClient,
+    user_role_service: UserRoleService,
+    config,
+) -> None:
+    """Run role reminder at configured time, then sleep until next run."""
+
+    while True:
+        reminder_cutoff = _reminder_cutoff(config)
+        await run_once(messenger_client, user_role_service, reminder_cutoff)
+        sleep_seconds = _seconds_until_next_run(config)
+        logger.info(
+            "Role reminder done, sleeping until next run",
+            extra={"sleep_seconds": sleep_seconds},
+        )
+        await asyncio.sleep(sleep_seconds)
+
+
 def main() -> None:  # pragma: no cover
-    """Run role reminder once (invoke from cron at 10:00)."""
+    """Run role reminder loop (daily at configured time)."""
     config = load_config()
     configure_logging(
         config.log.log_level,
@@ -105,13 +141,10 @@ def main() -> None:  # pragma: no cover
         user_repo=user_repo,
         transaction_manager=transaction_manager,
     )
-    reminder_cutoff = _reminder_cutoff(config)
     bot = Bot(token=config.bot.bot_token)
     messenger_client = TelegramMessengerClient(bot)
     try:
-        asyncio.run(
-            run_once(messenger_client, user_role_service, reminder_cutoff)
-        )
+        asyncio.run(run_loop(messenger_client, user_role_service, config))
     finally:
         session = getattr(bot, "session", None)
         if session is not None:
