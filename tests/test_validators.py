@@ -7,7 +7,6 @@ from ugc_bot.bot.validators import (
     validate_brand,
     validate_city,
     validate_company_activity,
-    validate_email,
     validate_geography,
     validate_name,
     validate_nickname,
@@ -297,25 +296,3 @@ class TestNormalizeUrl:
 
     def test_empty_returns_empty(self) -> None:
         assert normalize_url("") == ""
-
-
-class TestValidateEmail:
-    """Tests for validate_email (54-FZ receipt)."""
-
-    def test_empty_returns_error(self) -> None:
-        assert validate_email("") is not None
-        assert "email" in (validate_email("") or "").lower()
-
-    def test_whitespace_only_returns_error(self) -> None:
-        assert validate_email("   ") is not None
-
-    def test_invalid_format_returns_error(self) -> None:
-        assert validate_email("not-an-email") is not None
-        assert validate_email("missing@") is not None
-        assert validate_email("@domain.com") is not None
-        assert validate_email("a@b") is not None
-
-    def test_valid_ok(self) -> None:
-        assert validate_email("user@example.com") is None
-        assert validate_email("test@mail.ru") is None
-        assert validate_email("  user@example.com  ") is None

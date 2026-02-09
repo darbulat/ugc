@@ -8,6 +8,7 @@ import pytest
 from ugc_bot.logging_setup import (
     NOISY_LOGGERS,
     EnvLevelFilter,
+    GroupCoordinatorErrorToWarningFilter,
     HealthMetricsFilter,
     JSONFormatter,
     configure_logging,
@@ -152,6 +153,40 @@ def test_health_metrics_filter_allows_other_access_logs() -> None:
         exc_info=None,
     )
     assert flt.filter(record) is True
+
+
+def test_group_coordinator_error_downgraded_to_warning() -> None:
+    """GroupCoordinatorErrorToWarningFilter downgrades ERROR to WARNING."""
+    flt = GroupCoordinatorErrorToWarningFilter()
+    record = logging.LogRecord(
+        name="aiokafka.consumer.group_coordinator",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="Group Coordinator Request failed: GroupCoordinatorNotAvailable",
+        args=(),
+        exc_info=None,
+    )
+    flt.filter(record)
+    assert record.levelno == logging.WARNING
+    assert record.levelname == "WARNING"
+
+
+def test_group_coordinator_filter_ignores_other_loggers() -> None:
+    """GroupCoordinatorErrorToWarningFilter does not modify other loggers."""
+    flt = GroupCoordinatorErrorToWarningFilter()
+    record = logging.LogRecord(
+        name="aiokafka.consumer.consumer",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="Some other error",
+        args=(),
+        exc_info=None,
+    )
+    flt.filter(record)
+    assert record.levelno == logging.ERROR
+    assert record.levelname == "ERROR"
 
 
 def test_health_metrics_filter_allows_non_access_logs() -> None:

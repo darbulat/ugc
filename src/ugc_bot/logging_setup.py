@@ -40,6 +40,25 @@ class EnvLevelFilter(logging.Filter):
         return record.levelno >= self._min_level
 
 
+class GroupCoordinatorErrorToWarningFilter(logging.Filter):
+    """Downgrade GroupCoordinatorNotAvailableError from ERROR to WARNING.
+
+    This transient error often occurs at startup before Kafka broker is ready
+    and triggers false alerts. Converting to WARNING prevents alert noise.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return True, optionally downgrading ERROR to WARNING."""
+        if (
+            record.name == "aiokafka.consumer.group_coordinator"
+            and record.levelno == logging.ERROR
+            and "GroupCoordinator" in record.getMessage()
+        ):
+            record.levelno = logging.WARNING
+            record.levelname = "WARNING"
+        return True
+
+
 class HealthMetricsFilter(logging.Filter):
     """Filter out access logs for /health and /metrics endpoints.
 
@@ -129,6 +148,7 @@ def configure_logging(log_level: str, json_format: bool | None = None) -> None:
     # Create console handler
     handler = logging.StreamHandler()
     handler.setLevel(log_level)
+    handler.addFilter(GroupCoordinatorErrorToWarningFilter())
 
     if json_format:
         formatter: logging.Formatter = JSONFormatter()

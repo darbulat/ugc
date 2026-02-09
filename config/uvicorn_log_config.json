@@ -2,32 +2,77 @@
   "version": 1,
   "disable_existing_loggers": false,
   "filters": {
-    "env_level": {"()": "ugc_bot.logging_setup.EnvLevelFilter"},
-    "health_metrics": {"()": "ugc_bot.logging_setup.HealthMetricsFilter"}
+    "env_level": {
+      "()": "ugc_bot.logging_setup.EnvLevelFilter"
+    },
+    "health_metrics": {
+      "()": "ugc_bot.logging_setup.HealthMetricsFilter"
+    },
+    "group_coordinator_to_warning": {
+      "()": "ugc_bot.logging_setup.GroupCoordinatorErrorToWarningFilter"
+    }
   },
   "formatters": {
-    "json": {"()": "ugc_bot.logging_setup.JSONFormatter"}
+    "json": {
+      "()": "ugc_bot.logging_setup.JSONFormatter"
+    }
   },
   "handlers": {
     "default": {
       "class": "logging.StreamHandler",
       "formatter": "json",
-      "filters": ["env_level", "health_metrics"],
+      "filters": [
+        "env_level",
+        "health_metrics",
+        "group_coordinator_to_warning"
+      ],
       "level": "DEBUG",
       "stream": "ext://sys.stdout"
     }
   },
   "loggers": {
-    "uvicorn": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
-    "uvicorn.error": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
-    "uvicorn.access": {"handlers": ["default"], "level": "DEBUG", "propagate": false},
-    "aiokafka": {"level": "WARNING", "propagate": true},
-    "urllib3": {"level": "WARNING", "propagate": true},
-    "httpx": {"level": "WARNING", "propagate": true},
-    "aiosqlite": {"level": "WARNING", "propagate": true}
+    "uvicorn": {
+      "handlers": [
+        "default"
+      ],
+      "level": "DEBUG",
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "handlers": [
+        "default"
+      ],
+      "level": "DEBUG",
+      "propagate": false
+    },
+    "uvicorn.access": {
+      "handlers": [
+        "default"
+      ],
+      "level": "DEBUG",
+      "propagate": false
+    },
+    "aiokafka": {
+      "level": "WARNING",
+      "propagate": true
+    },
+    "urllib3": {
+      "level": "WARNING",
+      "propagate": true
+    },
+    "httpx": {
+      "level": "WARNING",
+      "propagate": true
+    },
+    "aiosqlite": {
+      "level": "WARNING",
+      "propagate": true
+    }
   },
   "root": {
-    "handlers": ["default"],
+    "handlers": [
+      "default"
+    ],
     "level": "DEBUG"
   }
 }
