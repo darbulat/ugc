@@ -46,6 +46,7 @@ from ugc_bot.bot.handlers.order_creation import (
     handle_offer_text,
     handle_order_photo,
     handle_order_type,
+    handle_payment_email,
     handle_price,
     handle_product_link,
     order_draft_choice,
@@ -164,6 +165,15 @@ async def test_order_creation_flow_new_advertiser(
         config,
         pricing_service,
     )
+    await handle_payment_email(
+        FakeMessage(
+            text="test@example.com",
+            user=FakeUser(5, "adv", "Adv"),
+            bot=bot,
+        ),
+        state,
+        config,
+    )
     assert bot.invoices
     assert len(order_repo.orders) == 1
 
@@ -255,6 +265,15 @@ async def test_order_creation_flow_with_barter(
         order_service,
         config,
         pricing_service,
+    )
+    await handle_payment_email(
+        FakeMessage(
+            text="test@example.com",
+            user=FakeUser(6, "adv", "Adv"),
+            bot=bot,
+        ),
+        state,
+        config,
     )
     assert bot.invoices
     assert len(order_repo.orders) == 2
@@ -619,6 +638,15 @@ async def test_order_creation_flow_coop_both(
         order_service,
         config,
         pricing_service,
+    )
+    await handle_payment_email(
+        FakeMessage(
+            text="test@example.com",
+            user=FakeUser(13, "adv", "Adv"),
+            bot=bot,
+        ),
+        state,
+        config,
     )
 
     assert bot.invoices
@@ -1004,8 +1032,7 @@ async def test_handle_geography_contact_price_not_configured(
     )
 
     assert len(order_repo.orders) == 1
-    assert len(message.answers) >= 2
-    assert (
-        "Стоимость доступа" in message.answers[1]
-        or "настроена" in message.answers[1]
-    )
+    assert len(message.answers) >= 1
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "Стоимость доступа" in text or "настроена" in text

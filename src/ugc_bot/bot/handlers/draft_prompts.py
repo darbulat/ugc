@@ -91,6 +91,9 @@ DRAFT_PROMPT_BY_STATE: dict[str, str] = {
         "В каких городах или регионах может находиться креатор? "
         "Можно указать от 1 до 10 городов, регионы или написать «РФ»."
     ),
+    "OrderCreationStates:payment_email": (
+        "Укажите email — на него придёт чек и информация по заказу"
+    ),
     # EditProfileStates
     "EditProfileStates:choosing_field": "Выберите раздел для редактирования:",
     "EditProfileStates:entering_value": "",  # Filled from editing_field below

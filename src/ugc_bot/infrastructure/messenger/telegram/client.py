@@ -110,15 +110,18 @@ class TelegramMessengerClient(MessengerClient):
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
         """Send invoice for payment."""
-        await self._bot.send_invoice(
-            chat_id=int(chat_id),
-            title=invoice.title,
-            description=invoice.description,
-            payload=invoice.payload,
-            provider_token=invoice.provider_token,
-            currency=invoice.currency,
-            prices=[_to_labeled_price(item) for item in invoice.items],
-        )
+        kwargs: dict = {
+            "chat_id": int(chat_id),
+            "title": invoice.title,
+            "description": invoice.description,
+            "payload": invoice.payload,
+            "provider_token": invoice.provider_token,
+            "currency": invoice.currency,
+            "prices": [_to_labeled_price(item) for item in invoice.items],
+        }
+        if invoice.provider_data is not None:
+            kwargs["provider_data"] = invoice.provider_data
+        await self._bot.send_invoice(**kwargs)
 
 
 def build_keyboard_markup(keyboard: Keyboard | None):

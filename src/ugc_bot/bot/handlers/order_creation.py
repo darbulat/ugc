@@ -2,6 +2,7 @@
 
 import logging
 from typing import cast
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -43,6 +44,7 @@ from ugc_bot.bot.handlers.utils import (
 from ugc_bot.bot.validators import (
     normalize_url,
     validate_barter_description,
+    validate_email,
     validate_geography,
     validate_offer_text,
     validate_price,
@@ -82,6 +84,7 @@ class OrderCreationStates(StatesGroup):
     content_usage = State()
     deadlines = State()
     geography = State()
+    payment_email = State()
 
 
 def _order_type_keyboard() -> list[list[Button]]:
@@ -190,6 +193,7 @@ def _keyboard_for_order_state(state_key: str, data: dict) -> Keyboard:
             keyboard=_deadlines_keyboard()
         ),
         "OrderCreationStates:geography": flow_keyboard_remove(),
+        "OrderCreationStates:payment_email": flow_keyboard_remove(),
     }
     return keyboards.get(
         state_key,
@@ -770,24 +774,88 @@ async def handle_geography(
         product_photo_file_id=product_photo_file_id,
     )
 
-    await state_store.clear()
-    await messenger_client.send_text(
-        chat_id=incoming.chat_id,
-        text=ORDER_CREATED_MESSAGE,
-        parse_mode="Markdown",
-    )
     contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
+        await state_store.clear()
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Стоимость доступа не настроена. Свяжитесь с поддержкой.",
         )
         return
+
+    await state_store.update_data(
+        order_id=str(order.order_id),
+        offer_text=order.offer_text,
+        contact_price=contact_price,
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=ORDER_CREATED_MESSAGE,
+        parse_mode="Markdown",
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Укажите email — на него придёт чек и информация по заказу",
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(OrderCreationStates.payment_email.state)
+
+
+@router.message(OrderCreationStates.payment_email)
+async def handle_payment_email(
+    message: Message,
+    state: FSMContext,
+    config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Validate email and send invoice with receipt for 54-FZ."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    email_text = (incoming.text or "").strip()
+
+    err = validate_email(email_text)
+    if err is not None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+
+    data = await state_store.get_data()
+    order_id_str = data.get("order_id")
+    offer_text = data.get("offer_text", "")
+    contact_price = data.get("contact_price", 0.0)
+
+    if not order_id_str:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Начните заново с «Создать заказ».",
+        )
+        await state_store.clear()
+        return
+
+    try:
+        order_id = UUID(order_id_str)
+    except ValueError:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Ошибка данных. Начните заново с «Создать заказ».",
+        )
+        await state_store.clear()
+        return
+
+    await state_store.clear()
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
-        order_id=order.order_id,
-        offer_text=order.offer_text,
+        order_id=order_id,
+        offer_text=offer_text,
         price_value=contact_price,
         config=config,
+        customer_email=email_text,
     )

@@ -3,7 +3,10 @@
 All functions return str | None: error message on failure, None on success.
 """
 
+import re
 from urllib.parse import urlparse
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 # Order creation
 OFFER_TEXT_MIN = 20
@@ -221,4 +224,16 @@ def validate_price(value: float, max_price: float) -> str | None:
         return "Цена должна быть больше 0."
     if value > max_price:
         return f"Сумма превышает максимально допустимую ({max_price:,.0f} ₽)."
+    return None
+
+
+def validate_email(value: str) -> str | None:
+    """Validate email format. Returns error message or None on success."""
+    v = (value or "").strip()
+    if not v:
+        return "Укажите email — на него придёт чек и информация по заказу."
+    if len(v) > 254:
+        return "Слишком длинный email."
+    if not EMAIL_REGEX.match(v):
+        return "Введите корректный email. Пример: example@mail.ru"
     return None

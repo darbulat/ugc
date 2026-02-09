@@ -119,3 +119,4 @@ class Invoice:
     provider_token: str
     currency: str
     items: list[InvoiceItem]
+    provider_data: str | None = None

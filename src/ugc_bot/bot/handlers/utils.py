@@ -338,15 +338,21 @@ class LegacyMessengerClient:
                 LabeledPrice(label=item.label, amount=item.amount_minor)
                 for item in invoice.items
             ]
-            await bot.send_invoice(
-                chat_id=int(chat_id),
-                title=invoice.title,
-                description=invoice.description,
-                payload=invoice.payload,
-                provider_token=invoice.provider_token,
-                currency=invoice.currency,
-                prices=prices,
-            )
+            kwargs: dict = {
+                "chat_id": int(chat_id),
+                "title": invoice.title,
+                "description": invoice.description,
+                "payload": invoice.payload,
+                "provider_token": invoice.provider_token,
+                "currency": invoice.currency,
+                "prices": prices,
+            }
+            if (
+                hasattr(invoice, "provider_data")
+                and invoice.provider_data is not None
+            ):
+                kwargs["provider_data"] = invoice.provider_data
+            await bot.send_invoice(**kwargs)
 
 
 def resolve_messenger_dependencies(
