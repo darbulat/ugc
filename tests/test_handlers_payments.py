@@ -11,7 +11,6 @@ from tests.helpers.factories import (
 )
 from tests.helpers.fakes import (
     FakeBot,
-    FakeFSMContext,
     FakeMessage,
     FakePreCheckoutQuery,
     FakeSuccessfulPayment,
@@ -27,7 +26,6 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import (
-    handle_pay_order_email,
     pay_order,
     pre_checkout_query_handler,
     send_order_invoice,
@@ -112,7 +110,6 @@ async def test_pay_order_success(
     )
 
     bot = FakeBot()
-    state = FakeFSMContext()
     message = FakeMessage(
         text=f"/pay_order {order.order_id}",
         user=FakeUser(1, "adv", "Adv"),
@@ -129,20 +126,10 @@ async def test_pay_order_success(
 
     await pay_order(
         message,
-        state,
         user_service,
         profile_service,
         payment_service,
         contact_pricing_service,
-        config,
-    )
-    await handle_pay_order_email(
-        FakeMessage(
-            text="test@example.com",
-            user=FakeUser(1, "adv", "Adv"),
-            bot=bot,
-        ),
-        state,
         config,
     )
     assert bot.invoices
@@ -225,7 +212,6 @@ async def test_pay_order_missing_provider_token(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -281,7 +267,6 @@ async def test_pay_order_invalid_args(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -337,7 +322,6 @@ async def test_pay_order_invalid_uuid(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -395,7 +379,6 @@ async def test_pay_order_order_not_found(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -468,7 +451,6 @@ async def test_pay_order_wrong_owner(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -534,7 +516,6 @@ async def test_pay_order_not_new_status(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -595,7 +576,6 @@ async def test_pay_order_blocked_user(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -656,7 +636,6 @@ async def test_pay_order_paused_user(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -713,7 +692,6 @@ async def test_pay_order_missing_profile(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,
@@ -1174,7 +1152,6 @@ async def test_pay_order_contact_price_not_configured(
 
     await pay_order(
         message,
-        FakeFSMContext(),
         user_service,
         profile_service,
         payment_service,

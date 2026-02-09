@@ -352,6 +352,10 @@ class LegacyMessengerClient:
                 and invoice.provider_data is not None
             ):
                 kwargs["provider_data"] = invoice.provider_data
+            if getattr(invoice, "need_email", False):
+                kwargs["need_email"] = True
+            if getattr(invoice, "send_email_to_provider", False):
+                kwargs["send_email_to_provider"] = True
             await bot.send_invoice(**kwargs)
 
 

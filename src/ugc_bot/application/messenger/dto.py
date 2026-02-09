@@ -120,3 +120,5 @@ class Invoice:
     currency: str
     items: list[InvoiceItem]
     provider_data: str | None = None
+    need_email: bool = False
+    send_email_to_provider: bool = False

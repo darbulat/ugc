@@ -8,8 +8,6 @@ from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, PreCheckoutQuery
 
 from ugc_bot.application.errors import (  # noqa: F401 - used in except
@@ -44,37 +42,29 @@ from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     resolve_messenger_dependencies,
 )
-from ugc_bot.bot.validators import validate_email
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
-from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
-
-
-class PaymentEmailStates(StatesGroup):
-    """States for /pay_order email collection before invoice."""
-
-    awaiting_email = State()
-
 
 RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
 
 
 def build_receipt_provider_data(
-    email: str,
     total_amount: float,
     currency: str = "RUB",
 ) -> str:
-    """Build provider_data JSON for YooKassa receipt (54-FZ)."""
+    """Build provider_data JSON for YooKassa receipt (54-FZ).
+
+    Email is collected by Telegram via need_email and passed to provider.
+    """
     amount_str = f"{total_amount:.2f}"
     receipt = {
         "receipt": {
-            "customer": {"email": email},
             "items": [
                 {
                     "description": RECEIPT_SERVICE_DESCRIPTION,
@@ -98,9 +88,8 @@ async def send_order_invoice(
     offer_text: str,
     price_value: float,
     config: AppConfig,
-    customer_email: str | None = None,
 ) -> None:
-    """Send invoice for order with optional receipt for 54-FZ."""
+    """Send invoice for order with 54-FZ receipt (email via Telegram form)."""
 
     if not incoming_message.chat_id:
         return
@@ -126,13 +115,10 @@ async def send_order_invoice(
         )
         return
 
-    provider_data = None
-    if customer_email:
-        provider_data = build_receipt_provider_data(
-            email=customer_email,
-            total_amount=price_value,
-            currency="RUB",
-        )
+    provider_data = build_receipt_provider_data(
+        total_amount=price_value,
+        currency="RUB",
+    )
 
     try:
         await messenger_client.send_invoice(
@@ -150,6 +136,8 @@ async def send_order_invoice(
                     )
                 ],
                 provider_data=provider_data,
+                need_email=True,
+                send_email_to_provider=True,
             ),
         )
     except Exception:
@@ -166,7 +154,6 @@ async def send_order_invoice(
 @router.message(Command("pay_order"))
 async def pay_order(
     message: Message,
-    state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     payment_service: PaymentService,
@@ -175,7 +162,7 @@ async def pay_order(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Ask for email, then send Telegram invoice for an order."""
+    """Send Telegram invoice for an order (email via payment form)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -253,75 +240,13 @@ async def pay_order(
         )
         return
 
-    state_store = AiogramStateStore(state)
-    await state_store.update_data(
-        pay_order_id=str(order.order_id),
-        pay_offer_text=order.offer_text,
-        pay_contact_price=contact_price,
-    )
-    await state_store.set_state(PaymentEmailStates.awaiting_email.state)
-    await messenger_client.send_text(
-        chat_id=incoming.chat_id,
-        text="Укажите email — на него придёт чек и информация по заказу",
-    )
-
-
-@router.message(PaymentEmailStates.awaiting_email)
-async def handle_pay_order_email(
-    message: Message,
-    state: FSMContext,
-    config: AppConfig,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
-) -> None:
-    """Validate email and send invoice for /pay_order flow."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    state_store = AiogramStateStore(state)
-    email_text = (incoming.text or "").strip()
-
-    err = validate_email(email_text)
-    if err is not None:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=err,
-        )
-        return
-
-    data = await state_store.get_data()
-    order_id_str = data.get("pay_order_id")
-    offer_text = data.get("pay_offer_text", "")
-    contact_price = data.get("pay_contact_price", 0.0)
-
-    if not order_id_str:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text="Сессия истекла. Повторите команду /pay_order.",
-        )
-        await state_store.clear()
-        return
-
-    try:
-        order_id = UUID(order_id_str)
-    except ValueError:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text="Ошибка данных. Повторите команду /pay_order.",
-        )
-        await state_store.clear()
-        return
-
-    await state_store.clear()
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
-        order_id=order_id,
-        offer_text=offer_text,
+        order_id=order.order_id,
+        offer_text=order.offer_text,
         price_value=contact_price,
         config=config,
-        customer_email=email_text,
     )
 
 

@@ -121,6 +121,10 @@ class TelegramMessengerClient(MessengerClient):
         }
         if invoice.provider_data is not None:
             kwargs["provider_data"] = invoice.provider_data
+        if invoice.need_email:
+            kwargs["need_email"] = True
+        if invoice.send_email_to_provider:
+            kwargs["send_email_to_provider"] = True
         await self._bot.send_invoice(**kwargs)
 
 
