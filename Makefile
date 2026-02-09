@@ -1,4 +1,4 @@
-.PHONY: install-dev lint typecheck test coverage format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db list-backups
+.PHONY: install-dev lint typecheck test coverage e2e e2e-docker test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db list-backups
 
 export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
@@ -16,10 +16,26 @@ typecheck:
 	uv run mypy src
 
 test:
-	uv run pytest
+	uv run pytest -m "not e2e"
 
 coverage:
-	uv run pytest --cov=ugc_bot --cov-report=term-missing --cov-report=xml
+	uv run pytest -m "not e2e" --cov=ugc_bot --cov-report=term-missing --cov-report=xml
+
+e2e:
+	uv run python -m playwright install chromium
+	uv run pytest tests/e2e -v -m e2e --timeout=90
+
+e2e-telegram:
+	uv sync --extra dev --extra telegram-e2e
+	uv run pytest tests/e2e -m e2e_telegram -v --timeout=90
+
+e2e-docker:
+	docker compose -f docker-compose.test.yml run --rm e2e
+
+test-docker:
+	docker compose -f docker-compose.test.yml run --rm test
+
+test-all-docker: test-docker e2e-docker
 
 migrate:
 	alembic upgrade head
@@ -32,21 +48,6 @@ docker-down:
 
 admin:
 	uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001 --log-config config/uvicorn_log_config.json
-
-# Instagram Webhook commands
-# These commands run inside the Docker container where Python and dependencies are available
-subscribe-instagram-webhook:
-	docker compose run --rm instagram_webhook python scripts/subscribe_instagram_webhook.py
-
-subscribe-instagram-webhook-page:
-	@if [ -z "$(PAGE_ID)" ]; then \
-		echo "Error: PAGE_ID is required. Usage: make subscribe-instagram-webhook-page PAGE_ID=your_page_id"; \
-		exit 1; \
-	fi
-	docker compose run --rm instagram_webhook python scripts/subscribe_instagram_webhook.py --page-id $(PAGE_ID)
-
-list-instagram-subscriptions:
-	docker compose run --rm instagram_webhook python scripts/subscribe_instagram_webhook.py --list
 
 # Database backup commands
 backup-db:

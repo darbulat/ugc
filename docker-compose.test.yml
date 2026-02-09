@@ -1,0 +1,77 @@
+# Docker Compose for running all tests (unit, integration, E2E).
+# Use: docker compose -f docker-compose.test.yml run --rm test
+#      docker compose -f docker-compose.test.yml run --rm e2e
+
+services:
+  db_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ugc_test
+      POSTGRES_USER: ugc
+      POSTGRES_PASSWORD: ugc
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ugc -d ugc_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate_test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+    depends_on:
+      db_test:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  admin_test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      BOT_TOKEN: test-token
+      DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+      ADMIN_USERNAME: test_admin
+      ADMIN_PASSWORD: test_pass
+      ADMIN_SECRET: test_secret
+      KAFKA_ENABLED: "false"
+      FEEDBACK_ENABLED: "false"
+    depends_on:
+      migrate_test:
+        condition: service_completed_successfully
+    command:
+      - uvicorn
+      - ugc_bot.admin.app:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  e2e:
+    build:
+      context: .
+      target: e2e
+      dockerfile: Dockerfile
+    environment:
+      E2E_BASE_URL: http://admin_test:8001
+    depends_on:
+      admin_test:
+        condition: service_healthy
+    command: ["python", "-m", "pytest", "tests/e2e", "-v", "-m", "e2e", "--timeout=90"]
+    restart: "no"
+
+  test:
+    build:
+      context: .
+      target: e2e
+      dockerfile: Dockerfile
+    command: ["python", "-m", "pytest", "-m", "not e2e", "--cov=ugc_bot", "--cov-report=term-missing"]
+    restart: "no"
