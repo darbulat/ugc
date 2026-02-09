@@ -1,5 +1,6 @@
 """Tests for order service."""
 
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -222,6 +223,108 @@ async def test_create_order_price_exceeds_max_rejected(
             price=MAX_ORDER_PRICE + 1,
             bloggers_needed=3,
         )
+
+
+@pytest.mark.asyncio
+async def test_is_new_advertiser_returns_true_when_no_orders(
+    user_repo, advertiser_repo, order_repo, fake_tm
+) -> None:
+    """is_new_advertiser returns True when advertiser has no orders."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(
+        user_repo, advertiser_repo, order_repo, transaction_manager=fake_tm
+    )
+    assert await service.is_new_advertiser(user_id) is True
+
+
+@pytest.mark.asyncio
+async def test_is_new_advertiser_returns_false_when_has_orders(
+    user_repo, advertiser_repo, order_repo, fake_tm
+) -> None:
+    """is_new_advertiser returns False when advertiser has orders."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(
+        user_repo, advertiser_repo, order_repo, transaction_manager=fake_tm
+    )
+    await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    assert await service.is_new_advertiser(user_id) is False
+
+
+@pytest.mark.asyncio
+async def test_create_order_metrics_recorded_when_collector_set(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """When metrics_collector is set, record_order_created is called."""
+    from unittest.mock import MagicMock
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    metrics_collector = MagicMock()
+    metrics_collector.record_order_created = MagicMock()
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    service.metrics_collector = metrics_collector
+
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+
+    metrics_collector.record_order_created.assert_called_once()
+    call_kw = metrics_collector.record_order_created.call_args[1]
+    assert call_kw["order_id"] == str(order.order_id)
+    assert call_kw["advertiser_id"] == str(user_id)
+    assert call_kw["price"] == 1000.0
+    assert call_kw["bloggers_needed"] == 3
+
+
+@pytest.mark.asyncio
+async def test_create_order_new_advertiser_bloggers_over_10_rejected(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """New advertiser cannot request more than 10 bloggers."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+
+    with patch(
+        "ugc_bot.application.services.order_service._validate_order_input"
+    ) as mock_val:
+        mock_val.return_value = (
+            "https://example.com",
+            "Offer",
+            None,
+        )
+        with pytest.raises(
+            OrderCreationError, match="NEW advertisers can request up to 10"
+        ):
+            await service.create_order(
+                advertiser_id=user_id,
+                order_type=OrderType.UGC_ONLY,
+                product_link="https://example.com",
+                offer_text="Offer",
+                barter_description=None,
+                price=1000.0,
+                bloggers_needed=15,
+            )
 
 
 @pytest.mark.asyncio

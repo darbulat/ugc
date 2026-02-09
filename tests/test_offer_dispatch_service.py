@@ -149,6 +149,25 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_raises_when_order_not_found() -> None:
+    """Dispatch raises OrderCreationError when order does not exist."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    missing_order_id = UUID("00000000-0000-0000-0000-000000000605")
+
+    with pytest.raises(OrderCreationError, match="Order not found"):
+        await service.dispatch(missing_order_id)
+
+
+@pytest.mark.asyncio
 async def test_dispatch_requires_active_order() -> None:
     """Dispatch fails for inactive orders."""
 
@@ -235,6 +254,29 @@ async def test_get_order_and_advertiser_with_transaction_manager(
 
 
 @pytest.mark.asyncio
+async def test_get_order_and_advertiser_returns_none_when_order_missing() -> (
+    None
+):
+    """get_order_and_advertiser returns (None, None) when order missing."""
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    missing_order_id = UUID("00000000-0000-0000-0000-000000000617")
+    got_order, got_advertiser = await service.get_order_and_advertiser(
+        missing_order_id
+    )
+    assert got_order is None
+    assert got_advertiser is None
+
+
+@pytest.mark.asyncio
 async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
     fake_tm: object,
 ) -> None:
@@ -257,6 +299,64 @@ async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
     )
     assert got_order is None
     assert got_advertiser is None
+
+
+def test_format_offer_ugc_only() -> None:
+    """format_offer uses UGC-видео for ugc_only order."""
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000614"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000615"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Task",
+        barter_description=None,
+        price=500.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    text = service.format_offer(order, "Advertiser")
+    assert "UGC-видео для бренда" in text
+    assert "Task" in text
+    assert "500" in text
+
+
+def test_format_offer_with_barter_and_optional_fields() -> None:
+    """format_offer includes barter, content_usage, deadlines, geography."""
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000618"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000619"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Task",
+        barter_description="Product sample",
+        price=0.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        content_usage="Stories and reels",
+        deadlines="2 weeks",
+        geography="Russia",
+    )
+    text = service.format_offer(order, "Advertiser")
+    assert "Бартер: Product sample" in text
+    assert "Использование: Stories and reels" in text
+    assert "Сроки: 2 weeks" in text
+    assert "География: Russia" in text
 
 
 def test_format_offer_ugc_plus_placement() -> None:

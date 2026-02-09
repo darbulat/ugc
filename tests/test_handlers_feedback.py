@@ -3739,3 +3739,356 @@ async def test_handle_feedback_postpone_advertiser_message(
     )
     assert callback.message.answers
     assert any("креатор" in str(a).lower() for a in callback.message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_no_deal_user_not_found_returns_early(
+    interaction_repo, nps_service, order_response_repo, order_service
+) -> None:
+    """When user not in repo on no_deal, return without error (line 337)."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryUserRepository,
+    )
+
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001420"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001421"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001422"),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001423"),
+    )
+    callback = FakeCallback(
+        data=f"feedback:adv:{interaction.interaction_id}:no_deal",
+        user=FakeUser(9999),
+    )
+    state = FakeFSMContext()
+    await handle_feedback(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+    assert "Пользователь не найден" in callback.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_advertiser_ok_message(
+    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+) -> None:
+    """Advertiser ok feedback shows advertiser-specific thank you msg."""
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001430"),
+        external_id="1430",
+        username="adv",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001431"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001432"),
+        advertiser_id=advertiser.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001433"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    callback = FakeCallback(
+        data=f"feedback:adv:{interaction.interaction_id}:ok",
+        user=FakeUser(1430),
+    )
+    state = FakeFSMContext()
+    await handle_feedback(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+    assert callback.message.answers
+    assert any("креатор" in str(a).lower() for a in callback.message.answers)
+    assert any("Желаем удачной" in str(a) for a in callback.message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_no_deal_other_text_advertiser_records(
+    user_repo, interaction_repo, nps_service, order_response_repo, order_service
+) -> None:
+    """Advertiser no_deal other records via record_advertiser_feedback (600)."""
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_no_deal_other_text,
+    )
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001440"),
+        external_id="1440",
+        username="adv",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001442"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001443"),
+        advertiser_id=advertiser.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001441"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_no_deal_other)
+    await state.update_data(
+        feedback_interaction_id=str(interaction.interaction_id),
+        feedback_kind="adv",
+    )
+    message = FakeMessage(text="Креатор пропал", user=FakeUser(1440))
+
+    await handle_no_deal_other_text(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        nps_service,
+        order_service,
+    )
+
+    assert state.cleared is True
+    updated = await interaction_repo.get_by_id(interaction.interaction_id)
+    assert updated is not None
+    assert "Другое" in (updated.from_advertiser or "")
+    assert "Креатор пропал" in (updated.from_advertiser or "")
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_no_from_user_returns(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """When message has no from_user, return without processing (803)."""
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001450"),
+        external_id="1450",
+        username="adv",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(
+            UUID("00000000-0000-0000-0000-000000001451")
+        ),
+        feedback_kind="adv",
+        issue_description_parts=["Text"],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text="Some text", user=FakeUser(1450))
+    message.from_user = None
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_handle_nps_user_not_found_returns(
+    user_repo, interaction_repo, nps_service
+) -> None:
+    """When user not in repo on NPS callback, return without error (973-975)."""
+    from ugc_bot.bot.handlers.feedback import handle_nps
+
+    user_service = UserRoleService(user_repo=user_repo)
+    callback = FakeCallback(
+        data="nps:00000000-0000-0000-0000-000000001460:4",
+        user=FakeUser(9999),
+    )
+    state = FakeFSMContext()
+    await handle_nps(callback, state, user_service, nps_service)
+    assert "Пользователь не найден" in callback.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_append_content_invalid_uuid(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """_handle_issue_append_content shows error on invalid UUID (754-757)."""
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001470"),
+        external_id="1470",
+        username="adv",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id="not-a-uuid",
+        feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text="Problem description", user=FakeUser(1470))
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert any("Ошибка" in str(a) for a in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_append_content_interaction_not_found(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """_handle_issue_append_content shows error when interaction missing."""
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001480"),
+        external_id="1480",
+        username="adv",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(
+            UUID("00000000-0000-0000-0000-000000001481")
+        ),
+        feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text="Text", user=FakeUser(1480))
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert any("Взаимодействие не найдено" in str(a) for a in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_append_content_wrong_user_no_access(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    order_response_repo,
+    order_service,
+) -> None:
+    """_handle_issue_append_content rejects wrong user (764-766)."""
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001490"),
+        external_id="1490",
+        username="adv",
+    )
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001491"),
+        external_id="1491",
+        username="other",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001492"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001493"),
+        advertiser_id=advertiser.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001494"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(interaction.interaction_id),
+        feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text="Text", user=FakeUser(1491))
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert any("Недостаточно прав" in str(a) for a in message.answers)

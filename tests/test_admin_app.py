@@ -806,6 +806,74 @@ def test_get_order_moderation_deps() -> None:
 
 
 @pytest.mark.asyncio
+async def test_user_admin_update_model_logs_when_blocked_and_user_found(
+    fake_tm,
+) -> None:
+    """UserAdmin.update_model logs when status changes to BLOCKED."""
+    from ugc_bot.domain.entities import User
+    from ugc_bot.domain.enums import MessengerType
+
+    user_id = UUID("00000000-0000-0000-0000-000000000029")
+    old_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    new_user = UserModel(
+        user_id=user_id,
+        external_id="123",
+        messenger_type="telegram",
+        username="test_user",
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(side_effect=[old_user, new_user])
+
+    domain_user = User(
+        user_id=user_id,
+        external_id="123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="test_user",
+        status=UserStatus.BLOCKED,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_user_service = MagicMock()
+    mock_user_service.get_user_by_id = AsyncMock(return_value=domain_user)
+
+    mock_container = MagicMock()
+
+    admin = UserAdmin()
+    admin._container = mock_container  # type: ignore[attr-defined]
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"admin": False}
+
+    with (
+        patch.object(
+            UserAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._get_services",
+            return_value=(mock_user_service, None, None),
+        ),
+    ):
+        result = await admin.update_model(request, str(user_id), data)
+
+    assert result is not None
+    mock_user_service.get_user_by_id.assert_called_once_with(user_id)
+
+
+@pytest.mark.asyncio
 async def test_user_admin_update_model_user_not_found() -> None:
     """Test UserAdmin.update_model handles user not found gracefully."""
     user_id = UUID("00000000-0000-0000-0000-000000000030")

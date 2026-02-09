@@ -248,6 +248,7 @@ def _make_order(
     content_usage: str | None = None,
     deadlines: str | None = None,
     geography: str | None = None,
+    product_photo_file_id: str | None = None,
 ) -> Order:
     return Order(
         order_id=order_id or uuid4(),
@@ -264,6 +265,7 @@ def _make_order(
         content_usage=content_usage,
         deadlines=deadlines,
         geography=geography,
+        product_photo_file_id=product_photo_file_id,
     )
 
 
@@ -440,3 +442,229 @@ async def test_notify_admins_about_new_order_includes_all_fields() -> None:
     rows = reply_markup.rows if reply_markup else []
     activate_btn = rows[0][0]
     assert activate_btn.text == "Активировать"
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_new_order_with_banned_content() -> None:
+    """When order has banned content, message includes warning."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    advertiser = User(
+        user_id=uuid4(),
+        external_id="999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(advertiser)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order(
+        advertiser_id=advertiser.user_id,
+        offer_text="1xbet casino gambling",
+    )
+
+    await notify_admins_about_new_order(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    text = messenger_client.sent_text[0]["text"]
+    assert "запрещённый контент" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_new_order_with_product_photo() -> None:
+    """When order has product_photo_file_id, send photo with caption."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    advertiser = User(
+        user_id=uuid4(),
+        external_id="999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(advertiser)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order(
+        advertiser_id=advertiser.user_id,
+        product_photo_file_id="AgACAgIAAxkBAAI",
+    )
+
+    await notify_admins_about_new_order(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(messenger_client.sent_photos) == 1
+    assert messenger_client.sent_photos[0]["file_id"] == "AgACAgIAAxkBAAI"
+    assert (
+        "Новый заказ на модерацию" in messenger_client.sent_photos[0]["caption"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_new_order_continues_on_send_failure() -> (
+    None
+):
+    """When send fails for one admin, log and continue to next."""
+    user_repo = InMemoryUserRepository()
+    admin1 = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="a1",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    admin2 = User(
+        user_id=uuid4(),
+        external_id="222",
+        messenger_type=MessengerType.TELEGRAM,
+        username="a2",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin1)
+    await user_repo.save(admin2)
+    user_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    order = _make_order()
+
+    messages: list[tuple[int, str]] = []
+
+    class FailingBot:
+        async def send_message(
+            self, chat_id: int, text: str, **kwargs: object
+        ) -> None:
+            if chat_id == 111:
+                raise RuntimeError("Network error")
+            messages.append((chat_id, text))
+
+    bot = FailingBot()
+    await notify_admins_about_new_order(
+        order, bot, user_service, content_moderation
+    )
+
+    assert len(messages) == 1
+    assert messages[0][0] == 222
+
+
+@pytest.mark.asyncio
+async def test_send_admin_text_raises_when_client_lacks_send_methods() -> None:
+    """_send_admin_text raises when client has neither send_text nor send."""
+    from ugc_bot.application.services.admin_notification_service import (
+        _send_admin_text,
+    )
+
+    class NoSendClient:
+        pass
+
+    with pytest.raises(AttributeError, match="lacks send methods"):
+        await _send_admin_text(
+            NoSendClient(),
+            chat_id="123",
+            text="Test",
+        )
+
+
+@pytest.mark.asyncio
+async def test_send_admin_photo_raises_when_client_lacks_send_photo() -> None:
+    """_send_admin_photo raises when client has neither send_text nor send."""
+    from ugc_bot.application.services.admin_notification_service import (
+        _send_admin_photo,
+    )
+
+    class NoPhotoClient:
+        pass
+
+    with pytest.raises(AttributeError, match="lacks send_photo"):
+        await _send_admin_photo(
+            NoPhotoClient(),
+            chat_id="123",
+            file_id="photo123",
+            caption="Test",
+        )
+
+
+@pytest.mark.asyncio
+async def test_send_admin_photo_uses_raw_bot_send_photo() -> None:
+    """_send_admin_photo uses send_photo when client has it (raw bot path)."""
+
+    sent: list[dict[str, object]] = []
+
+    class RawBotClient:
+        async def send_photo(
+            self,
+            chat_id: int,
+            photo: str,
+            caption: str | None = None,
+            reply_markup: object = None,
+            parse_mode: str | None = None,
+        ) -> None:
+            sent.append(
+                {
+                    "chat_id": chat_id,
+                    "photo": photo,
+                    "caption": caption,
+                    "reply_markup": reply_markup,
+                    "parse_mode": parse_mode,
+                }
+            )
+
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="777",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = RawBotClient()
+    content_moderation = ContentModerationService()
+    order = _make_order(product_photo_file_id="raw_photo_id")
+
+    await notify_admins_about_new_order(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(sent) == 1
+    assert sent[0]["chat_id"] == 777
+    assert sent[0]["photo"] == "raw_photo_id"
+    assert sent[0]["caption"] is not None

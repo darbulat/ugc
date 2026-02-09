@@ -477,6 +477,40 @@ class TestOutboxPublisher:
         kafka_publisher.publish.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_cleanup_processed_events(self) -> None:
+        """cleanup_processed_events calls delete_processed_events."""
+
+        from contextlib import asynccontextmanager
+
+        outbox_repo = Mock()
+        outbox_repo.delete_processed_events = AsyncMock(return_value=5)
+
+        mock_session = Mock()
+
+        @asynccontextmanager
+        async def _tx():
+            yield mock_session
+
+        mock_tm = Mock()
+        mock_tm.transaction = Mock(return_value=_tx())
+
+        order_repo = Mock()
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo,
+            order_repo=order_repo,
+            transaction_manager=mock_tm,
+        )
+
+        result = await publisher.cleanup_processed_events(
+            retention_days=7, batch_size=100
+        )
+
+        assert result == 5
+        outbox_repo.delete_processed_events.assert_called_once_with(
+            7, 100, session=mock_session
+        )
+
+    @pytest.mark.asyncio
     async def test_process_order_activation_kafka_failure(self) -> None:
         """Event fails when Kafka publish fails."""
 

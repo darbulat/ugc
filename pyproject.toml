@@ -48,13 +48,16 @@ markers = [
   "integration: requires external services like Postgres",
 ]
 
+[tool.coverage.report]
+fail_under = 98
+
 [tool.ruff]
 line-length = 80
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "SIM", "RET", "C90", "TID252", "I"]
 extend-select = ["PLR0911", "PLR0912", "PLR0913"]
-extend-ignore = ["PLR0911", "PLR0912", "PLR0913"]
+extend-ignore = ["PLR0911", "PLR0913"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
