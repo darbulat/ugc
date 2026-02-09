@@ -72,7 +72,7 @@ class OutboxProcessor:
                 self._iteration_count += 1
                 await self._maybe_run_cleanup()
             except Exception as e:
-                logger.exception(f"Error in outbox processing loop: {e}")
+                logger.exception("Error in outbox processing loop: %s", e)
 
             await asyncio.sleep(self.poll_interval)
 

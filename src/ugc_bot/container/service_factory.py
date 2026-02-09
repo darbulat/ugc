@@ -1,5 +1,7 @@
 """Factory for creating application services."""
 
+from typing import Any
+
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -31,6 +33,7 @@ from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
+from ugc_bot.container.types import BotServices
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
 
 
@@ -116,13 +119,13 @@ def build_instagram_verification_service(
 
 def build_bot_services(
     config: AppConfig,
-    repos,
-    transaction_manager,
-    metrics_collector,
-    instagram_api_client,
-    outbox_publisher,
-    issue_lock_manager,
-):
+    repos: dict[str, Any],
+    transaction_manager: Any,
+    metrics_collector: Any,
+    instagram_api_client: Any,
+    outbox_publisher: OutboxPublisher,
+    issue_lock_manager: Any,
+) -> BotServices:
     """Build all services and repos for the bot dispatcher."""
     return {
         "metrics_collector": metrics_collector,

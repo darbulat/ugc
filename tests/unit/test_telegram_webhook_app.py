@@ -17,7 +17,7 @@ def _test_config() -> AppConfig:
             "BOT_TOKEN": "test_token",
             "DATABASE_URL": "sqlite:///:memory:",
             "WEBHOOK_BASE_URL": "https://test.example.com",
-            "WEBHOOK_SECRET": "",
+            "WEBHOOK_SECRET": "test_secret",
         }
     )
 
@@ -49,7 +49,10 @@ def client() -> TestClient:
         fake_bot.session.close = AsyncMock()
         MockBot.return_value = fake_bot
 
-        with TestClient(app) as c:
+        with TestClient(
+            app,
+            headers={"X-Telegram-Bot-Api-Secret-Token": "test_secret"},
+        ) as c:
             yield c
 
 
@@ -172,7 +175,7 @@ def test_webhook_lifespan_raises_when_base_url_empty() -> None:
             "BOT_TOKEN": "test_token",
             "DATABASE_URL": "sqlite:///:memory:",
             "WEBHOOK_BASE_URL": "",
-            "WEBHOOK_SECRET": "",
+            "WEBHOOK_SECRET": "secret",
         }
     )
     with (
@@ -181,6 +184,27 @@ def test_webhook_lifespan_raises_when_base_url_empty() -> None:
             return_value=config,
         ),
         pytest.raises(ValueError, match="WEBHOOK_BASE_URL is required"),
+        TestClient(app),
+    ):
+        pass
+
+
+def test_webhook_lifespan_raises_when_secret_empty() -> None:
+    """Lifespan raises ValueError when WEBHOOK_SECRET is empty."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "WEBHOOK_BASE_URL": "https://test.example.com",
+            "WEBHOOK_SECRET": "",
+        }
+    )
+    with (
+        patch(
+            "ugc_bot.telegram_webhook_app.load_config",
+            return_value=config,
+        ),
+        pytest.raises(ValueError, match="WEBHOOK_SECRET is required"),
         TestClient(app),
     ):
         pass
@@ -227,7 +251,11 @@ def test_exception_handler_returns_200_for_webhook_path() -> None:
         fake_bot.session.close = AsyncMock()
         MockBot.return_value = fake_bot
 
-        with TestClient(app, raise_server_exceptions=False) as c:
+        with TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={"X-Telegram-Bot-Api-Secret-Token": "test_secret"},
+        ) as c:
             payload = {
                 "update_id": 1,
                 "message": {

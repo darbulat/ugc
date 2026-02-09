@@ -6,7 +6,6 @@ from typing import (
     TYPE_CHECKING,
     AsyncContextManager,
     Iterable,
-    List,
     Optional,
     Protocol,
 )
@@ -384,7 +383,7 @@ class OutboxRepository(ABC):
     @abstractmethod
     async def get_pending_events(
         self, limit: int = 100, session: object | None = None
-    ) -> List[OutboxEvent]:
+    ) -> list[OutboxEvent]:
         """Get pending events for processing."""
 
     @abstractmethod

@@ -82,6 +82,13 @@ async def _lifespan(app: FastAPI):
             "Set it to your public HTTPS URL (e.g. https://bot.example.com)"
         )
 
+    secret = config.webhook.webhook_secret.strip()
+    if not secret:
+        raise ValueError(
+            "WEBHOOK_SECRET is required for production webhook mode. "
+            "Set a secure random token for X-Telegram-Bot-Api-Secret-Token."
+        )
+
     storage = None
     bot = None
     try:
@@ -93,7 +100,6 @@ async def _lifespan(app: FastAPI):
         payment_provider = TelegramPaymentProvider(bot)
 
         webhook_url = f"{base_url}/webhook/telegram"
-        secret = config.webhook.webhook_secret.strip() or None
         await _set_webhook_with_retry(bot, webhook_url, secret)
         logger.info("Webhook registered", extra={"url": webhook_url})
 
@@ -188,7 +194,7 @@ async def handle_webhook(
     """Receive updates from Telegram. Process in background, return 200."""
     config = load_config()
     secret = config.webhook.webhook_secret.strip()
-    if secret and x_telegram_bot_api_secret_token != secret:
+    if not secret or x_telegram_bot_api_secret_token != secret:
         logger.warning("Invalid or missing webhook secret token")
         raise HTTPException(status_code=403, detail="Invalid secret token")
 
@@ -210,5 +216,16 @@ async def handle_webhook(
         raise HTTPException(status_code=400, detail="Invalid update") from exc
 
     record_telegram_webhook_received()
-    asyncio.create_task(dispatcher.feed_update(bot, update))
+
+    async def _process_update_safely() -> None:
+        """Process webhook update in background with error logging."""
+        try:
+            await dispatcher.feed_update(bot, update)
+        except Exception:
+            logger.exception(
+                "Error processing webhook update",
+                extra={"update_id": getattr(update, "update_id", None)},
+            )
+
+    asyncio.create_task(_process_update_safely())
     return {"status": "ok"}

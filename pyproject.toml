@@ -22,6 +22,7 @@ dependencies = [
  "cffi>=2.0.0",
  "cryptography>=46.0.4",
  "prometheus-client>=0.21.0,<1.0.0",
+ "argon2-cffi>=25.0.0",
 ]
 
 [project.optional-dependencies]

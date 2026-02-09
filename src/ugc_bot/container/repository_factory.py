@@ -1,5 +1,7 @@
 """Factory for creating repository instances."""
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
@@ -18,7 +20,9 @@ from ugc_bot.infrastructure.db.repositories import (
 )
 
 
-def build_repos(session_factory):
+def build_repos(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> dict[str, object]:
     """Build all SQLAlchemy repositories for the application.
 
     Args:

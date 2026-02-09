@@ -3,7 +3,12 @@
 Container delegates to RepositoryFactory, InfrastructureFactory, ServiceFactory.
 """
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy.engine import Engine
+
+if TYPE_CHECKING:
+    from ugc_bot.container.types import BotServices
 
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.instagram_verification_service import (
@@ -117,7 +122,7 @@ class Container:
         """Create Instagram Graph API client if configured."""
         return infrastructure_factory.build_instagram_api_client(self._config)
 
-    def build_bot_services(self) -> dict:
+    def build_bot_services(self) -> "BotServices":
         """Build all services and repos for the bot dispatcher."""
         if not self._session_factory:
             raise ValueError("DATABASE_URL is required for bot services.")

@@ -1,16 +1,13 @@
 """Order creation flow handlers."""
 
 import logging
-from typing import Callable, cast
+from typing import cast
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 
-# Application errors are handled by ErrorHandlerMiddleware
-from ugc_bot.application.messenger.dto import Button, Keyboard
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -28,6 +25,32 @@ from ugc_bot.bot.handlers.keyboards import (
     draft_choice_keyboard,
     flow_keyboard,
     flow_keyboard_remove,
+)
+from ugc_bot.bot.handlers.order_creation_states import (
+    CONTENT_USAGE_ADS,
+    CONTENT_USAGE_BOTH,
+    CONTENT_USAGE_SOCIAL,
+    CONTENT_USAGE_TO_OFFER,
+    COOP_BARTER,
+    COOP_BOTH,
+    COOP_PAYMENT,
+    DEADLINES_3,
+    DEADLINES_7,
+    DEADLINES_14,
+    DEADLINES_TO_OFFER,
+    ORDER_FLOW_TYPE,
+    ORDER_PHOTO_ADD,
+    ORDER_PHOTO_SKIP,
+    ORDER_TYPE_UGC_ONLY,
+    ORDER_TYPE_UGC_PLUS_PLACEMENT,
+    OrderCreationStates,
+    bloggers_needed_keyboard,
+    content_usage_keyboard,
+    cooperation_format_keyboard,
+    deadlines_keyboard,
+    make_keyboard_for_order_state,
+    order_photo_keyboard,
+    order_type_keyboard,
 )
 from ugc_bot.bot.handlers.payments import send_order_invoice
 from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
@@ -51,151 +74,6 @@ from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
-
-ORDER_FLOW_TYPE = "order_creation"
-
-# Cooperation format: barter only, payment only, or both
-COOP_BARTER = "🎁 Бартер"
-COOP_PAYMENT = "💰 Оплата"
-COOP_BOTH = "🔄 Бартер + оплата"
-
-# Order type button texts (for display and matching)
-ORDER_TYPE_UGC_ONLY = "🎥 UGC-видео для бренда"
-ORDER_TYPE_UGC_PLUS_PLACEMENT = "📢 UGC + размещение у креатора"
-
-
-class OrderCreationStates(StatesGroup):
-    """States for order creation."""
-
-    choosing_draft_restore = State()
-    order_type = State()
-    offer_text = State()
-    cooperation_format = State()
-    price = State()
-    barter_description = State()
-    bloggers_needed = State()
-    product_link = State()
-    order_photo = State()
-    content_usage = State()
-    deadlines = State()
-    geography = State()
-
-
-def _order_type_keyboard() -> list[list[Button]]:
-    """Keyboard for order type: UGC only or UGC + placement."""
-    return [
-        [Button(text=ORDER_TYPE_UGC_ONLY)],
-        [Button(text=ORDER_TYPE_UGC_PLUS_PLACEMENT)],
-    ]
-
-
-def _cooperation_format_keyboard() -> list[list[Button]]:
-    """Keyboard for cooperation format."""
-    return [
-        [Button(text=COOP_BARTER)],
-        [Button(text=COOP_PAYMENT)],
-        [Button(text=COOP_BOTH)],
-    ]
-
-
-ORDER_PHOTO_ADD = "📷 Добавить фото"
-ORDER_PHOTO_SKIP = "⏭ Пропустить"
-
-
-def _order_photo_keyboard() -> list[list[Button]]:
-    """Keyboard for optional order photo: add or skip."""
-    return [
-        [Button(text=ORDER_PHOTO_ADD)],
-        [Button(text=ORDER_PHOTO_SKIP)],
-    ]
-
-
-def _bloggers_needed_keyboard(
-    allowed_blogger_counts: frozenset[int],
-) -> list[list[Button]]:
-    """Keyboard for bloggers needed from allowed config."""
-    return [[Button(text=str(c))] for c in sorted(allowed_blogger_counts)]
-
-
-# Content usage: where UGC video will be used (for offer display)
-CONTENT_USAGE_SOCIAL = "📱 В соцсетях бренда"
-CONTENT_USAGE_ADS = "📢 В рекламе (таргет, объявления)"
-CONTENT_USAGE_BOTH = "🔄 В соцсетях и рекламе"
-
-CONTENT_USAGE_TO_OFFER = {
-    CONTENT_USAGE_SOCIAL: "соцсети бренда",
-    CONTENT_USAGE_ADS: "реклама (таргет, объявления)",
-    CONTENT_USAGE_BOTH: "соцсети и реклама бренда",
-}
-
-
-def _content_usage_keyboard() -> list[list[Button]]:
-    """Keyboard for content usage."""
-    return [
-        [Button(text=CONTENT_USAGE_SOCIAL)],
-        [Button(text=CONTENT_USAGE_ADS)],
-        [Button(text=CONTENT_USAGE_BOTH)],
-    ]
-
-
-# Deadlines: preview expected within N days
-DEADLINES_3 = "⏱ До 3 дней"
-DEADLINES_7 = "⏱ До 7 дней"
-DEADLINES_14 = "⏱ До 14 дней"
-
-DEADLINES_TO_OFFER = {
-    DEADLINES_3: "превью в течение 3 дней после согласования",
-    DEADLINES_7: "превью в течение 7 дней после согласования",
-    DEADLINES_14: "превью в течение 14 дней после согласования",
-}
-
-
-def _deadlines_keyboard() -> list[list[Button]]:
-    """Keyboard for deadlines."""
-    return [
-        [Button(text=DEADLINES_3)],
-        [Button(text=DEADLINES_7)],
-        [Button(text=DEADLINES_14)],
-    ]
-
-
-def _make_keyboard_for_order_state(
-    allowed_blogger_counts: frozenset[int],
-) -> Callable[[str, dict], Keyboard]:
-    """Return keyboard getter for order creation state (draft restore)."""
-
-    def _keyboard_for_order_state(state_key: str, data: dict) -> Keyboard:
-        keyboards: dict[str, Keyboard] = {
-            "OrderCreationStates:order_type": flow_keyboard(
-                keyboard=_order_type_keyboard()
-            ),
-            "OrderCreationStates:offer_text": flow_keyboard_remove(),
-            "OrderCreationStates:cooperation_format": flow_keyboard(
-                keyboard=_cooperation_format_keyboard()
-            ),
-            "OrderCreationStates:price": flow_keyboard_remove(),
-            "OrderCreationStates:barter_description": flow_keyboard_remove(),
-            "OrderCreationStates:bloggers_needed": flow_keyboard(
-                keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
-            ),
-            "OrderCreationStates:product_link": flow_keyboard_remove(),
-            "OrderCreationStates:order_photo": flow_keyboard(
-                keyboard=_order_photo_keyboard()
-            ),
-            "OrderCreationStates:content_usage": flow_keyboard(
-                keyboard=_content_usage_keyboard()
-            ),
-            "OrderCreationStates:deadlines": flow_keyboard(
-                keyboard=_deadlines_keyboard()
-            ),
-            "OrderCreationStates:geography": flow_keyboard_remove(),
-        }
-        return keyboards.get(
-            state_key,
-            flow_keyboard(keyboard=_order_type_keyboard()),
-        )
-
-    return _keyboard_for_order_state
 
 
 @router.message(Command("create_order"))
@@ -252,7 +130,7 @@ async def start_order_creation(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Что вам нужно?",
-        keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
+        keyboard=flow_keyboard(keyboard=order_type_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
 
@@ -280,9 +158,9 @@ async def order_draft_choice(
         user_id_key="user_id",
         first_state=cast(str, OrderCreationStates.order_type.state),
         first_prompt="Что вам нужно?",
-        first_keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
+        first_keyboard=flow_keyboard(keyboard=order_type_keyboard()),
         session_expired_msg="Сессия истекла. Начните с «Создать заказ».",
-        keyboard_for_restored_state=_make_keyboard_for_order_state(
+        keyboard_for_restored_state=make_keyboard_for_order_state(
             allowed_blogger_counts
         ),
     )
@@ -310,7 +188,7 @@ async def handle_order_type(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите один из вариантов на клавиатуре.",
-            keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
+            keyboard=flow_keyboard(keyboard=order_type_keyboard()),
         )
         return
 
@@ -353,9 +231,7 @@ async def handle_offer_text(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Какой формат сотрудничества вам подходит?",
-        keyboard=flow_keyboard(
-            keyboard=_cooperation_format_keyboard(),
-        ),
+        keyboard=flow_keyboard(keyboard=cooperation_format_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.cooperation_format.state)
 
@@ -378,9 +254,7 @@ async def handle_cooperation_format(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите один из вариантов на клавиатуре.",
-            keyboard=flow_keyboard(
-                keyboard=_cooperation_format_keyboard(),
-            ),
+            keyboard=flow_keyboard(keyboard=cooperation_format_keyboard()),
         )
         return
 
@@ -469,7 +343,7 @@ async def handle_price(
         chat_id=incoming.chat_id,
         text="Сколько креаторов вам нужно?",
         keyboard=flow_keyboard(
-            keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
+            keyboard=bloggers_needed_keyboard(allowed_blogger_counts)
         ),
     )
     await state_store.set_state(OrderCreationStates.bloggers_needed.state)
@@ -505,7 +379,7 @@ async def handle_barter_description(
         chat_id=incoming.chat_id,
         text="Сколько креаторов вам нужно?",
         keyboard=flow_keyboard(
-            keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
+            keyboard=bloggers_needed_keyboard(allowed_blogger_counts)
         ),
     )
     await state_store.set_state(OrderCreationStates.bloggers_needed.state)
@@ -533,7 +407,7 @@ async def handle_bloggers_needed(
             chat_id=incoming.chat_id,
             text=f"Выберите одно из значений: {counts_str}.",
             keyboard=flow_keyboard(
-                keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
+                keyboard=bloggers_needed_keyboard(allowed_blogger_counts)
             ),
         )
         return
@@ -579,7 +453,7 @@ async def handle_product_link(
             "Фотография поможет креатору быстрее понять заказ и повысит отклик "
             "на ваше предложение"
         ),
-        keyboard=flow_keyboard(keyboard=_order_photo_keyboard()),
+        keyboard=flow_keyboard(keyboard=order_photo_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.order_photo.state)
 
@@ -603,9 +477,7 @@ async def handle_order_photo(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Где вы планируете использовать UGC-видео?",
-            keyboard=flow_keyboard(
-                keyboard=_content_usage_keyboard(),
-            ),
+            keyboard=flow_keyboard(keyboard=content_usage_keyboard()),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
         return
@@ -613,7 +485,7 @@ async def handle_order_photo(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Отправьте фото продукта:",
-            keyboard=flow_keyboard(keyboard=_order_photo_keyboard()),
+            keyboard=flow_keyboard(keyboard=order_photo_keyboard()),
         )
         return
 
@@ -623,9 +495,7 @@ async def handle_order_photo(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Где вы планируете использовать UGC-видео?",
-            keyboard=flow_keyboard(
-                keyboard=_content_usage_keyboard(),
-            ),
+            keyboard=flow_keyboard(keyboard=content_usage_keyboard()),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
         return
@@ -636,7 +506,7 @@ async def handle_order_photo(
             "Выберите «Добавить фото» или «Пропустить» на клавиатуре, "
             "либо отправьте фото продукта."
         ),
-        keyboard=flow_keyboard(keyboard=_order_photo_keyboard()),
+        keyboard=flow_keyboard(keyboard=order_photo_keyboard()),
     )
 
 
@@ -662,7 +532,7 @@ async def handle_content_usage(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите один из вариантов на клавиатуре.",
-            keyboard=flow_keyboard(keyboard=_content_usage_keyboard()),
+            keyboard=flow_keyboard(keyboard=content_usage_keyboard()),
         )
         return
 
@@ -675,7 +545,7 @@ async def handle_content_usage(
             "Укажите, через сколько дней после согласования "
             "вы ожидаете превью."
         ),
-        keyboard=flow_keyboard(keyboard=_deadlines_keyboard()),
+        keyboard=flow_keyboard(keyboard=deadlines_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.deadlines.state)
 
@@ -698,7 +568,7 @@ async def handle_deadlines(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите один из вариантов на клавиатуре.",
-            keyboard=flow_keyboard(keyboard=_deadlines_keyboard()),
+            keyboard=flow_keyboard(keyboard=deadlines_keyboard()),
         )
         return
 
