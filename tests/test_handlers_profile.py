@@ -12,7 +12,6 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeUser,
 )
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
@@ -521,6 +520,7 @@ async def test_edit_profile_enter_value_missing_state(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Сессия истекла" in message.answers[0]
@@ -554,6 +554,7 @@ async def test_edit_profile_enter_value_blogger_missing(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
@@ -588,6 +589,7 @@ async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -624,6 +626,7 @@ async def test_edit_profile_enter_value_city_success(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert state.cleared is True
     assert message.answers
@@ -662,6 +665,7 @@ async def test_edit_profile_enter_value_nickname_success(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert state.cleared is True
     assert role_service.set_user_calls
@@ -712,6 +716,7 @@ async def test_edit_profile_enter_value_instagram_duplicate(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "уже зарегистрирован" in message.answers[0]
@@ -748,6 +753,7 @@ async def test_edit_profile_enter_value_instagram_success(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert state.cleared is True
     assert (
@@ -787,6 +793,7 @@ async def test_edit_profile_enter_value_audience_gender_success(
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert (
         reg_service.update_calls[0][1].get("audience_gender")
@@ -823,6 +830,7 @@ async def test_edit_profile_enter_value_audience_age_success(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("audience_age_min") == 25
     assert reg_service.update_calls[0][1].get("audience_age_max") == 34
@@ -857,6 +865,7 @@ async def test_edit_profile_enter_value_barter_success(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("barter") is True
 
@@ -890,6 +899,7 @@ async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert (
         reg_service.update_calls[0][1].get("work_format")
@@ -925,6 +935,7 @@ async def test_edit_profile_enter_value_nickname_empty(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -960,6 +971,7 @@ async def test_edit_profile_enter_value_instagram_bad_format(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Неверный формат ссылки" in message.answers[0]
@@ -993,6 +1005,7 @@ async def test_edit_profile_enter_value_instagram_regex_fail(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Неверный формат ссылки Instagram" in message.answers[0]
@@ -1026,6 +1039,7 @@ async def test_edit_profile_enter_value_topics_empty(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1061,6 +1075,7 @@ async def test_edit_profile_enter_value_topics_too_many(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1099,6 +1114,7 @@ async def test_edit_profile_enter_value_audience_gender_invalid(
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Выберите одну из кнопок" in message.answers[0]
@@ -1132,6 +1148,7 @@ async def test_edit_profile_enter_value_audience_age_invalid(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "кнопок возраста" in message.answers[0]
@@ -1165,6 +1182,7 @@ async def test_edit_profile_enter_value_audience_geo_empty(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1202,6 +1220,7 @@ async def test_edit_profile_enter_value_audience_geo_too_many(
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1237,6 +1256,7 @@ async def test_edit_profile_enter_value_price_invalid(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Введите число" in message.answers[0]
@@ -1270,6 +1290,7 @@ async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1279,14 +1300,14 @@ async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_price_exceeds_max(user_repo) -> None:
-    """Price exceeding MAX_ORDER_PRICE gets validation error."""
+    """Price exceeding max order price gets validation error."""
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-00000000083a"),
         external_id="40",
         username="user",
     )
-    overflow = str(int(MAX_ORDER_PRICE) + 1)
+    overflow = str(int(10_000.0) + 1)
     message = FakeMessage(text=overflow, user=FakeUser(40))
     state = FakeFSMContext()
     state._data = {
@@ -1305,11 +1326,12 @@ async def test_edit_profile_enter_value_price_exceeds_max(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
-    assert "превышает" in text or str(int(MAX_ORDER_PRICE)) in text
+    assert "превышает" in text or "10000" in text
     assert not reg_service.update_calls
 
 
@@ -1341,6 +1363,7 @@ async def test_edit_profile_enter_value_barter_invalid(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Выберите Да или Нет" in message.answers[0]
@@ -1374,6 +1397,7 @@ async def test_edit_profile_enter_value_work_format_invalid(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     assert "Выберите одну из кнопок" in message.answers[0]
@@ -1408,6 +1432,7 @@ async def test_edit_profile_enter_value_topics_success(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("topics") == {
         "selected": ["beauty", "fitness"]
@@ -1442,6 +1467,7 @@ async def test_edit_profile_enter_value_unknown_field(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert state.cleared is True
     assert message.answers
@@ -1476,6 +1502,7 @@ async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
+        max_order_price=10_000.0,
     )
     assert message.answers
     first = message.answers[0]
@@ -1751,7 +1778,13 @@ async def test_edit_profile_enter_value_advertiser_name_success(
     adv_service = FakeAdvertiserRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_enter_value(
-        message, state, service, reg_service, adv_service, role_service
+        message,
+        state,
+        service,
+        reg_service,
+        adv_service,
+        role_service,
+        max_order_price=10_000.0,
     )
     assert state.cleared
     assert role_service.set_user_calls[0][2] == "NewName"
@@ -1792,6 +1825,7 @@ async def test_edit_profile_enter_value_advertiser_name_empty(
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1833,6 +1867,7 @@ async def test_edit_profile_enter_value_advertiser_phone_success(
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert adv_service.update_calls[0][1].get("phone") == "+79001234567"
 
@@ -1866,6 +1901,7 @@ async def test_edit_profile_enter_value_advertiser_phone_empty(
         FakeBloggerRegistrationService(),
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1902,6 +1938,7 @@ async def test_edit_profile_enter_value_advertiser_brand_empty(
         FakeBloggerRegistrationService(),
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -1944,6 +1981,7 @@ async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert adv_service.update_calls[0][1].get("site_link") == "https://site.com"
 
@@ -1978,6 +2016,7 @@ async def test_edit_profile_enter_value_advertiser_phone_invalid(
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -2016,6 +2055,7 @@ async def test_edit_profile_enter_value_advertiser_site_link_invalid(
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
@@ -2051,6 +2091,7 @@ async def test_edit_profile_enter_value_advertiser_missing(user_repo) -> None:
         FakeBloggerRegistrationService(),
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert "Профиль рекламодателя не найден" in message.answers[0]
 
@@ -2085,6 +2126,7 @@ async def test_edit_profile_enter_value_advertiser_update_none(
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert "Не удалось обновить" in message.answers[0]
 
@@ -2117,6 +2159,7 @@ async def test_edit_profile_enter_value_barter_no(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("barter") is False
 
@@ -2151,6 +2194,7 @@ async def test_edit_profile_enter_value_work_format_ugc_only(user_repo) -> None:
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert (
         reg_service.update_calls[0][1].get("work_format") == WorkFormat.UGC_ONLY
@@ -2187,6 +2231,7 @@ async def test_edit_profile_enter_value_advertiser_unknown_field(
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
+        max_order_price=10_000.0,
     )
     assert state.cleared
     assert "Неизвестное поле" in message.answers[0]

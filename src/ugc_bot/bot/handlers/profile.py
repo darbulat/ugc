@@ -24,7 +24,6 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
@@ -474,6 +473,7 @@ async def _blog_update_price(
     user_id: UUID,
     message: MessageContext,
     blogger_registration_service: BloggerRegistrationService,
+    max_order_price: float,
 ) -> BloggerProfile | None:
     """Update price. Returns profile or None."""
     try:
@@ -481,7 +481,7 @@ async def _blog_update_price(
     except ValueError:
         await message.answer("Введите число, например 1000.")
         return None
-    err = validate_price(price, MAX_ORDER_PRICE)
+    err = validate_price(price, max_order_price)
     if err is not None:
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
@@ -539,6 +539,7 @@ async def _update_blogger_field(
     profile_service: ProfileService,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
+    max_order_price: float,
 ) -> bool:
     """Validate and update blogger field. Returns True on success."""
     if field_key == "nickname":
@@ -566,7 +567,9 @@ async def _update_blogger_field(
         "audience_gender": _blog_update_audience_gender,
         "audience_age": _blog_update_audience_age,
         "audience_geo": _blog_update_audience_geo,
-        "price": _blog_update_price,
+        "price": lambda t, u, m, s: _blog_update_price(
+            t, u, m, s, max_order_price
+        ),
         "barter": _blog_update_barter,
         "work_format": _blog_update_work_format,
     }
@@ -956,6 +959,7 @@ async def edit_profile_enter_value(
     blogger_registration_service: BloggerRegistrationService,
     advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
+    max_order_price: float,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1015,4 +1019,5 @@ async def edit_profile_enter_value(
         profile_service,
         blogger_registration_service,
         user_role_service,
+        max_order_price,
     )

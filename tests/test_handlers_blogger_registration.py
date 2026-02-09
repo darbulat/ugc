@@ -218,7 +218,7 @@ async def test_price_invalid() -> None:
     message = FakeMessage(text="abc", user=None)
     state = FakeFSMContext()
 
-    await handle_price(message, state)
+    await handle_price(message, state, max_order_price=10_000.0)
 
     assert message.answers
     assert "Введите число" in message.answers[0]
@@ -274,7 +274,7 @@ async def test_gender_age_geo_price_flow() -> None:
     assert state._data["audience_geo"] == "Moscow"
 
     price_message = FakeMessage(text="1500", user=None)
-    await handle_price(price_message, state)
+    await handle_price(price_message, state, max_order_price=10_000.0)
     assert state._data["price"] == 1500.0
 
 
@@ -289,7 +289,7 @@ async def test_geo_empty_and_price_negative() -> None:
     assert "город" in (ans_g if isinstance(ans_g, str) else ans_g[0])
 
     price_message = FakeMessage(text="-5", user=None)
-    await handle_price(price_message, state)
+    await handle_price(price_message, state, max_order_price=10_000.0)
     ans_p = price_message.answers[0]
     assert "Цена должна" in (ans_p if isinstance(ans_p, str) else ans_p[0])
 

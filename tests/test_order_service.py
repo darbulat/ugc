@@ -8,7 +8,6 @@ import pytest
 from tests.helpers.factories import create_test_advertiser
 from tests.helpers.services import build_order_service
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.domain.enums import OrderType, UserStatus
 
 
@@ -212,7 +211,9 @@ async def test_create_order_price_exceeds_max_rejected(
     user_id = await create_test_advertiser(
         user_repo, advertiser_repo, status=UserStatus.ACTIVE
     )
-    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    service = build_order_service(
+        user_repo, advertiser_repo, order_repo, max_order_price=10_000.0
+    )
     with pytest.raises(OrderCreationError, match="exceeds maximum"):
         await service.create_order(
             advertiser_id=user_id,
@@ -220,7 +221,7 @@ async def test_create_order_price_exceeds_max_rejected(
             product_link="https://example.com",
             offer_text="Offer",
             barter_description=None,
-            price=MAX_ORDER_PRICE + 1,
+            price=10_001.0,
             bloggers_needed=3,
         )
 

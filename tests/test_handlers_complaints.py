@@ -731,6 +731,8 @@ async def test_handle_complaint_reason_no_state(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
     )
 
     from aiogram.fsm.context import FSMContext
@@ -761,6 +763,8 @@ async def test_handle_complaint_reason_invalid_reason(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
     )
 
     from aiogram.fsm.context import FSMContext
@@ -1527,6 +1531,8 @@ async def test_handle_complaint_reason_no_from_user(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
     )
 
     from aiogram.fsm.context import FSMContext
@@ -1564,6 +1570,8 @@ async def test_handle_complaint_reason_no_data(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
     )
 
     from aiogram.fsm.context import FSMContext
@@ -1601,6 +1609,8 @@ async def test_handle_complaint_reason_bad_state_data(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
     )
 
     from aiogram.fsm.context import FSMContext
@@ -1718,6 +1728,8 @@ async def test_handle_complaint_reason_generic_exception(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
     )
 
     from aiogram.fsm.context import FSMContext

@@ -9,6 +9,7 @@ such as tokens, passwords, or full message payloads.
 """
 
 import logging
+import re
 from typing import Any, Awaitable, Callable, cast
 
 from aiogram import BaseMiddleware
@@ -34,7 +35,6 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
     PaymentProvider,
 )
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
@@ -63,9 +63,6 @@ ERROR_MESSAGES = {
         "Order does not belong to advertiser.": (
             "Заказ не принадлежит рекламодателю."
         ),
-        f"Price exceeds maximum ({MAX_ORDER_PRICE:,.0f}).": (
-            f"Сумма превышает максимум ({MAX_ORDER_PRICE:,.0f} ₽)."
-        ),
         "default": "Ошибка создания заказа.",
     },
     InteractionNotFoundError: {
@@ -92,6 +89,9 @@ ERROR_MESSAGES = {
 }
 
 
+_PRICE_EXCEEDS_PATTERN = re.compile(r"Price exceeds maximum \(([^)]+)\)\.")
+
+
 def _get_user_message(error: Exception) -> str:
     """Get user-friendly message for an error."""
     error_type = type(error)
@@ -101,6 +101,11 @@ def _get_user_message(error: Exception) -> str:
         messages = ERROR_MESSAGES[error_type]
         if error_str in messages:
             return messages[error_str]
+        if error_type == OrderCreationError:
+            match = _PRICE_EXCEEDS_PATTERN.match(error_str)
+            if match:
+                amount = match.group(1)
+                return f"Сумма превышает максимум ({amount} ₽)."
         if "default" in messages:
             return messages["default"]
 

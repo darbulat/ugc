@@ -52,6 +52,8 @@ def build_order_service(
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     order_repo: InMemoryOrderRepository,
     transaction_manager: object | None = None,
+    allowed_blogger_counts: frozenset[int] | None = None,
+    max_order_price: float = 10_000.0,
 ) -> OrderService:
     """Build order service for tests.
 
@@ -60,14 +62,20 @@ def build_order_service(
         advertiser_repo: Advertiser profile repository
         order_repo: Order repository
         transaction_manager: Optional transaction manager
+        allowed_blogger_counts: Optional set of allowed blogger counts
+        max_order_price: Maximum order price (default 10000)
 
     Returns:
         Order service instance
     """
+    if allowed_blogger_counts is None:
+        allowed_blogger_counts = frozenset({1, 3, 5, 10})
     return OrderService(
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=allowed_blogger_counts,
+        max_order_price=max_order_price,
         transaction_manager=transaction_manager,
     )
 

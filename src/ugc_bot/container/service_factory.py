@@ -155,6 +155,8 @@ def build_bot_services(
             user_repo=repos["user_repo"],
             advertiser_repo=repos["advertiser_repo"],
             order_repo=repos["order_repo"],
+            allowed_blogger_counts=config.order.get_allowed_blogger_counts_set(),
+            max_order_price=config.order.max_order_price,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),
@@ -215,4 +217,6 @@ def build_bot_services(
         "interaction_repo": repos["interaction_repo"],
         "outbox_publisher": outbox_publisher,
         "transaction_manager": transaction_manager,
+        "max_order_price": config.order.max_order_price,
+        "allowed_blogger_counts": config.order.get_allowed_blogger_counts_set(),
     }

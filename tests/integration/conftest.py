@@ -215,6 +215,8 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         user_repo=user_repo,
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
+        allowed_blogger_counts=config.order.get_allowed_blogger_counts_set(),
+        max_order_price=config.order.max_order_price,
         transaction_manager=transaction_manager,
     )
     dispatcher["offer_dispatch_service"] = OfferDispatchService(
@@ -291,6 +293,10 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     )
     dispatcher["complaint_service"] = ComplaintService(
         complaint_repo=complaint_repo, transaction_manager=transaction_manager
+    )
+    dispatcher["max_order_price"] = config.order.max_order_price
+    dispatcher["allowed_blogger_counts"] = (
+        config.order.get_allowed_blogger_counts_set()
     )
 
     # Add repositories for easier testing

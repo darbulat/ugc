@@ -49,11 +49,19 @@ def test_app_config_accepts_nested_dict() -> None:
             "OUTBOX_CLEANUP_BATCH_SIZE": "1000",
             "OUTBOX_CLEANUP_INTERVAL_ITERATIONS": "720",
         },
+        "order": {
+            "ALLOWED_BLOGGER_COUNTS": "1,3,5,10",
+            "MAX_ORDER_PRICE": "10000",
+        },
     }
     config = AppConfig.model_validate(nested)
     assert config.bot.bot_token == "token"
     assert config.db.database_url == "postgresql://localhost/db"
     assert config.outbox.outbox_retention_days == 7
+    assert config.order.get_allowed_blogger_counts_set() == frozenset(
+        {1, 3, 5, 10}
+    )
+    assert config.order.max_order_price == 10000.0
 
 
 def test_load_config_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:

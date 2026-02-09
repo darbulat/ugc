@@ -78,6 +78,10 @@ _FLAT_KEYS = {
         "OUTBOX_CLEANUP_BATCH_SIZE",
         "OUTBOX_CLEANUP_INTERVAL_ITERATIONS",
     ],
+    "order": [
+        "ALLOWED_BLOGGER_COUNTS",
+        "MAX_ORDER_PRICE",
+    ],
 }
 
 
@@ -278,6 +282,42 @@ class OutboxConfig(BaseSettings):
     )
 
 
+class OrderConfig(BaseSettings):
+    """Order creation limits: allowed blogger counts and max price."""
+
+    model_config = _ENV
+
+    allowed_blogger_counts: str = Field(
+        default="1,3,5,10", alias="ALLOWED_BLOGGER_COUNTS"
+    )
+    max_order_price: float = Field(default=10_000.0, alias="MAX_ORDER_PRICE")
+
+    @field_validator("allowed_blogger_counts")
+    @classmethod
+    def parse_allowed_counts(cls, v: str) -> str:
+        """Validate comma-separated positive integers; return as-is."""
+        parts = [p.strip() for p in v.split(",") if p.strip()]
+        for p in parts:
+            try:
+                val = int(p)
+            except ValueError as e:
+                raise ValueError(
+                    f"ALLOWED_BLOGGER_COUNTS must be comma-separated "
+                    f"integers: {p}"
+                ) from e
+            if val < 1:
+                raise ValueError(f"Allowed blogger count must be positive: {p}")
+        return v
+
+    def get_allowed_blogger_counts_set(self) -> frozenset[int]:
+        """Return frozenset of allowed blogger counts."""
+        return frozenset(
+            int(p.strip())
+            for p in self.allowed_blogger_counts.split(",")
+            if p.strip()
+        )
+
+
 # --- Composite ---
 
 
@@ -298,6 +338,7 @@ class AppConfig(BaseModel):
     docs: DocsConfig
     webhook: WebhookConfig
     outbox: OutboxConfig
+    order: OrderConfig
 
     @model_validator(mode="before")
     @classmethod
@@ -320,6 +361,7 @@ class AppConfig(BaseModel):
             "docs": DocsConfig.model_validate(nested["docs"]),
             "webhook": WebhookConfig.model_validate(nested["webhook"]),
             "outbox": OutboxConfig.model_validate(nested["outbox"]),
+            "order": OrderConfig.model_validate(nested["order"]),
         }
 
 

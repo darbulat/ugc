@@ -20,17 +20,14 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 logger = logging.getLogger(__name__)
 
 
-_ALLOWED_BLOGGER_COUNTS = {3, 5, 10}
-
-MAX_ORDER_PRICE = 10_000.0
-
-
 def _validate_order_input(
     product_link: str,
     offer_text: str,
     price: float,
     barter_description: str | None,
     bloggers_needed: int,
+    allowed_blogger_counts: frozenset[int],
+    max_order_price: float,
 ) -> tuple[str, str, str | None]:
     """Validate order input. Returns (product_link, offer_text, barter_desc)."""
     product_link_clean = product_link.strip()
@@ -44,14 +41,14 @@ def _validate_order_input(
     barter_clean = (barter_description or "").strip() or None
     if price < 0:
         raise OrderCreationError("Price cannot be negative.")
-    if price > MAX_ORDER_PRICE:
+    if price > max_order_price:
         raise OrderCreationError(
-            f"Price exceeds maximum ({MAX_ORDER_PRICE:,.0f})."
+            f"Price exceeds maximum ({max_order_price:,.0f})."
         )
     if price <= 0 and not barter_clean:
         raise OrderCreationError("Price must be positive when no barter.")
 
-    if bloggers_needed not in _ALLOWED_BLOGGER_COUNTS:
+    if bloggers_needed not in allowed_blogger_counts:
         raise OrderCreationError("Invalid bloggers count.")
 
     return product_link_clean, offer_text_clean, barter_clean
@@ -64,6 +61,8 @@ class OrderService:
     user_repo: UserRepository
     advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
+    allowed_blogger_counts: frozenset[int]
+    max_order_price: float
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
@@ -141,6 +140,8 @@ class OrderService:
                     price,
                     barter_description,
                     bloggers_needed,
+                    self.allowed_blogger_counts,
+                    self.max_order_price,
                 )
             )
 

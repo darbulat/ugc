@@ -1,7 +1,7 @@
 """Order creation flow handlers."""
 
 import logging
-from typing import cast
+from typing import Callable, cast
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -19,10 +19,7 @@ from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
-from ugc_bot.application.services.order_service import (
-    MAX_ORDER_PRICE,
-    OrderService,
-)
+from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
@@ -113,13 +110,11 @@ def _order_photo_keyboard() -> list[list[Button]]:
     ]
 
 
-def _bloggers_needed_keyboard() -> list[list[Button]]:
-    """Keyboard for bloggers needed: only 3, 5, 10."""
-    return [
-        [Button(text="3")],
-        [Button(text="5")],
-        [Button(text="10")],
-    ]
+def _bloggers_needed_keyboard(
+    allowed_blogger_counts: frozenset[int],
+) -> list[list[Button]]:
+    """Keyboard for bloggers needed from allowed config."""
+    return [[Button(text=str(c))] for c in sorted(allowed_blogger_counts)]
 
 
 # Content usage: where UGC video will be used (for offer display)
@@ -164,37 +159,43 @@ def _deadlines_keyboard() -> list[list[Button]]:
     ]
 
 
-def _keyboard_for_order_state(state_key: str, data: dict) -> Keyboard:
-    """Return reply keyboard for order creation state (draft restore)."""
-    keyboards: dict[str, Keyboard] = {
-        "OrderCreationStates:order_type": flow_keyboard(
-            keyboard=_order_type_keyboard()
-        ),
-        "OrderCreationStates:offer_text": flow_keyboard_remove(),
-        "OrderCreationStates:cooperation_format": flow_keyboard(
-            keyboard=_cooperation_format_keyboard()
-        ),
-        "OrderCreationStates:price": flow_keyboard_remove(),
-        "OrderCreationStates:barter_description": flow_keyboard_remove(),
-        "OrderCreationStates:bloggers_needed": flow_keyboard(
-            keyboard=_bloggers_needed_keyboard()
-        ),
-        "OrderCreationStates:product_link": flow_keyboard_remove(),
-        "OrderCreationStates:order_photo": flow_keyboard(
-            keyboard=_order_photo_keyboard()
-        ),
-        "OrderCreationStates:content_usage": flow_keyboard(
-            keyboard=_content_usage_keyboard()
-        ),
-        "OrderCreationStates:deadlines": flow_keyboard(
-            keyboard=_deadlines_keyboard()
-        ),
-        "OrderCreationStates:geography": flow_keyboard_remove(),
-    }
-    return keyboards.get(
-        state_key,
-        flow_keyboard(keyboard=_order_type_keyboard()),
-    )
+def _make_keyboard_for_order_state(
+    allowed_blogger_counts: frozenset[int],
+) -> Callable[[str, dict], Keyboard]:
+    """Return keyboard getter for order creation state (draft restore)."""
+
+    def _keyboard_for_order_state(state_key: str, data: dict) -> Keyboard:
+        keyboards: dict[str, Keyboard] = {
+            "OrderCreationStates:order_type": flow_keyboard(
+                keyboard=_order_type_keyboard()
+            ),
+            "OrderCreationStates:offer_text": flow_keyboard_remove(),
+            "OrderCreationStates:cooperation_format": flow_keyboard(
+                keyboard=_cooperation_format_keyboard()
+            ),
+            "OrderCreationStates:price": flow_keyboard_remove(),
+            "OrderCreationStates:barter_description": flow_keyboard_remove(),
+            "OrderCreationStates:bloggers_needed": flow_keyboard(
+                keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
+            ),
+            "OrderCreationStates:product_link": flow_keyboard_remove(),
+            "OrderCreationStates:order_photo": flow_keyboard(
+                keyboard=_order_photo_keyboard()
+            ),
+            "OrderCreationStates:content_usage": flow_keyboard(
+                keyboard=_content_usage_keyboard()
+            ),
+            "OrderCreationStates:deadlines": flow_keyboard(
+                keyboard=_deadlines_keyboard()
+            ),
+            "OrderCreationStates:geography": flow_keyboard_remove(),
+        }
+        return keyboards.get(
+            state_key,
+            flow_keyboard(keyboard=_order_type_keyboard()),
+        )
+
+    return _keyboard_for_order_state
 
 
 @router.message(Command("create_order"))
@@ -261,6 +262,7 @@ async def order_draft_choice(
     message: Message,
     state: FSMContext,
     fsm_draft_service: FsmDraftService,
+    allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -280,7 +282,9 @@ async def order_draft_choice(
         first_prompt="Что вам нужно?",
         first_keyboard=flow_keyboard(keyboard=_order_type_keyboard()),
         session_expired_msg="Сессия истекла. Начните с «Создать заказ».",
-        keyboard_for_restored_state=_keyboard_for_order_state,
+        keyboard_for_restored_state=_make_keyboard_for_order_state(
+            allowed_blogger_counts
+        ),
     )
 
 
@@ -417,6 +421,8 @@ async def handle_cooperation_format(
 async def handle_price(
     message: Message,
     state: FSMContext,
+    max_order_price: float,
+    allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -435,7 +441,7 @@ async def handle_price(
         )
         return
 
-    err = validate_price(price, MAX_ORDER_PRICE)
+    err = validate_price(price, max_order_price)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -462,7 +468,9 @@ async def handle_price(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Сколько креаторов вам нужно?",
-        keyboard=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
+        keyboard=flow_keyboard(
+            keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
+        ),
     )
     await state_store.set_state(OrderCreationStates.bloggers_needed.state)
 
@@ -471,6 +479,7 @@ async def handle_price(
 async def handle_barter_description(
     message: Message,
     state: FSMContext,
+    allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -495,7 +504,9 @@ async def handle_barter_description(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Сколько креаторов вам нужно?",
-        keyboard=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
+        keyboard=flow_keyboard(
+            keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
+        ),
     )
     await state_store.set_state(OrderCreationStates.bloggers_needed.state)
 
@@ -504,21 +515,26 @@ async def handle_barter_description(
 async def handle_bloggers_needed(
     message: Message,
     state: FSMContext,
+    allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Store bloggers needed (3, 5 or 10) and ask product link."""
+    """Store bloggers needed from allowed counts and ask product link."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     raw = (incoming.text or "").strip()
-    if raw not in ("3", "5", "10"):
+    valid_strs = {str(c) for c in allowed_blogger_counts}
+    if raw not in valid_strs:
+        counts_str = ", ".join(str(c) for c in sorted(allowed_blogger_counts))
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите одно из значений: 3, 5 или 10.",
-            keyboard=flow_keyboard(keyboard=_bloggers_needed_keyboard()),
+            text=f"Выберите одно из значений: {counts_str}.",
+            keyboard=flow_keyboard(
+                keyboard=_bloggers_needed_keyboard(allowed_blogger_counts)
+            ),
         )
         return
 

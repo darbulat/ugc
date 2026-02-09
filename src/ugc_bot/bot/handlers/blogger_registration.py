@@ -20,7 +20,6 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
@@ -542,6 +541,7 @@ async def handle_geo(
 async def handle_price(
     message: Message,
     state: FSMContext,
+    max_order_price: float,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -561,7 +561,7 @@ async def handle_price(
         )
         return
 
-    err = validate_price(price, MAX_ORDER_PRICE)
+    err = validate_price(price, max_order_price)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

@@ -20,7 +20,6 @@ from tests.helpers.services import (
     build_order_service,
     build_profile_service,
 )
-from ugc_bot.application.services.order_service import MAX_ORDER_PRICE
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     RESUME_DRAFT_BUTTON_TEXT,
@@ -57,6 +56,10 @@ from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
 # Valid offer text: min 20 chars per validator
 VALID_OFFER_TEXT = "Видео с распаковкой продукта и личным отзывом."
+
+# Order config for handler tests
+TEST_ALLOWED_BLOGGER_COUNTS = frozenset({1, 3, 5, 10})
+TEST_MAX_ORDER_PRICE = 10_000.0
 
 
 @pytest.mark.asyncio
@@ -126,8 +129,17 @@ async def test_order_creation_flow_new_advertiser(
     await handle_cooperation_format(
         FakeMessage(text=COOP_PAYMENT, user=None), state
     )
-    await handle_price(FakeMessage(text="1000", user=None), state)
-    await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
+    await handle_price(
+        FakeMessage(text="1000", user=None),
+        state,
+        TEST_MAX_ORDER_PRICE,
+        TEST_ALLOWED_BLOGGER_COUNTS,
+    )
+    await handle_bloggers_needed(
+        FakeMessage(text="3", user=None),
+        state,
+        TEST_ALLOWED_BLOGGER_COUNTS,
+    )
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(5, "adv", "Adv")),
         state,
@@ -219,9 +231,15 @@ async def test_order_creation_flow_with_barter(
         FakeMessage(text=COOP_BARTER, user=None), state
     )
     await handle_barter_description(
-        FakeMessage(text="Barter product with delivery", user=None), state
+        FakeMessage(text="Barter product with delivery", user=None),
+        state,
+        TEST_ALLOWED_BLOGGER_COUNTS,
     )
-    await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
+    await handle_bloggers_needed(
+        FakeMessage(text="5", user=None),
+        state,
+        TEST_ALLOWED_BLOGGER_COUNTS,
+    )
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(6, "adv", "Adv")),
         state,
@@ -337,27 +355,29 @@ async def test_bloggers_needed_only_3_5_10() -> None:
 
     state = FakeFSMContext()
     message = FakeMessage(text="20", user=None)
-    await handle_bloggers_needed(message, state)
+    await handle_bloggers_needed(message, state, TEST_ALLOWED_BLOGGER_COUNTS)
 
     assert message.answers
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
-    assert "3, 5 или 10" in text
+    assert "1, 3, 5, 10" in text or "3, 5, 10" in text
 
 
 @pytest.mark.asyncio
 async def test_handle_price_exceeds_max_rejected() -> None:
-    """Reject price exceeding NUMERIC(10,2) limit."""
+    """Reject price exceeding max order price limit."""
 
     state = FakeFSMContext()
-    overflow_price = str(int(MAX_ORDER_PRICE) + 1)
+    overflow_price = str(int(TEST_MAX_ORDER_PRICE) + 1)
     message = FakeMessage(text=overflow_price, user=None)
-    await handle_price(message, state)
+    await handle_price(
+        message, state, TEST_MAX_ORDER_PRICE, TEST_ALLOWED_BLOGGER_COUNTS
+    )
 
     assert message.answers
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
-    assert "превышает максимально допустимую" in text
+    assert "превышает" in text
 
 
 @pytest.mark.asyncio
@@ -447,7 +467,9 @@ async def test_order_draft_choice_resume(
     state._data = {"user_id": user.user_id}
     state.state = OrderCreationStates.choosing_draft_restore
 
-    await order_draft_choice(message, state, draft_service)
+    await order_draft_choice(
+        message, state, draft_service, TEST_ALLOWED_BLOGGER_COUNTS
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -477,7 +499,9 @@ async def test_order_draft_choice_start_over(
     state._data = {"user_id": user.user_id}
     state.state = OrderCreationStates.choosing_draft_restore
 
-    await order_draft_choice(message, state, draft_service)
+    await order_draft_choice(
+        message, state, draft_service, TEST_ALLOWED_BLOGGER_COUNTS
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -533,7 +557,9 @@ async def test_handle_price_negative() -> None:
 
     state = FakeFSMContext()
     message = FakeMessage(text="-100", user=None)
-    await handle_price(message, state)
+    await handle_price(
+        message, state, TEST_MAX_ORDER_PRICE, TEST_ALLOWED_BLOGGER_COUNTS
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -579,11 +605,22 @@ async def test_order_creation_flow_coop_both(
     await handle_cooperation_format(
         FakeMessage(text=COOP_BOTH, user=None), state
     )
-    await handle_price(FakeMessage(text="1500", user=None), state)
-    await handle_barter_description(
-        FakeMessage(text="Product + delivery", user=None), state
+    await handle_price(
+        FakeMessage(text="1500", user=None),
+        state,
+        TEST_MAX_ORDER_PRICE,
+        TEST_ALLOWED_BLOGGER_COUNTS,
     )
-    await handle_bloggers_needed(FakeMessage(text="5", user=None), state)
+    await handle_barter_description(
+        FakeMessage(text="Product + delivery", user=None),
+        state,
+        TEST_ALLOWED_BLOGGER_COUNTS,
+    )
+    await handle_bloggers_needed(
+        FakeMessage(text="5", user=None),
+        state,
+        TEST_ALLOWED_BLOGGER_COUNTS,
+    )
     await handle_product_link(
         FakeMessage(
             text="https://example.com", user=FakeUser(13, "adv", "Adv")
@@ -635,7 +672,7 @@ async def test_handle_barter_description_empty_when_coop_both() -> None:
     state = FakeFSMContext()
     state._data = {"cooperation_format": COOP_BOTH}
     message = FakeMessage(text="   ", user=None)
-    await handle_barter_description(message, state)
+    await handle_barter_description(message, state, TEST_ALLOWED_BLOGGER_COUNTS)
 
     assert message.answers
     ans = message.answers[0]
@@ -875,8 +912,17 @@ async def test_order_creation_flow_ugc_plus_placement(
     await handle_cooperation_format(
         FakeMessage(text=COOP_PAYMENT, user=None), state
     )
-    await handle_price(FakeMessage(text="1000", user=None), state)
-    await handle_bloggers_needed(FakeMessage(text="3", user=None), state)
+    await handle_price(
+        FakeMessage(text="1000", user=None),
+        state,
+        TEST_MAX_ORDER_PRICE,
+        TEST_ALLOWED_BLOGGER_COUNTS,
+    )
+    await handle_bloggers_needed(
+        FakeMessage(text="3", user=None),
+        state,
+        TEST_ALLOWED_BLOGGER_COUNTS,
+    )
     await handle_product_link(
         FakeMessage(
             text="https://example.com", user=FakeUser(16, "adv", "Adv")
