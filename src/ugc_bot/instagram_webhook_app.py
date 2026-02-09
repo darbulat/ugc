@@ -32,14 +32,6 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     config = load_config()
-    if (
-        not config.instagram.instagram_app_secret
-        or not config.instagram.instagram_app_secret.strip()
-    ):
-        raise ValueError(
-            "INSTAGRAM_APP_SECRET is required for production. "
-            "Set it to verify webhook signatures from Meta.",
-        )
     app.state.config = config
     log_startup_info(
         logger=logger, service_name="instagram-webhook", config=config
