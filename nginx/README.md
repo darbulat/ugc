@@ -2,6 +2,18 @@
 
 Эта конфигурация настраивает Nginx как reverse proxy с SSL сертификатами от Let's Encrypt для Instagram webhook.
 
+## Dev-контур (dev.usemycontent.ru)
+
+На dev используется тот же HTTPS, но сертификаты для домена **dev.usemycontent.ru** (файл `nginx/ssl_cert_dev.conf`). Запуск:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+На dev-сервере должны быть получены сертификаты для `dev.usemycontent.ru` (например, через `init-letsencrypt.sh` с этим доменом). Сервисы доступны по `https://dev.usemycontent.ru/...`.
+
+Если на окружении нет SSL вообще (нет домена и сертификатов), используйте `nginx/nginx-http-only.conf` и монтируйте его вместо `nginx.conf` (только HTTP, порт 80).
+
 ## Предварительные требования
 
 1. Домен, который указывает на IP вашего сервера (A-запись)

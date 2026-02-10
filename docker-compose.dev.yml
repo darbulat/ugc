@@ -1,0 +1,11 @@
+# Override for dev environment: HTTPS with dev.usemycontent.ru certificates.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Ensure certbot has been run for dev.usemycontent.ru so certs exist in certbot_data.
+
+services:
+  nginx:
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl_cert_dev.conf:/etc/nginx/conf.d/ssl_cert.conf:ro
+      - certbot_data:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
