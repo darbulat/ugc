@@ -96,7 +96,12 @@ class AdminDashboardService:
         self._thresholds = thresholds
         self._referral_income_service = referral_income_service
 
-    async def get_dashboard(self, period: PeriodKey) -> dict:
+    async def get_dashboard(
+        self,
+        period: PeriodKey,
+        referrers_page: int = 1,
+        referrers_per_page: int = 25,
+    ) -> dict:
         """Return dashboard cards and delayed orders list."""
         window = self._build_period_window(period)
         async with self._session_factory() as session:
@@ -107,6 +112,22 @@ class AdminDashboardService:
             referrers = await self._get_referral_referrers(session, window)
             payout_requests = await self._list_payout_requests(session)
         referral_data = await self._enrich_referrers_with_balance(referrers)
+        total_referrers = len(referral_data["referrers"])
+        page = max(1, referrers_page)
+        per_page = max(1, min(100, referrers_per_page))
+        total_pages = (
+            (total_referrers + per_page - 1) // per_page
+            if total_referrers
+            else 1
+        )
+        start = (page - 1) * per_page
+        referral_data["referrers"] = referral_data["referrers"][
+            start : start + per_page
+        ]
+        referral_data["referrers_total"] = total_referrers
+        referral_data["referrers_page"] = page
+        referral_data["referrers_per_page"] = per_page
+        referral_data["referrers_total_pages"] = total_pages
         return {
             "period": period,
             "registrations": registrations,

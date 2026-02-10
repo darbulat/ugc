@@ -91,6 +91,10 @@
       </div>
     {% endif %}
     {% set referrers = payload.referrals.referrers %}
+    {% set ref_total = payload.referrals.referrers_total | default(referrers | length) %}
+    {% set ref_page = payload.referrals.referrers_page | default(1) %}
+    {% set ref_per_page = payload.referrals.referrers_per_page | default(25) %}
+    {% set ref_total_pages = payload.referrals.referrers_total_pages | default(1) %}
     {% if referrers %}
       <table class="table">
         <thead>
@@ -118,6 +122,22 @@
           {% endfor %}
         </tbody>
       </table>
+      {% if ref_total_pages > 1 %}
+        <nav class="pagination" aria-label="Пагинация рефералов">
+          <span class="pagination__info">
+            {{ (ref_page - 1) * ref_per_page + 1 }}–{{ min(ref_page * ref_per_page, ref_total) }} из {{ ref_total }}
+          </span>
+          <div class="pagination__links">
+            {% if ref_page > 1 %}
+              <a class="pagination__link" href="/admin/dashboard?period={{ period }}&referrers_page={{ ref_page - 1 }}&referrers_per_page={{ ref_per_page }}">← Назад</a>
+            {% endif %}
+            <span class="pagination__current">Страница {{ ref_page }} из {{ ref_total_pages }}</span>
+            {% if ref_page < ref_total_pages %}
+              <a class="pagination__link" href="/admin/dashboard?period={{ period }}&referrers_page={{ ref_page + 1 }}&referrers_per_page={{ ref_per_page }}">Вперёд →</a>
+            {% endif %}
+          </div>
+        </nav>
+      {% endif %}
     {% else %}
       <div class="empty">Нет рефереров с кодом.</div>
     {% endif %}

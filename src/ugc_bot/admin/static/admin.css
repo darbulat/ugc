@@ -221,3 +221,38 @@ body {
   height: 100%;
   background: #2563eb;
 }
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 12px 0;
+}
+
+.pagination__info {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.pagination__links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pagination__link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.pagination__link:hover {
+  text-decoration: underline;
+}
+
+.pagination__current {
+  color: #374151;
+  font-size: 14px;
+}
