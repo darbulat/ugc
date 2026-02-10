@@ -159,6 +159,13 @@ async def payout_button_callback(
         return
 
     balance = stats.income_total - stats.paid_total
+    if stats.has_pending_payout or balance <= 0:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Выплата недоступна: нет баланса или уже есть заявка.",
+            show_alert=True,
+        )
+        return
     request_amount = Decimal(str(round(balance, 2)))
 
     request = PayoutRequest(

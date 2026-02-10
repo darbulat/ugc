@@ -41,7 +41,8 @@ class ReferralService:
             return None
         payload = parts[1].strip()
         if payload.startswith(REFERRAL_PREFIX):
-            return payload[len(REFERRAL_PREFIX) :].strip()
+            code = payload[len(REFERRAL_PREFIX) :].strip()
+            return code if code else None
         return None
 
     async def save_pending_referral(
@@ -54,6 +55,8 @@ class ReferralService:
                 referral_code, session=session
             )
             if referrer is None:
+                return False
+            if referrer.user_id == user_id:
                 return False
 
             existing = await self.user_referral_pending_repo.get_by_user(

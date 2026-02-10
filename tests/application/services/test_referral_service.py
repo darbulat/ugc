@@ -66,6 +66,18 @@ def test_parse_referral_code_returns_none_when_payload_not_ref_prefix() -> None:
     assert service.parse_referral_code("/start foo") is None
 
 
+def test_parse_referral_code_returns_none_when_only_ref_prefix() -> None:
+    """parse_referral_code returns None when payload is ref_ with no code."""
+    service = ReferralService(
+        user_repo=object(),
+        user_referral_pending_repo=object(),
+        user_referral_binding_repo=object(),
+        transaction_manager=None,
+    )
+    assert service.parse_referral_code("/start ref_") is None
+    assert service.parse_referral_code("/start ref_   ") is None
+
+
 @pytest.mark.asyncio
 async def test_save_pending_referral_when_referrer_exists() -> None:
     """save_pending_referral saves pending when user with code exists."""
@@ -113,6 +125,36 @@ async def test_save_pending_referral_when_code_unknown_returns_false() -> None:
     )
     result = await service.save_pending_referral(uuid4(), "unknown")
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_save_pending_referral_self_referral_returns_false() -> None:
+    """save_pending_referral returns False when user uses own referral code."""
+    user_repo = InMemoryUserRepository()
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="me",
+        messenger_type=MessengerType.TELEGRAM,
+        username="me",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        referral_code="mycode",
+    )
+    await user_repo.save(user)
+
+    pending_repo = InMemoryUserReferralPendingRepository()
+    binding_repo = InMemoryUserReferralBindingRepository()
+    service = ReferralService(
+        user_repo=user_repo,
+        user_referral_pending_repo=pending_repo,
+        user_referral_binding_repo=binding_repo,
+        transaction_manager=None,
+    )
+    result = await service.save_pending_referral(user_id, "mycode")
+    assert result is False
+    assert await pending_repo.get_by_user(user_id) is None
 
 
 @pytest.mark.asyncio

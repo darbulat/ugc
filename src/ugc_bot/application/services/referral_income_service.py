@@ -187,9 +187,17 @@ class ReferralIncomeService:
                 income_total += commission
                 seen_orders.add(order.order_id)
 
+                completed_at_utc = (
+                    completed_at
+                    if completed_at.tzinfo
+                    else completed_at.replace(tzinfo=timezone.utc)
+                )
+                now_utc = (
+                    now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+                )
                 if (
-                    completed_at.month == now.month
-                    and completed_at.year == now.year
+                    completed_at_utc.month == now_utc.month
+                    and completed_at_utc.year == now_utc.year
                 ):
                     income_current_month += commission
 

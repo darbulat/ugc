@@ -390,6 +390,70 @@ async def test_payout_callback_rejects_when_request_already_today(
 
 
 @pytest.mark.asyncio
+async def test_payout_callback_rejects_when_pending_or_no_balance(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """payout_button_callback rejects when pending payout or balance <= 0."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await user_repo.save(__user(external_id="333", username="u3"))
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_payout_repo = MagicMock()
+    mock_payout_repo.save = AsyncMock(return_value=None)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    for has_pending, income_total, paid_total, label in [
+        (True, 100.0, 0.0, "has_pending_payout"),
+        (False, 0.0, 0.0, "zero_balance"),
+        (False, 50.0, 50.0, "zero_balance_after_paid"),
+    ]:
+        mock_income = MagicMock(spec=ReferralIncomeService)
+        mock_income.get_user_referral_stats = AsyncMock(
+            return_value=UserReferralStats(
+                creators_count=0,
+                orders_count=0,
+                income_current_month=0.0,
+                income_total=income_total,
+                paid_total=paid_total,
+                has_pending_payout=has_pending,
+                has_request_today=False,
+            )
+        )
+        callback = FakeCallback(
+            data=REFERRAL_PAYOUT_CALLBACK,
+            user=FakeUser(333, "u", "u3"),
+            callback_id=f"cb_{label}",
+        )
+        await payout_button_callback(
+            callback,
+            user_role_service=user_role_service,
+            referral_income_service=mock_income,
+            payout_request_repo=mock_payout_repo,
+            transaction_manager=mock_tm,
+            config=MagicMock(
+                spec=AppConfig,
+                referral=MagicMock(referral_support_chat_id=""),
+                admin=MagicMock(admin_base_url=""),
+            ),
+            messenger_client=client,
+            event_adapter=adapter,
+        )
+        assert (
+            not mock_payout_repo.save.called
+        ), f"save should not be called for {label}"
+        assert any(
+            "Выплата недоступна" in a.get("text", "")
+            for a in client.answered_callbacks
+        ), f"expected alert for {label}"
+
+
+@pytest.mark.asyncio
 async def test_payout_callback_support_send_failure_still_answers(
     user_repo: InMemoryUserRepository,
 ) -> None:
