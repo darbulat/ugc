@@ -10,7 +10,7 @@
             class="chip {% if p == period %}chip--active{% endif %}"
             href="/admin/users/creators?period={{ p }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}"
           >
-            {{ p }}
+            {{ period_labels.get(p, p) }}
           </a>
         {% endfor %}
       </div>
@@ -51,7 +51,7 @@
             <td>{{ creator.created_at }}</td>
             <td>{{ creator.responses }}</td>
             <td>{{ creator.complaints }}</td>
-            <td>{{ creator.status }}</td>
+            <td>{{ user_status_labels.get(creator.status, creator.status) }}</td>
           </tr>
         {% endfor %}
       </tbody>

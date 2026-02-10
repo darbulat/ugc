@@ -9,7 +9,7 @@
           class="chip {% if p == period %}chip--active{% endif %}"
           href="/admin/dashboard?period={{ p }}"
         >
-          {{ p }}
+          {{ period_labels.get(p, p) }}
         </a>
       {% endfor %}
     </div>

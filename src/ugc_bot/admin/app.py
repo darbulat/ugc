@@ -84,11 +84,21 @@ def _get_order_moderation_deps(
 
 T = TypeVar("T")
 _DASHBOARD_PERIODS = ("today", "yesterday", "7d", "30d")
+_PERIOD_LABELS = {
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "7d": "7 дней",
+    "30d": "30 дней",
+}
 _STATUS_LABELS = {
     "active": "Активен",
     "completed": "Завершён",
     "archive": "Архив",
     "complaint": "Жалоба",
+}
+_USER_STATUS_LABELS = {
+    "active": "Активен",
+    "limited": "Ограничен",
 }
 _DELAY_REASON_LABELS = {
     "active_overdue": "Слишком долго активен",
@@ -144,7 +154,7 @@ def _register_dashboard_routes(  # noqa: C901
     async def _require_admin(request: Request) -> None:
         """Raise HTTP 401 when admin session is missing."""
         if not await auth.authenticate(request):
-            raise HTTPException(status_code=401, detail="Unauthorized")
+            raise HTTPException(status_code=401, detail="Не авторизован")
 
     @app.get("/admin/dashboard", response_class=HTMLResponse)
     async def admin_dashboard(
@@ -163,6 +173,7 @@ def _register_dashboard_routes(  # noqa: C901
                 "payload": payload,
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
+                "period_labels": _PERIOD_LABELS,
                 "status_labels": _STATUS_LABELS,
                 "delay_reason_labels": _DELAY_REASON_LABELS,
             },
@@ -191,6 +202,8 @@ def _register_dashboard_routes(  # noqa: C901
                 "creators": creators,
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
+                "period_labels": _PERIOD_LABELS,
+                "user_status_labels": _USER_STATUS_LABELS,
                 "only_new": only_new,
                 "with_complaints": with_complaints,
             },
@@ -228,6 +241,7 @@ def _register_dashboard_routes(  # noqa: C901
                 "orders": orders,
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
+                "period_labels": _PERIOD_LABELS,
                 "status_filter": status,
                 "status_labels": _STATUS_LABELS,
             },
@@ -240,7 +254,7 @@ def _register_dashboard_routes(  # noqa: C901
             return RedirectResponse(url="/admin/login")
         order = await dashboard_service.get_order_card(order_id)
         if order is None:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Заказ не найден")
         return templates.TemplateResponse(
             request,
             "order_detail.html",
@@ -299,7 +313,7 @@ def _register_dashboard_routes(  # noqa: C901
         """Return order card as JSON."""
         order = await dashboard_service.get_order_card(order_id)
         if order is None:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Заказ не найден")
         return order
 
 
@@ -324,6 +338,8 @@ async def _get_obj_by_pk(
 class UserAdmin(ModelView, model=UserModel):
     """Admin view for users."""
 
+    name = "Пользователь"
+    name_plural = "Пользователи"
     column_list = [
         UserModel.user_id,
         UserModel.external_id,
@@ -336,6 +352,18 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.issue_count,
         UserModel.created_at,
     ]
+    column_labels = {
+        UserModel.user_id: "ID пользователя",
+        UserModel.external_id: "Внешний ID",
+        UserModel.messenger_type: "Мессенджер",
+        UserModel.username: "Имя пользователя",
+        UserModel.telegram: "Telegram",
+        UserModel.referral_code: "Реферальный код",
+        UserModel.status: "Статус",
+        UserModel.admin: "Администратор",
+        UserModel.issue_count: "Кол-во проблем",
+        UserModel.created_at: "Дата создания",
+    }
     form_columns = [
         UserModel.admin,
     ]
@@ -382,6 +410,8 @@ class UserAdmin(ModelView, model=UserModel):
 class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
     """Admin view for blogger profiles."""
 
+    name = "Профиль креатора"
+    name_plural = "Профили креаторов"
     column_list = [
         BloggerProfileModel.user_id,
         BloggerProfileModel.instagram_url,
@@ -396,11 +426,27 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
         BloggerProfileModel.work_format,
         BloggerProfileModel.updated_at,
     ]
+    column_labels = {
+        BloggerProfileModel.user_id: "ID пользователя",
+        BloggerProfileModel.instagram_url: "Instagram",
+        BloggerProfileModel.confirmed: "Подтверждён",
+        BloggerProfileModel.city: "Город",
+        BloggerProfileModel.audience_gender: "Пол аудитории",
+        BloggerProfileModel.audience_age_min: "Возраст мин.",
+        BloggerProfileModel.audience_age_max: "Возраст макс.",
+        BloggerProfileModel.audience_geo: "Гео аудитории",
+        BloggerProfileModel.price: "Цена",
+        BloggerProfileModel.barter: "Бартер",
+        BloggerProfileModel.work_format: "Формат работы",
+        BloggerProfileModel.updated_at: "Обновлён",
+    }
 
 
 class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
     """Admin view for advertiser profiles."""
 
+    name = "Профиль заказчика"
+    name_plural = "Профили заказчиков"
     column_list = [
         AdvertiserProfileModel.user_id,
         AdvertiserProfileModel.contact,
@@ -409,11 +455,21 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
         AdvertiserProfileModel.company_activity,
         AdvertiserProfileModel.site_link,
     ]
+    column_labels = {
+        AdvertiserProfileModel.user_id: "ID пользователя",
+        AdvertiserProfileModel.contact: "Контакт",
+        AdvertiserProfileModel.brand: "Бренд",
+        AdvertiserProfileModel.city: "Город",
+        AdvertiserProfileModel.company_activity: "Деятельность компании",
+        AdvertiserProfileModel.site_link: "Сайт",
+    }
 
 
 class OrderAdmin(ModelView, model=OrderModel):
     """Admin view for orders with moderation support."""
 
+    name = "Заказ"
+    name_plural = "Заказы"
     column_list = [
         OrderModel.order_id,
         OrderModel.advertiser_id,
@@ -427,6 +483,22 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.status,
         OrderModel.created_at,
     ]
+    column_labels = {
+        OrderModel.order_id: "ID заказа",
+        OrderModel.advertiser_id: "ID заказчика",
+        OrderModel.product_link: "Ссылка на товар",
+        OrderModel.offer_text: "Текст оффера",
+        OrderModel.price: "Цена",
+        OrderModel.bloggers_needed: "Нужно креаторов",
+        OrderModel.content_usage: "Использование контента",
+        OrderModel.deadlines: "Сроки",
+        OrderModel.geography: "География",
+        OrderModel.status: "Статус",
+        OrderModel.created_at: "Дата создания",
+        OrderModel.order_type: "Тип заказа",
+        OrderModel.barter_description: "Описание бартера",
+        OrderModel.product_photo_file_id: "ID фото товара",
+    }
     form_columns = [
         OrderModel.order_type,
         OrderModel.product_link,
@@ -511,17 +583,27 @@ class OrderAdmin(ModelView, model=OrderModel):
 class OrderResponseAdmin(ModelView, model=OrderResponseModel):
     """Admin view for order responses."""
 
+    name = "Отклик на заказ"
+    name_plural = "Отклики на заказы"
     column_list = [
         OrderResponseModel.response_id,
         OrderResponseModel.order_id,
         OrderResponseModel.blogger_id,
         OrderResponseModel.responded_at,
     ]
+    column_labels = {
+        OrderResponseModel.response_id: "ID отклика",
+        OrderResponseModel.order_id: "ID заказа",
+        OrderResponseModel.blogger_id: "ID креатора",
+        OrderResponseModel.responded_at: "Дата отклика",
+    }
 
 
 class InteractionAdmin(ModelView, model=InteractionModel):
     """Admin view for interactions."""
 
+    name = "Взаимодействие"
+    name_plural = "Взаимодействия"
     column_list = [
         InteractionModel.interaction_id,
         InteractionModel.order_id,
@@ -533,6 +615,17 @@ class InteractionAdmin(ModelView, model=InteractionModel):
         InteractionModel.created_at,
         InteractionModel.updated_at,
     ]
+    column_labels = {
+        InteractionModel.interaction_id: "ID взаимодействия",
+        InteractionModel.order_id: "ID заказа",
+        InteractionModel.blogger_id: "ID креатора",
+        InteractionModel.advertiser_id: "ID заказчика",
+        InteractionModel.status: "Статус",
+        InteractionModel.from_advertiser: "От заказчика",
+        InteractionModel.from_blogger: "От креатора",
+        InteractionModel.created_at: "Создано",
+        InteractionModel.updated_at: "Обновлено",
+    }
     form_columns = [
         InteractionModel.status,
     ]
@@ -573,6 +666,8 @@ class InstagramVerificationAdmin(
 ):
     """Admin view for Instagram verification codes."""
 
+    name = "Код верификации Instagram"
+    name_plural = "Коды верификации Instagram"
     column_list = [
         InstagramVerificationCodeModel.code_id,
         InstagramVerificationCodeModel.user_id,
@@ -580,11 +675,20 @@ class InstagramVerificationAdmin(
         InstagramVerificationCodeModel.expires_at,
         InstagramVerificationCodeModel.used,
     ]
+    column_labels = {
+        InstagramVerificationCodeModel.code_id: "ID кода",
+        InstagramVerificationCodeModel.user_id: "ID пользователя",
+        InstagramVerificationCodeModel.code: "Код",
+        InstagramVerificationCodeModel.expires_at: "Истекает",
+        InstagramVerificationCodeModel.used: "Использован",
+    }
 
 
 class ComplaintAdmin(ModelView, model=ComplaintModel):
     """Admin view for complaints."""
 
+    name = "Жалоба"
+    name_plural = "Жалобы"
     column_list = [
         ComplaintModel.complaint_id,
         ComplaintModel.reporter_id,
@@ -596,6 +700,17 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
         ComplaintModel.created_at,
         ComplaintModel.reviewed_at,
     ]
+    column_labels = {
+        ComplaintModel.complaint_id: "ID жалобы",
+        ComplaintModel.reporter_id: "ID заявителя",
+        ComplaintModel.reported_id: "ID нарушителя",
+        ComplaintModel.order_id: "ID заказа",
+        ComplaintModel.reason: "Причина",
+        ComplaintModel.file_ids: "ID файлов",
+        ComplaintModel.status: "Статус",
+        ComplaintModel.created_at: "Создана",
+        ComplaintModel.reviewed_at: "Рассмотрена",
+    }
     form_columns = [
         ComplaintModel.status,
     ]
@@ -655,11 +770,18 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
 class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     """Admin view for contact pricing."""
 
+    name = "Цена контакта"
+    name_plural = "Цены контактов"
     column_list = [
         ContactPricingModel.bloggers_count,
         ContactPricingModel.price,
         ContactPricingModel.updated_at,
     ]
+    column_labels = {
+        ContactPricingModel.bloggers_count: "Кол-во креаторов",
+        ContactPricingModel.price: "Цена",
+        ContactPricingModel.updated_at: "Обновлено",
+    }
     form_columns = [
         ContactPricingModel.bloggers_count,
         ContactPricingModel.price,
@@ -669,6 +791,8 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
 class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     """Admin view for payout requests (referral)."""
 
+    name = "Заявка на вывод"
+    name_plural = "Заявки на вывод"
     can_create = False
     column_list = [
         PayoutRequestModel.request_id,
@@ -683,7 +807,7 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     ]
     column_labels = {
         PayoutRequestModel.request_id: "ID заявки",
-        PayoutRequestModel.user_id: "User ID",
+        PayoutRequestModel.user_id: "ID пользователя",
         PayoutRequestModel.requested_at: "Дата запроса",
         PayoutRequestModel.status: "Статус",
         PayoutRequestModel.amount: "Сумма",
