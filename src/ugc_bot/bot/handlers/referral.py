@@ -165,7 +165,7 @@ async def payout_button_callback(
         support_text = (
             f"💰 Запрос на выплату\n\n"
             f"Пользователь: {user.username or '—'}\n"
-            f"User ID: {user.external_id}\n"
+            f"telegram: {user.telegram}\n"
             f"Request ID: {request.request_id}\n"
             f"Сумма: {request_amount:.2f} ₽\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
@@ -332,9 +332,9 @@ async def _render_referral_list_page(
             )
             if referred:
                 name = (
-                    referred.username
-                    or referred.telegram
-                    or referred.external_id
+                    f"@{referred.telegram}"
+                    if referred.telegram
+                    else (referred.username or "—")
                 )
             else:
                 name = "—"
