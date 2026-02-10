@@ -325,6 +325,11 @@ class FakeFSMContext:
         self.state = state
         self.cleared = False
 
+    async def set_data(self, data: dict) -> None:  # type: ignore[no-untyped-def]
+        """Replace FSM data."""
+        self._data.clear()
+        self._data.update(data)
+
     async def update_data(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
         """Update FSM data."""
         self._data.update(kwargs)

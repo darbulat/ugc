@@ -10,6 +10,9 @@ import logging
 from aiogram import Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from ugc_bot.bot.handlers.admin_message_to_user import (
+    router as admin_message_to_user_router,
+)
 from ugc_bot.bot.handlers.admin_moderation import (
     router as admin_moderation_router,
 )
@@ -98,6 +101,7 @@ def build_dispatcher(
         dispatcher.include_router(start_router)
         dispatcher.include_router(referral_router)
         dispatcher.include_router(admin_moderation_router)
+        dispatcher.include_router(admin_message_to_user_router)
         dispatcher.include_router(blogger_router)
         dispatcher.include_router(advertiser_router)
         dispatcher.include_router(profile_router)
