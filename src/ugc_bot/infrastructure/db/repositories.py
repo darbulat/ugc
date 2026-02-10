@@ -13,11 +13,9 @@ from ugc_bot.application.ports import (
     BloggerProfileRepository,
     ComplaintRepository,
     ContactPricingRepository,
-    CreatorManagerBindingRepository,
     FsmDraftRepository,
     InstagramVerificationRepository,
     InteractionRepository,
-    ManagerRepository,
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
@@ -25,6 +23,7 @@ from ugc_bot.application.ports import (
     OutboxRepository,
     PaymentRepository,
     PayoutRequestRepository,
+    UserReferralBindingRepository,
     UserReferralPendingRepository,
     UserRepository,
 )
@@ -33,17 +32,16 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
-    CreatorManagerBinding,
     FsmDraft,
     InstagramVerificationCode,
     Interaction,
-    Manager,
     Order,
     OrderResponse,
     OutboxEvent,
     Payment,
     PayoutRequest,
     User,
+    UserReferralBinding,
     UserReferralPending,
 )
 from ugc_bot.domain.enums import (
@@ -60,11 +58,9 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
     ContactPricingModel,
-    CreatorManagerBindingModel,
     FsmDraftModel,
     InstagramVerificationCodeModel,
     InteractionModel,
-    ManagerModel,
     NpsResponseModel,
     OfferDispatchModel,
     OrderModel,
@@ -73,6 +69,7 @@ from ugc_bot.infrastructure.db.models import (
     PaymentModel,
     PayoutRequestModel,
     UserModel,
+    UserReferralBindingModel,
     UserReferralPendingModel,
 )
 from ugc_bot.infrastructure.fsm_draft_serializer import (
@@ -142,6 +139,20 @@ class SqlAlchemyUserRepository(UserRepository):
             select(UserModel).where(
                 UserModel.external_id == external_id,
                 UserModel.messenger_type == messenger_type.value,
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_user_entity(result) if result else None
+
+    async def get_by_referral_code(
+        self, referral_code: str, session: object | None = None
+    ) -> Optional[User]:
+        """Fetch a user by referral code."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(UserModel).where(
+                UserModel.referral_code == referral_code,
             )
         )
         result = exec_result.scalar_one_or_none()
@@ -314,7 +325,7 @@ class SqlAlchemyInstagramVerificationRepository(
         if result is None:
             return None
         if result.used or result.expires_at <= now:
-            return None
+            return None  # defensive: query already filters
         if result.code != code or result.user_id != user_id:
             return None
         return _to_verification_entity(result)
@@ -774,6 +785,7 @@ def _to_user_entity(model: UserModel) -> User:
         last_role_reminder_at=model.last_role_reminder_at,
         telegram=getattr(model, "telegram", None),
         admin=getattr(model, "admin", False),
+        referral_code=getattr(model, "referral_code", None),
     )
 
 
@@ -792,6 +804,7 @@ def _to_user_model(user: User) -> UserModel:
         last_role_reminder_at=user.last_role_reminder_at,
         telegram=user.telegram,
         admin=getattr(user, "admin", False),
+        referral_code=getattr(user, "referral_code", None),
     )
 
 
@@ -1398,139 +1411,78 @@ class SqlAlchemyFsmDraftRepository(FsmDraftRepository):
 
 
 @dataclass(slots=True)
-class SqlAlchemyManagerRepository(ManagerRepository):
-    """SQLAlchemy-backed manager repository."""
-
-    session_factory: async_sessionmaker[AsyncSession]
-
-    async def get_by_id(
-        self, manager_id: UUID, session: object | None = None
-    ) -> Optional[Manager]:
-        """Fetch manager by ID."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ManagerModel).where(ManagerModel.manager_id == manager_id)
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_manager_entity(result) if result else None
-
-    async def get_by_user_id(
-        self, user_id: UUID, session: object | None = None
-    ) -> Optional[Manager]:
-        """Fetch manager by user ID."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ManagerModel).where(ManagerModel.user_id == user_id)
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_manager_entity(result) if result else None
-
-    async def get_by_referral_code(
-        self, referral_code: str, session: object | None = None
-    ) -> Optional[Manager]:
-        """Fetch manager by referral code."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ManagerModel).where(
-                ManagerModel.referral_code == referral_code
-            )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_manager_entity(result) if result else None
-
-    async def save(
-        self, manager: Manager, session: object | None = None
-    ) -> None:
-        """Persist manager."""
-
-        db_session = _get_async_session(session)
-        model = _to_manager_model(manager)
-        await db_session.merge(model)
-
-    async def list_all(
-        self, session: object | None = None
-    ) -> Iterable[Manager]:
-        """List all managers."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ManagerModel).order_by(ManagerModel.created_at)
-        )
-        return [_to_manager_entity(m) for m in exec_result.scalars().all()]
-
-
-@dataclass(slots=True)
-class SqlAlchemyCreatorManagerBindingRepository(
-    CreatorManagerBindingRepository
-):
-    """SQLAlchemy-backed creator-manager binding repository."""
+class SqlAlchemyUserReferralBindingRepository(UserReferralBindingRepository):
+    """SQLAlchemy-backed user referral binding repository."""
 
     session_factory: async_sessionmaker[AsyncSession]
 
     async def save(
         self,
-        binding: CreatorManagerBinding,
+        binding: UserReferralBinding,
         session: object | None = None,
     ) -> None:
-        """Persist creator-manager binding."""
+        """Persist referral binding."""
 
         db_session = _get_async_session(session)
-        model = CreatorManagerBindingModel(
-            creator_user_id=binding.creator_user_id,
-            manager_id=binding.manager_id,
+        model = UserReferralBindingModel(
+            referrer_user_id=binding.referrer_user_id,
+            referred_user_id=binding.referred_user_id,
             created_at=binding.created_at,
         )
         await db_session.merge(model)
 
-    async def get_by_creator(
-        self, creator_user_id: UUID, session: object | None = None
-    ) -> Optional[CreatorManagerBinding]:
-        """Fetch binding by creator user ID."""
+    async def get_by_referred_user(
+        self, referred_user_id: UUID, session: object | None = None
+    ) -> Optional[UserReferralBinding]:
+        """Fetch binding by referred user ID."""
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(CreatorManagerBindingModel).where(
-                CreatorManagerBindingModel.creator_user_id == creator_user_id
+            select(UserReferralBindingModel).where(
+                UserReferralBindingModel.referred_user_id == referred_user_id
             )
         )
         result = exec_result.scalar_one_or_none()
-        return _to_creator_manager_binding_entity(result) if result else None
+        return _to_user_referral_binding_entity(result) if result else None
 
-    async def list_by_manager(
-        self, manager_id: UUID, session: object | None = None
-    ) -> Iterable[CreatorManagerBinding]:
-        """List bindings by manager ID."""
+    async def list_by_referrer(
+        self,
+        referrer_user_id: UUID,
+        offset: int = 0,
+        limit: int = 10,
+        session: object | None = None,
+    ) -> Iterable[UserReferralBinding]:
+        """List bindings by referrer user ID with pagination."""
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(CreatorManagerBindingModel).where(
-                CreatorManagerBindingModel.manager_id == manager_id
+            select(UserReferralBindingModel)
+            .where(
+                UserReferralBindingModel.referrer_user_id == referrer_user_id
             )
+            .order_by(UserReferralBindingModel.created_at)
+            .offset(offset)
+            .limit(limit)
         )
         return [
-            _to_creator_manager_binding_entity(m)
+            _to_user_referral_binding_entity(m)
             for m in exec_result.scalars().all()
         ]
 
-    async def exists(
-        self,
-        creator_user_id: UUID,
-        manager_id: UUID,
-        session: object | None = None,
-    ) -> bool:
-        """Check if binding exists."""
+    async def count_by_referrer(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count bindings by referrer user ID."""
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
-            select(CreatorManagerBindingModel).where(
-                CreatorManagerBindingModel.creator_user_id == creator_user_id,
-                CreatorManagerBindingModel.manager_id == manager_id,
+            select(func.count())
+            .select_from(UserReferralBindingModel)
+            .where(
+                UserReferralBindingModel.referrer_user_id == referrer_user_id
             )
         )
-        return exec_result.scalar_one_or_none() is not None
+        return int(exec_result.scalar_one() or 0)
 
 
 @dataclass(slots=True)
@@ -1549,7 +1501,7 @@ class SqlAlchemyUserReferralPendingRepository(UserReferralPendingRepository):
         db_session = _get_async_session(session)
         model = UserReferralPendingModel(
             user_id=pending.user_id,
-            manager_id=pending.manager_id,
+            referrer_user_id=pending.referrer_user_id,
             created_at=pending.created_at,
         )
         await db_session.merge(model)
@@ -1612,15 +1564,15 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         result = exec_result.scalar_one_or_none()
         return _to_payout_request_entity(result) if result else None
 
-    async def list_by_manager(
-        self, manager_id: UUID, session: object | None = None
+    async def list_by_user(
+        self, user_id: UUID, session: object | None = None
     ) -> Iterable[PayoutRequest]:
-        """List payout requests by manager ID."""
+        """List payout requests by user ID."""
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
             select(PayoutRequestModel).where(
-                PayoutRequestModel.manager_id == manager_id
+                PayoutRequestModel.user_id == user_id
             )
         )
         return [
@@ -1628,38 +1580,14 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         ]
 
 
-def _to_manager_entity(model: ManagerModel) -> Manager:
-    """Map manager ORM model to domain entity."""
+def _to_user_referral_binding_entity(
+    model: UserReferralBindingModel,
+) -> UserReferralBinding:
+    """Map user referral binding ORM model to domain entity."""
 
-    return Manager(
-        manager_id=model.manager_id,
-        user_id=model.user_id,
-        referral_code=model.referral_code,
-        name=model.name,
-        created_at=model.created_at,
-    )
-
-
-def _to_manager_model(manager: Manager) -> ManagerModel:
-    """Map domain manager entity to ORM model."""
-
-    return ManagerModel(
-        manager_id=manager.manager_id,
-        user_id=manager.user_id,
-        referral_code=manager.referral_code,
-        name=manager.name,
-        created_at=manager.created_at,
-    )
-
-
-def _to_creator_manager_binding_entity(
-    model: CreatorManagerBindingModel,
-) -> CreatorManagerBinding:
-    """Map creator-manager binding ORM model to domain entity."""
-
-    return CreatorManagerBinding(
-        creator_user_id=model.creator_user_id,
-        manager_id=model.manager_id,
+    return UserReferralBinding(
+        referrer_user_id=model.referrer_user_id,
+        referred_user_id=model.referred_user_id,
         created_at=model.created_at,
     )
 
@@ -1671,7 +1599,7 @@ def _to_user_referral_pending_entity(
 
     return UserReferralPending(
         user_id=model.user_id,
-        manager_id=model.manager_id,
+        referrer_user_id=model.referrer_user_id,
         created_at=model.created_at,
     )
 
@@ -1683,7 +1611,7 @@ def _to_payout_request_entity(
 
     return PayoutRequest(
         request_id=model.request_id,
-        manager_id=model.manager_id,
+        user_id=model.user_id,
         requested_at=model.requested_at,
         status=model.status,
     )
@@ -1694,7 +1622,7 @@ def _to_payout_request_model(request: PayoutRequest) -> PayoutRequestModel:
 
     return PayoutRequestModel(
         request_id=request.request_id,
-        manager_id=request.manager_id,
+        user_id=request.user_id,
         requested_at=request.requested_at,
         status=request.status,
     )

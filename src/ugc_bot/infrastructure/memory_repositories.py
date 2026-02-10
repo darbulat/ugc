@@ -19,6 +19,8 @@ from ugc_bot.application.ports import (
     OrderResponseRepository,
     OutboxRepository,
     PaymentRepository,
+    UserReferralBindingRepository,
+    UserReferralPendingRepository,
     UserRepository,
 )
 from ugc_bot.domain.entities import (
@@ -33,6 +35,8 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     User,
+    UserReferralBinding,
+    UserReferralPending,
 )
 from ugc_bot.domain.enums import (
     ComplaintStatus,
@@ -70,6 +74,16 @@ class InMemoryUserRepository(UserRepository):
         key = (external_id, messenger_type)
         user_id = self.external_index.get(key)
         return self.users.get(user_id) if user_id else None
+
+    async def get_by_referral_code(
+        self, referral_code: str, session: object | None = None
+    ) -> Optional[User]:
+        """Fetch a user by referral code."""
+
+        for u in self.users.values():
+            if getattr(u, "referral_code", None) == referral_code:
+                return u
+        return None
 
     async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user in memory."""
@@ -110,6 +124,84 @@ class InMemoryUserRepository(UserRepository):
         if messenger_type is not None:
             result = [u for u in result if u.messenger_type == messenger_type]
         return result
+
+
+@dataclass
+class InMemoryUserReferralBindingRepository(UserReferralBindingRepository):
+    """In-memory implementation of user referral binding repository."""
+
+    _bindings: List[UserReferralBinding] = field(default_factory=list)
+
+    async def save(
+        self,
+        binding: UserReferralBinding,
+        session: object | None = None,
+    ) -> None:
+        """Persist referral binding."""
+        self._bindings = [
+            b
+            for b in self._bindings
+            if b.referred_user_id != binding.referred_user_id
+        ]
+        self._bindings.append(binding)
+
+    async def get_by_referred_user(
+        self, referred_user_id: UUID, session: object | None = None
+    ) -> Optional[UserReferralBinding]:
+        """Fetch binding by referred user ID."""
+        for b in self._bindings:
+            if b.referred_user_id == referred_user_id:
+                return b
+        return None
+
+    async def list_by_referrer(
+        self,
+        referrer_user_id: UUID,
+        offset: int = 0,
+        limit: int = 10,
+        session: object | None = None,
+    ) -> Iterable[UserReferralBinding]:
+        """List bindings by referrer user ID with pagination."""
+        by_referrer = [
+            b for b in self._bindings if b.referrer_user_id == referrer_user_id
+        ]
+        by_referrer.sort(key=lambda x: x.created_at)
+        return by_referrer[offset : offset + limit]
+
+    async def count_by_referrer(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count bindings by referrer user ID."""
+        return sum(
+            1 for b in self._bindings if b.referrer_user_id == referrer_user_id
+        )
+
+
+@dataclass
+class InMemoryUserReferralPendingRepository(UserReferralPendingRepository):
+    """In-memory implementation of user referral pending repository."""
+
+    _pending: Dict[UUID, UserReferralPending] = field(default_factory=dict)
+
+    async def save(
+        self,
+        pending: UserReferralPending,
+        session: object | None = None,
+    ) -> None:
+        """Persist pending referral."""
+        self._pending[pending.user_id] = pending
+
+    async def get_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[UserReferralPending]:
+        """Fetch pending referral by user ID."""
+        return self._pending.get(user_id)
+
+    async def delete_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete pending referral by user ID."""
+        self._pending.pop(user_id, None)
 
 
 @dataclass

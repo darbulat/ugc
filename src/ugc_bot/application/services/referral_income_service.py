@@ -1,4 +1,4 @@
-"""Service for calculating referral manager income."""
+"""Service for calculating referral user income and stats."""
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -6,12 +6,12 @@ from typing import Optional
 from uuid import UUID
 
 from ugc_bot.application.ports import (
-    CreatorManagerBindingRepository,
     InteractionRepository,
     OrderRepository,
     OrderResponseRepository,
     PaymentRepository,
     TransactionManager,
+    UserReferralBindingRepository,
     UserRepository,
 )
 from ugc_bot.domain.enums import InteractionStatus, OrderStatus
@@ -22,8 +22,8 @@ AFTER_FIRST_YEAR_RATE = 0.03
 
 
 @dataclass(slots=True)
-class ManagerStats:
-    """Referral manager statistics."""
+class UserReferralStats:
+    """Referrer user statistics (referrals, orders, income)."""
 
     creators_count: int
     orders_count: int
@@ -49,9 +49,9 @@ def _get_rate(
 
 @dataclass(slots=True)
 class ReferralIncomeService:
-    """Calculate referral manager income from completed orders."""
+    """Calculate referral user income from completed orders."""
 
-    creator_manager_binding_repo: CreatorManagerBindingRepository
+    user_referral_binding_repo: UserReferralBindingRepository
     order_response_repo: OrderResponseRepository
     order_repo: OrderRepository
     payment_repo: PaymentRepository
@@ -59,40 +59,40 @@ class ReferralIncomeService:
     user_repo: UserRepository
     transaction_manager: TransactionManager | None = None
 
-    async def get_manager_stats(
+    async def get_user_referral_stats(
         self,
-        manager_id: UUID,
+        user_id: UUID,
         now: Optional[datetime] = None,
-    ) -> ManagerStats:
-        """Get manager statistics: creators, orders, income.
+    ) -> UserReferralStats:
+        """Get referrer statistics: referred users, orders, income.
 
         Income is calculated from orders where:
         - Order status is CLOSED
-        - Creator is in order_responses
+        - Referred user is in order_responses
         - Interaction status is OK (good feedback from advertiser)
         - platform_revenue_per_creator = payment.amount / order.bloggers_needed
-        - Rate: 10% first year, 3% after (from creator registration date)
+        - Rate: 10% first year, 3% after (from referred user registration date)
         """
 
         if now is None:
             now = datetime.now(timezone.utc)
 
-        async def _run(session: object | None) -> ManagerStats:
-            return await self._compute_stats(manager_id, now, session)
+        async def _run(session: object | None) -> UserReferralStats:
+            return await self._compute_stats(user_id, now, session)
 
         return await with_optional_tx(self.transaction_manager, _run)
 
     async def _compute_stats(
         self,
-        manager_id: UUID,
+        referrer_user_id: UUID,
         now: datetime,
         session: object | None,
-    ) -> ManagerStats:
-        """Compute manager stats (runs inside transaction)."""
+    ) -> UserReferralStats:
+        """Compute referrer stats (runs inside transaction)."""
 
         bindings = list(
-            await self.creator_manager_binding_repo.list_by_manager(
-                manager_id, session=session
+            await self.user_referral_binding_repo.list_by_referrer(
+                referrer_user_id, offset=0, limit=10_000, session=session
             )
         )
         creators_count = len(bindings)
@@ -102,7 +102,7 @@ class ReferralIncomeService:
         seen_orders: set[UUID] = set()
 
         for binding in bindings:
-            creator_id = binding.creator_user_id
+            creator_id = binding.referred_user_id
             creator = await self.user_repo.get_by_id(
                 creator_id, session=session
             )
@@ -158,9 +158,44 @@ class ReferralIncomeService:
 
         orders_count = len(seen_orders)
 
-        return ManagerStats(
+        return UserReferralStats(
             creators_count=creators_count,
             orders_count=orders_count,
             income_current_month=round(income_current_month, 2),
             income_total=round(income_total, 2),
         )
+
+    async def count_completed_orders_for_user(
+        self,
+        user_id: UUID,
+        session: object | None = None,
+    ) -> int:
+        """Count completed orders (CLOSED, OK interaction) for blogger user."""
+
+        async def _run(sess: object | None) -> int:
+            count = 0
+            responses = list(
+                await self.order_response_repo.list_by_blogger(
+                    user_id, session=sess
+                )
+            )
+            for response in responses:
+                order = await self.order_repo.get_by_id(
+                    response.order_id, session=sess
+                )
+                if order is None or order.status != OrderStatus.CLOSED:
+                    continue
+                interaction = await self.interaction_repo.get_by_participants(
+                    order_id=order.order_id,
+                    blogger_id=user_id,
+                    advertiser_id=order.advertiser_id,
+                    session=sess,
+                )
+                if (
+                    interaction is not None
+                    and interaction.status == InteractionStatus.OK
+                ):
+                    count += 1
+            return count
+
+        return await with_optional_tx(self.transaction_manager, _run)

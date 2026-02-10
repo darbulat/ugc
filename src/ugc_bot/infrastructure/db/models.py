@@ -98,6 +98,9 @@ class UserModel(Base):
     admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    referral_code: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, unique=True
+    )
 
 
 class BloggerProfileModel(Base):
@@ -481,26 +484,23 @@ class OutboxEventModel(Base):
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
-class ManagerModel(Base):
-    """Referral manager ORM model."""
+class UserReferralBindingModel(Base):
+    """Referrer-to-referred user binding ORM model."""
 
-    __tablename__ = "managers"
+    __tablename__ = "user_referral_bindings"
 
-    manager_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        primary_key=True,
-        server_default=text("uuid_generate_v4()"),
-    )
-    user_id: Mapped[UUID] = mapped_column(
+    referrer_user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
         nullable=False,
-        unique=True,
     )
-    referral_code: Mapped[str] = mapped_column(
-        String(32), nullable=False, unique=True
+    referred_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
     )
-    name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -517,31 +517,9 @@ class UserReferralPendingModel(Base):
         primary_key=True,
         nullable=False,
     )
-    manager_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("managers.manager_id", ondelete="CASCADE"),
-        primary_key=True,
-        nullable=False,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-
-
-class CreatorManagerBindingModel(Base):
-    """Creator-to-manager referral binding ORM model."""
-
-    __tablename__ = "creator_manager_bindings"
-
-    creator_user_id: Mapped[UUID] = mapped_column(
+    referrer_user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
-        primary_key=True,
-        nullable=False,
-    )
-    manager_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("managers.manager_id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )
@@ -551,7 +529,7 @@ class CreatorManagerBindingModel(Base):
 
 
 class PayoutRequestModel(Base):
-    """Payout request ORM model for referral managers."""
+    """Payout request ORM model for users (referrers)."""
 
     __tablename__ = "payout_requests"
 
@@ -560,9 +538,9 @@ class PayoutRequestModel(Base):
         primary_key=True,
         server_default=text("uuid_generate_v4()"),
     )
-    manager_id: Mapped[UUID] = mapped_column(
+    user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("managers.manager_id", ondelete="CASCADE"),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
         nullable=False,
     )
     requested_at: Mapped[datetime] = mapped_column(

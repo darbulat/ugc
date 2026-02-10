@@ -144,11 +144,9 @@ def build_bot_services(
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
             referral_service=ReferralService(
-                manager_repo=repos["manager_repo"],
+                user_repo=repos["user_repo"],
                 user_referral_pending_repo=repos["user_referral_pending_repo"],
-                creator_manager_binding_repo=repos[
-                    "creator_manager_binding_repo"
-                ],
+                user_referral_binding_repo=repos["user_referral_binding_repo"],
                 transaction_manager=transaction_manager,
             ),
             metrics_collector=metrics_collector,
@@ -228,13 +226,13 @@ def build_bot_services(
             transaction_manager=transaction_manager,
         ),
         "referral_service": ReferralService(
-            manager_repo=repos["manager_repo"],
+            user_repo=repos["user_repo"],
             user_referral_pending_repo=repos["user_referral_pending_repo"],
-            creator_manager_binding_repo=repos["creator_manager_binding_repo"],
+            user_referral_binding_repo=repos["user_referral_binding_repo"],
             transaction_manager=transaction_manager,
         ),
         "referral_income_service": ReferralIncomeService(
-            creator_manager_binding_repo=repos["creator_manager_binding_repo"],
+            user_referral_binding_repo=repos["user_referral_binding_repo"],
             order_response_repo=repos["order_response_repo"],
             order_repo=repos["order_repo"],
             payment_repo=repos["payment_repo"],
@@ -247,7 +245,7 @@ def build_bot_services(
         "order_repo": repos["order_repo"],
         "order_response_repo": repos["order_response_repo"],
         "interaction_repo": repos["interaction_repo"],
-        "manager_repo": repos["manager_repo"],
+        "user_referral_binding_repo": repos["user_referral_binding_repo"],
         "payout_request_repo": repos["payout_request_repo"],
         "outbox_publisher": outbox_publisher,
         "transaction_manager": transaction_manager,

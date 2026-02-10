@@ -1,5 +1,6 @@
 """Tests for role reminder scheduler."""
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -11,7 +12,34 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
-from ugc_bot.role_reminder_scheduler import _reminder_cutoff, run_once
+from ugc_bot.role_reminder_scheduler import (
+    _reminder_cutoff,
+    _seconds_until_next_run,
+    run_loop,
+    run_once,
+)
+
+
+def test_seconds_until_next_run_before_time_returns_seconds_today() -> None:
+    """_seconds_until_next_run when now is before configured time."""
+    config = MagicMock()
+    config.role_reminder.role_reminder_hour = 23
+    config.role_reminder.role_reminder_minute = 30
+    config.role_reminder.role_reminder_timezone = "UTC"
+    seconds = _seconds_until_next_run(config)
+    assert seconds > 0
+    assert seconds <= 86400
+
+
+def test_seconds_until_next_run_after_time_returns_seconds_tomorrow() -> None:
+    """_seconds_until_next_run when now is after configured time."""
+    config = MagicMock()
+    config.role_reminder.role_reminder_hour = 0
+    config.role_reminder.role_reminder_minute = 0
+    config.role_reminder.role_reminder_timezone = "UTC"
+    seconds = _seconds_until_next_run(config)
+    assert seconds > 0
+    assert seconds <= 86400
 
 
 def test_reminder_cutoff_returns_utc_datetime() -> None:
@@ -179,3 +207,43 @@ async def test_run_once_handles_send_failure(fake_tm) -> None:
     updated = await service.get_user_by_id(user.user_id)
     assert updated is not None
     assert updated.last_role_reminder_at is None
+
+
+@pytest.mark.asyncio
+async def test_run_loop_runs_once_then_sleeps(fake_tm) -> None:
+    """run_loop calls run_once, then sleeps; one iteration then cancel."""
+
+    from ugc_bot.infrastructure.messenger.telegram.client import (
+        TelegramMessengerClient,
+    )
+
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    bot = MagicMock()
+    messenger_client = TelegramMessengerClient(bot)
+    config = MagicMock()
+    config.role_reminder.role_reminder_hour = 12
+    config.role_reminder.role_reminder_minute = 0
+    config.role_reminder.role_reminder_timezone = "UTC"
+
+    call_count = 0
+
+    async def fake_sleep(secs: float) -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 1:
+            raise asyncio.CancelledError()
+
+    with (
+        patch(
+            "ugc_bot.role_reminder_scheduler.send_with_retry",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "ugc_bot.role_reminder_scheduler.asyncio.sleep",
+            side_effect=fake_sleep,
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await run_loop(messenger_client, service, config)
+    assert call_count == 1

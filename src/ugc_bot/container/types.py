@@ -64,7 +64,7 @@ class BotServices(TypedDict):
     order_repo: Any
     order_response_repo: Any
     interaction_repo: Any
-    manager_repo: Any
+    user_referral_binding_repo: Any
     payout_request_repo: Any
     outbox_publisher: OutboxPublisher
     transaction_manager: Any

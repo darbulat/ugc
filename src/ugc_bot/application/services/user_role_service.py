@@ -1,6 +1,7 @@
 """Service for user creation and lookup."""
 
 import logging
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -13,6 +14,10 @@ from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
+
+REFERRAL_CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+REFERRAL_CODE_LENGTH = 8
+REFERRAL_CODE_MAX_ATTEMPTS = 10
 
 
 @dataclass(slots=True)
@@ -70,12 +75,14 @@ class UserRoleService:
                     last_role_reminder_at=existing.last_role_reminder_at,
                     telegram=telegram,
                     admin=existing.admin,
+                    referral_code=existing.referral_code,
                 )
                 await self.user_repo.save(updated, session=session)
                 return updated
 
             status = UserStatus.ACTIVE
             role_chosen_at = now if role_chosen else None
+            referral_code = await self._generate_unique_referral_code(session)
             new_user = User(
                 user_id=uuid4(),
                 external_id=external_id,
@@ -88,11 +95,31 @@ class UserRoleService:
                 last_role_reminder_at=None,
                 telegram=telegram_username,
                 admin=False,
+                referral_code=referral_code,
             )
             await self.user_repo.save(new_user, session=session)
             return new_user
 
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def _generate_unique_referral_code(
+        self, session: object | None
+    ) -> str:
+        """Generate a unique referral code (for new users)."""
+        for _ in range(REFERRAL_CODE_MAX_ATTEMPTS):
+            code = "".join(
+                secrets.choice(REFERRAL_CODE_ALPHABET)
+                for _ in range(REFERRAL_CODE_LENGTH)
+            )
+            existing = await self.user_repo.get_by_referral_code(
+                code, session=session
+            )
+            if existing is None:
+                return code
+        raise RuntimeError(
+            "Failed to generate unique referral code after "
+            f"{REFERRAL_CODE_MAX_ATTEMPTS} attempts"
+        )
 
     async def get_user(
         self, external_id: str, messenger_type: MessengerType
@@ -147,6 +174,7 @@ class UserRoleService:
                 last_role_reminder_at=user.last_role_reminder_at,
                 telegram=user.telegram,
                 admin=user.admin,
+                referral_code=user.referral_code,
             )
             await self.user_repo.save(updated, session=session)
             return (updated, user)
@@ -185,21 +213,22 @@ class UserRoleService:
         if username is None:
             username = f"user_{external_id}"
 
-        new_user = User(
-            user_id=uuid4(),
-            external_id=external_id,
-            messenger_type=messenger_type,
-            username=username,
-            status=status,
-            issue_count=0,
-            created_at=datetime.now(timezone.utc),
-            role_chosen_at=None,
-            last_role_reminder_at=None,
-            telegram=None,
-            admin=False,
-        )
-
         async def _run(session: object | None) -> User:
+            referral_code = await self._generate_unique_referral_code(session)
+            new_user = User(
+                user_id=uuid4(),
+                external_id=external_id,
+                messenger_type=messenger_type,
+                username=username,
+                status=status,
+                issue_count=0,
+                created_at=datetime.now(timezone.utc),
+                role_chosen_at=None,
+                last_role_reminder_at=None,
+                telegram=None,
+                admin=False,
+                referral_code=referral_code,
+            )
             await self.user_repo.save(new_user, session=session)
             return new_user
 
@@ -253,6 +282,7 @@ class UserRoleService:
                 last_role_reminder_at=now,
                 telegram=user.telegram,
                 admin=user.admin,
+                referral_code=user.referral_code,
             )
             await self.user_repo.save(updated, session=session)
 

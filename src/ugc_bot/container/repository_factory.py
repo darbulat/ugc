@@ -7,11 +7,9 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
-    SqlAlchemyCreatorManagerBindingRepository,
     SqlAlchemyFsmDraftRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
-    SqlAlchemyManagerRepository,
     SqlAlchemyNpsRepository,
     SqlAlchemyOfferDispatchRepository,
     SqlAlchemyOrderRepository,
@@ -19,6 +17,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyOutboxRepository,
     SqlAlchemyPaymentRepository,
     SqlAlchemyPayoutRequestRepository,
+    SqlAlchemyUserReferralBindingRepository,
     SqlAlchemyUserReferralPendingRepository,
     SqlAlchemyUserRepository,
 )
@@ -74,11 +73,8 @@ def build_repos(
             session_factory=session_factory
         ),
         "nps_repo": SqlAlchemyNpsRepository(session_factory=session_factory),
-        "manager_repo": SqlAlchemyManagerRepository(
-            session_factory=session_factory
-        ),
-        "creator_manager_binding_repo": (
-            SqlAlchemyCreatorManagerBindingRepository(
+        "user_referral_binding_repo": (
+            SqlAlchemyUserReferralBindingRepository(
                 session_factory=session_factory
             )
         ),

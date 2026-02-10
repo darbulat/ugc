@@ -16,17 +16,16 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
-    CreatorManagerBinding,
     FsmDraft,
     InstagramVerificationCode,
     Interaction,
-    Manager,
     Order,
     OrderResponse,
     OutboxEvent,
     Payment,
     PayoutRequest,
     User,
+    UserReferralBinding,
     UserReferralPending,
 )
 from ugc_bot.domain.enums import MessengerType
@@ -52,6 +51,12 @@ class UserRepository(ABC):
         session: object | None = None,
     ) -> Optional[User]:
         """Fetch a user by external messenger id."""
+
+    @abstractmethod
+    async def get_by_referral_code(
+        self, referral_code: str, session: object | None = None
+    ) -> Optional[User]:
+        """Fetch a user by referral code."""
 
     @abstractmethod
     async def save(self, user: User, session: object | None = None) -> None:
@@ -507,71 +512,38 @@ class FsmDraftRepository(ABC):
         """Delete draft for user and flow type."""
 
 
-class ManagerRepository(ABC):
-    """Port for referral manager persistence."""
-
-    @abstractmethod
-    async def get_by_id(
-        self, manager_id: UUID, session: object | None = None
-    ) -> Optional[Manager]:
-        """Fetch manager by ID."""
-
-    @abstractmethod
-    async def get_by_user_id(
-        self, user_id: UUID, session: object | None = None
-    ) -> Optional[Manager]:
-        """Fetch manager by user ID."""
-
-    @abstractmethod
-    async def get_by_referral_code(
-        self, referral_code: str, session: object | None = None
-    ) -> Optional[Manager]:
-        """Fetch manager by referral code."""
-
-    @abstractmethod
-    async def save(
-        self, manager: Manager, session: object | None = None
-    ) -> None:
-        """Persist manager."""
-
-    @abstractmethod
-    async def list_all(
-        self, session: object | None = None
-    ) -> Iterable[Manager]:
-        """List all managers."""
-
-
-class CreatorManagerBindingRepository(ABC):
-    """Port for creator-manager binding persistence."""
+class UserReferralBindingRepository(ABC):
+    """Port for user referral binding persistence (referrer -> referred)."""
 
     @abstractmethod
     async def save(
         self,
-        binding: CreatorManagerBinding,
+        binding: UserReferralBinding,
         session: object | None = None,
     ) -> None:
-        """Persist creator-manager binding."""
+        """Persist referral binding."""
 
     @abstractmethod
-    async def get_by_creator(
-        self, creator_user_id: UUID, session: object | None = None
-    ) -> Optional[CreatorManagerBinding]:
-        """Fetch binding by creator user ID."""
+    async def get_by_referred_user(
+        self, referred_user_id: UUID, session: object | None = None
+    ) -> Optional[UserReferralBinding]:
+        """Fetch binding by referred user ID."""
 
     @abstractmethod
-    async def list_by_manager(
-        self, manager_id: UUID, session: object | None = None
-    ) -> Iterable[CreatorManagerBinding]:
-        """List bindings by manager ID."""
-
-    @abstractmethod
-    async def exists(
+    async def list_by_referrer(
         self,
-        creator_user_id: UUID,
-        manager_id: UUID,
+        referrer_user_id: UUID,
+        offset: int = 0,
+        limit: int = 10,
         session: object | None = None,
-    ) -> bool:
-        """Check if binding exists."""
+    ) -> Iterable[UserReferralBinding]:
+        """List bindings by referrer user ID with pagination."""
+
+    @abstractmethod
+    async def count_by_referrer(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count bindings by referrer user ID."""
 
 
 class UserReferralPendingRepository(ABC):
@@ -616,10 +588,10 @@ class PayoutRequestRepository(ABC):
         """Fetch payout request by ID."""
 
     @abstractmethod
-    async def list_by_manager(
-        self, manager_id: UUID, session: object | None = None
+    async def list_by_user(
+        self, user_id: UUID, session: object | None = None
     ) -> Iterable[PayoutRequest]:
-        """List payout requests by manager ID."""
+        """List payout requests by user ID."""
 
 
 class TransactionManager(Protocol):

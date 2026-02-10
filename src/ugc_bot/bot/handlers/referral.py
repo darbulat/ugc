@@ -1,7 +1,8 @@
-"""Handlers for referral managers: /referal command and payout button."""
+"""Handlers for referral: /referal, /referal_list and payout button."""
 
 import logging
 from datetime import datetime, timezone
+from math import ceil
 from uuid import uuid4
 
 from aiogram import Router
@@ -30,7 +31,9 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 REFERRAL_PAYOUT_CALLBACK = "referral:payout"
+REFERRAL_LIST_CALLBACK_PREFIX = "referal_list:"
 PAYOUT_BUTTON_TEXT = "Выплатить"
+REFERRAL_LIST_PAGE_SIZE = 10
 
 
 def _referral_stats_text(
@@ -68,13 +71,12 @@ def _referral_keyboard() -> Keyboard:
 async def referal_command(
     message: Message,
     user_role_service,
-    manager_repo,
     referral_income_service: ReferralIncomeService,
     config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle /referal command — show manager stats (managers only)."""
+    """Handle /referal — show current user referral stats (all users)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -90,11 +92,7 @@ async def referal_command(
     if user is None:
         return
 
-    manager = await manager_repo.get_by_user_id(user.user_id)
-    if manager is None:
-        return
-
-    stats = await referral_income_service.get_manager_stats(manager.manager_id)
+    stats = await referral_income_service.get_user_referral_stats(user.user_id)
     text = _referral_stats_text(
         creators_count=stats.creators_count,
         orders_count=stats.orders_count,
@@ -112,7 +110,6 @@ async def referal_command(
 async def payout_button_callback(
     callback: CallbackQuery,
     user_role_service,
-    manager_repo,
     payout_request_repo,
     transaction_manager,
     config: AppConfig,
@@ -135,18 +132,9 @@ async def payout_button_callback(
     if user is None:
         return
 
-    manager = await manager_repo.get_by_user_id(user.user_id)
-    if manager is None:
-        await messenger_client.answer_callback(
-            callback_id=incoming.callback_id,
-            text="Менеджер не найден.",
-            show_alert=True,
-        )
-        return
-
     request = PayoutRequest(
         request_id=uuid4(),
-        manager_id=manager.manager_id,
+        user_id=user.user_id,
         requested_at=datetime.now(timezone.utc),
         status=PayoutRequestStatus.PENDING,
     )
@@ -160,7 +148,7 @@ async def payout_button_callback(
     if support_chat_id:
         support_text = (
             f"💰 Запрос на выплату\n\n"
-            f"Менеджер: {manager.name or user.username or '—'}\n"
+            f"Пользователь: {user.username or '—'}\n"
             f"User ID: {user.external_id}\n"
             f"Request ID: {request.request_id}\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
@@ -174,7 +162,7 @@ async def payout_button_callback(
             logger.warning(
                 "Failed to send payout request to support channel",
                 extra={
-                    "manager_id": str(manager.manager_id),
+                    "user_id": str(user.user_id),
                     "request_id": str(request.request_id),
                     "error": str(e),
                 },
@@ -185,3 +173,190 @@ async def payout_button_callback(
         text="Запрос на выплату отправлен в поддержку.",
         show_alert=True,
     )
+
+
+@router.message(Command("referal_list"))
+async def referal_list_command(
+    message: Message,
+    user_role_service,
+    user_referral_binding_repo,
+    user_repo,
+    referral_income_service: ReferralIncomeService,
+    transaction_manager,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle /referal_list — list users referred by current user (page 1)."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    user = await get_user_and_ensure_allowed(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
+        blocked_msg="Заблокированные не могут использовать команду.",
+        pause_msg="Пользователи на паузе не могут использовать команду.",
+    )
+    if user is None:
+        return
+
+    async with transaction_manager.transaction() as session:
+        total = await user_referral_binding_repo.count_by_referrer(
+            user.user_id, session=session
+        )
+    if total == 0:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="У вас пока нет приведённых пользователей.",
+        )
+        return
+
+    text, keyboard = await _render_referral_list_page(
+        referrer_user_id=user.user_id,
+        page=1,
+        user_referral_binding_repo=user_referral_binding_repo,
+        user_repo=user_repo,
+        referral_income_service=referral_income_service,
+        transaction_manager=transaction_manager,
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=text,
+        keyboard=keyboard,
+    )
+
+
+@router.callback_query(
+    lambda c: c.data and c.data.startswith(REFERRAL_LIST_CALLBACK_PREFIX)
+)
+async def referal_list_pagination_callback(
+    callback: CallbackQuery,
+    user_role_service,
+    user_referral_binding_repo,
+    user_repo,
+    referral_income_service: ReferralIncomeService,
+    transaction_manager,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle pagination for /referal_list."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден.",
+        blocked_msg="Заблокированные не могут просматривать список.",
+        pause_msg="Пользователи на паузе не могут просматривать список.",
+    )
+    if user is None:
+        return
+
+    raw = (incoming.data or "").replace(REFERRAL_LIST_CALLBACK_PREFIX, "")
+    try:
+        page = int(raw)
+    except ValueError:
+        page = 1
+
+    text, keyboard = await _render_referral_list_page(
+        referrer_user_id=user.user_id,
+        page=page,
+        user_referral_binding_repo=user_referral_binding_repo,
+        user_repo=user_repo,
+        referral_income_service=referral_income_service,
+        transaction_manager=transaction_manager,
+    )
+    if incoming.message_id:
+        await messenger_client.edit_text(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            text=text,
+            keyboard=keyboard,
+        )
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+
+
+async def _render_referral_list_page(
+    *,
+    referrer_user_id,
+    page: int,
+    user_referral_binding_repo,
+    user_repo,
+    referral_income_service: ReferralIncomeService,
+    transaction_manager,
+) -> tuple[str, Keyboard]:
+    """Build one page of referral list text and pagination keyboard."""
+    async with transaction_manager.transaction() as session:
+        total = await user_referral_binding_repo.count_by_referrer(
+            referrer_user_id, session=session
+        )
+    total_pages = max(1, ceil(total / REFERRAL_LIST_PAGE_SIZE))
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * REFERRAL_LIST_PAGE_SIZE
+
+    async with transaction_manager.transaction() as session:
+        bindings = list(
+            await user_referral_binding_repo.list_by_referrer(
+                referrer_user_id,
+                offset=offset,
+                limit=REFERRAL_LIST_PAGE_SIZE,
+                session=session,
+            )
+        )
+        names: list[str] = []
+        for binding in bindings:
+            referred = await user_repo.get_by_id(
+                binding.referred_user_id, session=session
+            )
+            if referred:
+                name = (
+                    referred.username
+                    or referred.telegram
+                    or referred.external_id
+                )
+            else:
+                name = "—"
+            names.append(name)
+
+    lines = [f"Ваши рефералы (страница {page}/{total_pages}):"]
+    for idx, (binding, name) in enumerate(
+        zip(bindings, names, strict=True), start=offset + 1
+    ):
+        completed = (
+            await referral_income_service.count_completed_orders_for_user(
+                binding.referred_user_id
+            )
+        )
+        lines.append(f"{idx}. {name} — выполнено заказов: {completed}")
+
+    buttons_rows: list[list[Button]] = []
+    if page > 1:
+        buttons_rows.append(
+            [
+                Button(
+                    text="Назад",
+                    callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page - 1}",
+                )
+            ]
+        )
+    if page < total_pages:
+        buttons_rows.append(
+            [
+                Button(
+                    text="Вперёд",
+                    callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page + 1}",
+                )
+            ]
+        )
+
+    keyboard = (
+        Keyboard(kind=KeyboardKind.INLINE, rows=buttons_rows)
+        if buttons_rows
+        else Keyboard(kind=KeyboardKind.INLINE, rows=[])
+    )
+    return "\n".join(lines), keyboard

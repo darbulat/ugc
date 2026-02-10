@@ -35,6 +35,7 @@ class User:
     last_role_reminder_at: Optional[datetime] = None
     telegram: Optional[str] = None
     admin: bool = False
+    referral_code: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -196,22 +197,11 @@ class OutboxEvent:
 
 
 @dataclass(frozen=True)
-class Manager:
-    """Referral manager entity."""
+class UserReferralBinding:
+    """Referrer-to-referred user binding (permanent)."""
 
-    manager_id: UUID
-    user_id: UUID
-    referral_code: str
-    name: Optional[str]
-    created_at: datetime
-
-
-@dataclass(frozen=True)
-class CreatorManagerBinding:
-    """Creator-to-manager referral binding (permanent)."""
-
-    creator_user_id: UUID
-    manager_id: UUID
+    referrer_user_id: UUID
+    referred_user_id: UUID
     created_at: datetime
 
 
@@ -220,15 +210,15 @@ class UserReferralPending:
     """Pending referral binding until creator registration."""
 
     user_id: UUID
-    manager_id: UUID
+    referrer_user_id: UUID
     created_at: datetime
 
 
 @dataclass(frozen=True)
 class PayoutRequest:
-    """Payout request by referral manager."""
+    """Payout request by user (referrer)."""
 
     request_id: UUID
-    manager_id: UUID
+    user_id: UUID
     requested_at: datetime
     status: PayoutRequestStatus

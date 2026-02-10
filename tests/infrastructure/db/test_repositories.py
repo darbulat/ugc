@@ -17,7 +17,10 @@ from ugc_bot.domain.entities import (
     OrderResponse,
     OutboxEvent,
     Payment,
+    PayoutRequest,
     User,
+    UserReferralBinding,
+    UserReferralPending,
 )
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -28,6 +31,7 @@ from ugc_bot.domain.enums import (
     OrderType,
     OutboxEventStatus,
     PaymentStatus,
+    PayoutRequestStatus,
     UserStatus,
     WorkFormat,
 )
@@ -43,7 +47,10 @@ from ugc_bot.infrastructure.db.models import (
     OrderResponseModel,
     OutboxEventModel,
     PaymentModel,
+    PayoutRequestModel,
     UserModel,
+    UserReferralBindingModel,
+    UserReferralPendingModel,
 )
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
@@ -54,10 +61,14 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyNpsRepository,
+    SqlAlchemyOfferDispatchRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyOrderResponseRepository,
     SqlAlchemyOutboxRepository,
     SqlAlchemyPaymentRepository,
+    SqlAlchemyPayoutRequestRepository,
+    SqlAlchemyUserReferralBindingRepository,
+    SqlAlchemyUserReferralPendingRepository,
     SqlAlchemyUserRepository,
 )
 
@@ -720,6 +731,42 @@ async def test_instagram_verification_repo_get_valid_code_used() -> None:
         "USEDCODE", session=_repo_session(repo)
     )
     assert used_fetched is None
+
+
+@pytest.mark.asyncio
+async def test_instagram_get_valid_code_none_when_no_result() -> None:
+    """get_valid_code returns None when execute returns no row."""
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(None)
+    )
+    out = await repo.get_valid_code(
+        UUID("00000000-0000-0000-0000-000000000152"),
+        "nocode",
+        session=_repo_session(repo),
+    )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_instagram_get_valid_code_used_returns_none() -> None:
+    """get_valid_code(user_id, code) returns None when code is used."""
+    used_model = InstagramVerificationCodeModel(
+        code_id=UUID("00000000-0000-0000-0000-000000000150"),
+        user_id=UUID("00000000-0000-0000-0000-000000000151"),
+        code="USED",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        used=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInstagramVerificationRepository(
+        session_factory=_session_factory(used_model)
+    )
+    out = await repo.get_valid_code(
+        used_model.user_id,
+        used_model.code,
+        session=_repo_session(repo),
+    )
+    assert out is None
 
 
 @pytest.mark.asyncio
@@ -1782,3 +1829,227 @@ async def test_complaint_repository_list_by_order() -> None:
     )
     assert len(complaints) == 1
     assert complaints[0].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_user_repository_get_by_referral_code() -> None:
+    """get_by_referral_code returns user when found."""
+    model = UserModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000301"),
+        external_id="ext",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        referral_code="refcode1",
+    )
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
+    user = await repo.get_by_referral_code(
+        "refcode1", session=_repo_session(repo)
+    )
+    assert user is not None
+    assert user.referral_code == "refcode1"
+
+
+@pytest.mark.asyncio
+async def test_user_referral_binding_repository_save() -> None:
+    """UserReferralBinding repo save merges model."""
+    ref_id = UUID("00000000-0000-0000-0000-000000000400")
+    referred_id = UUID("00000000-0000-0000-0000-000000000401")
+    now = datetime.now(timezone.utc)
+    binding = UserReferralBinding(
+        referrer_user_id=ref_id,
+        referred_user_id=referred_id,
+        created_at=now,
+    )
+    repo = SqlAlchemyUserReferralBindingRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.save(binding, session=_repo_session(repo))
+
+
+@pytest.mark.asyncio
+async def test_user_referral_binding_repository_save_and_get() -> None:
+    """UserReferralBinding repo get_by_referred_user."""
+    ref_id = UUID("00000000-0000-0000-0000-000000000401")
+    referred_id = UUID("00000000-0000-0000-0000-000000000402")
+    now = datetime.now(timezone.utc)
+    model = UserReferralBindingModel(
+        referrer_user_id=ref_id,
+        referred_user_id=referred_id,
+        created_at=now,
+    )
+    repo = SqlAlchemyUserReferralBindingRepository(
+        session_factory=_session_factory(model)
+    )
+    binding = await repo.get_by_referred_user(
+        referred_id, session=_repo_session(repo)
+    )
+    assert binding is not None
+    assert binding.referrer_user_id == ref_id
+    assert binding.referred_user_id == referred_id
+
+
+@pytest.mark.asyncio
+async def test_user_referral_binding_repository_list_by_referrer() -> None:
+    """list_by_referrer returns bindings for referrer."""
+    ref_id = UUID("00000000-0000-0000-0000-000000000403")
+    referred_id = UUID("00000000-0000-0000-0000-000000000404")
+    now = datetime.now(timezone.utc)
+    model = UserReferralBindingModel(
+        referrer_user_id=ref_id,
+        referred_user_id=referred_id,
+        created_at=now,
+    )
+    repo = SqlAlchemyUserReferralBindingRepository(
+        session_factory=_session_factory([model])
+    )
+    bindings = list(
+        await repo.list_by_referrer(ref_id, session=_repo_session(repo))
+    )
+    assert len(bindings) == 1
+    assert bindings[0].referrer_user_id == ref_id
+
+
+@pytest.mark.asyncio
+async def test_user_referral_binding_repository_count_by_referrer() -> None:
+    """count_by_referrer returns count."""
+    repo = SqlAlchemyUserReferralBindingRepository(
+        session_factory=_session_factory(2)
+    )
+    ref_id = UUID("00000000-0000-0000-0000-000000000405")
+    count = await repo.count_by_referrer(ref_id, session=_repo_session(repo))
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_user_referral_pending_repository_save() -> None:
+    """UserReferralPending repo save merges model."""
+    user_id = UUID("00000000-0000-0000-0000-000000000500")
+    ref_id = UUID("00000000-0000-0000-0000-000000000501")
+    now = datetime.now(timezone.utc)
+    pending = UserReferralPending(
+        user_id=user_id,
+        referrer_user_id=ref_id,
+        created_at=now,
+    )
+    repo = SqlAlchemyUserReferralPendingRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.save(pending, session=_repo_session(repo))
+
+
+@pytest.mark.asyncio
+async def test_user_referral_pending_repository_get_by_user() -> None:
+    """UserReferralPending repo get_by_user."""
+    user_id = UUID("00000000-0000-0000-0000-000000000501")
+    ref_id = UUID("00000000-0000-0000-0000-000000000502")
+    now = datetime.now(timezone.utc)
+    model = UserReferralPendingModel(
+        user_id=user_id,
+        referrer_user_id=ref_id,
+        created_at=now,
+    )
+    repo = SqlAlchemyUserReferralPendingRepository(
+        session_factory=_session_factory(model)
+    )
+    pending = await repo.get_by_user(user_id, session=_repo_session(repo))
+    assert pending is not None
+    assert pending.referrer_user_id == ref_id
+
+
+@pytest.mark.asyncio
+async def test_user_referral_pending_repository_delete_by_user() -> None:
+    """UserReferralPending repo delete_by_user executes delete."""
+    repo = SqlAlchemyUserReferralPendingRepository(
+        session_factory=_session_factory(None)
+    )
+    user_id = UUID("00000000-0000-0000-0000-000000000503")
+    await repo.delete_by_user(user_id, session=_repo_session(repo))
+
+
+@pytest.mark.asyncio
+async def test_payout_request_repository_save() -> None:
+    """PayoutRequest repo save adds model."""
+    request_id = UUID("00000000-0000-0000-0000-000000000600")
+    user_id = UUID("00000000-0000-0000-0000-000000000601")
+    now = datetime.now(timezone.utc)
+    request = PayoutRequest(
+        request_id=request_id,
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+    )
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.save(request, session=_repo_session(repo))
+
+
+@pytest.mark.asyncio
+async def test_payout_request_repository_list_by_user() -> None:
+    """PayoutRequest repo list_by_user."""
+    user_id = UUID("00000000-0000-0000-0000-000000000601")
+    request_id = UUID("00000000-0000-0000-0000-000000000602")
+    now = datetime.now(timezone.utc)
+    model = PayoutRequestModel(
+        request_id=request_id,
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+    )
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory([model])
+    )
+    requests = list(
+        await repo.list_by_user(user_id, session=_repo_session(repo))
+    )
+    assert len(requests) == 1
+    assert requests[0].user_id == user_id
+
+
+@pytest.mark.asyncio
+async def test_payout_request_repository_get_by_id() -> None:
+    """get_by_id returns payout request when found."""
+    request_id = UUID("00000000-0000-0000-0000-000000000603")
+    user_id = UUID("00000000-0000-0000-0000-000000000604")
+    model = PayoutRequestModel(
+        request_id=request_id,
+        user_id=user_id,
+        requested_at=datetime.now(timezone.utc),
+        status=PayoutRequestStatus.PENDING,
+    )
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory(model)
+    )
+    request = await repo.get_by_id(request_id, session=_repo_session(repo))
+    assert request is not None
+    assert request.request_id == request_id
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_record_sent() -> None:
+    """OfferDispatch repo record_sent merges model."""
+    order_id = UUID("00000000-0000-0000-0000-000000000701")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000702")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.record_sent(order_id, blogger_id, session=_repo_session(repo))
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_list_blogger_ids_sent_for_order() -> (
+    None
+):
+    """list_blogger_ids_sent_for_order returns blogger ids."""
+    order_id = UUID("00000000-0000-0000-0000-000000000703")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000704")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory([blogger_id])
+    )
+    ids = await repo.list_blogger_ids_sent_for_order(
+        order_id, session=_repo_session(repo)
+    )
+    assert ids == [blogger_id]
