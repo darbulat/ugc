@@ -278,7 +278,7 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
     assert len(client.sent_text) == 1
     assert client.sent_text[0]["chat_id"] == "support_chat"
     assert "Открыть в админке" in client.sent_text[0]["text"]
-    assert "payoutrequestmodel/edit/" in client.sent_text[0]["text"]
+    assert "payout-request-model/edit/" in client.sent_text[0]["text"]
 
 
 @pytest.mark.asyncio

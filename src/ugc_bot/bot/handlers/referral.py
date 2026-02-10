@@ -175,7 +175,7 @@ async def payout_button_callback(
         admin_base = (config.admin.admin_base_url or "").strip()
         if admin_base:
             base = admin_base.rstrip("/")
-            edit_url = f"{base}/payoutrequestmodel/edit/{request.request_id}"
+            edit_url = f"{base}/payout-request-model/edit/{request.request_id}"
             support_text += f"\n\nОткрыть в админке: {edit_url}"
         try:
             await messenger_client.send_text(
