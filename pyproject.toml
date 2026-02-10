@@ -55,6 +55,7 @@ markers = [
   "e2e_telegram: E2E with real Telegram (requires bot token, Telethon credentials)",
 ]
 
+# Used by standalone `coverage report`. For pytest-cov use --cov-fail-under=98 (see Makefile).
 [tool.coverage.report]
 fail_under = 98
 
