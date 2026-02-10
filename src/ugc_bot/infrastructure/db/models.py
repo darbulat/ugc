@@ -102,6 +102,9 @@ class UserModel(Base):
     referral_code: Mapped[Optional[str]] = mapped_column(
         String(32), nullable=True, unique=True
     )
+    referral_payout_rate: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 4), nullable=True
+    )
 
 
 class BloggerProfileModel(Base):

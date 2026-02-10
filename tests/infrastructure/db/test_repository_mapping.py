@@ -1,6 +1,7 @@
 """Tests for repository mapping helpers."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from ugc_bot.domain.entities import BloggerProfile, Order, User
@@ -41,6 +42,23 @@ def test_user_mapping_roundtrip() -> None:
     assert entity.external_id == user.external_id
     assert entity.messenger_type == user.messenger_type
     assert entity.username == user.username
+
+
+def test_user_mapping_roundtrip_preserves_referral_payout_rate() -> None:
+    """Ensure user mapping preserves referral_payout_rate."""
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000010"),
+        external_id="123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=1,
+        created_at=datetime.now(timezone.utc),
+        referral_payout_rate=Decimal("0.15"),
+    )
+    model = _to_user_model(user)
+    entity = _to_user_entity(model)
+    assert entity.referral_payout_rate == Decimal("0.15")
 
 
 def test_blogger_profile_mapping_roundtrip() -> None:

@@ -373,6 +373,7 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.username,
         UserModel.telegram,
         UserModel.referral_code,
+        UserModel.referral_payout_rate,
         UserModel.status,
         UserModel.admin,
         UserModel.issue_count,
@@ -385,6 +386,7 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.username: "Имя пользователя",
         UserModel.telegram: "Telegram",
         UserModel.referral_code: "Реферальный код",
+        UserModel.referral_payout_rate: "Процент выплаты рефералам",
         UserModel.status: "Статус",
         UserModel.admin: "Администратор",
         UserModel.issue_count: "Кол-во проблем",
@@ -392,6 +394,7 @@ class UserAdmin(ModelView, model=UserModel):
     }
     form_columns = [
         UserModel.admin,
+        UserModel.referral_payout_rate,
     ]
 
     async def update_model(self, request: Request, pk: str, data: dict):

@@ -68,6 +68,7 @@ async def create_test_user(
         created_at=kwargs.get("created_at", datetime.now(timezone.utc)),
         telegram=kwargs.get("telegram"),
         admin=kwargs.get("admin", False),
+        referral_payout_rate=kwargs.get("referral_payout_rate"),
     )
     await user_repo.save(user)
     return user

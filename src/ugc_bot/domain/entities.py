@@ -37,6 +37,7 @@ class User:
     telegram: Optional[str] = None
     admin: bool = False
     referral_code: Optional[str] = None
+    referral_payout_rate: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)

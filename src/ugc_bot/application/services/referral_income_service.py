@@ -84,6 +84,17 @@ def _get_rate(
     return FIRST_YEAR_RATE if years < 1.0 else AFTER_FIRST_YEAR_RATE
 
 
+def _effective_rate(
+    creator_created_at: datetime,
+    order_completed_at: datetime,
+    custom_rate: Optional[float],
+) -> float:
+    """Return rate: custom if set, else default 10% first year, 3% after."""
+    if custom_rate is not None:
+        return float(custom_rate)
+    return _get_rate(creator_created_at, order_completed_at)
+
+
 @dataclass(slots=True)
 class ReferralIncomeService:
     """Calculate referral user income from completed orders."""
@@ -133,6 +144,7 @@ class ReferralIncomeService:
         limit: int,
         now: datetime,
         session: object,
+        custom_rate: Optional[float] = None,
     ) -> tuple[float, float, int]:
         """Compute income and order count from loader rows (single query)."""
         assert self.referral_order_income_loader is not None
@@ -146,7 +158,9 @@ class ReferralIncomeService:
         seen_orders: set[UUID] = set()
         for row in rows:
             platform_revenue = row.payment_amount / row.bloggers_needed
-            rate = _get_rate(row.creator_created_at, row.order_completed_at)
+            rate = _effective_rate(
+                row.creator_created_at, row.order_completed_at, custom_rate
+            )
             commission = platform_revenue * rate
             income_total += commission
             seen_orders.add(row.order_id)
@@ -167,6 +181,7 @@ class ReferralIncomeService:
         bindings: list[UserReferralBinding],
         now: datetime,
         session: object | None,
+        custom_rate: Optional[float] = None,
     ) -> tuple[float, float, int]:
         """Compute income from bindings (fallback when loader not used)."""
         income_current_month = 0.0
@@ -213,7 +228,9 @@ class ReferralIncomeService:
                 platform_revenue_per_creator = (
                     float(payment.amount) / order.bloggers_needed
                 )
-                rate = _get_rate(creator.created_at, completed_at)
+                rate = _effective_rate(
+                    creator.created_at, completed_at, custom_rate
+                )
                 commission = platform_revenue_per_creator * rate
                 income_total += commission
                 seen_orders.add(order.order_id)
@@ -238,6 +255,13 @@ class ReferralIncomeService:
     ) -> UserReferralStats:
         """Compute referrer stats (runs inside transaction)."""
 
+        referrer = await self.user_repo.get_by_id(
+            referrer_user_id, session=session
+        )
+        custom_rate: Optional[float] = None
+        if referrer is not None and referrer.referral_payout_rate is not None:
+            custom_rate = float(referrer.referral_payout_rate)
+
         effective_limit = 10_000 if stats_limit is None else stats_limit
         if effective_limit <= 0:
             effective_limit = 10_000_000
@@ -261,14 +285,20 @@ class ReferralIncomeService:
                 income_total,
                 orders_count,
             ) = await self._compute_income_from_loader(
-                referrer_user_id, effective_limit, now, session
+                referrer_user_id,
+                effective_limit,
+                now,
+                session,
+                custom_rate=custom_rate,
             )
         else:
             (
                 income_current_month,
                 income_total,
                 orders_count,
-            ) = await self._compute_income_from_bindings(bindings, now, session)
+            ) = await self._compute_income_from_bindings(
+                bindings, now, session, custom_rate=custom_rate
+            )
 
         payout_requests = list(
             await self.payout_request_repo.list_by_user(

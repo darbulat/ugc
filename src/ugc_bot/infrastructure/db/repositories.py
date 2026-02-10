@@ -787,6 +787,7 @@ def _to_user_entity(model: UserModel) -> User:
         telegram=getattr(model, "telegram", None),
         admin=getattr(model, "admin", False),
         referral_code=getattr(model, "referral_code", None),
+        referral_payout_rate=getattr(model, "referral_payout_rate", None),
     )
 
 
@@ -806,6 +807,7 @@ def _to_user_model(user: User) -> UserModel:
         telegram=user.telegram,
         admin=getattr(user, "admin", False),
         referral_code=getattr(user, "referral_code", None),
+        referral_payout_rate=getattr(user, "referral_payout_rate", None),
     )
 
 
