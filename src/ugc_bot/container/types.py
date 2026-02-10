@@ -31,6 +31,10 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.referral_income_service import (
+    ReferralIncomeService,
+)
+from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
 
 
@@ -53,11 +57,15 @@ class BotServices(TypedDict):
     complaint_service: ComplaintService
     fsm_draft_service: FsmDraftService
     nps_service: NpsService
+    referral_service: ReferralService
+    referral_income_service: ReferralIncomeService
     issue_lock_manager: Any
     offer_response_rate_limiter: Any
     order_repo: Any
     order_response_repo: Any
     interaction_repo: Any
+    manager_repo: Any
+    payout_request_repo: Any
     outbox_publisher: OutboxPublisher
     transaction_manager: Any
     max_order_price: float

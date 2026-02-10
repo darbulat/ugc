@@ -84,3 +84,11 @@ class OutboxEventStatus(StrEnum):
     PROCESSING = "processing"
     PUBLISHED = "published"
     FAILED = "failed"
+
+
+class PayoutRequestStatus(StrEnum):
+    """Payout request status for referral managers."""
+
+    PENDING = "pending"
+    PAID = "paid"
+    CANCELLED = "cancelled"

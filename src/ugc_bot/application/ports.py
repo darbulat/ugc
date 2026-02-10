@@ -16,14 +16,18 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    CreatorManagerBinding,
     FsmDraft,
     InstagramVerificationCode,
     Interaction,
+    Manager,
     Order,
     OrderResponse,
     OutboxEvent,
     Payment,
+    PayoutRequest,
     User,
+    UserReferralPending,
 )
 from ugc_bot.domain.enums import MessengerType
 
@@ -501,6 +505,121 @@ class FsmDraftRepository(ABC):
         session: object | None = None,
     ) -> None:
         """Delete draft for user and flow type."""
+
+
+class ManagerRepository(ABC):
+    """Port for referral manager persistence."""
+
+    @abstractmethod
+    async def get_by_id(
+        self, manager_id: UUID, session: object | None = None
+    ) -> Optional[Manager]:
+        """Fetch manager by ID."""
+
+    @abstractmethod
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[Manager]:
+        """Fetch manager by user ID."""
+
+    @abstractmethod
+    async def get_by_referral_code(
+        self, referral_code: str, session: object | None = None
+    ) -> Optional[Manager]:
+        """Fetch manager by referral code."""
+
+    @abstractmethod
+    async def save(
+        self, manager: Manager, session: object | None = None
+    ) -> None:
+        """Persist manager."""
+
+    @abstractmethod
+    async def list_all(
+        self, session: object | None = None
+    ) -> Iterable[Manager]:
+        """List all managers."""
+
+
+class CreatorManagerBindingRepository(ABC):
+    """Port for creator-manager binding persistence."""
+
+    @abstractmethod
+    async def save(
+        self,
+        binding: CreatorManagerBinding,
+        session: object | None = None,
+    ) -> None:
+        """Persist creator-manager binding."""
+
+    @abstractmethod
+    async def get_by_creator(
+        self, creator_user_id: UUID, session: object | None = None
+    ) -> Optional[CreatorManagerBinding]:
+        """Fetch binding by creator user ID."""
+
+    @abstractmethod
+    async def list_by_manager(
+        self, manager_id: UUID, session: object | None = None
+    ) -> Iterable[CreatorManagerBinding]:
+        """List bindings by manager ID."""
+
+    @abstractmethod
+    async def exists(
+        self,
+        creator_user_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> bool:
+        """Check if binding exists."""
+
+
+class UserReferralPendingRepository(ABC):
+    """Port for pending referral bindings until creator registration."""
+
+    @abstractmethod
+    async def save(
+        self,
+        pending: UserReferralPending,
+        session: object | None = None,
+    ) -> None:
+        """Persist pending referral."""
+
+    @abstractmethod
+    async def get_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[UserReferralPending]:
+        """Fetch pending referral by user ID."""
+
+    @abstractmethod
+    async def delete_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete pending referral by user ID."""
+
+
+class PayoutRequestRepository(ABC):
+    """Port for payout request persistence."""
+
+    @abstractmethod
+    async def save(
+        self,
+        request: PayoutRequest,
+        session: object | None = None,
+    ) -> None:
+        """Persist payout request."""
+
+    @abstractmethod
+    async def get_by_id(
+        self, request_id: UUID, session: object | None = None
+    ) -> Optional[PayoutRequest]:
+        """Fetch payout request by ID."""
+
+    @abstractmethod
+    async def list_by_manager(
+        self, manager_id: UUID, session: object | None = None
+    ) -> Iterable[PayoutRequest]:
+        """List payout requests by manager ID."""
 
 
 class TransactionManager(Protocol):

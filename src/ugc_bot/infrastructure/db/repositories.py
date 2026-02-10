@@ -13,15 +13,19 @@ from ugc_bot.application.ports import (
     BloggerProfileRepository,
     ComplaintRepository,
     ContactPricingRepository,
+    CreatorManagerBindingRepository,
     FsmDraftRepository,
     InstagramVerificationRepository,
     InteractionRepository,
+    ManagerRepository,
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
     OrderResponseRepository,
     OutboxRepository,
     PaymentRepository,
+    PayoutRequestRepository,
+    UserReferralPendingRepository,
     UserRepository,
 )
 from ugc_bot.domain.entities import (
@@ -29,14 +33,18 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    CreatorManagerBinding,
     FsmDraft,
     InstagramVerificationCode,
     Interaction,
+    Manager,
     Order,
     OrderResponse,
     OutboxEvent,
     Payment,
+    PayoutRequest,
     User,
+    UserReferralPending,
 )
 from ugc_bot.domain.enums import (
     ComplaintStatus,
@@ -52,16 +60,20 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
     ContactPricingModel,
+    CreatorManagerBindingModel,
     FsmDraftModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    ManagerModel,
     NpsResponseModel,
     OfferDispatchModel,
     OrderModel,
     OrderResponseModel,
     OutboxEventModel,
     PaymentModel,
+    PayoutRequestModel,
     UserModel,
+    UserReferralPendingModel,
 )
 from ugc_bot.infrastructure.fsm_draft_serializer import (
     deserialize_fsm_data,
@@ -1383,6 +1395,309 @@ class SqlAlchemyFsmDraftRepository(FsmDraftRepository):
         model = exec_result.scalar_one_or_none()
         if model is not None:
             await db_session.delete(model)
+
+
+@dataclass(slots=True)
+class SqlAlchemyManagerRepository(ManagerRepository):
+    """SQLAlchemy-backed manager repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def get_by_id(
+        self, manager_id: UUID, session: object | None = None
+    ) -> Optional[Manager]:
+        """Fetch manager by ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(ManagerModel).where(ManagerModel.manager_id == manager_id)
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_manager_entity(result) if result else None
+
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[Manager]:
+        """Fetch manager by user ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(ManagerModel).where(ManagerModel.user_id == user_id)
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_manager_entity(result) if result else None
+
+    async def get_by_referral_code(
+        self, referral_code: str, session: object | None = None
+    ) -> Optional[Manager]:
+        """Fetch manager by referral code."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(ManagerModel).where(
+                ManagerModel.referral_code == referral_code
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_manager_entity(result) if result else None
+
+    async def save(
+        self, manager: Manager, session: object | None = None
+    ) -> None:
+        """Persist manager."""
+
+        db_session = _get_async_session(session)
+        model = _to_manager_model(manager)
+        await db_session.merge(model)
+
+    async def list_all(
+        self, session: object | None = None
+    ) -> Iterable[Manager]:
+        """List all managers."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(ManagerModel).order_by(ManagerModel.created_at)
+        )
+        return [_to_manager_entity(m) for m in exec_result.scalars().all()]
+
+
+@dataclass(slots=True)
+class SqlAlchemyCreatorManagerBindingRepository(
+    CreatorManagerBindingRepository
+):
+    """SQLAlchemy-backed creator-manager binding repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def save(
+        self,
+        binding: CreatorManagerBinding,
+        session: object | None = None,
+    ) -> None:
+        """Persist creator-manager binding."""
+
+        db_session = _get_async_session(session)
+        model = CreatorManagerBindingModel(
+            creator_user_id=binding.creator_user_id,
+            manager_id=binding.manager_id,
+            created_at=binding.created_at,
+        )
+        await db_session.merge(model)
+
+    async def get_by_creator(
+        self, creator_user_id: UUID, session: object | None = None
+    ) -> Optional[CreatorManagerBinding]:
+        """Fetch binding by creator user ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(CreatorManagerBindingModel).where(
+                CreatorManagerBindingModel.creator_user_id == creator_user_id
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_creator_manager_binding_entity(result) if result else None
+
+    async def list_by_manager(
+        self, manager_id: UUID, session: object | None = None
+    ) -> Iterable[CreatorManagerBinding]:
+        """List bindings by manager ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(CreatorManagerBindingModel).where(
+                CreatorManagerBindingModel.manager_id == manager_id
+            )
+        )
+        return [
+            _to_creator_manager_binding_entity(m)
+            for m in exec_result.scalars().all()
+        ]
+
+    async def exists(
+        self,
+        creator_user_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> bool:
+        """Check if binding exists."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(CreatorManagerBindingModel).where(
+                CreatorManagerBindingModel.creator_user_id == creator_user_id,
+                CreatorManagerBindingModel.manager_id == manager_id,
+            )
+        )
+        return exec_result.scalar_one_or_none() is not None
+
+
+@dataclass(slots=True)
+class SqlAlchemyUserReferralPendingRepository(UserReferralPendingRepository):
+    """SQLAlchemy-backed user referral pending repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def save(
+        self,
+        pending: UserReferralPending,
+        session: object | None = None,
+    ) -> None:
+        """Persist pending referral."""
+
+        db_session = _get_async_session(session)
+        model = UserReferralPendingModel(
+            user_id=pending.user_id,
+            manager_id=pending.manager_id,
+            created_at=pending.created_at,
+        )
+        await db_session.merge(model)
+
+    async def get_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[UserReferralPending]:
+        """Fetch pending referral by user ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(UserReferralPendingModel).where(
+                UserReferralPendingModel.user_id == user_id
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_user_referral_pending_entity(result) if result else None
+
+    async def delete_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete pending referral by user ID."""
+
+        db_session = _get_async_session(session)
+        await db_session.execute(
+            delete(UserReferralPendingModel).where(
+                UserReferralPendingModel.user_id == user_id
+            )
+        )
+
+
+@dataclass(slots=True)
+class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
+    """SQLAlchemy-backed payout request repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def save(
+        self,
+        request: PayoutRequest,
+        session: object | None = None,
+    ) -> None:
+        """Persist payout request."""
+
+        db_session = _get_async_session(session)
+        model = _to_payout_request_model(request)
+        db_session.add(model)
+
+    async def get_by_id(
+        self, request_id: UUID, session: object | None = None
+    ) -> Optional[PayoutRequest]:
+        """Fetch payout request by ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(PayoutRequestModel).where(
+                PayoutRequestModel.request_id == request_id
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_payout_request_entity(result) if result else None
+
+    async def list_by_manager(
+        self, manager_id: UUID, session: object | None = None
+    ) -> Iterable[PayoutRequest]:
+        """List payout requests by manager ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(PayoutRequestModel).where(
+                PayoutRequestModel.manager_id == manager_id
+            )
+        )
+        return [
+            _to_payout_request_entity(m) for m in exec_result.scalars().all()
+        ]
+
+
+def _to_manager_entity(model: ManagerModel) -> Manager:
+    """Map manager ORM model to domain entity."""
+
+    return Manager(
+        manager_id=model.manager_id,
+        user_id=model.user_id,
+        referral_code=model.referral_code,
+        name=model.name,
+        created_at=model.created_at,
+    )
+
+
+def _to_manager_model(manager: Manager) -> ManagerModel:
+    """Map domain manager entity to ORM model."""
+
+    return ManagerModel(
+        manager_id=manager.manager_id,
+        user_id=manager.user_id,
+        referral_code=manager.referral_code,
+        name=manager.name,
+        created_at=manager.created_at,
+    )
+
+
+def _to_creator_manager_binding_entity(
+    model: CreatorManagerBindingModel,
+) -> CreatorManagerBinding:
+    """Map creator-manager binding ORM model to domain entity."""
+
+    return CreatorManagerBinding(
+        creator_user_id=model.creator_user_id,
+        manager_id=model.manager_id,
+        created_at=model.created_at,
+    )
+
+
+def _to_user_referral_pending_entity(
+    model: UserReferralPendingModel,
+) -> UserReferralPending:
+    """Map user referral pending ORM model to domain entity."""
+
+    return UserReferralPending(
+        user_id=model.user_id,
+        manager_id=model.manager_id,
+        created_at=model.created_at,
+    )
+
+
+def _to_payout_request_entity(
+    model: PayoutRequestModel,
+) -> PayoutRequest:
+    """Map payout request ORM model to domain entity."""
+
+    return PayoutRequest(
+        request_id=model.request_id,
+        manager_id=model.manager_id,
+        requested_at=model.requested_at,
+        status=model.status,
+    )
+
+
+def _to_payout_request_model(request: PayoutRequest) -> PayoutRequestModel:
+    """Map domain payout request entity to ORM model."""
+
+    return PayoutRequestModel(
+        request_id=request.request_id,
+        manager_id=request.manager_id,
+        requested_at=request.requested_at,
+        status=request.status,
+    )
 
 
 def _to_fsm_draft_entity(model: FsmDraftModel, flow_type: str) -> FsmDraft:

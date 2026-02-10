@@ -14,6 +14,7 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import AudienceGender, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -57,6 +58,7 @@ class BloggerRegistrationService:
 
     user_repo: UserRepository
     blogger_repo: BloggerProfileRepository
+    referral_service: Optional[ReferralService] = None
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
@@ -131,6 +133,12 @@ class BloggerRegistrationService:
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(profile, session=session)
+
+            if self.referral_service:
+                await self.referral_service.create_binding_from_pending(
+                    creator_user_id=user_id,
+                    session=session,
+                )
 
             if self.metrics_collector:
                 self.metrics_collector.record_blogger_registration(

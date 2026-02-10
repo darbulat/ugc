@@ -6,6 +6,7 @@ from tests.helpers.fakes import (
     FakeFSMContext,
     FakeFsmDraftService,
     FakeMessage,
+    FakeReferralService,
     FakeUser,
     RecordingFsmDraftService,
 )
@@ -41,10 +42,12 @@ async def test_start_command_sends_role_keyboard(
     """Ensure /start sends role keyboard and start text."""
 
     service = UserRoleService(user_repo=user_repo)
+    referral_service = FakeReferralService()
     message = FakeMessage(text=None, user=FakeUser(1, "test", "Alice"))
     await start_command(
         message,
         user_role_service=service,
+        referral_service=referral_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -64,10 +67,12 @@ async def test_start_command_without_from_user_returns_early(
     """Start with no from_user does not send message."""
 
     service = UserRoleService(user_repo=user_repo)
+    referral_service = FakeReferralService()
     message = FakeMessage(text=None, user=None)
     await start_command(
         message,
         user_role_service=service,
+        referral_service=referral_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

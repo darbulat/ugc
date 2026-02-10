@@ -27,6 +27,7 @@ from ugc_bot.bot.handlers.offer_responses import router as offer_response_router
 from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
 from ugc_bot.bot.handlers.profile import router as profile_router
+from ugc_bot.bot.handlers.referral import router as referral_router
 
 # Services are built via Container.build_bot_services()
 from ugc_bot.bot.handlers.start import router as start_router
@@ -95,6 +96,7 @@ def build_dispatcher(
         dispatcher[key] = service
     if include_routers:
         dispatcher.include_router(start_router)
+        dispatcher.include_router(referral_router)
         dispatcher.include_router(admin_moderation_router)
         dispatcher.include_router(blogger_router)
         dispatcher.include_router(advertiser_router)

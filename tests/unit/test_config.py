@@ -53,6 +53,10 @@ def test_app_config_accepts_nested_dict() -> None:
             "ALLOWED_BLOGGER_COUNTS": "1,3,5,10",
             "MAX_ORDER_PRICE": "10000",
         },
+        "referral": {
+            "REFERRAL_SUPPORT_CHAT_ID": "",
+            "REFERRAL_BOT_USERNAME": "",
+        },
     }
     config = AppConfig.model_validate(nested)
     assert config.bot.bot_token == "token"

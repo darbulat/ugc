@@ -30,6 +30,7 @@ from ugc_bot.domain.enums import (
     OrderType,
     OutboxEventStatus,
     PaymentStatus,
+    PayoutRequestStatus,
     UserStatus,
     WorkFormat,
 )
@@ -45,6 +46,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     ComplaintStatus: "complaint_status",
     OutboxEventStatus: "outbox_event_status",
     PaymentStatus: "payment_status",
+    PayoutRequestStatus: "payout_request_status",
     WorkFormat: "work_format",
 }
 
@@ -477,3 +479,97 @@ class OutboxEventModel(Base):
     )
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class ManagerModel(Base):
+    """Referral manager ORM model."""
+
+    __tablename__ = "managers"
+
+    manager_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    referral_code: Mapped[str] = mapped_column(
+        String(32), nullable=False, unique=True
+    )
+    name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class UserReferralPendingModel(Base):
+    """Pending referral binding until creator registration."""
+
+    __tablename__ = "user_referral_pending"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    manager_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("managers.manager_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class CreatorManagerBindingModel(Base):
+    """Creator-to-manager referral binding ORM model."""
+
+    __tablename__ = "creator_manager_bindings"
+
+    creator_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    manager_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("managers.manager_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class PayoutRequestModel(Base):
+    """Payout request ORM model for referral managers."""
+
+    __tablename__ = "payout_requests"
+
+    request_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    manager_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("managers.manager_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    status: Mapped[PayoutRequestStatus] = mapped_column(
+        _enum_column(PayoutRequestStatus),
+        nullable=False,
+        server_default=text("'pending'"),
+    )

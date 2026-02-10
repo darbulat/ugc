@@ -18,6 +18,7 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.messenger.state import StateStore
 from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CHANGE_ROLE_BUTTON_TEXT,
@@ -46,6 +47,7 @@ ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
 async def start_command(
     message: Message,
     user_role_service: UserRoleService,
+    referral_service: ReferralService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -58,6 +60,7 @@ async def start_command(
         incoming=incoming,
         messenger_client=messenger_client,
         user_role_service=user_role_service,
+        referral_service=referral_service,
     )
 
 
@@ -143,6 +146,7 @@ async def _start_command(
     incoming: IncomingMessage,
     messenger_client: MessengerClient,
     user_role_service: UserRoleService,
+    referral_service: ReferralService,
 ) -> None:
     """Handle the /start command."""
     if not incoming.user.external_id:
@@ -153,13 +157,18 @@ async def _start_command(
     )
     username = user.username if user else ""
 
-    await user_role_service.set_user(
+    user = await user_role_service.set_user(
         external_id=incoming.user.external_id,
         messenger_type=incoming.user.messenger_type,
         username=username,
         role_chosen=False,
         telegram_username=incoming.user.username,
     )
+    referral_code = referral_service.parse_referral_code(incoming.text)
+    if referral_code:
+        await referral_service.save_pending_referral(
+            user.user_id, referral_code
+        )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=START_TEXT,

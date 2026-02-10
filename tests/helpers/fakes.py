@@ -445,3 +445,15 @@ class FakeSuccessfulPayment:
         self.provider_payment_charge_id = charge_id
         self.total_amount = 100000
         self.currency = "RUB"
+
+
+class FakeReferralService:
+    """ReferralService stub for handler tests."""
+
+    def parse_referral_code(self, text: str | None) -> str | None:
+        """Return None (no referral in tests)."""
+        return None
+
+    async def save_pending_referral(self, user_id: object, code: str) -> bool:
+        """No-op for tests."""
+        return False

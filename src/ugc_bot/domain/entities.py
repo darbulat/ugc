@@ -14,6 +14,7 @@ from ugc_bot.domain.enums import (
     OrderType,
     OutboxEventStatus,
     PaymentStatus,
+    PayoutRequestStatus,
     UserStatus,
     WorkFormat,
 )
@@ -192,3 +193,42 @@ class OutboxEvent:
     processed_at: Optional[datetime]
     retry_count: int
     last_error: Optional[str]
+
+
+@dataclass(frozen=True)
+class Manager:
+    """Referral manager entity."""
+
+    manager_id: UUID
+    user_id: UUID
+    referral_code: str
+    name: Optional[str]
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class CreatorManagerBinding:
+    """Creator-to-manager referral binding (permanent)."""
+
+    creator_user_id: UUID
+    manager_id: UUID
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class UserReferralPending:
+    """Pending referral binding until creator registration."""
+
+    user_id: UUID
+    manager_id: UUID
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class PayoutRequest:
+    """Payout request by referral manager."""
+
+    request_id: UUID
+    manager_id: UUID
+    requested_at: datetime
+    status: PayoutRequestStatus

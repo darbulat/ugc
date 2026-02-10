@@ -82,6 +82,7 @@ _FLAT_KEYS = {
         "ALLOWED_BLOGGER_COUNTS",
         "MAX_ORDER_PRICE",
     ],
+    "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
 }
 
 
@@ -344,6 +345,21 @@ class OrderConfig(BaseSettings):
         )
 
 
+class ReferralConfig(BaseSettings):
+    """Referral system configuration."""
+
+    model_config = _ENV
+
+    referral_support_chat_id: str = Field(
+        default="",
+        alias="REFERRAL_SUPPORT_CHAT_ID",
+    )
+    referral_bot_username: str = Field(
+        default="",
+        alias="REFERRAL_BOT_USERNAME",
+    )
+
+
 # --- Composite ---
 
 
@@ -365,6 +381,7 @@ class AppConfig(BaseModel):
     webhook: WebhookConfig
     outbox: OutboxConfig
     order: OrderConfig
+    referral: ReferralConfig
 
     @model_validator(mode="before")
     @classmethod
@@ -388,6 +405,7 @@ class AppConfig(BaseModel):
             "webhook": WebhookConfig.model_validate(nested["webhook"]),
             "outbox": OutboxConfig.model_validate(nested["outbox"]),
             "order": OrderConfig.model_validate(nested["order"]),
+            "referral": ReferralConfig.model_validate(nested["referral"]),
         }
 
 

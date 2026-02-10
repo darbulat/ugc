@@ -46,6 +46,7 @@ from ugc_bot.infrastructure.db.models import (
     ContactPricingModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    ManagerModel,
     OrderModel,
     OrderResponseModel,
     UserModel,
@@ -664,6 +665,36 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     ]
 
 
+def _generate_referral_code() -> str:
+    """Generate a unique 8-char referral code."""
+    import secrets
+
+    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+    return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
+class ManagerAdmin(ModelView, model=ManagerModel):
+    """Admin view for referral managers."""
+
+    name = "Менеджеры"
+    column_list = [
+        ManagerModel.manager_id,
+        ManagerModel.user_id,
+        ManagerModel.referral_code,
+        ManagerModel.name,
+        ManagerModel.created_at,
+    ]
+    form_columns = [
+        ManagerModel.user_id,
+        ManagerModel.name,
+    ]
+
+    async def insert_model(self, request: Request, data: dict):
+        """Insert manager with auto-generated referral code."""
+        data["referral_code"] = _generate_referral_code()
+        return await super().insert_model(request, data)
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -808,6 +839,7 @@ def create_admin_app() -> FastAPI:  # noqa: C901
     _admin_container = container
 
     admin.add_view(UserAdmin)
+    admin.add_view(ManagerAdmin)
     admin.add_view(BloggerProfileAdmin)
     admin.add_view(AdvertiserProfileAdmin)
     admin.add_view(OrderAdmin)

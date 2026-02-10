@@ -31,6 +31,10 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.referral_income_service import (
+    ReferralIncomeService,
+)
+from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.container.types import BotServices
@@ -139,6 +143,14 @@ def build_bot_services(
         "blogger_registration_service": BloggerRegistrationService(
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
+            referral_service=ReferralService(
+                manager_repo=repos["manager_repo"],
+                user_referral_pending_repo=repos["user_referral_pending_repo"],
+                creator_manager_binding_repo=repos[
+                    "creator_manager_binding_repo"
+                ],
+                transaction_manager=transaction_manager,
+            ),
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),
@@ -215,11 +227,28 @@ def build_bot_services(
             nps_repo=repos["nps_repo"],
             transaction_manager=transaction_manager,
         ),
+        "referral_service": ReferralService(
+            manager_repo=repos["manager_repo"],
+            user_referral_pending_repo=repos["user_referral_pending_repo"],
+            creator_manager_binding_repo=repos["creator_manager_binding_repo"],
+            transaction_manager=transaction_manager,
+        ),
+        "referral_income_service": ReferralIncomeService(
+            creator_manager_binding_repo=repos["creator_manager_binding_repo"],
+            order_response_repo=repos["order_response_repo"],
+            order_repo=repos["order_repo"],
+            payment_repo=repos["payment_repo"],
+            interaction_repo=repos["interaction_repo"],
+            user_repo=repos["user_repo"],
+            transaction_manager=transaction_manager,
+        ),
         "issue_lock_manager": issue_lock_manager,
         "offer_response_rate_limiter": offer_response_rate_limiter,
         "order_repo": repos["order_repo"],
         "order_response_repo": repos["order_response_repo"],
         "interaction_repo": repos["interaction_repo"],
+        "manager_repo": repos["manager_repo"],
+        "payout_request_repo": repos["payout_request_repo"],
         "outbox_publisher": outbox_publisher,
         "transaction_manager": transaction_manager,
         "max_order_price": config.order.max_order_price,
