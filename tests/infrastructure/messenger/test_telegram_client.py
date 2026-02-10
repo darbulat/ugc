@@ -3,6 +3,8 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiogram.exceptions import TelegramNetworkError
+from aiogram.methods import SendMessage
 
 from ugc_bot.application.messenger.dto import (
     Button,
@@ -255,3 +257,43 @@ def test_build_keyboard_markup_unknown_kind_returns_none() -> None:
     keyboard = Keyboard(kind=UnknownKind(), rows=[])  # type: ignore[arg-type]
     result = build_keyboard_markup(keyboard)
     assert result is None
+
+
+def _network_error() -> TelegramNetworkError:
+    """Build TelegramNetworkError with required method argument."""
+    return TelegramNetworkError(
+        SendMessage(chat_id=0, text=""), "Connection reset by peer"
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_text_retries_on_telegram_network_error_and_succeeds(
+    fake_bot: MagicMock,
+) -> None:
+    """send_text succeeds after one TelegramNetworkError (retry)."""
+    fake_bot.send_message = AsyncMock(
+        side_effect=[_network_error(), None],
+    )
+    client = TelegramMessengerClient(
+        bot=fake_bot,
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+    await client.send_text(chat_id="123", text="Hello")
+    assert fake_bot.send_message.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_send_text_raises_after_all_retries_exhausted(
+    fake_bot: MagicMock,
+) -> None:
+    """send_text raises TelegramNetworkError after all retries fail."""
+    fake_bot.send_message = AsyncMock(side_effect=_network_error())
+    client = TelegramMessengerClient(
+        bot=fake_bot,
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+    with pytest.raises(TelegramNetworkError, match="Connection reset by peer"):
+        await client.send_text(chat_id="123", text="Hello")
+    assert fake_bot.send_message.call_count == 3

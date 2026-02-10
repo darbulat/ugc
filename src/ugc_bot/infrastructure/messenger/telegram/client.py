@@ -1,6 +1,11 @@
 """Telegram messenger client implementation."""
 
+import asyncio
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
+
 from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -18,13 +23,42 @@ from ugc_bot.application.messenger.dto import (
 )
 from ugc_bot.application.messenger.ports import MessengerClient
 
+TELEGRAM_API_RETRY_ATTEMPTS = 3
+TELEGRAM_API_RETRY_DELAY_SECONDS = 0.5
+
+T = TypeVar("T")
+
 
 class TelegramMessengerClient(MessengerClient):
-    """Messenger client backed by aiogram Bot."""
+    """Messenger client backed by aiogram Bot with retry on network errors."""
 
-    def __init__(self, bot: Bot) -> None:
-        """Initialize with aiogram Bot."""
+    def __init__(
+        self,
+        bot: Bot,
+        *,
+        retry_attempts: int = TELEGRAM_API_RETRY_ATTEMPTS,
+        retry_delay_seconds: float = TELEGRAM_API_RETRY_DELAY_SECONDS,
+    ) -> None:
+        """Initialize with aiogram Bot and optional retry parameters."""
         self._bot = bot
+        self._retry_attempts = retry_attempts
+        self._retry_delay_seconds = retry_delay_seconds
+
+    async def _with_retry(self, coro_factory: Callable[[], Awaitable[T]]) -> T:
+        """Execute coroutine with retry on TelegramNetworkError."""
+        last_exc: TelegramNetworkError | None = None
+        for attempt in range(1, self._retry_attempts + 1):
+            try:
+                return await coro_factory()
+            except TelegramNetworkError as exc:
+                last_exc = exc
+                if attempt < self._retry_attempts:
+                    await asyncio.sleep(self._retry_delay_seconds)
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError(
+            "Retry loop finished without attempt"
+        )  # pragma: no cover
 
     async def send_text(
         self,
@@ -36,12 +70,14 @@ class TelegramMessengerClient(MessengerClient):
         disable_preview: bool | None = None,
     ) -> None:
         """Send a text message."""
-        await self._bot.send_message(
-            chat_id=int(chat_id),
-            text=text,
-            reply_markup=_build_markup(keyboard),
-            parse_mode=parse_mode,
-            disable_web_page_preview=disable_preview,
+        await self._with_retry(
+            lambda: self._bot.send_message(
+                chat_id=int(chat_id),
+                text=text,
+                reply_markup=_build_markup(keyboard),
+                parse_mode=parse_mode,
+                disable_web_page_preview=disable_preview,
+            )
         )
 
     async def send_photo(
@@ -54,12 +90,14 @@ class TelegramMessengerClient(MessengerClient):
         parse_mode: str | None = None,
     ) -> None:
         """Send a photo message."""
-        await self._bot.send_photo(
-            chat_id=int(chat_id),
-            photo=file_id,
-            caption=caption,
-            reply_markup=_build_markup(keyboard),
-            parse_mode=parse_mode,
+        await self._with_retry(
+            lambda: self._bot.send_photo(
+                chat_id=int(chat_id),
+                photo=file_id,
+                caption=caption,
+                reply_markup=_build_markup(keyboard),
+                parse_mode=parse_mode,
+            )
         )
 
     async def edit_text(
@@ -72,12 +110,14 @@ class TelegramMessengerClient(MessengerClient):
         parse_mode: str | None = None,
     ) -> None:
         """Edit message text."""
-        await self._bot.edit_message_text(
-            chat_id=int(chat_id),
-            message_id=int(message_id),
-            text=text,
-            reply_markup=_build_markup(keyboard),
-            parse_mode=parse_mode,
+        await self._with_retry(
+            lambda: self._bot.edit_message_text(
+                chat_id=int(chat_id),
+                message_id=int(message_id),
+                text=text,
+                reply_markup=_build_markup(keyboard),
+                parse_mode=parse_mode,
+            )
         )
 
     async def edit_reply_markup(
@@ -88,10 +128,12 @@ class TelegramMessengerClient(MessengerClient):
         keyboard: Keyboard | None = None,
     ) -> None:
         """Edit message keyboard (or remove)."""
-        await self._bot.edit_message_reply_markup(
-            chat_id=int(chat_id),
-            message_id=int(message_id),
-            reply_markup=_build_markup(keyboard),
+        await self._with_retry(
+            lambda: self._bot.edit_message_reply_markup(
+                chat_id=int(chat_id),
+                message_id=int(message_id),
+                reply_markup=_build_markup(keyboard),
+            )
         )
 
     async def answer_callback(
@@ -102,10 +144,12 @@ class TelegramMessengerClient(MessengerClient):
         show_alert: bool = False,
     ) -> None:
         """Answer a callback query."""
-        await self._bot.answer_callback_query(
-            callback_query_id=callback_id,
-            text=text,
-            show_alert=show_alert,
+        await self._with_retry(
+            lambda: self._bot.answer_callback_query(
+                callback_query_id=callback_id,
+                text=text,
+                show_alert=show_alert,
+            )
         )
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
@@ -125,7 +169,7 @@ class TelegramMessengerClient(MessengerClient):
             kwargs["need_email"] = True
         if invoice.send_email_to_provider:
             kwargs["send_email_to_provider"] = True
-        await self._bot.send_invoice(**kwargs)
+        await self._with_retry(lambda: self._bot.send_invoice(**kwargs))
 
 
 def build_keyboard_markup(keyboard: Keyboard | None):

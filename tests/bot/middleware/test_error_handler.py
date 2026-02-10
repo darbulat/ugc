@@ -1,9 +1,12 @@
 """Tests for error handling middleware."""
 
+import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiogram.exceptions import TelegramNetworkError
+from aiogram.methods import SendMessage
 from aiogram.types import CallbackQuery, Chat, Message, PreCheckoutQuery, User
 
 from tests.helpers.fakes import (
@@ -113,6 +116,31 @@ async def test_middleware_handles_unexpected_error() -> None:
 
     assert len(message.answers) == 1
     assert "неожиданная ошибка" in _answer_text(message.answers).lower()
+
+
+@pytest.mark.asyncio
+async def test_middleware_handles_telegram_network_error(caplog) -> None:
+    """TelegramNetworkError yields WARNING log and generic user message."""
+    caplog.set_level(
+        logging.WARNING, logger="ugc_bot.bot.middleware.error_handler"
+    )
+    middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
+    message = FakeMessage(user=FakeUser(123))
+
+    async def handler(event, data):
+        raise TelegramNetworkError(
+            SendMessage(chat_id=0, text=""), "Connection reset by peer"
+        )
+
+    await middleware(handler, message, {})
+
+    assert len(message.answers) == 1
+    assert "неожиданная ошибка" in _answer_text(message.answers).lower()
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) >= 1
+    assert any(
+        "Telegram API network error (transient)" in r.message for r in warnings
+    )
 
 
 @pytest.mark.asyncio
