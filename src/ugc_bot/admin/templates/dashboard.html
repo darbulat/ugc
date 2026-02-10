@@ -125,7 +125,7 @@
       {% if ref_total_pages > 1 %}
         <nav class="pagination" aria-label="Пагинация рефералов">
           <span class="pagination__info">
-            {{ (ref_page - 1) * ref_per_page + 1 }}–{{ min(ref_page * ref_per_page, ref_total) }} из {{ ref_total }}
+            {{ (ref_page - 1) * ref_per_page + 1 }}–{{ [ref_page * ref_per_page, ref_total] | min }} из {{ ref_total }}
           </span>
           <div class="pagination__links">
             {% if ref_page > 1 %}
