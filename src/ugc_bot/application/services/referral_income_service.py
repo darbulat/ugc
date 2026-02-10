@@ -26,16 +26,28 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 
 def _aggregate_payout_requests(
     requests: list[PayoutRequest],
-) -> tuple[float, bool]:
-    """Return (sum of PAID amounts, True if any PENDING)."""
+    now: datetime,
+) -> tuple[float, bool, bool]:
+    """Return (sum of PAID amounts, has_pending, has_request_today)."""
     paid_total = 0.0
     has_pending = False
+    has_request_today = False
+    now_date = (
+        now.date() if now.tzinfo else now.replace(tzinfo=timezone.utc).date()
+    )
     for req in requests:
         if req.status == PayoutRequestStatus.PENDING:
             has_pending = True
         if req.status == PayoutRequestStatus.PAID and req.amount is not None:
             paid_total += float(req.amount)
-    return (paid_total, has_pending)
+        req_date = (
+            req.requested_at.date()
+            if req.requested_at.tzinfo
+            else req.requested_at.replace(tzinfo=timezone.utc).date()
+        )
+        if req_date == now_date:
+            has_request_today = True
+    return (paid_total, has_pending, has_request_today)
 
 
 FIRST_YEAR_RATE = 0.10
@@ -52,6 +64,7 @@ class UserReferralStats:
     income_total: float
     paid_total: float
     has_pending_payout: bool
+    has_request_today: bool
 
 
 def _years_since(date: datetime, reference: datetime) -> float:
@@ -187,8 +200,8 @@ class ReferralIncomeService:
                 referrer_user_id, session=session
             )
         )
-        paid_total, has_pending_payout = _aggregate_payout_requests(
-            payout_requests
+        paid_total, has_pending_payout, has_request_today = (
+            _aggregate_payout_requests(payout_requests, now)
         )
 
         return UserReferralStats(
@@ -198,6 +211,7 @@ class ReferralIncomeService:
             income_total=round(income_total, 2),
             paid_total=round(paid_total, 2),
             has_pending_payout=has_pending_payout,
+            has_request_today=has_request_today,
         )
 
     async def count_completed_orders_for_user(

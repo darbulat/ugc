@@ -1,6 +1,6 @@
 """Tests for ReferralIncomeService."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -68,6 +68,7 @@ async def test_get_user_referral_stats_empty_returns_zeros() -> None:
     assert stats.income_total == 0.0
     assert stats.paid_total == 0.0
     assert stats.has_pending_payout is False
+    assert stats.has_request_today is False
 
 
 @pytest.mark.asyncio
@@ -139,6 +140,7 @@ async def test_get_user_referral_stats_with_one_binding_no_orders() -> None:
     assert stats.income_total == 0.0
     assert stats.paid_total == 0.0
     assert stats.has_pending_payout is False
+    assert stats.has_request_today is False
 
 
 @pytest.mark.asyncio
@@ -244,6 +246,7 @@ async def test_get_user_referral_stats_with_completed_order_counts_income() -> (
     assert stats.income_total > 0
     assert stats.paid_total == 0.0
     assert stats.has_pending_payout is False
+    assert stats.has_request_today is False
 
 
 @pytest.mark.asyncio
@@ -361,6 +364,7 @@ async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
     assert stats.paid_total == 150.0
     assert stats.income_total == 0.0
     assert stats.has_pending_payout is True
+    assert stats.has_request_today is True
 
 
 @pytest.mark.asyncio
@@ -394,4 +398,38 @@ async def test_get_user_referral_stats_has_pending_payout_when_pending() -> (
     )
     stats = await service.get_user_referral_stats(user_id)
     assert stats.has_pending_payout is True
+    assert stats.has_request_today is True
     assert stats.paid_total == 0.0
+
+
+@pytest.mark.asyncio
+async def test_has_request_today_false_when_request_yesterday() -> None:
+    """has_request_today is False when only request is from yesterday."""
+    now = datetime.now(timezone.utc)
+    yesterday = now - timedelta(days=1)
+    user_id = uuid4()
+
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=user_id,
+            requested_at=yesterday,
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("10.00"),
+        )
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=payout_repo,
+        transaction_manager=None,
+    )
+    stats = await service.get_user_referral_stats(user_id)
+    assert stats.has_request_today is False
+    assert stats.has_pending_payout is True

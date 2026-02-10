@@ -58,10 +58,12 @@ def _referral_stats_text(
 
 
 def _referral_keyboard(
-    balance: float, has_pending_payout: bool
+    balance: float,
+    has_pending_payout: bool,
+    has_request_today: bool,
 ) -> Keyboard | None:
-    """Payout button only when balance > 0 and no pending payout request."""
-    if balance <= 0 or has_pending_payout:
+    """Payout button only when balance > 0, no pending and no request today."""
+    if balance <= 0 or has_pending_payout or has_request_today:
         return None
     return Keyboard(
         kind=KeyboardKind.INLINE,
@@ -114,7 +116,9 @@ async def referal_command(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
-        keyboard=_referral_keyboard(balance, stats.has_pending_payout),
+        keyboard=_referral_keyboard(
+            balance, stats.has_pending_payout, stats.has_request_today
+        ),
     )
 
 
@@ -146,6 +150,14 @@ async def payout_button_callback(
         return
 
     stats = await referral_income_service.get_user_referral_stats(user.user_id)
+    if stats.has_request_today:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Вы уже подавали заявку на вывод сегодня.",
+            show_alert=True,
+        )
+        return
+
     balance = stats.income_total - stats.paid_total
     request_amount = Decimal(str(round(balance, 2)))
 
