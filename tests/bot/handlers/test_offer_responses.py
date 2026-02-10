@@ -18,6 +18,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
+    ORDER_CLOSED_MESSAGE,
     _send_contact_immediately,
     handle_offer_response,
     handle_offer_skip,
@@ -604,7 +605,6 @@ async def test_offer_response_handler_limit_reached(
         data=f"offer:{order.order_id}", user=FakeUser(15), message=message
     )
 
-    # Wrap handler call with middleware to handle errors
     await _call_handler_with_middleware(
         handle_offer_response,
         callback,
@@ -616,7 +616,10 @@ async def test_offer_response_handler_limit_reached(
     )
 
     assert callback.answers
-    assert "Лимит откликов" in callback.answers[0]
+    assert "Заказ уже закрыт" in callback.answers[0]
+    assert len(message.edit_reply_markup_calls) == 1
+    assert message.edit_reply_markup_calls[0] is None
+    assert ORDER_CLOSED_MESSAGE in message.answers
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,13 @@ from uuid import UUID
 from aiogram import Router
 from aiogram.types import CallbackQuery
 
-from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.messenger.dto import (
+    Button,
+    IncomingCallback,
+    Keyboard,
+    KeyboardKind,
+)
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -35,6 +41,35 @@ router = Router()
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+
+ORDER_CLOSED_MESSAGE = (
+    "❗ Заказ уже закрыт\n\n"
+    "Спасибо за отклик — все креаторы по этому заказу уже подобраны.\n\n"
+    "Мы обязательно пришлём новые заказы, как только они появятся.\n\n"
+    "Следите за уведомлениями в боте 🙌"
+)
+
+
+async def _send_order_closed_and_remove_keyboard(
+    incoming: IncomingCallback,
+    messenger_client: MessengerClient,
+) -> None:
+    """Answer callback, remove offer keyboard, and send order-closed message."""
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text="Заказ уже закрыт.",
+    )
+    if incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=ORDER_CLOSED_MESSAGE,
+    )
 
 
 @router.callback_query(
@@ -125,10 +160,17 @@ async def handle_offer_response(
         )
         return
 
-    # Middleware handles OrderCreationError and other exceptions
-    result = await offer_response_service.respond_and_finalize(
-        order_id, user.user_id
-    )
+    try:
+        result = await offer_response_service.respond_and_finalize(
+            order_id, user.user_id
+        )
+    except OrderCreationError as exc:
+        if str(exc) == "Order response limit reached.":
+            await _send_order_closed_and_remove_keyboard(
+                incoming, messenger_client
+            )
+            return
+        raise
 
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
