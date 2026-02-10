@@ -165,12 +165,10 @@ async def handle_offer_response(
             order_id, user.user_id
         )
     except OrderCreationError as exc:
-        if str(exc) == "Order response limit reached.":
-            await _send_order_closed_and_remove_keyboard(
-                incoming, messenger_client
-            )
-            return
-        raise
+        await _send_order_closed_and_remove_keyboard(
+            incoming, messenger_client
+        )
+        return
 
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
