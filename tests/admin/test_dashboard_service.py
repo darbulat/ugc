@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -164,6 +165,8 @@ async def test_get_dashboard_returns_structure(service) -> None:
     assert "delayed_orders" in data
     assert "referrals" in data
     assert "referrers" in data["referrals"]
+    assert "total_earned" in data["referrals"]
+    assert "total_balance" in data["referrals"]
     assert "payout_requests" in data
 
 
@@ -201,6 +204,10 @@ async def test_get_dashboard_includes_referral_referrers(service) -> None:
     assert referrers[0]["referred_creators"] == 3
     assert referrers[0]["referred_advertisers"] == 2
     assert referrers[0]["new_in_period"] == 1
+    assert "balance" in referrers[0]
+    assert referrers[0]["balance"] is None  # no referral_income_service in test
+    assert data["referrals"]["total_earned"] is None
+    assert data["referrals"]["total_balance"] is None
 
 
 @pytest.mark.asyncio
@@ -234,6 +241,51 @@ async def test_get_dashboard_includes_payout_requests(service) -> None:
     assert payouts[0]["status"] == "pending"
     assert payouts[0]["status_label"] == "Ожидает"
     assert payouts[0]["amount"] == 100.50
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_referrers_balance_and_sort_when_income_service_set(
+    thresholds,
+) -> None:
+    """With referral_income_service, referrers get balance and sort by it."""
+    ref_user_id = uuid4()
+    ref_row = SimpleNamespace(
+        user_id=ref_user_id,
+        username="manager1",
+        referral_code="mgr1",
+        total_referred=5,
+        referred_creators=3,
+        referred_advertisers=2,
+        new_in_period=1,
+    )
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[ref_row]),
+        _FakeResult(all_rows=[]),
+    ]
+    mock_income = AsyncMock()
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=SimpleNamespace(income_total=100.0, paid_total=30.0)
+    )
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(*results),
+        timezone_name="UTC",
+        thresholds=thresholds,
+        referral_income_service=mock_income,
+    )
+    data = await svc.get_dashboard("today")
+    referrers = data["referrals"]["referrers"]
+    assert len(referrers) == 1
+    assert referrers[0]["balance"] == 70.0
+    assert referrers[0]["user_id"] == str(ref_user_id)
+    assert data["referrals"]["total_earned"] == 100.0
+    assert data["referrals"]["total_balance"] == 70.0
 
 
 @pytest.mark.asyncio

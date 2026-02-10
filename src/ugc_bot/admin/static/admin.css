@@ -180,6 +180,19 @@ body {
   margin: 0 0 12px 0;
 }
 
+.referral-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 16px;
+  padding: 12px 0;
+}
+
+.referral-totals .metric {
+  padding: 0;
+  border-bottom: none;
+}
+
 .detail-row {
   display: grid;
   grid-template-columns: 180px 1fr;

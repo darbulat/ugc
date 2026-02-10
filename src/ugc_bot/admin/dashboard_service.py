@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,11 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
     UserReferralBindingModel,
 )
+
+if TYPE_CHECKING:
+    from ugc_bot.application.services.referral_income_service import (
+        ReferralIncomeService,
+    )
 
 PeriodKey = Literal["today", "yesterday", "7d", "30d"]
 
@@ -83,11 +88,13 @@ class AdminDashboardService:
         session_factory: async_sessionmaker[AsyncSession],
         timezone_name: str,
         thresholds: DelayThresholds,
+        referral_income_service: "ReferralIncomeService | None" = None,
     ) -> None:
         """Initialize dashboard service dependencies."""
         self._session_factory = session_factory
         self._timezone = ZoneInfo(timezone_name)
         self._thresholds = thresholds
+        self._referral_income_service = referral_income_service
 
     async def get_dashboard(self, period: PeriodKey) -> dict:
         """Return dashboard cards and delayed orders list."""
@@ -99,6 +106,7 @@ class AdminDashboardService:
             delayed_orders = await self._list_delayed_orders(session)
             referrers = await self._get_referral_referrers(session, window)
             payout_requests = await self._list_payout_requests(session)
+        referral_data = await self._enrich_referrers_with_balance(referrers)
         return {
             "period": period,
             "registrations": registrations,
@@ -108,7 +116,7 @@ class AdminDashboardService:
                 "delays": len(delayed_orders),
             },
             "delayed_orders": delayed_orders,
-            "referrals": {"referrers": referrers},
+            "referrals": referral_data,
             "payout_requests": payout_requests,
         }
 
@@ -303,21 +311,15 @@ class AdminDashboardService:
             .where(bindings.created_at < window.current_end)
             .scalar_subquery()
         )
-        query = (
-            select(
-                UserModel.user_id,
-                UserModel.username,
-                UserModel.referral_code,
-                func.coalesce(total_subq, 0).label("total_referred"),
-                func.coalesce(creators_subq, 0).label("referred_creators"),
-                func.coalesce(advertisers_subq, 0).label(
-                    "referred_advertisers"
-                ),
-                func.coalesce(new_in_period_subq, 0).label("new_in_period"),
-            )
-            .where(UserModel.referral_code.isnot(None))
-            .order_by(func.coalesce(total_subq, 0).desc())
-        )
+        query = select(
+            UserModel.user_id,
+            UserModel.username,
+            UserModel.referral_code,
+            func.coalesce(total_subq, 0).label("total_referred"),
+            func.coalesce(creators_subq, 0).label("referred_creators"),
+            func.coalesce(advertisers_subq, 0).label("referred_advertisers"),
+            func.coalesce(new_in_period_subq, 0).label("new_in_period"),
+        ).where(UserModel.referral_code.isnot(None))
         result = await session.execute(query)
         rows = result.all()
         return [
@@ -332,6 +334,49 @@ class AdminDashboardService:
             }
             for row in rows
         ]
+
+    async def _enrich_referrers_with_balance(
+        self, referrers: list[dict]
+    ) -> dict:
+        """Add balance to referrers, sort by balance desc; return totals."""
+        total_earned: float | None = None
+        total_balance: float | None = None
+        if not referrers:
+            return {
+                "referrers": referrers,
+                "total_earned": total_earned,
+                "total_balance": total_balance,
+            }
+        service = self._referral_income_service
+        if service is None:
+            for r in referrers:
+                r["balance"] = None
+            referrers.sort(
+                key=lambda x: (x["total_referred"], x["user_id"]), reverse=True
+            )
+            return {
+                "referrers": referrers,
+                "total_earned": total_earned,
+                "total_balance": total_balance,
+            }
+        sum_earned = 0.0
+        sum_balance = 0.0
+        for r in referrers:
+            stats = await service.get_user_referral_stats(UUID(r["user_id"]))
+            balance = round(stats.income_total - stats.paid_total, 2)
+            r["balance"] = balance
+            sum_earned += stats.income_total
+            sum_balance += balance
+        total_earned = round(sum_earned, 2)
+        total_balance = round(sum_balance, 2)
+        referrers.sort(
+            key=lambda x: (x["balance"] or 0.0, x["user_id"]), reverse=True
+        )
+        return {
+            "referrers": referrers,
+            "total_earned": total_earned,
+            "total_balance": total_balance,
+        }
 
     async def _list_payout_requests(self, session: AsyncSession) -> list[dict]:
         """Return recent payout requests with referrer username."""

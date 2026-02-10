@@ -8,7 +8,7 @@ from typing import Any, TypeVar, cast
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException
-from sqladmin import Admin, ModelView
+from sqladmin import Admin, BaseView, ModelView, expose
 from sqladmin.authentication import login_required
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -30,6 +30,9 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
+from ugc_bot.application.services.referral_income_service import (
+    ReferralIncomeService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
@@ -123,10 +126,14 @@ def _build_dashboard_service(
         low_picked_hours=config.admin.admin_low_picked_hours,
         archive_days=config.admin.admin_archive_days,
     )
+    referral_income_service: ReferralIncomeService | None = None
+    if container.session_factory and container.transaction_manager:
+        referral_income_service = container.build_referral_income_service()
     return AdminDashboardService(
         session_factory=container.session_factory,
         timezone_name=config.admin.admin_dashboard_timezone,
         thresholds=thresholds,
+        referral_income_service=referral_income_service,
     )
 
 
@@ -814,6 +821,22 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     }
 
 
+DASHBOARD_URL = "https://bot.usemycontent.ru/admin/dashboard"
+
+
+class DashboardLinkView(BaseView):
+    """Sidebar link to the MVP dashboard (above model views)."""
+
+    name = "Дашборд"
+    icon = "fa-solid fa-chart-line"
+
+    @expose("/dashboard-mvp", methods=["GET"])
+    @login_required
+    async def dashboard_redirect(self, request: Request):
+        """Redirect to the MVP dashboard."""
+        return RedirectResponse(url=DASHBOARD_URL, status_code=302)
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -957,6 +980,7 @@ def create_admin_app() -> FastAPI:  # noqa: C901
     global _admin_container
     _admin_container = container
 
+    admin.add_base_view(DashboardLinkView)
     admin.add_view(UserAdmin)
     admin.add_view(BloggerProfileAdmin)
     admin.add_view(AdvertiserProfileAdmin)

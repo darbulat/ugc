@@ -19,6 +19,9 @@ from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
+from ugc_bot.application.services.referral_income_service import (
+    ReferralIncomeService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.container import (
@@ -83,6 +86,13 @@ class Container:
         """UserRoleService, ComplaintService, InteractionService for admin."""
         repos = self.build_repos()
         return service_factory.build_admin_services(self._config, repos)
+
+    def build_referral_income_service(self) -> ReferralIncomeService:
+        """ReferralIncomeService for admin dashboard (referrer balance)."""
+        repos = self.build_repos()
+        return service_factory.build_referral_income_service(
+            repos, self._transaction_manager
+        )
 
     def build_outbox_deps(
         self,

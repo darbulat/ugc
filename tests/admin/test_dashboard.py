@@ -72,7 +72,11 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "orders": {"active": 3, "completed": 1, "archived": 0},
             "problems": {"open_complaints": 0, "delays": 0},
             "delayed_orders": [],
-            "referrals": {"referrers": []},
+            "referrals": {
+                "referrers": [],
+                "total_earned": None,
+                "total_balance": None,
+            },
             "payout_requests": [],
         },
         creators=[],
@@ -192,7 +196,11 @@ def test_admin_dashboard_api(monkeypatch) -> None:
         "orders": {"active": 0, "completed": 0, "archived": 0},
         "problems": {"open_complaints": 0, "delays": 0},
         "delayed_orders": [],
-        "referrals": {"referrers": []},
+        "referrals": {
+            "referrers": [],
+            "total_earned": None,
+            "total_balance": None,
+        },
         "payout_requests": [],
     }
     client = _build_admin_client(

@@ -78,6 +78,18 @@
   <section class="section">
     <h2>Рефералы (менеджеры)</h2>
     <p class="muted">Аналитика по привлечённым пользователям: кто из рефереров сколько привёл креаторов и заказчиков и сколько новых за выбранный период.</p>
+    {% if payload.referrals.total_earned is not none or payload.referrals.total_balance is not none %}
+      <div class="referral-totals">
+        <div class="metric">
+          <div class="metric__label">Всего заработано рефералами</div>
+          <div class="metric__value">{% if payload.referrals.total_earned is not none %}{{ "%.2f"|format(payload.referrals.total_earned) }}{% else %}—{% endif %}</div>
+        </div>
+        <div class="metric">
+          <div class="metric__label">Всего на балансе (к выплате)</div>
+          <div class="metric__value">{% if payload.referrals.total_balance is not none %}{{ "%.2f"|format(payload.referrals.total_balance) }}{% else %}—{% endif %}</div>
+        </div>
+      </div>
+    {% endif %}
     {% set referrers = payload.referrals.referrers %}
     {% if referrers %}
       <table class="table">
@@ -85,6 +97,7 @@
           <tr>
             <th>Менеджер</th>
             <th>Код</th>
+            <th>Баланс (доступно к выводу)</th>
             <th>Всего привлечено</th>
             <th>Креаторы</th>
             <th>Заказчики</th>
@@ -96,6 +109,7 @@
             <tr>
               <td>{{ r.username }}</td>
               <td><code>{{ r.referral_code }}</code></td>
+              <td>{% if r.balance is not none %}{{ "%.2f"|format(r.balance) }}{% else %}—{% endif %}</td>
               <td>{{ r.total_referred }}</td>
               <td>{{ r.referred_creators }}</td>
               <td>{{ r.referred_advertisers }}</td>
