@@ -502,6 +502,8 @@ async def test_run_consumer_processes_activation_message(
 
     session_closed = {"value": False}
 
+    commit_called = {"value": False}
+
     class FakeConsumer:
         def __init__(self) -> None:
             self.started = False
@@ -514,6 +516,9 @@ async def test_run_consumer_processes_activation_message(
         async def stop(self) -> None:
             self.stopped = True
 
+        async def commit(self, offsets=None) -> None:  # type: ignore[no-untyped-def]
+            commit_called["value"] = True
+
         def __aiter__(self):
             return self
 
@@ -521,10 +526,13 @@ async def test_run_consumer_processes_activation_message(
             self._seen += 1
             if self._seen == 1:
                 return SimpleNamespace(
+                    topic="order_activated",
+                    partition=0,
+                    offset=0,
                     value={
                         "event": "order_activated",
                         "order_id": "00000000-0000-0000-0000-000000000999",
-                    }
+                    },
                 )
             raise asyncio.CancelledError
 
@@ -566,6 +574,7 @@ async def test_run_consumer_processes_activation_message(
         await run_consumer()
 
     assert send_called["value"] is True
+    assert commit_called["value"] is True
     assert fake_consumer.started is True
     assert fake_consumer.stopped is True
     assert fake_producer.started is True

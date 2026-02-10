@@ -209,23 +209,21 @@ class TestOutboxIntegration:
         # Save the order in repository so it can be found during processing
         await order_repo.save(test_order)
 
-        # Process events (should fail and retry)
+        # Process events (should fail and be marked for retry)
         await outbox_publisher.process_pending_events(
             kafka_publisher, max_retries=3
         )
 
-        # Get the failed event
-        failed_events = [
+        # Event should be back to PENDING for retry (not FAILED yet)
+        pending_for_retry = [
             e
             for e in outbox_repo.events.values()
-            if e.status == OutboxEventStatus.FAILED
+            if e.status == OutboxEventStatus.PENDING and e.retry_count == 1
         ]
-        assert len(failed_events) == 1
-        updated_event = failed_events[0]
+        assert len(pending_for_retry) == 1
+        updated_event = pending_for_retry[0]
         assert updated_event is not None
-        assert updated_event.status == OutboxEventStatus.FAILED
-        assert updated_event.retry_count == 1
-        assert "Mock failure" in updated_event.last_error
+        assert "Mock failure" in (updated_event.last_error or "")
 
     @pytest.mark.asyncio
     async def test_outbox_publisher_handles_max_retries_exceeded(self) -> None:

@@ -84,18 +84,23 @@ class OutboxPublisher:
         )
 
     async def process_pending_events(
-        self, kafka_publisher: OrderActivationPublisher, max_retries: int = 3
+        self,
+        kafka_publisher: OrderActivationPublisher,
+        max_retries: int = 3,
+        batch_limit: int = 100,
     ) -> None:
-        """Process pending events from outbox."""
+        """Process pending events (claim atomically, retry on failure)."""
 
-        async def _fetch_pending(session: object | None):
-            return await self.outbox_repo.get_pending_events(session=session)
+        async def _claim(session: object | None):
+            return await self.outbox_repo.claim_pending_events(
+                limit=batch_limit, session=session
+            )
 
-        pending_events = await with_optional_tx(
-            self.transaction_manager, _fetch_pending
+        claimed_events = await with_optional_tx(
+            self.transaction_manager, _claim
         )
 
-        for event in pending_events:
+        for event in claimed_events:
             if event.retry_count >= max_retries:
                 await self._mark_failed(
                     event.event_id,
@@ -109,17 +114,33 @@ class OutboxPublisher:
                     event, kafka_publisher, max_retries
                 )
             except Exception as e:
-                await self._mark_failed(
-                    event.event_id, str(e), event.retry_count + 1
-                )
+                next_retry = event.retry_count + 1
+                if next_retry >= max_retries:
+                    await self._mark_failed(event.event_id, str(e), next_retry)
+                else:
+                    await self._mark_for_retry(
+                        event.event_id, str(e), next_retry
+                    )
 
     async def _mark_failed(
         self, event_id: UUID, error: str, retry_count: int
     ) -> None:
-        """Mark event as failed within a transaction."""
+        """Mark event as failed (terminal) within a transaction."""
 
         async def _run(session: object | None) -> None:
             await self.outbox_repo.mark_as_failed(
+                event_id, error, retry_count, session=session
+            )
+
+        await with_optional_tx(self.transaction_manager, _run)
+
+    async def _mark_for_retry(
+        self, event_id: UUID, error: str, retry_count: int
+    ) -> None:
+        """Mark event for retry (back to PENDING) within a transaction."""
+
+        async def _run(session: object | None) -> None:
+            await self.outbox_repo.mark_for_retry(
                 event_id, error, retry_count, session=session
             )
 

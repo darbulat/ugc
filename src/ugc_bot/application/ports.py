@@ -397,6 +397,12 @@ class OutboxRepository(ABC):
         """Get pending events for processing."""
 
     @abstractmethod
+    async def claim_pending_events(
+        self, limit: int = 100, session: object | None = None
+    ) -> list[OutboxEvent]:
+        """Claim pending events (set to PROCESSING) and return them."""
+
+    @abstractmethod
     async def mark_as_processing(
         self, event_id: UUID, session: object | None = None
     ) -> None:
@@ -419,7 +425,17 @@ class OutboxRepository(ABC):
         retry_count: int,
         session: object | None = None,
     ) -> None:
-        """Mark event as failed with retry."""
+        """Mark event as failed (terminal state)."""
+
+    @abstractmethod
+    async def mark_for_retry(
+        self,
+        event_id: UUID,
+        error: str,
+        retry_count: int,
+        session: object | None = None,
+    ) -> None:
+        """Reset event to PENDING for retry; set retry_count and last_error."""
 
     @abstractmethod
     async def get_by_id(

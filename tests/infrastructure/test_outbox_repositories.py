@@ -160,6 +160,56 @@ class TestInMemoryOutboxRepository:
         assert pending_events[2].aggregate_id == "order-4"  # created_at 10:3
 
     @pytest.mark.asyncio
+    async def test_claim_pending_events(self) -> None:
+        """Claim pending events atomically; set status to PROCESSING."""
+
+        repo = InMemoryOutboxRepository()
+        event = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000001"),
+            event_type="order.activated",
+            aggregate_id="order-1",
+            aggregate_type="order",
+            payload={},
+            status=OutboxEventStatus.PENDING,
+            created_at=datetime.now(timezone.utc),
+            processed_at=None,
+            retry_count=0,
+            last_error=None,
+        )
+        await repo.save(event)
+        claimed = await repo.claim_pending_events(limit=10)
+        assert len(claimed) == 1
+        assert claimed[0].event_id == event.event_id
+        stored = await repo.get_by_id(event.event_id)
+        assert stored is not None
+        assert stored.status == OutboxEventStatus.PROCESSING
+
+    @pytest.mark.asyncio
+    async def test_mark_for_retry(self) -> None:
+        """mark_for_retry resets event to PENDING with updated retry_count."""
+
+        repo = InMemoryOutboxRepository()
+        event = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000001"),
+            event_type="order.activated",
+            aggregate_id="order-1",
+            aggregate_type="order",
+            payload={},
+            status=OutboxEventStatus.PROCESSING,
+            created_at=datetime.now(timezone.utc),
+            processed_at=None,
+            retry_count=0,
+            last_error=None,
+        )
+        await repo.save(event)
+        await repo.mark_for_retry(event.event_id, "Connection error", 1)
+        stored = await repo.get_by_id(event.event_id)
+        assert stored is not None
+        assert stored.status == OutboxEventStatus.PENDING
+        assert stored.retry_count == 1
+        assert stored.last_error == "Connection error"
+
+    @pytest.mark.asyncio
     async def test_mark_as_processing(self) -> None:
         """Event status is updated to processing."""
 

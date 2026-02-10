@@ -26,14 +26,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Lifespan event handler for FastAPI application.
 
-    Logs version and sanitized config on server startup.
-    This runs when the app is served by Uvicorn (including docker-compose),
-    where `main()` is typically not executed.
+    Logs version and sanitized config on server startup. Builds and stores
+    Container once for reuse across requests (avoids per-request DB engine).
     """
-    # Startup
     config = load_config()
-
     app.state.config = config
+    app.state.container = Container(config)
     log_startup_info(
         logger=logger, service_name="instagram-webhook", config=config
     )
@@ -148,17 +146,24 @@ async def handle_webhook(
         logger.warning("Invalid JSON payload", exc_info=exc)
         raise HTTPException(status_code=400, detail="Invalid JSON") from exc
 
-    logger.info("Received Instagram webhook", extra={"payload": payload})
+    obj = payload.get("object")
+    entries = payload.get("entry", [])
+    logger.info(
+        "Received Instagram webhook",
+        extra={"object": obj, "entry_count": len(entries)},
+    )
 
-    # Process webhook events
-    try:
+    # Process webhook events (reuse container from lifespan)
+    container = getattr(request.app.state, "container", None)
+    if container is None:
         container = Container(config)
-        verification_service = container.build_instagram_verification_service()
+    verification_service = container.build_instagram_verification_service()
+    try:
         await _process_webhook_events(payload, verification_service, config)
     except Exception as exc:
         logger.exception("Error processing webhook events", exc_info=exc)
-        # Still return 200 to prevent retries for processing errors
-        return {"status": "error", "message": str(exc)}
+        # Return 200 with generic message to prevent Meta retries
+        return {"status": "error", "message": "Internal error"}
 
     return {"status": "ok"}
 

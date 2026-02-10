@@ -1100,6 +1100,28 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         models = result.scalars().all()
         return [_to_outbox_event_entity(model) for model in models]
 
+    async def claim_pending_events(
+        self, limit: int = 100, session: object | None = None
+    ) -> List[OutboxEvent]:
+        """Claim pending events (set to PROCESSING) and return them."""
+
+        db_session = _get_async_session(session)
+        result = await db_session.execute(
+            select(OutboxEventModel)
+            .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
+            .order_by(OutboxEventModel.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        models = result.scalars().all()
+        for model in models:
+            await db_session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == model.event_id)
+                .values(status=OutboxEventStatus.PROCESSING)
+            )
+        return [_to_outbox_event_entity(model) for model in models]
+
     async def mark_as_processing(
         self, event_id: UUID, session: object | None = None
     ) -> None:
@@ -1136,7 +1158,7 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         retry_count: int,
         session: object | None = None,
     ) -> None:
-        """Mark event as failed with retry."""
+        """Mark event as failed (terminal state)."""
 
         db_session = _get_async_session(session)
         await db_session.execute(
@@ -1144,6 +1166,26 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
             .where(OutboxEventModel.event_id == event_id)
             .values(
                 status=OutboxEventStatus.FAILED,
+                last_error=error,
+                retry_count=retry_count,
+            )
+        )
+
+    async def mark_for_retry(
+        self,
+        event_id: UUID,
+        error: str,
+        retry_count: int,
+        session: object | None = None,
+    ) -> None:
+        """Reset event to PENDING for retry."""
+
+        db_session = _get_async_session(session)
+        await db_session.execute(
+            update(OutboxEventModel)
+            .where(OutboxEventModel.event_id == event_id)
+            .values(
+                status=OutboxEventStatus.PENDING,
                 last_error=error,
                 retry_count=retry_count,
             )

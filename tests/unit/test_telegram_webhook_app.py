@@ -1,13 +1,19 @@
 """Tests for Telegram webhook application."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.exceptions import TelegramRetryAfter
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from ugc_bot.config import AppConfig
-from ugc_bot.telegram_webhook_app import _set_webhook_with_retry, app
+from ugc_bot.telegram_webhook_app import (
+    _http_metrics_middleware,
+    _set_webhook_with_retry,
+    app,
+)
 
 
 def _test_config() -> AppConfig:
@@ -54,6 +60,48 @@ def client() -> TestClient:
             headers={"X-Telegram-Bot-Api-Secret-Token": "test_secret"},
         ) as c:
             yield c
+
+
+@pytest.mark.asyncio
+async def test_http_metrics_middleware_records_500_when_call_next_raises() -> (
+    None
+):
+    """Middleware except block runs when call_next raises non-HTTPException."""
+    request = MagicMock()
+    request.method = "GET"
+    request.url.path = "/health"
+
+    async def failing_next(_: object) -> None:
+        raise RuntimeError("downstream error")
+
+    with patch(
+        "ugc_bot.telegram_webhook_app.record_http_request"
+    ) as mock_record:
+        with pytest.raises(RuntimeError, match="downstream error"):
+            await _http_metrics_middleware(request, failing_next)
+        mock_record.assert_called_once()
+        call_kw = mock_record.call_args[1]
+        assert call_kw.get("status_code") == 500
+
+
+@pytest.mark.asyncio
+async def test_http_metrics_middleware_records_4xx_on_http_exception() -> None:
+    """Middleware except HTTPException branch runs when call_next raises it."""
+    request = MagicMock()
+    request.method = "GET"
+    request.url.path = "/missing"
+
+    async def http_404_next(_: object) -> None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    with patch(
+        "ugc_bot.telegram_webhook_app.record_http_request"
+    ) as mock_record:
+        with pytest.raises(HTTPException):
+            await _http_metrics_middleware(request, http_404_next)
+        mock_record.assert_called_once()
+        call_kw = mock_record.call_args[1]
+        assert call_kw.get("status_code") == 404
 
 
 def test_webhook_health(client: TestClient) -> None:
@@ -156,6 +204,62 @@ def test_webhook_post_update_returns_200(client: TestClient) -> None:
     response = client.post("/webhook/telegram", json=payload)
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_webhook_uses_fallback_semaphore_when_not_in_state(
+    client: TestClient,
+) -> None:
+    """When app.state has no webhook_semaphore, handler creates one."""
+    # Simulate missing semaphore (e.g. test or legacy path)
+    if hasattr(app.state, "webhook_semaphore"):
+        delattr(app.state, "webhook_semaphore")
+    payload = {
+        "update_id": 999,
+        "message": {
+            "message_id": 1,
+            "date": 1609459200,
+            "chat": {"id": 1, "type": "private"},
+            "from": {"id": 1, "is_bot": False, "first_name": "x"},
+            "text": "hi",
+        },
+    }
+    response = client.post(
+        "/webhook/telegram",
+        json=payload,
+        headers={"X-Telegram-Bot-Api-Secret-Token": "test_secret"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_webhook_background_task_logs_processing_error(
+    client: TestClient,
+) -> None:
+    """When feed_update raises in background task, handler still returns 200."""
+    # Make the dispatcher's feed_update raise so the task's except block runs
+    dispatcher = app.state.dispatcher
+    dispatcher.feed_update = AsyncMock(
+        side_effect=RuntimeError("processing err")
+    )
+    payload = {
+        "update_id": 1,
+        "message": {
+            "message_id": 1,
+            "date": 1609459200,
+            "chat": {"id": 1, "type": "private"},
+            "from": {"id": 1, "is_bot": False, "first_name": "x"},
+            "text": "hi",
+        },
+    }
+    response = client.post(
+        "/webhook/telegram",
+        json=payload,
+        headers={"X-Telegram-Bot-Api-Secret-Token": "test_secret"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    # Allow background task to run so coverage sees the except block
+    time.sleep(0.25)
 
 
 def test_webhook_rejects_invalid_json(client: TestClient) -> None:

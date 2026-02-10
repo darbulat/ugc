@@ -28,6 +28,7 @@ from ugc_bot.infrastructure.memory_repositories import (
 )
 from ugc_bot.instagram_webhook_app import (
     _notify_user_verification_success,
+    _unhandled_exception_handler,
     _verify_signature,
     app,
     main,
@@ -68,6 +69,28 @@ def test_webhook_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_unhandled_exception_handler_webhook_path_returns_200() -> None:
+    """Unhandled exception on webhook path returns 200 with generic message."""
+    request = MagicMock()
+    request.url.path = "/webhook/instagram"
+    exc = ValueError("Unhandled in handler")
+    response = await _unhandled_exception_handler(request, exc)
+    assert response.status_code == 200
+    assert response.body == b'{"status":"error","message":"Internal error"}'
+
+
+@pytest.mark.asyncio
+async def test_unhandled_exception_handler_non_webhook_returns_500() -> None:
+    """Unhandled exception on non-webhook path returns 500."""
+    request = MagicMock()
+    request.url.path = "/health"
+    exc = ValueError("Unhandled")
+    response = await _unhandled_exception_handler(request, exc)
+    assert response.status_code == 500
+    assert b"Internal server error" in response.body
 
 
 def test_verify_signature_rejects_non_prefixed() -> None:
@@ -484,7 +507,7 @@ def test_webhook_event_processing_exception(
 
     # Should still return 200 to prevent retries
     assert response.status_code == 200
-    assert response.json() == {"status": "error", "message": "Test exception"}
+    assert response.json() == {"status": "error", "message": "Internal error"}
     mock_notify.assert_not_called()
 
 

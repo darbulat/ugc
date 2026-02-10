@@ -38,6 +38,7 @@ from ugc_bot.startup_logging import log_startup_info
 logger = logging.getLogger(__name__)
 
 _MAX_WEBHOOK_RETRIES = 5
+_MAX_CONCURRENT_WEBHOOK_UPDATES = 100
 
 
 async def _set_webhook_with_retry(
@@ -111,6 +112,9 @@ async def _lifespan(app: FastAPI):
         app.state.dispatcher = dispatcher
         app.state.bot = bot
         app.state.storage = storage
+        app.state.webhook_semaphore = asyncio.Semaphore(
+            _MAX_CONCURRENT_WEBHOOK_UPDATES
+        )
 
         yield
     finally:
@@ -218,15 +222,20 @@ async def handle_webhook(
 
     record_telegram_webhook_received()
 
+    semaphore = getattr(request.app.state, "webhook_semaphore", None)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_WEBHOOK_UPDATES)
+
     async def _process_update_safely() -> None:
-        """Process webhook update in background with error logging."""
-        try:
-            await dispatcher.feed_update(bot, update)
-        except Exception:
-            logger.exception(
-                "Error processing webhook update",
-                extra={"update_id": getattr(update, "update_id", None)},
-            )
+        """Process webhook update with bounded concurrency and error logging."""
+        async with semaphore:
+            try:
+                await dispatcher.feed_update(bot, update)
+            except Exception:
+                logger.exception(
+                    "Error processing webhook update",
+                    extra={"update_id": getattr(update, "update_id", None)},
+                )
 
     asyncio.create_task(_process_update_safely())
     return {"status": "ok"}

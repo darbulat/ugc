@@ -10,11 +10,13 @@ from aiogram import Bot
 from aiokafka import (  # type: ignore[import-untyped]
     AIOKafkaConsumer,
     AIOKafkaProducer,
+    TopicPartition,
 )
 from aiokafka.errors import (  # type: ignore[import-untyped]
     KafkaConnectionError,
     NoBrokersAvailable,
 )
+from aiokafka.structs import OffsetAndMetadata  # type: ignore[import-untyped]
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import MessengerClient
@@ -260,6 +262,17 @@ async def _send_offers(
         )
 
 
+async def _commit_message_offset(consumer: AIOKafkaConsumer, msg: Any) -> None:
+    """Commit the offset for this message so it is not redelivered."""
+    topic = getattr(msg, "topic", None)
+    partition = getattr(msg, "partition", None)
+    offset = getattr(msg, "offset", None)
+    if topic is None or partition is None or offset is None:
+        return
+    tp = TopicPartition(topic, partition)
+    await consumer.commit({tp: OffsetAndMetadata(offset + 1, "")})
+
+
 async def _publish_dlq(
     producer: AIOKafkaProducer | None, topic: str, payload: dict[str, Any]
 ) -> None:
@@ -291,7 +304,7 @@ def _create_kafka_clients(
         group_id=config.kafka.kafka_group_id,
         value_deserializer=lambda value: json.loads(value.decode("utf-8")),
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
     )
     return dlq_producer, consumer
 
@@ -318,32 +331,45 @@ async def _consume_forever(
         logger.info("Kafka consumer subscribed, waiting for messages")
 
         async for msg in consumer:
-            val = getattr(msg, "value", None)
-            if not isinstance(val, dict):  # pragma: no cover
-                logger.debug(
-                    "Skipping non-dict message", extra={"msg": str(msg)}
+            try:
+                val = getattr(msg, "value", None)
+                if not isinstance(val, dict):  # pragma: no cover
+                    logger.debug(
+                        "Skipping non-dict message",
+                        extra={"msg": str(msg)},
+                    )
+                    await _commit_message_offset(consumer, msg)
+                    continue
+                order_id = _parse_order_id(val)
+                if order_id is None:  # pragma: no cover
+                    await _commit_message_offset(consumer, msg)
+                    continue
+                logger.info(
+                    "Received order_activation event",
+                    extra={
+                        "order_id": order_id,
+                        "partition": getattr(msg, "partition", None),
+                        "offset": getattr(msg, "offset", None),
+                    },
                 )
-                continue
-            order_id = _parse_order_id(val)
-            if order_id is None:  # pragma: no cover
-                continue
-            logger.info(
-                "Received order_activation event",
-                extra={
-                    "order_id": order_id,
-                    "partition": getattr(msg, "partition", None),
-                    "offset": getattr(msg, "offset", None),
-                },
-            )
-            await _send_offers(
-                order_id,
-                messenger_client,
-                offer_dispatch_service,
-                dlq_producer,
-                config.kafka.kafka_dlq_topic,
-                config.kafka.kafka_send_retries,
-                config.kafka.kafka_send_retry_delay_seconds,
-            )
+                await _send_offers(
+                    order_id,
+                    messenger_client,
+                    offer_dispatch_service,
+                    dlq_producer,
+                    config.kafka.kafka_dlq_topic,
+                    config.kafka.kafka_send_retries,
+                    config.kafka.kafka_send_retry_delay_seconds,
+                )
+                await _commit_message_offset(consumer, msg)
+            except Exception:
+                logger.exception(
+                    "Error processing Kafka message, offset not committed",
+                    extra={
+                        "partition": getattr(msg, "partition", None),
+                        "offset": getattr(msg, "offset", None),
+                    },
+                )
     finally:
         logger.info("Stopping Kafka consumer")
         try:

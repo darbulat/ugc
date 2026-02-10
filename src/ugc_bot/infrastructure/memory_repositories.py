@@ -736,6 +736,32 @@ class InMemoryOutboxRepository(OutboxRepository):
         ]
         return sorted(pending_events, key=lambda e: e.created_at)[:limit]
 
+    async def claim_pending_events(
+        self, limit: int = 100, session: object | None = None
+    ) -> List[OutboxEvent]:
+        """Claim pending events (set to PROCESSING) and return them."""
+
+        pending = [
+            event
+            for event in self.events.values()
+            if event.status == OutboxEventStatus.PENDING
+        ]
+        to_claim = sorted(pending, key=lambda e: e.created_at)[:limit]
+        for event in to_claim:
+            self.events[event.event_id] = OutboxEvent(
+                event_id=event.event_id,
+                event_type=event.event_type,
+                aggregate_id=event.aggregate_id,
+                aggregate_type=event.aggregate_type,
+                payload=event.payload,
+                status=OutboxEventStatus.PROCESSING,
+                created_at=event.created_at,
+                processed_at=event.processed_at,
+                retry_count=event.retry_count,
+                last_error=event.last_error,
+            )
+        return to_claim
+
     async def mark_as_processing(
         self, event_id: UUID, session: object | None = None
     ) -> None:
@@ -786,7 +812,7 @@ class InMemoryOutboxRepository(OutboxRepository):
         retry_count: int,
         session: object | None = None,
     ) -> None:
-        """Mark event as failed with retry."""
+        """Mark event as failed (terminal state)."""
 
         if event_id in self.events:
             event = self.events[event_id]
@@ -797,6 +823,30 @@ class InMemoryOutboxRepository(OutboxRepository):
                 aggregate_type=event.aggregate_type,
                 payload=event.payload,
                 status=OutboxEventStatus.FAILED,
+                created_at=event.created_at,
+                processed_at=event.processed_at,
+                retry_count=retry_count,
+                last_error=error,
+            )
+
+    async def mark_for_retry(
+        self,
+        event_id: UUID,
+        error: str,
+        retry_count: int,
+        session: object | None = None,
+    ) -> None:
+        """Reset event to PENDING for retry."""
+
+        if event_id in self.events:
+            event = self.events[event_id]
+            self.events[event_id] = OutboxEvent(
+                event_id=event.event_id,
+                event_type=event.event_type,
+                aggregate_id=event.aggregate_id,
+                aggregate_type=event.aggregate_type,
+                payload=event.payload,
+                status=OutboxEventStatus.PENDING,
                 created_at=event.created_at,
                 processed_at=event.processed_at,
                 retry_count=retry_count,
