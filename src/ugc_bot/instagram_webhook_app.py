@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
+    VerificationMismatch,
+    VerificationSuccess,
 )
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
@@ -223,6 +225,61 @@ async def _notify_user_verification_success(
         )
 
 
+async def _notify_user_verification_mismatch(
+    user_id: UUID,
+    verification_service: InstagramVerificationService,
+    config: AppConfig,
+) -> None:
+    """Notify user that profile Instagram does not match sender account."""
+    try:
+        from aiogram import Bot
+
+        from ugc_bot.bot.handlers.keyboards import blogger_profile_view_keyboard
+        from ugc_bot.infrastructure.messenger.telegram.client import (
+            TelegramMessengerClient,
+        )
+
+        (
+            user,
+            _blogger_profile,
+        ) = await verification_service.get_notification_recipient(user_id)
+        if user is None:
+            logger.warning(
+                "User not found for mismatch notification",
+                extra={"user_id": user_id},
+            )
+            return
+
+        if not user.external_id.isdigit():
+            logger.warning(
+                "User external_id is not a Telegram chat id",
+                extra={"user_id": user_id, "external_id": user.external_id},
+            )
+            return
+
+        bot = Bot(token=config.bot.bot_token)
+        messenger_client = TelegramMessengerClient(bot)
+        try:
+            await messenger_client.send_text(
+                chat_id=user.external_id,
+                text=(
+                    "Указанный в профиле Instagram не совпадает с аккаунтом, "
+                    "с которого вы отправили код. Откройте «Мой профиль», "
+                    "отредактируйте профиль блогера и укажите корректный "
+                    "Instagram."
+                ),
+                keyboard=blogger_profile_view_keyboard(confirmed=False),
+            )
+        finally:
+            await bot.session.close()
+    except Exception as exc:
+        logger.exception(
+            "Error sending verification mismatch notification to user",
+            extra={"user_id": user_id},
+            exc_info=exc,
+        )
+
+
 async def _process_single_messaging_event(
     event: dict[str, Any],
     verification_service: InstagramVerificationService,
@@ -249,14 +306,18 @@ async def _process_single_messaging_event(
 
     try:
         verify = verification_service.verify_code_by_instagram_sender
-        user_id = await verify(
+        result = await verify(
             instagram_sender_id=sender_id,
             code=text,
             admin_instagram_username=config.instagram.admin_instagram_username,
         )
-        if user_id:
+        if isinstance(result, VerificationSuccess):
             await _notify_user_verification_success(
-                user_id, verification_service, config
+                result.user_id, verification_service, config
+            )
+        elif isinstance(result, VerificationMismatch):
+            await _notify_user_verification_mismatch(
+                result.user_id, verification_service, config
             )
     except Exception as exc:
         logger.warning(

@@ -11,6 +11,8 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
+    VerificationMismatch,
+    VerificationSuccess,
 )
 from ugc_bot.domain.entities import (
     BloggerProfile,
@@ -180,8 +182,7 @@ async def test_verify_code_by_instagram_sender_success() -> None:
         admin_instagram_username="admin_test",
     )
 
-    assert result == user_id
-    updated = await profile_repo.get_by_user_id(user_id)
+    assert isinstance(result, VerificationSuccess) and result.user_id == user_id
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
@@ -359,7 +360,7 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> (
         admin_instagram_username="admin_test",
     )
 
-    assert result == user_id
+    assert isinstance(result, VerificationSuccess) and result.user_id == user_id
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
@@ -428,7 +429,10 @@ async def test_verify_code_username_extraction_variants() -> None:
             admin_instagram_username="admin_test",
         )
 
-        assert result == user_id
+        assert (
+            isinstance(result, VerificationSuccess)
+            and result.user_id == user_id
+        )
         updated = await profile_repo.get_by_user_id(user_id)
         assert updated is not None
         assert updated.confirmed is True
@@ -499,7 +503,10 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
         admin_instagram_username="admin_test",
     )
 
-    assert result is None
+    assert isinstance(result, VerificationMismatch)
+    assert result.user_id == user_id
+    assert result.profile_username == "test_user"
+    assert result.api_username == "different_user"
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is False
@@ -556,7 +563,7 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
         admin_instagram_username="admin_test",
     )
 
-    assert result == user_id
+    assert isinstance(result, VerificationSuccess) and result.user_id == user_id
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
@@ -603,7 +610,7 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
         admin_instagram_username="admin_test",
     )
 
-    assert result == user_id
+    assert isinstance(result, VerificationSuccess) and result.user_id == user_id
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
@@ -767,7 +774,7 @@ async def test_verify_code_by_instagram_sender_with_transaction_manager(
         code=verification.code,
         admin_instagram_username="admin_test",
     )
-    assert result == user_id
+    assert isinstance(result, VerificationSuccess) and result.user_id == user_id
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True

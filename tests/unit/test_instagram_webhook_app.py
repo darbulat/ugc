@@ -3,7 +3,7 @@
 import hashlib
 import hmac
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
+    VerificationMismatch,
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import BloggerProfile, User
@@ -27,6 +28,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.instagram_webhook_app import (
+    _notify_user_verification_mismatch,
     _notify_user_verification_success,
     _unhandled_exception_handler,
     _verify_signature,
@@ -197,6 +199,114 @@ async def test_notify_user_verification_success(test_config: AppConfig) -> None:
         await _notify_user_verification_success(
             user.user_id, service, test_config
         )
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_mismatch_user_missing(
+    test_config: AppConfig,
+) -> None:
+    """No mismatch notification when user is missing."""
+    service = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    await _notify_user_verification_mismatch(uuid4(), service, test_config)
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_mismatch_missing_telegram_user(
+    test_config: AppConfig,
+) -> None:
+    """No mismatch notification when external_id is not Telegram chat id."""
+    user_repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        external_id="external",
+        messenger_type=MessengerType.MAX,
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+    )
+    await user_repo.save(user)
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    await _notify_user_verification_mismatch(user.user_id, service, test_config)
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_mismatch_success(
+    test_config: AppConfig,
+) -> None:
+    """Mismatch notification sent when user has Telegram chat id."""
+    sent: list = []
+
+    class DummySession:
+        async def close(self) -> None:
+            return None
+
+    class DummyBot:
+        def __init__(self, token: str) -> None:
+            self.token = token
+            self.session = DummySession()
+
+        async def send_message(self, chat_id: int, text: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            sent.append((chat_id, text, kwargs))
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user = User(
+        user_id=uuid4(),
+        external_id="12345",
+        messenger_type=MessengerType.TELEGRAM,
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+    )
+    await user_repo.save(user)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user.user_id,
+            instagram_url="https://instagram.com/test_user",
+            confirmed=False,
+            city="Moscow",
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=None,
+        )
+    )
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+
+    with patch("aiogram.Bot", DummyBot):
+        await _notify_user_verification_mismatch(
+            user.user_id, service, test_config
+        )
+
+    assert len(sent) == 1
+    chat_id, text, kwargs = sent[0]
+    assert chat_id == 12345
+    assert "не совпадает" in text
+    assert "Мой профиль" in text
+    assert "корректный Instagram" in text
+    assert "reply_markup" in kwargs or "keyboard" in kwargs
 
 
 @patch("ugc_bot.instagram_webhook_app.load_config")
@@ -833,3 +943,63 @@ async def test_webhook_verification_exception_logged(
     )
     assert response.status_code == 200
     mock_notify.assert_not_called()
+
+
+@patch("ugc_bot.instagram_webhook_app._notify_user_verification_mismatch")
+@patch("ugc_bot.instagram_webhook_app._notify_user_verification_success")
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_verification_mismatch_calls_notify_mismatch(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    mock_notify_success: MagicMock,
+    mock_notify_mismatch: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """When verify returns VerificationMismatch, notify_mismatch is called."""
+    mock_load_config.return_value = test_config
+    user_id = uuid4()
+    verification_service = MagicMock()
+    verification_service.verify_code_by_instagram_sender = AsyncMock(
+        return_value=VerificationMismatch(
+            user_id=user_id,
+            profile_username="profile_user",
+            api_username="api_user",
+        )
+    )
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = verification_service
+    payload = {
+        "object": "instagram",
+        "entry": [
+            {
+                "id": "page1",
+                "time": 123,
+                "messaging": [
+                    {
+                        "sender": {"id": "123"},
+                        "recipient": {"id": "page1"},
+                        "message": {"text": "CODE", "mid": "m1"},
+                    }
+                ],
+            }
+        ],
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
+    response = client.post(
+        "/webhook/instagram",
+        content=payload_bytes,
+        headers={"X-Hub-Signature-256": signature},
+    )
+    assert response.status_code == 200
+    mock_notify_mismatch.assert_called_once()
+    call_args = mock_notify_mismatch.call_args
+    assert call_args[0][0] == user_id
+    mock_notify_success.assert_not_called()

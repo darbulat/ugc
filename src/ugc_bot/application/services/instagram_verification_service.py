@@ -50,6 +50,22 @@ def _usernames_match(
 
 
 @dataclass(slots=True)
+class VerificationSuccess:
+    """Instagram verification succeeded; profile confirmed."""
+
+    user_id: UUID
+
+
+@dataclass(slots=True)
+class VerificationMismatch:
+    """Code and profile found but Instagram username does not match sender."""
+
+    user_id: UUID
+    profile_username: str | None
+    api_username: str | None
+
+
+@dataclass(slots=True)
 class InstagramVerificationService:
     """Generate and verify Instagram confirmation codes."""
 
@@ -159,14 +175,14 @@ class InstagramVerificationService:
         instagram_sender_id: str,
         code: str,
         admin_instagram_username: str,
-    ) -> UUID | None:
+    ) -> VerificationSuccess | VerificationMismatch | None:
         """Verify code sent from Instagram webhook by sender ID.
 
         This method:
         1. Finds a valid code matching the provided code string
         2. Gets the user_id from the code
         3. Checks if the blogger profile's instagram_url matches the sender
-        4. Confirms the profile if all checks pass
+        4. Confirms the profile if all checks pass; otherwise returns mismatch.
 
         Args:
             instagram_sender_id: Instagram user ID from webhook sender
@@ -174,7 +190,8 @@ class InstagramVerificationService:
             admin_instagram_username: Admin Instagram username (for logging)
 
         Returns:
-            True if verification successful, False otherwise
+            VerificationSuccess on success, VerificationMismatch when usernames
+            do not match, None when code or profile not found.
         """
         code_upper = code.strip().upper()
 
@@ -218,7 +235,11 @@ class InstagramVerificationService:
                     "profile_username": profile_username,
                 },
             )
-            return None
+            return VerificationMismatch(
+                user_id=valid_code.user_id,
+                profile_username=profile_username,
+                api_username=api_username,
+            )
 
         logger.info(
             "Verifying code from Instagram webhook",
@@ -256,7 +277,7 @@ class InstagramVerificationService:
             "Instagram profile confirmed via webhook",
             extra={"user_id": str(valid_code.user_id)},
         )
-        return valid_code.user_id
+        return VerificationSuccess(user_id=valid_code.user_id)
 
 
 def _generate_code(length: int = 8) -> str:
