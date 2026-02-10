@@ -40,6 +40,7 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     PayoutRequest,
+    ReferralOrderIncomeRow,
     User,
     UserReferralBinding,
     UserReferralPending,
@@ -1577,6 +1578,73 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         )
         return [
             _to_payout_request_entity(m) for m in exec_result.scalars().all()
+        ]
+
+
+@dataclass(slots=True)
+class SqlReferralOrderIncomeLoader:
+    """Loads referral order income rows in one query to avoid N+1."""
+
+    async def load_referral_order_income_rows(
+        self,
+        referrer_user_id: UUID,
+        limit: int,
+        session: object | None = None,
+    ) -> list[ReferralOrderIncomeRow]:
+        """Return completed-order rows for referred creators (CLOSED, OK)."""
+        db_session = _get_async_session(session)
+        query = (
+            select(
+                UserModel.created_at.label("creator_created_at"),
+                func.coalesce(
+                    OrderModel.completed_at, OrderModel.created_at
+                ).label("order_completed_at"),
+                PaymentModel.amount.label("payment_amount"),
+                OrderModel.bloggers_needed.label("bloggers_needed"),
+                OrderModel.order_id.label("order_id"),
+            )
+            .select_from(UserReferralBindingModel)
+            .join(
+                OrderResponseModel,
+                UserReferralBindingModel.referred_user_id
+                == OrderResponseModel.blogger_id,
+            )
+            .join(
+                OrderModel, OrderResponseModel.order_id == OrderModel.order_id
+            )
+            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+            .join(
+                InteractionModel,
+                and_(
+                    InteractionModel.order_id == OrderModel.order_id,
+                    InteractionModel.blogger_id
+                    == UserReferralBindingModel.referred_user_id,
+                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
+                ),
+            )
+            .join(
+                UserModel,
+                UserReferralBindingModel.referred_user_id == UserModel.user_id,
+            )
+            .where(
+                UserReferralBindingModel.referrer_user_id == referrer_user_id,
+                OrderModel.status == OrderStatus.CLOSED,
+                InteractionModel.status == InteractionStatus.OK,
+                OrderModel.bloggers_needed > 0,
+            )
+            .limit(limit)
+        )
+        result = await db_session.execute(query)
+        rows = result.all()
+        return [
+            ReferralOrderIncomeRow(
+                creator_created_at=row.creator_created_at,
+                order_completed_at=row.order_completed_at,
+                payment_amount=float(row.payment_amount),
+                bloggers_needed=row.bloggers_needed,
+                order_id=row.order_id,
+            )
+            for row in rows
         ]
 
 

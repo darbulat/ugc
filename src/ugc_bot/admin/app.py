@@ -815,7 +815,12 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
 
 
 class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
-    """Admin view for payout requests (referral)."""
+    """Admin view for payout requests (referral).
+
+    Process: user requests payout in bot -> PENDING created -> support pays
+    -> set status to PAID here. Changing amount here affects user's paid_total
+    in referral stats. See docs/REFERRAL_PAYOUTS.md.
+    """
 
     name = "Заявка на вывод"
     name_plural = "Заявки на вывод"
@@ -840,18 +845,19 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     }
 
 
-DASHBOARD_URL = "https://bot.usemycontent.ru/admin/dashboard"
-
-
 def _dashboard_open_in_new_tab_html() -> str:
-    """HTML: open dashboard in new tab, redirect current tab to admin."""
+    """HTML: offer dashboard link (target=_blank) so new tab opens on click.
+
+    Browsers block window.open() when not triggered by user gesture; after
+    navigating to this page the gesture is lost, so we use a clickable link
+    with target='_blank' which always works.
+    """
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<script>"
-        f"window.open({DASHBOARD_URL!r}, '_blank');"
-        "window.location.href = '/admin/';"
-        "</script></head><body>"
-        "<p>Дашборд открыт в новой вкладке.</p>"
+        "<title>Дашборд</title></head><body>"
+        "<p>Нажмите ссылку, чтобы открыть дашборд в новой вкладке:</p>"
+        "<p><a href='/admin/dashboard' target='_blank' "
+        "rel='noopener noreferrer'>Открыть дашборд</a></p>"
         "<p><a href='/admin/'>Вернуться в админку</a></p>"
         "</body></html>"
     )

@@ -24,6 +24,7 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     PayoutRequest,
+    ReferralOrderIncomeRow,
     User,
     UserReferralBinding,
     UserReferralPending,
@@ -592,6 +593,19 @@ class PayoutRequestRepository(ABC):
         self, user_id: UUID, session: object | None = None
     ) -> Iterable[PayoutRequest]:
         """List payout requests by user ID."""
+
+
+class ReferralOrderIncomeRowLoader(Protocol):
+    """Load referral order income rows in one query (reduces N+1)."""
+
+    async def load_referral_order_income_rows(
+        self,
+        referrer_user_id: UUID,
+        limit: int,
+        session: object | None = None,
+    ) -> list[ReferralOrderIncomeRow]:
+        """Return completed-order rows for referred creators (CLOSED, OK)."""
+        ...
 
 
 class TransactionManager(Protocol):

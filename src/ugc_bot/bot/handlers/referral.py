@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import (
@@ -190,7 +191,15 @@ async def payout_button_callback(
     async def _run(session: object | None) -> None:
         await payout_request_repo.save(request, session=session)
 
-    await with_optional_tx(transaction_manager, _run)
+    try:
+        await with_optional_tx(transaction_manager, _run)
+    except IntegrityError:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Вы уже подавали заявку на вывод сегодня.",
+            show_alert=True,
+        )
+        return
 
     support_chat_id = config.referral.referral_support_chat_id.strip()
     support_notified = True

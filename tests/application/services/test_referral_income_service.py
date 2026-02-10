@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -493,3 +493,106 @@ async def test_count_completed_orders_for_user_with_session() -> None:
         user_id, session=MagicMock()
     )
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_uses_loader_when_provided() -> None:
+    """When loader and session are set, stats use loader (single-query path)."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    creator_created = now - timedelta(days=100)
+    order_completed = now - timedelta(days=10)
+    row = ReferralOrderIncomeRow(
+        creator_created_at=creator_created,
+        order_completed_at=order_completed,
+        payment_amount=100.0,
+        bloggers_needed=1,
+        order_id=order_id,
+    )
+    mock_loader = MagicMock()
+    mock_loader.load_referral_order_income_rows = AsyncMock(return_value=[row])
+    binding_repo = InMemoryUserReferralBindingRepository()
+    referred_id = uuid4()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield object()
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=MagicMock(transaction=lambda: fake_tx()),
+        referral_order_income_loader=mock_loader,
+    )
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.creators_count == 1
+    assert stats.orders_count == 1
+    assert stats.income_total == 10.0
+    mock_loader.load_referral_order_income_rows.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_loader_rate_after_first_year() -> None:
+    """When order is exactly 1 year after creator registration, rate is 3%."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    creator_created = now - timedelta(days=366)
+    order_completed = now
+    row = ReferralOrderIncomeRow(
+        creator_created_at=creator_created,
+        order_completed_at=order_completed,
+        payment_amount=100.0,
+        bloggers_needed=1,
+        order_id=order_id,
+    )
+    mock_loader = MagicMock()
+    mock_loader.load_referral_order_income_rows = AsyncMock(return_value=[row])
+    binding_repo = InMemoryUserReferralBindingRepository()
+    referred_id = uuid4()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield object()
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=MagicMock(transaction=lambda: fake_tx()),
+        referral_order_income_loader=mock_loader,
+    )
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.income_total == 3.0

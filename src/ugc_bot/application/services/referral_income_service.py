@@ -11,11 +11,12 @@ from ugc_bot.application.ports import (
     OrderResponseRepository,
     PaymentRepository,
     PayoutRequestRepository,
+    ReferralOrderIncomeRowLoader,
     TransactionManager,
     UserReferralBindingRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import PayoutRequest
+from ugc_bot.domain.entities import PayoutRequest, UserReferralBinding
 from ugc_bot.domain.enums import (
     InteractionStatus,
     OrderStatus,
@@ -95,6 +96,7 @@ class ReferralIncomeService:
     user_repo: UserRepository
     payout_request_repo: PayoutRequestRepository
     transaction_manager: TransactionManager | None = None
+    referral_order_income_loader: ReferralOrderIncomeRowLoader | None = None
 
     async def get_user_referral_stats(
         self,
@@ -125,6 +127,108 @@ class ReferralIncomeService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def _compute_income_from_loader(
+        self,
+        referrer_user_id: UUID,
+        limit: int,
+        now: datetime,
+        session: object,
+    ) -> tuple[float, float, int]:
+        """Compute income and order count from loader rows (single query)."""
+        assert self.referral_order_income_loader is not None
+        loader = self.referral_order_income_loader
+        rows = await loader.load_referral_order_income_rows(
+            referrer_user_id, limit=limit, session=session
+        )
+        now_utc = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+        income_current_month = 0.0
+        income_total = 0.0
+        seen_orders: set[UUID] = set()
+        for row in rows:
+            platform_revenue = row.payment_amount / row.bloggers_needed
+            rate = _get_rate(row.creator_created_at, row.order_completed_at)
+            commission = platform_revenue * rate
+            income_total += commission
+            seen_orders.add(row.order_id)
+            completed_utc = (
+                row.order_completed_at
+                if row.order_completed_at.tzinfo
+                else row.order_completed_at.replace(tzinfo=timezone.utc)
+            )
+            if (
+                completed_utc.month == now_utc.month
+                and completed_utc.year == now_utc.year
+            ):
+                income_current_month += commission
+        return (income_current_month, income_total, len(seen_orders))
+
+    async def _compute_income_from_bindings(
+        self,
+        bindings: list[UserReferralBinding],
+        now: datetime,
+        session: object | None,
+    ) -> tuple[float, float, int]:
+        """Compute income from bindings (fallback when loader not used)."""
+        income_current_month = 0.0
+        income_total = 0.0
+        seen_orders: set[UUID] = set()
+        now_utc = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+        for binding in bindings:
+            creator_id = binding.referred_user_id
+            creator = await self.user_repo.get_by_id(
+                creator_id, session=session
+            )
+            if creator is None:
+                continue
+            responses = list(
+                await self.order_response_repo.list_by_blogger(
+                    creator_id, session=session
+                )
+            )
+            for response in responses:
+                order = await self.order_repo.get_by_id(
+                    response.order_id, session=session
+                )
+                if order is None or order.status != OrderStatus.CLOSED:
+                    continue
+                payment = await self.payment_repo.get_by_order(
+                    order.order_id, session=session
+                )
+                if payment is None:
+                    continue
+                interaction = await self.interaction_repo.get_by_participants(
+                    order_id=order.order_id,
+                    blogger_id=creator_id,
+                    advertiser_id=order.advertiser_id,
+                    session=session,
+                )
+                if (
+                    interaction is None
+                    or interaction.status != InteractionStatus.OK
+                ):
+                    continue
+                if order.bloggers_needed <= 0:
+                    continue
+                completed_at = order.completed_at or order.created_at
+                platform_revenue_per_creator = (
+                    float(payment.amount) / order.bloggers_needed
+                )
+                rate = _get_rate(creator.created_at, completed_at)
+                commission = platform_revenue_per_creator * rate
+                income_total += commission
+                seen_orders.add(order.order_id)
+                completed_at_utc = (
+                    completed_at
+                    if completed_at.tzinfo
+                    else completed_at.replace(tzinfo=timezone.utc)
+                )
+                if (
+                    completed_at_utc.month == now_utc.month
+                    and completed_at_utc.year == now_utc.year
+                ):
+                    income_current_month += commission
+        return (income_current_month, income_total, len(seen_orders))
+
     async def _compute_stats(
         self,
         referrer_user_id: UUID,
@@ -148,77 +252,23 @@ class ReferralIncomeService:
         )
         creators_count = len(bindings)
 
-        income_current_month = 0.0
-        income_total = 0.0
-        seen_orders: set[UUID] = set()
-
-        for binding in bindings:
-            creator_id = binding.referred_user_id
-            creator = await self.user_repo.get_by_id(
-                creator_id, session=session
+        if (
+            self.referral_order_income_loader is not None
+            and session is not None
+        ):
+            (
+                income_current_month,
+                income_total,
+                orders_count,
+            ) = await self._compute_income_from_loader(
+                referrer_user_id, effective_limit, now, session
             )
-            if creator is None:
-                continue
-
-            responses = list(
-                await self.order_response_repo.list_by_blogger(
-                    creator_id, session=session
-                )
-            )
-
-            for response in responses:
-                order = await self.order_repo.get_by_id(
-                    response.order_id, session=session
-                )
-                if order is None or order.status != OrderStatus.CLOSED:
-                    continue
-
-                payment = await self.payment_repo.get_by_order(
-                    order.order_id, session=session
-                )
-                if payment is None:
-                    continue
-
-                interaction = await self.interaction_repo.get_by_participants(
-                    order_id=order.order_id,
-                    blogger_id=creator_id,
-                    advertiser_id=order.advertiser_id,
-                    session=session,
-                )
-                if (
-                    interaction is None
-                    or interaction.status != InteractionStatus.OK
-                ):
-                    continue
-
-                if order.bloggers_needed <= 0:
-                    continue
-
-                completed_at = order.completed_at or order.created_at
-                platform_revenue_per_creator = (
-                    float(payment.amount) / order.bloggers_needed
-                )
-                rate = _get_rate(creator.created_at, completed_at)
-                commission = platform_revenue_per_creator * rate
-
-                income_total += commission
-                seen_orders.add(order.order_id)
-
-                completed_at_utc = (
-                    completed_at
-                    if completed_at.tzinfo
-                    else completed_at.replace(tzinfo=timezone.utc)
-                )
-                now_utc = (
-                    now if now.tzinfo else now.replace(tzinfo=timezone.utc)
-                )
-                if (
-                    completed_at_utc.month == now_utc.month
-                    and completed_at_utc.year == now_utc.year
-                ):
-                    income_current_month += commission
-
-        orders_count = len(seen_orders)
+        else:
+            (
+                income_current_month,
+                income_total,
+                orders_count,
+            ) = await self._compute_income_from_bindings(bindings, now, session)
 
         payout_requests = list(
             await self.payout_request_repo.list_by_user(

@@ -20,6 +20,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserReferralBindingRepository,
     SqlAlchemyUserReferralPendingRepository,
     SqlAlchemyUserRepository,
+    SqlReferralOrderIncomeLoader,
 )
 
 
@@ -84,4 +85,5 @@ def build_repos(
         "payout_request_repo": SqlAlchemyPayoutRequestRepository(
             session_factory=session_factory
         ),
+        "referral_order_income_loader": SqlReferralOrderIncomeLoader(),
     }

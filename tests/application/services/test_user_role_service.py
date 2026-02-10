@@ -1,6 +1,7 @@
 """Tests for the user role service."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -304,3 +305,30 @@ async def test_update_status_records_metrics_when_blocked() -> None:
     )
     await service.update_status(user.user_id, UserStatus.BLOCKED)
     metrics.record_user_blocked.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_set_user_raises_when_referral_code_collision() -> None:
+    """When all referral code attempts collide, set_user raises RuntimeError."""
+    mock_repo = MagicMock()
+    mock_repo.get_by_external = AsyncMock(return_value=None)
+    mock_repo.get_by_referral_code = AsyncMock(
+        return_value=User(
+            user_id=uuid4(),
+            external_id="other",
+            messenger_type=MessengerType.TELEGRAM,
+            username="other",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+            referral_code="taken",
+        )
+    )
+    mock_repo.save = AsyncMock()
+    service = UserRoleService(user_repo=mock_repo, transaction_manager=None)
+    with pytest.raises(RuntimeError, match="unique referral code"):
+        await service.set_user(
+            external_id="new_user",
+            messenger_type=MessengerType.TELEGRAM,
+            username="new",
+        )

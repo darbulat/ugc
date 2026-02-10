@@ -63,6 +63,7 @@ def build_referral_income_service(repos, transaction_manager):
         user_repo=repos["user_repo"],
         payout_request_repo=repos["payout_request_repo"],
         transaction_manager=transaction_manager,
+        referral_order_income_loader=repos.get("referral_order_income_loader"),
     )
 
 
@@ -254,6 +255,9 @@ def build_bot_services(
             user_repo=repos["user_repo"],
             payout_request_repo=repos["payout_request_repo"],
             transaction_manager=transaction_manager,
+            referral_order_income_loader=repos.get(
+                "referral_order_income_loader"
+            ),
         ),
         "issue_lock_manager": issue_lock_manager,
         "offer_response_rate_limiter": offer_response_rate_limiter,

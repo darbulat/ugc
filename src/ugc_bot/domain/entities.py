@@ -224,3 +224,14 @@ class PayoutRequest:
     requested_at: datetime
     status: PayoutRequestStatus
     amount: Optional[Decimal] = None
+
+
+@dataclass(frozen=True)
+class ReferralOrderIncomeRow:
+    """One row for referral income (one completed order)."""
+
+    creator_created_at: datetime
+    order_completed_at: datetime
+    payment_amount: float
+    bloggers_needed: int
+    order_id: UUID

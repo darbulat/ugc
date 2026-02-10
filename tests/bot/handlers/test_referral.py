@@ -80,6 +80,61 @@ async def test_referral_command_sends_stats_and_keyboard(
 
 
 @pytest.mark.asyncio
+async def test_referral_command_includes_link_when_bot_username_and_code_set(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """When bot_username and referral_code set, message includes link."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await user_repo.save(
+        __user(
+            external_id="456",
+            username="bob",
+            referral_code="abc12xyz",
+        )
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=0,
+            orders_count=0,
+            income_current_month=0.0,
+            income_total=0.0,
+            paid_total=0.0,
+            has_pending_payout=False,
+            has_request_today=False,
+        )
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(text="/referral", user=FakeUser(456, "u", "bob"))
+
+    await referral_command(
+        message,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(
+                referral_stats_limit=10_000,
+                referral_bot_username="MyBot",
+            ),
+        ),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    text = client.sent_text[0]["text"]
+    assert "Ваша реферальная ссылка" in text
+    assert "https://t.me/MyBot?start=ref_abc12xyz" in text
+
+
+@pytest.mark.asyncio
 async def test_referral_command_shows_payout_button_when_balance_positive(
     user_repo: InMemoryUserRepository,
 ) -> None:
@@ -281,6 +336,113 @@ async def test_payout_button_callback_creates_request_and_answers(
     assert mock_payout_repo.save.called
     assert any(
         "Запрос на выплату отправлен" in a.get("text", "")
+        for a in client.answered_callbacks
+    )
+
+
+@pytest.mark.asyncio
+async def test_payout_button_callback_user_not_found_returns_early(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """When user not in DB, payout callback returns without creating request."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_payout_repo = MagicMock()
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=REFERRAL_PAYOUT_CALLBACK,
+        user=FakeUser(99999, "u", "nonexistent"),
+        callback_id="cb_none",
+    )
+    await payout_button_callback(
+        callback,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        payout_request_repo=mock_payout_repo,
+        transaction_manager=mock_tm,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(
+                referral_support_chat_id="",
+                referral_stats_limit=10_000,
+            ),
+            admin=MagicMock(admin_base_url=""),
+        ),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    mock_payout_repo.save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_payout_callback_integrity_error_shows_already_requested(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """On IntegrityError (duplicate same day), show already-requested msg."""
+    from sqlalchemy.exc import IntegrityError
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await user_repo.save(__user(external_id="777", username="u7"))
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=0,
+            orders_count=0,
+            income_current_month=0.0,
+            income_total=50.0,
+            paid_total=0.0,
+            has_pending_payout=False,
+            has_request_today=False,
+        )
+    )
+    mock_payout_repo = MagicMock()
+    mock_payout_repo.save = AsyncMock(
+        side_effect=IntegrityError("duplicate key", None, None)
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=REFERRAL_PAYOUT_CALLBACK,
+        user=FakeUser(777, "u", "u7"),
+        callback_id="cb_dup",
+    )
+
+    await payout_button_callback(
+        callback,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        payout_request_repo=mock_payout_repo,
+        transaction_manager=mock_tm,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(
+                referral_support_chat_id="",
+                referral_stats_limit=10_000,
+            ),
+            admin=MagicMock(admin_base_url=""),
+        ),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "подавали заявку на вывод сегодня" in a.get("text", "")
         for a in client.answered_callbacks
     )
 
@@ -767,7 +929,12 @@ def __fake_tx():
     return _tx()
 
 
-def __user(*, external_id: str, username: str):
+def __user(
+    *,
+    external_id: str,
+    username: str,
+    referral_code: str | None = None,
+):
     """Build minimal User for tests."""
     from datetime import datetime, timezone
     from uuid import uuid4
@@ -783,4 +950,5 @@ def __user(*, external_id: str, username: str):
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        referral_code=referral_code,
     )

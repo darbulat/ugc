@@ -97,6 +97,14 @@ class FakeResult:
         self._value = value
         self.rowcount = rowcount
 
+    def all(self):  # type: ignore[no-untyped-def]
+        """Return all rows (e.g. for multi-column select)."""
+        if self._value is None:
+            return []
+        if isinstance(self._value, list):
+            return self._value
+        return [self._value]
+
     def scalar_one_or_none(self):  # type: ignore[no-untyped-def]
         return self._value
 
@@ -2053,3 +2061,37 @@ async def test_offer_dispatch_repository_list_blogger_ids_sent_for_order() -> (
         order_id, session=_repo_session(repo)
     )
     assert ids == [blogger_id]
+
+
+@pytest.mark.asyncio
+async def test_sql_referral_order_income_loader_returns_rows() -> None:
+    """SqlReferralOrderIncomeLoader returns mapped rows."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlReferralOrderIncomeLoader,
+    )
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    row_data = SimpleNamespace(
+        creator_created_at=now,
+        order_completed_at=now,
+        payment_amount=100.0,
+        bloggers_needed=2,
+        order_id=order_id,
+    )
+    session = FakeSession([row_data])
+    loader = SqlReferralOrderIncomeLoader()
+    rows = await loader.load_referral_order_income_rows(
+        referrer_id, limit=10, session=session
+    )
+    assert len(rows) == 1
+    assert isinstance(rows[0], ReferralOrderIncomeRow)
+    assert rows[0].payment_amount == 100.0
+    assert rows[0].bloggers_needed == 2
+    assert rows[0].order_id == order_id
