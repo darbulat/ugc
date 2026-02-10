@@ -9,6 +9,10 @@ from ugc_bot.admin.app import create_admin_app
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import AdminDashboardService
 
+# Strong admin credentials for tests (not in config _WEAK_ADMIN_VALUES).
+_TEST_ADMIN_PASSWORD = "Str0ng-Test-P@ssw0rd"
+_TEST_ADMIN_SECRET = "test-s3cr3t-k3y-min-32-chars-long"
+
 
 def _build_admin_client(
     monkeypatch,  # type: ignore[no-untyped-def]
@@ -22,8 +26,8 @@ def _build_admin_client(
     """Create admin TestClient with mocked dashboard service."""
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
     monkeypatch.setattr(
@@ -231,8 +235,8 @@ def test_admin_api_returns_401_when_not_authenticated(monkeypatch) -> None:
     """API routes return 401 when admin session is missing."""
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(
         AdminAuth, "authenticate", AsyncMock(return_value=False)
@@ -249,8 +253,8 @@ def test_admin_advertisers_redirect_when_not_authenticated(monkeypatch) -> None:
     """Advertisers page redirects to login when not authenticated."""
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(
         AdminAuth, "authenticate", AsyncMock(return_value=False)
@@ -268,8 +272,8 @@ def test_admin_orders_redirect_when_not_authenticated(monkeypatch) -> None:
     """Orders page redirects to login when not authenticated."""
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(
         AdminAuth, "authenticate", AsyncMock(return_value=False)
@@ -301,8 +305,8 @@ def test_admin_orders_with_status_filter(monkeypatch) -> None:
     )
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
     monkeypatch.setattr(
@@ -348,8 +352,8 @@ def test_admin_order_detail_redirect_when_not_authenticated(
 
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(
         AdminAuth, "authenticate", AsyncMock(return_value=False)
@@ -374,8 +378,8 @@ def test_order_model_edit_redirects_when_not_authenticated(
 
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(
         AdminAuth, "authenticate", AsyncMock(return_value=False)
@@ -400,8 +404,8 @@ def test_admin_order_detail_404_when_not_found(monkeypatch) -> None:
     order_id = uuid4()
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
     monkeypatch.setattr(
@@ -450,8 +454,8 @@ def test_admin_creators_api_with_complaints_filter(monkeypatch) -> None:
     list_creators_mock = AsyncMock(return_value=creators)
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
     monkeypatch.setattr(
@@ -519,8 +523,8 @@ def test_admin_order_api_404_when_not_found(monkeypatch) -> None:
     order_id = uuid4()
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
     monkeypatch.setattr(

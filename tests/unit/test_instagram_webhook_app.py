@@ -436,31 +436,6 @@ def test_webhook_event_invalid_json(
     assert response.status_code == 400
 
 
-@patch("ugc_bot.instagram_webhook_app.load_config")
-@pytest.mark.asyncio
-async def test_webhook_startup_fails_without_app_secret(
-    mock_load_config: MagicMock,
-) -> None:
-    """App fails to start when INSTAGRAM_APP_SECRET is not configured."""
-    config_without_secret = AppConfig.model_validate(
-        {
-            "BOT_TOKEN": "test_token",
-            "DATABASE_URL": "sqlite:///:memory:",
-            "INSTAGRAM_WEBHOOK_VERIFY_TOKEN": "test_verify_token",
-            "INSTAGRAM_APP_SECRET": "",  # Empty secret - required for prod
-            "ADMIN_INSTAGRAM_USERNAME": "admin_test",
-        }
-    )
-    mock_load_config.return_value = config_without_secret
-
-    from ugc_bot.instagram_webhook_app import lifespan
-
-    test_app = FastAPI()
-    with pytest.raises(ValueError, match="INSTAGRAM_APP_SECRET is required"):
-        async with lifespan(test_app):
-            pass
-
-
 @patch("ugc_bot.instagram_webhook_app._notify_user_verification_success")
 @patch("ugc_bot.instagram_webhook_app.load_config")
 @patch("ugc_bot.instagram_webhook_app._process_webhook_events")

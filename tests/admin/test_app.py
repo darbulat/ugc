@@ -36,6 +36,10 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 
+# Strong admin credentials for tests (not in config _WEAK_ADMIN_VALUES).
+TEST_ADMIN_PASSWORD = "Str0ng-Test-P@ssw0rd"
+TEST_ADMIN_SECRET = "test-s3cr3t-k3y-min-32-chars-long"
+
 
 def _make_session_maker_mock(mock_session: MagicMock) -> MagicMock:
     """Mock session_maker yielding mock_session as context manager."""
@@ -60,8 +64,8 @@ def test_create_admin_app(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
     monkeypatch.setenv(
         "DATABASE_URL", "postgresql+psycopg://user:pass@localhost/db"
     )
@@ -84,8 +88,8 @@ def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
 
     app = create_admin_app()
@@ -124,7 +128,7 @@ def test_create_admin_app_raises_when_admin_secret_empty(
     """create_admin_app raises ValueError when ADMIN_SECRET is empty."""
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
     monkeypatch.setenv("ADMIN_SECRET", "")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
 
@@ -139,7 +143,7 @@ def test_create_admin_app_raises_when_admin_password_empty(
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
 
     with pytest.raises(ValueError, match="ADMIN_PASSWORD is required"):
@@ -152,8 +156,8 @@ def test_admin_health_returns_degraded_when_db_fails(
     """Health endpoint returns degraded when database connection fails."""
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD", "password")
-    monkeypatch.setenv("ADMIN_SECRET", "secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
 
     mock_engine = MagicMock()
@@ -1036,8 +1040,14 @@ async def test_order_admin_update_model_activation_publishes() -> None:
     request = MagicMock()
     data = {"status": OrderStatus.ACTIVE}
 
-    with patch.object(
-        OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
     ):
         await admin.update_model(request, str(order_id), data)
 
@@ -1112,8 +1122,14 @@ async def test_order_admin_update_model_activation_no_order() -> None:
     request = MagicMock()
     data = {"status": OrderStatus.ACTIVE}
 
-    with patch.object(
-        OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
     ):
         await admin.update_model(request, str(order_id), data)
 
@@ -1189,8 +1205,14 @@ async def test_order_admin_update_model_activation_exception_handled() -> None:
     request = MagicMock()
     data = {"status": OrderStatus.ACTIVE}
 
-    with patch.object(
-        OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
     ):
         # Should not raise exception
         result = await admin.update_model(request, str(order_id), data)

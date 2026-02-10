@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     config = load_config()
+
     app.state.config = config
     log_startup_info(
         logger=logger, service_name="instagram-webhook", config=config
