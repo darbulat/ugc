@@ -10,14 +10,21 @@ from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import ColumnElement
 
-from ugc_bot.domain.enums import ComplaintStatus, OrderStatus, UserStatus
+from ugc_bot.domain.enums import (
+    ComplaintStatus,
+    OrderStatus,
+    PayoutRequestStatus,
+    UserStatus,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     ComplaintModel,
     OrderModel,
     OrderResponseModel,
+    PayoutRequestModel,
     UserModel,
+    UserReferralBindingModel,
 )
 
 PeriodKey = Literal["today", "yesterday", "7d", "30d"]
@@ -90,6 +97,8 @@ class AdminDashboardService:
             orders = await self._get_order_cards(session, window)
             open_complaints = await self._count_open_complaints(session)
             delayed_orders = await self._list_delayed_orders(session)
+            referrers = await self._get_referral_referrers(session, window)
+            payout_requests = await self._list_payout_requests(session)
         return {
             "period": period,
             "registrations": registrations,
@@ -99,6 +108,8 @@ class AdminDashboardService:
                 "delays": len(delayed_orders),
             },
             "delayed_orders": delayed_orders,
+            "referrals": {"referrers": referrers},
+            "payout_requests": payout_requests,
         }
 
     async def list_creators(
@@ -254,6 +265,113 @@ class AdminDashboardService:
         )
         result = await session.execute(query)
         return int(result.scalar() or 0)
+
+    async def _get_referral_referrers(
+        self, session: AsyncSession, window: PeriodWindow
+    ) -> list[dict]:
+        """Return referral analytics per referrer (managers) for dashboard."""
+        bindings = UserReferralBindingModel
+        total_subq = (
+            select(func.count(bindings.referred_user_id))
+            .where(bindings.referrer_user_id == UserModel.user_id)
+            .scalar_subquery()
+        )
+        creators_subq = (
+            select(func.count(bindings.referred_user_id))
+            .select_from(bindings)
+            .join(
+                BloggerProfileModel,
+                BloggerProfileModel.user_id == bindings.referred_user_id,
+            )
+            .where(bindings.referrer_user_id == UserModel.user_id)
+            .scalar_subquery()
+        )
+        advertisers_subq = (
+            select(func.count(bindings.referred_user_id))
+            .select_from(bindings)
+            .join(
+                AdvertiserProfileModel,
+                AdvertiserProfileModel.user_id == bindings.referred_user_id,
+            )
+            .where(bindings.referrer_user_id == UserModel.user_id)
+            .scalar_subquery()
+        )
+        new_in_period_subq = (
+            select(func.count(bindings.referred_user_id))
+            .where(bindings.referrer_user_id == UserModel.user_id)
+            .where(bindings.created_at >= window.current_start)
+            .where(bindings.created_at < window.current_end)
+            .scalar_subquery()
+        )
+        query = (
+            select(
+                UserModel.user_id,
+                UserModel.username,
+                UserModel.referral_code,
+                func.coalesce(total_subq, 0).label("total_referred"),
+                func.coalesce(creators_subq, 0).label("referred_creators"),
+                func.coalesce(advertisers_subq, 0).label(
+                    "referred_advertisers"
+                ),
+                func.coalesce(new_in_period_subq, 0).label("new_in_period"),
+            )
+            .where(UserModel.referral_code.isnot(None))
+            .order_by(func.coalesce(total_subq, 0).desc())
+        )
+        result = await session.execute(query)
+        rows = result.all()
+        return [
+            {
+                "user_id": str(row.user_id),
+                "username": row.username,
+                "referral_code": row.referral_code or "",
+                "total_referred": int(row.total_referred),
+                "referred_creators": int(row.referred_creators),
+                "referred_advertisers": int(row.referred_advertisers),
+                "new_in_period": int(row.new_in_period),
+            }
+            for row in rows
+        ]
+
+    async def _list_payout_requests(self, session: AsyncSession) -> list[dict]:
+        """Return recent payout requests with referrer username."""
+        query = (
+            select(
+                PayoutRequestModel.request_id,
+                PayoutRequestModel.user_id,
+                UserModel.username,
+                PayoutRequestModel.requested_at,
+                PayoutRequestModel.status,
+                PayoutRequestModel.amount,
+            )
+            .join(
+                UserModel,
+                UserModel.user_id == PayoutRequestModel.user_id,
+            )
+            .order_by(PayoutRequestModel.requested_at.desc())
+            .limit(100)
+        )
+        result = await session.execute(query)
+        rows = result.all()
+        status_labels = {
+            PayoutRequestStatus.PENDING: "Ожидает",
+            PayoutRequestStatus.PAID: "Выплачено",
+            PayoutRequestStatus.CANCELLED: "Отменено",
+        }
+        return [
+            {
+                "request_id": str(row.request_id),
+                "user_id": str(row.user_id),
+                "username": row.username,
+                "requested_at": row.requested_at,
+                "status": row.status.value if row.status else "",
+                "status_label": status_labels.get(
+                    row.status, row.status.value if row.status else ""
+                ),
+                "amount": float(row.amount) if row.amount is not None else None,
+            }
+            for row in rows
+        ]
 
     async def _list_delayed_orders(self, session: AsyncSession) -> list[dict]:
         """Return list of delayed orders with reasons."""

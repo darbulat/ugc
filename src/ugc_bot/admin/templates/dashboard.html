@@ -76,6 +76,73 @@
   </section>
 
   <section class="section">
+    <h2>Рефералы (менеджеры)</h2>
+    <p class="muted">Аналитика по привлечённым пользователям: кто из рефереров сколько привёл креаторов и заказчиков и сколько новых за выбранный период.</p>
+    {% set referrers = payload.referrals.referrers %}
+    {% if referrers %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Менеджер</th>
+            <th>Код</th>
+            <th>Всего привлечено</th>
+            <th>Креаторы</th>
+            <th>Заказчики</th>
+            <th>Новых за период</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in referrers %}
+            <tr>
+              <td>{{ r.username }}</td>
+              <td><code>{{ r.referral_code }}</code></td>
+              <td>{{ r.total_referred }}</td>
+              <td>{{ r.referred_creators }}</td>
+              <td>{{ r.referred_advertisers }}</td>
+              <td>{{ r.new_in_period }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Нет рефереров с кодом.</div>
+    {% endif %}
+  </section>
+
+  <section class="section">
+    <h2>Заявки на вывод</h2>
+    {% set payouts = payload.payout_requests %}
+    {% if payouts %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Пользователь</th>
+            <th>Дата запроса</th>
+            <th>Сумма</th>
+            <th>Статус</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in payouts %}
+            <tr>
+              <td>{{ p.username }}</td>
+              <td>{{ p.requested_at }}</td>
+              <td>{% if p.amount is not none %}{{ "%.2f"|format(p.amount) }}{% else %}—{% endif %}</td>
+              <td>{{ p.status_label }}</td>
+              <td>
+                <a href="/admin/payout-request-model/edit/{{ p.request_id }}">Редактировать</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Заявок на вывод нет.</div>
+    {% endif %}
+  </section>
+
+  <section class="section">
     <h2>Требует внимания ({{ payload.problems.delays }})</h2>
     {% if payload.delayed_orders %}
       <table class="table">

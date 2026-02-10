@@ -1,6 +1,8 @@
 """Tests for admin dashboard service."""
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -9,7 +11,12 @@ from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
 )
-from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
+from ugc_bot.domain.enums import (
+    OrderStatus,
+    OrderType,
+    PayoutRequestStatus,
+    UserStatus,
+)
 from ugc_bot.infrastructure.db.models import OrderModel, UserModel
 
 
@@ -138,6 +145,8 @@ async def test_get_dashboard_returns_structure(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -153,6 +162,78 @@ async def test_get_dashboard_returns_structure(service) -> None:
     assert "open_complaints" in data["problems"]
     assert "delays" in data["problems"]
     assert "delayed_orders" in data
+    assert "referrals" in data
+    assert "referrers" in data["referrals"]
+    assert "payout_requests" in data
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_includes_referral_referrers(service) -> None:
+    """get_dashboard includes referral analytics per referrer."""
+    ref_user_id = uuid4()
+    ref_row = SimpleNamespace(
+        user_id=ref_user_id,
+        username="manager1",
+        referral_code="mgr1",
+        total_referred=5,
+        referred_creators=3,
+        referred_advertisers=2,
+        new_in_period=1,
+    )
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[ref_row]),
+        _FakeResult(all_rows=[]),
+    ]
+    svc = service(results)
+    data = await svc.get_dashboard("today")
+    referrers = data["referrals"]["referrers"]
+    assert len(referrers) == 1
+    assert referrers[0]["username"] == "manager1"
+    assert referrers[0]["referral_code"] == "mgr1"
+    assert referrers[0]["total_referred"] == 5
+    assert referrers[0]["referred_creators"] == 3
+    assert referrers[0]["referred_advertisers"] == 2
+    assert referrers[0]["new_in_period"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_includes_payout_requests(service) -> None:
+    """get_dashboard includes payout requests list."""
+    req_id = uuid4()
+    payout_row = SimpleNamespace(
+        request_id=req_id,
+        user_id=uuid4(),
+        username="referrer1",
+        requested_at=datetime.now(timezone.utc),
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("100.50"),
+    )
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[payout_row]),
+    ]
+    svc = service(results)
+    data = await svc.get_dashboard("today")
+    payouts = data["payout_requests"]
+    assert len(payouts) == 1
+    assert payouts[0]["username"] == "referrer1"
+    assert payouts[0]["status"] == "pending"
+    assert payouts[0]["status_label"] == "Ожидает"
+    assert payouts[0]["amount"] == 100.50
 
 
 @pytest.mark.asyncio
@@ -165,6 +246,8 @@ async def test_get_dashboard_build_delta_previous_zero(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
     ]
     svc = service(results)
@@ -197,6 +280,8 @@ async def test_get_dashboard_order_cards_counts(service) -> None:
         _FakeResult(all_rows=rows),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -216,6 +301,8 @@ async def test_build_period_window_today(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -232,6 +319,8 @@ async def test_build_period_window_yesterday(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
     ]
     svc = service(results)
@@ -250,6 +339,8 @@ async def test_build_period_window_7d(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
     ]
     svc = service(results)
     data = await svc.get_dashboard("7d")
@@ -266,6 +357,8 @@ async def test_build_period_window_30d(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
     ]
     svc = service(results)
@@ -411,6 +504,8 @@ async def test_list_delayed_orders_includes_reasons(
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=rows),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -435,6 +530,8 @@ async def test_count_open_complaints(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=3),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
     ]
     svc = service(results)
@@ -497,6 +594,8 @@ async def test_build_delta_negative_change(service) -> None:
         _FakeResult(scalar_value=4),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
     ]
     svc = service(results)
@@ -576,6 +675,8 @@ async def test_is_archived_false_when_open_complaints(service) -> None:
         _FakeResult(all_rows=order_rows),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -614,6 +715,8 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=rows),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
