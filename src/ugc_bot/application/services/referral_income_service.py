@@ -100,6 +100,7 @@ class ReferralIncomeService:
         self,
         user_id: UUID,
         now: Optional[datetime] = None,
+        stats_limit: Optional[int] = None,
     ) -> UserReferralStats:
         """Get referrer statistics: referred users, orders, income.
 
@@ -109,13 +110,18 @@ class ReferralIncomeService:
         - Interaction status is OK (good feedback from advertiser)
         - platform_revenue_per_creator = payment.amount / order.bloggers_needed
         - Rate: 10% first year, 3% after (from referred user registration date)
+
+        stats_limit: max referrals to include in stats (default 10_000;
+           0 or None = use default. Set 0 in config for unlimited).
         """
 
         if now is None:
             now = datetime.now(timezone.utc)
 
         async def _run(session: object | None) -> UserReferralStats:
-            return await self._compute_stats(user_id, now, session)
+            return await self._compute_stats(
+                user_id, now, session, stats_limit=stats_limit
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)
 
@@ -124,12 +130,20 @@ class ReferralIncomeService:
         referrer_user_id: UUID,
         now: datetime,
         session: object | None,
+        stats_limit: Optional[int] = None,
     ) -> UserReferralStats:
         """Compute referrer stats (runs inside transaction)."""
 
+        effective_limit = 10_000 if stats_limit is None else stats_limit
+        if effective_limit <= 0:
+            effective_limit = 10_000_000
+
         bindings = list(
             await self.user_referral_binding_repo.list_by_referrer(
-                referrer_user_id, offset=0, limit=10_000, session=session
+                referrer_user_id,
+                offset=0,
+                limit=effective_limit,
+                session=session,
             )
         )
         creators_count = len(bindings)
@@ -175,6 +189,9 @@ class ReferralIncomeService:
                     interaction is None
                     or interaction.status != InteractionStatus.OK
                 ):
+                    continue
+
+                if order.bloggers_needed <= 0:
                     continue
 
                 completed_at = order.completed_at or order.created_at
@@ -255,4 +272,6 @@ class ReferralIncomeService:
                     count += 1
             return count
 
+        if session is not None:
+            return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)

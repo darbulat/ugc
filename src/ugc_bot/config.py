@@ -358,6 +358,10 @@ class ReferralConfig(BaseSettings):
         default="",
         alias="REFERRAL_BOT_USERNAME",
     )
+    referral_stats_limit: int = Field(
+        default=10_000,
+        alias="REFERRAL_STATS_LIMIT",
+    )
 
 
 # --- Composite ---

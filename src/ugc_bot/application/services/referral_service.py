@@ -48,7 +48,10 @@ class ReferralService:
     async def save_pending_referral(
         self, user_id: UUID, referral_code: str
     ) -> bool:
-        """Save pending referral if referrer exists. Returns True if saved."""
+        """Save pending referral if referrer exists.
+
+        Returns True if saved or user already had a pending referral.
+        """
 
         async def _run(session: object | None) -> bool:
             referrer = await self.user_repo.get_by_referral_code(

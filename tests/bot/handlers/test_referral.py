@@ -1,4 +1,4 @@
-"""Tests for referral handlers: /referal, payout, /referal_list."""
+"""Tests for referral handlers: /referral, payout, /referral_list."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,9 +14,9 @@ from ugc_bot.bot.handlers.referral import (
     REFERRAL_LIST_CALLBACK_PREFIX,
     REFERRAL_PAYOUT_CALLBACK,
     payout_button_callback,
-    referal_command,
-    referal_list_command,
-    referal_list_pagination_callback,
+    referral_command,
+    referral_list_command,
+    referral_list_pagination_callback,
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.memory_repositories import (
@@ -26,10 +26,10 @@ from ugc_bot.infrastructure.memory_repositories import (
 
 
 @pytest.mark.asyncio
-async def test_referal_command_sends_stats_and_keyboard(
+async def test_referral_command_sends_stats_and_keyboard(
     user_repo: InMemoryUserRepository,
 ) -> None:
-    """referal_command sends referral stats and payout keyboard."""
+    """referral_command sends referral stats and payout keyboard."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -56,13 +56,16 @@ async def test_referal_command_sends_stats_and_keyboard(
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
-    message = FakeMessage(text="/referal", user=FakeUser(123, "u", "alice"))
+    message = FakeMessage(text="/referral", user=FakeUser(123, "u", "alice"))
 
-    await referal_command(
+    await referral_command(
         message,
         user_role_service=user_role_service,
         referral_income_service=mock_income,
-        config=MagicMock(spec=AppConfig),
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_stats_limit=10_000),
+        ),
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -77,10 +80,10 @@ async def test_referal_command_sends_stats_and_keyboard(
 
 
 @pytest.mark.asyncio
-async def test_referal_command_shows_payout_button_when_balance_positive(
+async def test_referral_command_shows_payout_button_when_balance_positive(
     user_repo: InMemoryUserRepository,
 ) -> None:
-    """referal_command shows payout keyboard when income_total > 0."""
+    """referral_command shows payout keyboard when income_total > 0."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -104,13 +107,16 @@ async def test_referal_command_shows_payout_button_when_balance_positive(
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
-    message = FakeMessage(text="/referal", user=FakeUser(456, "u", "bob"))
+    message = FakeMessage(text="/referral", user=FakeUser(456, "u", "bob"))
 
-    await referal_command(
+    await referral_command(
         message,
         user_role_service=user_role_service,
         referral_income_service=mock_income,
-        config=MagicMock(spec=AppConfig),
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_stats_limit=10_000),
+        ),
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -122,10 +128,10 @@ async def test_referal_command_shows_payout_button_when_balance_positive(
 
 
 @pytest.mark.asyncio
-async def test_referal_command_hides_payout_button_when_pending_request(
+async def test_referral_command_hides_payout_button_when_pending_request(
     user_repo: InMemoryUserRepository,
 ) -> None:
-    """referal_command hides payout keyboard when has_pending_payout is True."""
+    """referral_command hides payout when has_pending_payout is True."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -149,13 +155,16 @@ async def test_referal_command_hides_payout_button_when_pending_request(
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
-    message = FakeMessage(text="/referal", user=FakeUser(789, "u", "carol"))
+    message = FakeMessage(text="/referral", user=FakeUser(789, "u", "carol"))
 
-    await referal_command(
+    await referral_command(
         message,
         user_role_service=user_role_service,
         referral_income_service=mock_income,
-        config=MagicMock(spec=AppConfig),
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_stats_limit=10_000),
+        ),
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -166,10 +175,10 @@ async def test_referal_command_hides_payout_button_when_pending_request(
 
 
 @pytest.mark.asyncio
-async def test_referal_command_hides_payout_button_when_request_today(
+async def test_referral_command_hides_payout_button_when_request_today(
     user_repo: InMemoryUserRepository,
 ) -> None:
-    """referal_command hides payout keyboard when has_request_today is True."""
+    """referral_command hides payout keyboard when has_request_today is True."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -193,13 +202,16 @@ async def test_referal_command_hides_payout_button_when_request_today(
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
-    message = FakeMessage(text="/referal", user=FakeUser(111, "u", "u1"))
+    message = FakeMessage(text="/referral", user=FakeUser(111, "u", "u1"))
 
-    await referal_command(
+    await referral_command(
         message,
         user_role_service=user_role_service,
         referral_income_service=mock_income,
-        config=MagicMock(spec=AppConfig),
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_stats_limit=10_000),
+        ),
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -256,7 +268,10 @@ async def test_payout_button_callback_creates_request_and_answers(
         transaction_manager=mock_tm,
         config=MagicMock(
             spec=AppConfig,
-            referral=MagicMock(referral_support_chat_id=""),
+            referral=MagicMock(
+                referral_support_chat_id="",
+                referral_stats_limit=10_000,
+            ),
             admin=MagicMock(admin_base_url=""),
         ),
         messenger_client=client,
@@ -317,7 +332,10 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
         transaction_manager=mock_tm,
         config=MagicMock(
             spec=AppConfig,
-            referral=MagicMock(referral_support_chat_id="support_chat"),
+            referral=MagicMock(
+                referral_support_chat_id="support_chat",
+                referral_stats_limit=10_000,
+            ),
             admin=MagicMock(admin_base_url="https://admin.example.com/admin"),
         ),
         messenger_client=client,
@@ -374,7 +392,10 @@ async def test_payout_callback_rejects_when_request_already_today(
         transaction_manager=mock_tm,
         config=MagicMock(
             spec=AppConfig,
-            referral=MagicMock(referral_support_chat_id=""),
+            referral=MagicMock(
+                referral_support_chat_id="",
+                referral_stats_limit=10_000,
+            ),
             admin=MagicMock(admin_base_url=""),
         ),
         messenger_client=client,
@@ -438,7 +459,10 @@ async def test_payout_callback_rejects_when_pending_or_no_balance(
             transaction_manager=mock_tm,
             config=MagicMock(
                 spec=AppConfig,
-                referral=MagicMock(referral_support_chat_id=""),
+                referral=MagicMock(
+                    referral_support_chat_id="",
+                    referral_stats_limit=10_000,
+                ),
                 admin=MagicMock(admin_base_url=""),
             ),
             messenger_client=client,
@@ -506,7 +530,10 @@ async def test_payout_callback_support_send_failure_still_answers(
         transaction_manager=mock_tm,
         config=MagicMock(
             spec=AppConfig,
-            referral=MagicMock(referral_support_chat_id="support_chat"),
+            referral=MagicMock(
+                referral_support_chat_id="support_chat",
+                referral_stats_limit=10_000,
+            ),
             admin=MagicMock(admin_base_url=""),
         ),
         messenger_client=client,
@@ -514,14 +541,16 @@ async def test_payout_callback_support_send_failure_still_answers(
     )
 
     assert len(client.answered_callbacks) == 1
-    assert "Запрос на выплату отправлен" in client.answered_callbacks[0]["text"]
+    answer_text = client.answered_callbacks[0]["text"]
+    assert "не удалось уведомить поддержку" in answer_text
+    assert "Обратитесь в поддержку вручную" in answer_text
 
 
 @pytest.mark.asyncio
-async def test_referal_command_user_not_found_sends_message(
+async def test_referral_command_user_not_found_sends_message(
     user_repo: InMemoryUserRepository,
 ) -> None:
-    """referal_command when user not in DB sends not-found message."""
+    """referral_command when user not in DB sends not-found message."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -532,15 +561,18 @@ async def test_referal_command_user_not_found_sends_message(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     message = FakeMessage(
-        text="/referal",
+        text="/referral",
         user=FakeUser(99999, "unknown", "Unknown"),
     )
 
-    await referal_command(
+    await referral_command(
         message,
         user_role_service=user_role_service,
         referral_income_service=mock_income,
-        config=MagicMock(spec=AppConfig),
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_stats_limit=10_000),
+        ),
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -551,10 +583,10 @@ async def test_referal_command_user_not_found_sends_message(
 
 
 @pytest.mark.asyncio
-async def test_referal_list_command_empty_sends_no_referrals_message(
+async def test_referral_list_command_empty_sends_no_referrals_message(
     user_repo: InMemoryUserRepository,
 ) -> None:
-    """referal_list_command with no referrals sends empty message."""
+    """referral_list_command with no referrals sends empty message."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -569,10 +601,10 @@ async def test_referal_list_command_empty_sends_no_referrals_message(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     message = FakeMessage(
-        text="/referal_list", user=FakeUser(789, "u", "carol")
+        text="/referral_list", user=FakeUser(789, "u", "carol")
     )
 
-    await referal_list_command(
+    await referral_list_command(
         message,
         user_role_service=user_role_service,
         user_referral_binding_repo=binding_repo,
@@ -588,7 +620,7 @@ async def test_referal_list_command_empty_sends_no_referrals_message(
 
 
 @pytest.mark.asyncio
-async def test_referal_list_command_with_one_referral_sends_page(
+async def test_referral_list_command_with_one_referral_sends_page(
     user_repo: InMemoryUserRepository,
 ) -> None:
     """referal_list with one referral sends page with name and orders count."""
@@ -633,10 +665,10 @@ async def test_referal_list_command_with_one_referral_sends_page(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     message = FakeMessage(
-        text="/referal_list", user=FakeUser(999, "u", "referrer")
+        text="/referral_list", user=FakeUser(999, "u", "referrer")
     )
 
-    await referal_list_command(
+    await referral_list_command(
         message,
         user_role_service=UserRoleService(user_repo=user_repo),
         user_referral_binding_repo=binding_repo,
@@ -654,10 +686,10 @@ async def test_referal_list_command_with_one_referral_sends_page(
 
 
 @pytest.mark.asyncio
-async def test_referal_list_pagination_callback_edits_message(
+async def test_referral_list_pagination_callback_edits_message(
     user_repo: InMemoryUserRepository,
 ) -> None:
-    """referal_list_pagination_callback edits message with page and keyboard."""
+    """referral_list_pagination_callback edits message with page and keys."""
     from datetime import datetime, timezone
     from uuid import uuid4
 
@@ -708,7 +740,7 @@ async def test_referal_list_pagination_callback_edits_message(
         ),
     )
 
-    await referal_list_pagination_callback(
+    await referral_list_pagination_callback(
         callback,
         user_role_service=UserRoleService(user_repo=user_repo),
         user_referral_binding_repo=binding_repo,

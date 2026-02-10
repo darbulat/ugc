@@ -1,10 +1,10 @@
-"""Handlers for referral: /referal, /referal_list and payout button."""
+"""Handlers for referral: /referral, /referral_list and payout button."""
 
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from math import ceil
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -15,9 +15,16 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.ports import (
+    PayoutRequestRepository,
+    TransactionManager,
+    UserReferralBindingRepository,
+    UserRepository,
+)
 from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
@@ -32,7 +39,7 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 REFERRAL_PAYOUT_CALLBACK = "referral:payout"
-REFERRAL_LIST_CALLBACK_PREFIX = "referal_list:"
+REFERRAL_LIST_CALLBACK_PREFIX = "referral_list:"
 PAYOUT_BUTTON_TEXT = "Выплатить"
 REFERRAL_LIST_PAGE_SIZE = 10
 
@@ -78,16 +85,16 @@ def _referral_keyboard(
     )
 
 
-@router.message(Command("referal"))
-async def referal_command(
+@router.message(Command("referral"))
+async def referral_command(
     message: Message,
-    user_role_service,
+    user_role_service: UserRoleService,
     referral_income_service: ReferralIncomeService,
     config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle /referal — show current user referral stats (all users)."""
+    """Handle /referral — show current user referral stats (all users)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -103,7 +110,9 @@ async def referal_command(
     if user is None:
         return
 
-    stats = await referral_income_service.get_user_referral_stats(user.user_id)
+    stats = await referral_income_service.get_user_referral_stats(
+        user.user_id, stats_limit=config.referral.referral_stats_limit
+    )
     balance = stats.income_total - stats.paid_total
     text = _referral_stats_text(
         creators_count=stats.creators_count,
@@ -125,10 +134,10 @@ async def referal_command(
 @router.callback_query(lambda c: c.data == REFERRAL_PAYOUT_CALLBACK)
 async def payout_button_callback(
     callback: CallbackQuery,
-    user_role_service,
+    user_role_service: UserRoleService,
     referral_income_service: ReferralIncomeService,
-    payout_request_repo,
-    transaction_manager,
+    payout_request_repo: PayoutRequestRepository,
+    transaction_manager: TransactionManager,
     config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -149,7 +158,9 @@ async def payout_button_callback(
     if user is None:
         return
 
-    stats = await referral_income_service.get_user_referral_stats(user.user_id)
+    stats = await referral_income_service.get_user_referral_stats(
+        user.user_id, stats_limit=config.referral.referral_stats_limit
+    )
     if stats.has_request_today:
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
@@ -182,6 +193,7 @@ async def payout_button_callback(
     await with_optional_tx(transaction_manager, _run)
 
     support_chat_id = config.referral.referral_support_chat_id.strip()
+    support_notified = True
     if support_chat_id:
         support_text = (
             f"💰 Запрос на выплату\n\n"
@@ -196,13 +208,15 @@ async def payout_button_callback(
             base = admin_base.rstrip("/")
             edit_url = f"{base}/payout-request-model/edit/{request.request_id}"
             support_text += f"\n\nОткрыть в админке: {edit_url}"
+        support_notified = True
         try:
             await messenger_client.send_text(
                 chat_id=support_chat_id,
                 text=support_text,
             )
         except Exception as e:
-            logger.warning(
+            support_notified = False
+            logger.error(
                 "Failed to send payout request to support channel",
                 extra={
                     "user_id": str(user.user_id),
@@ -211,25 +225,33 @@ async def payout_button_callback(
                 },
             )
 
+    if support_chat_id and not support_notified:
+        reply_text = (
+            "Заявка создана, но не удалось уведомить поддержку. "
+            "Обратитесь в поддержку вручную."
+        )
+    else:
+        reply_text = "Запрос на выплату отправлен в поддержку."
+
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
-        text="Запрос на выплату отправлен в поддержку.",
+        text=reply_text,
         show_alert=True,
     )
 
 
-@router.message(Command("referal_list"))
-async def referal_list_command(
+@router.message(Command("referral_list"))
+async def referral_list_command(
     message: Message,
-    user_role_service,
-    user_referral_binding_repo,
-    user_repo,
+    user_role_service: UserRoleService,
+    user_referral_binding_repo: UserReferralBindingRepository,
+    user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
-    transaction_manager,
+    transaction_manager: TransactionManager,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle /referal_list — list users referred by current user (page 1)."""
+    """Handle /referral_list — list users referred by current user (page 1)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -274,17 +296,17 @@ async def referal_list_command(
 @router.callback_query(
     lambda c: c.data and c.data.startswith(REFERRAL_LIST_CALLBACK_PREFIX)
 )
-async def referal_list_pagination_callback(
+async def referral_list_pagination_callback(
     callback: CallbackQuery,
-    user_role_service,
-    user_referral_binding_repo,
-    user_repo,
+    user_role_service: UserRoleService,
+    user_referral_binding_repo: UserReferralBindingRepository,
+    user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
-    transaction_manager,
+    transaction_manager: TransactionManager,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle pagination for /referal_list."""
+    """Handle pagination for /referral_list."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
     )
@@ -326,23 +348,22 @@ async def referal_list_pagination_callback(
 
 async def _render_referral_list_page(
     *,
-    referrer_user_id,
+    referrer_user_id: UUID,
     page: int,
-    user_referral_binding_repo,
-    user_repo,
+    user_referral_binding_repo: UserReferralBindingRepository,
+    user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
-    transaction_manager,
+    transaction_manager: TransactionManager,
 ) -> tuple[str, Keyboard]:
     """Build one page of referral list text and pagination keyboard."""
     async with transaction_manager.transaction() as session:
         total = await user_referral_binding_repo.count_by_referrer(
             referrer_user_id, session=session
         )
-    total_pages = max(1, ceil(total / REFERRAL_LIST_PAGE_SIZE))
-    page = max(1, min(page, total_pages))
-    offset = (page - 1) * REFERRAL_LIST_PAGE_SIZE
+        total_pages = max(1, ceil(total / REFERRAL_LIST_PAGE_SIZE))
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * REFERRAL_LIST_PAGE_SIZE
 
-    async with transaction_manager.transaction() as session:
         bindings = list(
             await user_referral_binding_repo.list_by_referrer(
                 referrer_user_id,
@@ -366,36 +387,35 @@ async def _render_referral_list_page(
                 name = "—"
             names.append(name)
 
-    lines = [f"Ваши рефералы (страница {page}/{total_pages}):"]
-    for idx, (binding, name) in enumerate(
-        zip(bindings, names, strict=True), start=offset + 1
-    ):
-        completed = (
-            await referral_income_service.count_completed_orders_for_user(
-                binding.referred_user_id
+        lines = [f"Ваши рефералы (страница {page}/{total_pages}):"]
+        for idx, (binding, name) in enumerate(
+            zip(bindings, names, strict=True), start=offset + 1
+        ):
+            completed = (
+                await referral_income_service.count_completed_orders_for_user(
+                    binding.referred_user_id, session=session
+                )
             )
-        )
-        lines.append(f"{idx}. {name} — выполнено заказов: {completed}")
+            lines.append(f"{idx}. {name} — выполнено заказов: {completed}")
 
     buttons_rows: list[list[Button]] = []
+    nav_buttons: list[Button] = []
     if page > 1:
-        buttons_rows.append(
-            [
-                Button(
-                    text="Назад",
-                    callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page - 1}",
-                )
-            ]
+        nav_buttons.append(
+            Button(
+                text="Назад",
+                callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page - 1}",
+            )
         )
     if page < total_pages:
-        buttons_rows.append(
-            [
-                Button(
-                    text="Вперёд",
-                    callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page + 1}",
-                )
-            ]
+        nav_buttons.append(
+            Button(
+                text="Вперёд",
+                callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page + 1}",
+            )
         )
+    if nav_buttons:
+        buttons_rows.append(nav_buttons)
 
     keyboard = (
         Keyboard(kind=KeyboardKind.INLINE, rows=buttons_rows)

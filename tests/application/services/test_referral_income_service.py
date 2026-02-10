@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -433,3 +434,62 @@ async def test_has_request_today_false_when_request_yesterday() -> None:
     stats = await service.get_user_referral_stats(user_id)
     assert stats.has_request_today is False
     assert stats.has_pending_payout is True
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_stats_limit_zero_unlimited() -> None:
+    """get_user_referral_stats with stats_limit=0 uses unlimited limit."""
+    user_repo = InMemoryUserRepository()
+    referrer_id = uuid4()
+    referred_id = uuid4()
+    await user_repo.save(
+        User(
+            user_id=referred_id,
+            external_id="refd",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referred",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+    )
+    stats = await service.get_user_referral_stats(referrer_id, stats_limit=0)
+    assert stats.creators_count == 1
+
+
+@pytest.mark.asyncio
+async def test_count_completed_orders_for_user_with_session() -> None:
+    """count_completed_orders_for_user with session uses it (no new tx)."""
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+    )
+    user_id = uuid4()
+    count = await service.count_completed_orders_for_user(
+        user_id, session=MagicMock()
+    )
+    assert count == 0
