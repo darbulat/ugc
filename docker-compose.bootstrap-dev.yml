@@ -1,0 +1,12 @@
+# Bootstrap dev: nginx HTTP-only so port 80 is up for Let's Encrypt ACME challenge.
+# Use until real certs exist; then switch to docker-compose.dev.yml.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.bootstrap-dev.yml up -d
+
+services:
+  nginx:
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx-http-only.conf:/etc/nginx/nginx.conf:ro
+      - certbot_www:/var/www/certbot
+      # certbot_data not mounted — nginx doesn't load SSL; certbot will write certs to volume when run
