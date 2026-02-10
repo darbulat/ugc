@@ -271,6 +271,25 @@ def _register_dashboard_routes(  # noqa: C901
             },
         )
 
+    @app.get("/admin/users/{user_id}", response_class=HTMLResponse)
+    async def admin_user_card(request: Request, user_id: UUID):
+        """Render user card (read-only) with all user and profile fields."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        user_card = await dashboard_service.get_user_card(user_id)
+        if user_card is None:
+            raise HTTPException(
+                status_code=404, detail="Пользователь не найден"
+            )
+        return templates.TemplateResponse(
+            request,
+            "user_card.html",
+            {
+                "user": user_card,
+                "user_status_labels": _USER_STATUS_LABELS,
+            },
+        )
+
     @app.get("/admin/api/dashboard", dependencies=[Depends(_require_admin)])
     async def dashboard_api(period: str = "today") -> dict:
         """Return dashboard data as JSON."""
@@ -824,6 +843,20 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
 DASHBOARD_URL = "https://bot.usemycontent.ru/admin/dashboard"
 
 
+def _dashboard_open_in_new_tab_html() -> str:
+    """HTML: open dashboard in new tab, redirect current tab to admin."""
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<script>"
+        f"window.open({DASHBOARD_URL!r}, '_blank');"
+        "window.location.href = '/admin/';"
+        "</script></head><body>"
+        "<p>Дашборд открыт в новой вкладке.</p>"
+        "<p><a href='/admin/'>Вернуться в админку</a></p>"
+        "</body></html>"
+    )
+
+
 class DashboardLinkView(BaseView):
     """Sidebar link to the MVP dashboard (above model views)."""
 
@@ -833,8 +866,8 @@ class DashboardLinkView(BaseView):
     @expose("/dashboard-mvp", methods=["GET"])
     @login_required
     async def dashboard_redirect(self, request: Request):
-        """Redirect to the MVP dashboard."""
-        return RedirectResponse(url=DASHBOARD_URL, status_code=302)
+        """Open MVP dashboard in a new tab and return current tab to admin."""
+        return HTMLResponse(_dashboard_open_in_new_tab_html())
 
 
 class EnumAwareAdmin(Admin):

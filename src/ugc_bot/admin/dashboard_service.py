@@ -314,6 +314,7 @@ class AdminDashboardService:
         query = select(
             UserModel.user_id,
             UserModel.username,
+            UserModel.telegram,
             UserModel.referral_code,
             func.coalesce(total_subq, 0).label("total_referred"),
             func.coalesce(creators_subq, 0).label("referred_creators"),
@@ -326,6 +327,7 @@ class AdminDashboardService:
             {
                 "user_id": str(row.user_id),
                 "username": row.username,
+                "telegram": row.telegram,
                 "referral_code": row.referral_code or "",
                 "total_referred": int(row.total_referred),
                 "referred_creators": int(row.referred_creators),
@@ -379,12 +381,13 @@ class AdminDashboardService:
         }
 
     async def _list_payout_requests(self, session: AsyncSession) -> list[dict]:
-        """Return recent payout requests with referrer username."""
+        """Return recent payout requests with referrer telegram/username."""
         query = (
             select(
                 PayoutRequestModel.request_id,
                 PayoutRequestModel.user_id,
                 UserModel.username,
+                UserModel.telegram,
                 PayoutRequestModel.requested_at,
                 PayoutRequestModel.status,
                 PayoutRequestModel.amount,
@@ -408,6 +411,7 @@ class AdminDashboardService:
                 "request_id": str(row.request_id),
                 "user_id": str(row.user_id),
                 "username": row.username,
+                "telegram": row.telegram,
                 "requested_at": row.requested_at,
                 "status": row.status.value if row.status else "",
                 "status_label": status_labels.get(
@@ -417,6 +421,91 @@ class AdminDashboardService:
             }
             for row in rows
         ]
+
+    async def get_user_card(self, user_id: UUID) -> dict | None:
+        """Return user card with profiles for read-only view."""
+        async with self._session_factory() as session:
+            return await self._get_user_card(session, user_id)
+
+    async def _get_user_card(
+        self, session: AsyncSession, user_id: UUID
+    ) -> dict | None:
+        """Load user with optional blogger and advertiser profiles."""
+        query = (
+            select(UserModel, BloggerProfileModel, AdvertiserProfileModel)
+            .outerjoin(
+                BloggerProfileModel,
+                BloggerProfileModel.user_id == UserModel.user_id,
+            )
+            .outerjoin(
+                AdvertiserProfileModel,
+                AdvertiserProfileModel.user_id == UserModel.user_id,
+            )
+            .where(UserModel.user_id == user_id)
+        )
+        result = await session.execute(query)
+        row = result.one_or_none()
+        if row is None:
+            return None
+        user, blogger, advertiser = row
+        card: dict = {
+            "user_id": str(user.user_id),
+            "external_id": user.external_id,
+            "messenger_type": user.messenger_type.value
+            if user.messenger_type
+            else "",
+            "username": user.username,
+            "status": user.status.value if user.status else "",
+            "status_label": self._user_status_label(user.status),
+            "issue_count": int(user.issue_count),
+            "created_at": user.created_at,
+            "role_chosen_at": user.role_chosen_at,
+            "last_role_reminder_at": user.last_role_reminder_at,
+            "telegram": user.telegram,
+            "admin": user.admin,
+            "referral_code": user.referral_code,
+        }
+        if blogger is not None:
+            card["blogger_profile"] = {
+                "instagram_url": blogger.instagram_url,
+                "confirmed": blogger.confirmed,
+                "city": blogger.city,
+                "topics": blogger.topics,
+                "audience_gender": getattr(
+                    blogger.audience_gender,
+                    "value",
+                    str(blogger.audience_gender),
+                )
+                if blogger.audience_gender
+                else "",
+                "audience_age_min": int(blogger.audience_age_min),
+                "audience_age_max": int(blogger.audience_age_max),
+                "audience_geo": blogger.audience_geo,
+                "price": float(blogger.price),
+                "barter": blogger.barter,
+                "work_format": getattr(
+                    blogger.work_format, "value", str(blogger.work_format)
+                )
+                if blogger.work_format
+                else "",
+                "wanted_to_change_terms_count": int(
+                    blogger.wanted_to_change_terms_count
+                ),
+                "updated_at": blogger.updated_at,
+            }
+        else:
+            card["blogger_profile"] = None
+        if advertiser is not None:
+            card["advertiser_profile"] = {
+                "contact": advertiser.contact,
+                "brand": advertiser.brand,
+                "site_link": advertiser.site_link,
+                "city": advertiser.city,
+                "company_activity": advertiser.company_activity,
+            }
+        else:
+            card["advertiser_profile"] = None
+        return card
 
     async def _list_delayed_orders(self, session: AsyncSession) -> list[dict]:
         """Return list of delayed orders with reasons."""

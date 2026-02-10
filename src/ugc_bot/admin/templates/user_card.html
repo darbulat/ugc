@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Карточка пользователя {{ user.user_id }}{% endblock %}
+{% block content %}
+  <section class="section">
+    <h1>Карточка пользователя</h1>
+    <div class="card">
+      <div class="detail-row">
+        <div class="detail-label">ID пользователя</div>
+        <div class="detail-value">{{ user.user_id }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Telegram</div>
+        <div class="detail-value">{{ user.telegram or '—' }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Имя (username)</div>
+        <div class="detail-value">{{ user.username }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Внешний ID</div>
+        <div class="detail-value">{{ user.external_id }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Мессенджер</div>
+        <div class="detail-value">{{ user.messenger_type }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Статус</div>
+        <div class="detail-value">{{ user_status_labels.get(user.status, user.status) }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Счётчик обращений</div>
+        <div class="detail-value">{{ user.issue_count }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Дата регистрации</div>
+        <div class="detail-value">{{ user.created_at }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Роль выбрана</div>
+        <div class="detail-value">{{ user.role_chosen_at or '—' }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Напоминание о роли</div>
+        <div class="detail-value">{{ user.last_role_reminder_at or '—' }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Админ</div>
+        <div class="detail-value">{{ 'Да' if user.admin else 'Нет' }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Реферальный код</div>
+        <div class="detail-value">{{ user.referral_code or '—' }}</div>
+      </div>
+    </div>
+
+    {% if user.blogger_profile %}
+      <h2>Профиль креатора</h2>
+      <div class="card">
+        <div class="detail-row">
+          <div class="detail-label">Instagram</div>
+          <div class="detail-value">{{ user.blogger_profile.instagram_url }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Подтверждён</div>
+          <div class="detail-value">{{ 'Да' if user.blogger_profile.confirmed else 'Нет' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Город</div>
+          <div class="detail-value">{{ user.blogger_profile.city or '—' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Темы</div>
+          <div class="detail-value">{{ user.blogger_profile.topics or '—' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Пол аудитории</div>
+          <div class="detail-value">{{ user.blogger_profile.audience_gender }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Возраст аудитории</div>
+          <div class="detail-value">{{ user.blogger_profile.audience_age_min }}–{{ user.blogger_profile.audience_age_max }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Гео аудитории</div>
+          <div class="detail-value">{{ user.blogger_profile.audience_geo or '—' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Цена</div>
+          <div class="detail-value">{{ user.blogger_profile.price }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Бартер</div>
+          <div class="detail-value">{{ 'Да' if user.blogger_profile.barter else 'Нет' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Формат работы</div>
+          <div class="detail-value">{{ user.blogger_profile.work_format }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Обновлён</div>
+          <div class="detail-value">{{ user.blogger_profile.updated_at }}</div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if user.advertiser_profile %}
+      <h2>Профиль заказчика</h2>
+      <div class="card">
+        <div class="detail-row">
+          <div class="detail-label">Контакт (телефон)</div>
+          <div class="detail-value">{{ user.advertiser_profile.contact }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Бренд</div>
+          <div class="detail-value">{{ user.advertiser_profile.brand or '—' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Сайт</div>
+          <div class="detail-value">{{ user.advertiser_profile.site_link or '—' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Город</div>
+          <div class="detail-value">{{ user.advertiser_profile.city or '—' }}</div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Деятельность компании</div>
+          <div class="detail-value">{{ user.advertiser_profile.company_activity or '—' }}</div>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

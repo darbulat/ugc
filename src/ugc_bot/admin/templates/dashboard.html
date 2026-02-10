@@ -107,7 +107,7 @@
         <tbody>
           {% for r in referrers %}
             <tr>
-              <td>{{ r.username }}</td>
+              <td>{{ r.telegram or r.username }}</td>
               <td><code>{{ r.referral_code }}</code></td>
               <td>{% if r.balance is not none %}{{ "%.2f"|format(r.balance) }}{% else %}—{% endif %}</td>
               <td>{{ r.total_referred }}</td>
@@ -140,11 +140,12 @@
         <tbody>
           {% for p in payouts %}
             <tr>
-              <td>{{ p.username }}</td>
+              <td>{{ p.telegram or p.username }}</td>
               <td>{{ p.requested_at }}</td>
               <td>{% if p.amount is not none %}{{ "%.2f"|format(p.amount) }}{% else %}—{% endif %}</td>
               <td>{{ p.status_label }}</td>
               <td>
+                <a href="/admin/users/{{ p.user_id }}">Карточка</a>
                 <a href="/admin/payout-request-model/edit/{{ p.request_id }}">Редактировать</a>
               </td>
             </tr>

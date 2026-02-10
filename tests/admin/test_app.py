@@ -9,11 +9,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ugc_bot.admin.app import (
+    DASHBOARD_URL,
     ComplaintAdmin,
     EnumAwareAdmin,
     InteractionAdmin,
     OrderAdmin,
     UserAdmin,
+    _dashboard_open_in_new_tab_html,
     _get_order_moderation_deps,
     _get_services,
     create_admin_app,
@@ -97,6 +99,16 @@ def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] in ("ok", "degraded")
+
+
+def test_dashboard_open_in_new_tab_html() -> None:
+    """Dashboard link HTML opens URL in new tab and redirects to admin."""
+    html = _dashboard_open_in_new_tab_html()
+    assert "_blank" in html
+    assert DASHBOARD_URL in html
+    assert "Дашборд открыт в новой вкладке" in html
+    assert "window.open(" in html
+    assert "window.location.href = '/admin/'" in html
 
 
 def test_enum_aware_admin_edit_form_data_converts_enum_to_value() -> None:

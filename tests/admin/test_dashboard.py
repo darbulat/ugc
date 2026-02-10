@@ -453,6 +453,141 @@ def test_admin_order_detail_404_when_not_found(monkeypatch) -> None:
     assert response.status_code == 404
 
 
+def test_admin_user_card_html(monkeypatch) -> None:
+    """User card page renders with mocked user data."""
+    from uuid import uuid4
+
+    user_id = uuid4()
+    user_card = {
+        "user_id": str(user_id),
+        "username": "john",
+        "telegram": "@john",
+        "external_id": "ext1",
+        "status": "active",
+        "blogger_profile": None,
+        "advertiser_profile": None,
+    }
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_user_card",
+        AsyncMock(return_value=user_card),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+
+    app = create_admin_app()
+    client = TestClient(app)
+
+    response = client.get(f"/admin/users/{user_id}")
+    assert response.status_code == 200
+    assert "Карточка пользователя" in response.text
+    assert "@john" in response.text
+
+
+def test_admin_user_card_redirect_when_not_authenticated(
+    monkeypatch,
+) -> None:
+    """User card page redirects to login when not authenticated."""
+    from uuid import uuid4
+
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+
+    app = create_admin_app()
+    client = TestClient(app)
+
+    response = client.get(
+        f"/admin/users/{uuid4()}",
+        follow_redirects=False,
+    )
+    assert response.status_code in (302, 307)
+    assert "/admin/login" in response.headers.get("location", "")
+
+
+def test_admin_user_card_404_when_not_found(monkeypatch) -> None:
+    """User card page returns 404 when user not found."""
+    from uuid import uuid4
+
+    user_id = uuid4()
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_user_card",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+
+    app = create_admin_app()
+    client = TestClient(app)
+
+    response = client.get(f"/admin/users/{user_id}")
+    assert response.status_code == 404
+
+
 def test_admin_creators_api_with_complaints_filter(monkeypatch) -> None:
     """Creators API passes with_complaints to list_creators."""
     creators = [

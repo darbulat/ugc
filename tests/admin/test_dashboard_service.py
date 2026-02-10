@@ -177,6 +177,7 @@ async def test_get_dashboard_includes_referral_referrers(service) -> None:
     ref_row = SimpleNamespace(
         user_id=ref_user_id,
         username="manager1",
+        telegram="@manager1",
         referral_code="mgr1",
         total_referred=5,
         referred_creators=3,
@@ -218,6 +219,7 @@ async def test_get_dashboard_includes_payout_requests(service) -> None:
         request_id=req_id,
         user_id=uuid4(),
         username="referrer1",
+        telegram="@referrer1",
         requested_at=datetime.now(timezone.utc),
         status=PayoutRequestStatus.PENDING,
         amount=Decimal("100.50"),
@@ -238,9 +240,106 @@ async def test_get_dashboard_includes_payout_requests(service) -> None:
     payouts = data["payout_requests"]
     assert len(payouts) == 1
     assert payouts[0]["username"] == "referrer1"
+    assert payouts[0]["telegram"] == "@referrer1"
     assert payouts[0]["status"] == "pending"
     assert payouts[0]["status_label"] == "Ожидает"
     assert payouts[0]["amount"] == 100.50
+
+
+@pytest.mark.asyncio
+async def test_get_user_card_returns_none_for_unknown_user(service) -> None:
+    """get_user_card returns None when user does not exist."""
+    svc = service([_FakeResult(one_or_none_value=None)])
+    card = await svc.get_user_card(uuid4())
+    assert card is None
+
+
+@pytest.mark.asyncio
+async def test_get_user_card_returns_user_data(service) -> None:
+    """get_user_card returns user dict with all fields when user exists."""
+    uid = uuid4()
+    created = datetime.now(timezone.utc)
+    user_ns = SimpleNamespace(
+        user_id=uid,
+        external_id="ext123",
+        messenger_type=SimpleNamespace(value="telegram"),
+        username="john",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=created,
+        role_chosen_at=None,
+        last_role_reminder_at=None,
+        telegram="@john",
+        admin=False,
+        referral_code="ref1",
+    )
+    svc = service([_FakeResult(one_or_none_value=(user_ns, None, None))])
+    card = await svc.get_user_card(uid)
+    assert card is not None
+    assert card["user_id"] == str(uid)
+    assert card["username"] == "john"
+    assert card["telegram"] == "@john"
+    assert card["external_id"] == "ext123"
+    assert card["referral_code"] == "ref1"
+    assert card["blogger_profile"] is None
+    assert card["advertiser_profile"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_user_card_includes_blogger_and_advertiser_profiles(
+    service,
+) -> None:
+    """get_user_card includes blogger and advertiser profiles when present."""
+    uid = uuid4()
+    created = datetime.now(timezone.utc)
+    user_ns = SimpleNamespace(
+        user_id=uid,
+        external_id="ext1",
+        messenger_type=SimpleNamespace(value="telegram"),
+        username="jane",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=created,
+        role_chosen_at=created,
+        last_role_reminder_at=None,
+        telegram="@jane",
+        admin=False,
+        referral_code=None,
+    )
+    blogger_ns = SimpleNamespace(
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={"fashion": True},
+        audience_gender=SimpleNamespace(value="female"),
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="RU",
+        price=100.0,
+        barter=True,
+        work_format=SimpleNamespace(value="ugc_only"),
+        wanted_to_change_terms_count=0,
+        updated_at=created,
+    )
+    advertiser_ns = SimpleNamespace(
+        contact="+79001234567",
+        brand="Brand",
+        site_link="https://brand.com",
+        city="SPB",
+        company_activity="Retail",
+    )
+    svc = service(
+        [_FakeResult(one_or_none_value=(user_ns, blogger_ns, advertiser_ns))]
+    )
+    card = await svc.get_user_card(uid)
+    assert card is not None
+    assert card["username"] == "jane"
+    assert card["blogger_profile"] is not None
+    assert card["blogger_profile"]["instagram_url"] == blogger_ns.instagram_url
+    assert card["blogger_profile"]["city"] == "Moscow"
+    assert card["advertiser_profile"] is not None
+    assert card["advertiser_profile"]["contact"] == "+79001234567"
+    assert card["advertiser_profile"]["brand"] == "Brand"
 
 
 @pytest.mark.asyncio
@@ -252,6 +351,7 @@ async def test_get_dashboard_referrers_balance_and_sort_when_income_service_set(
     ref_row = SimpleNamespace(
         user_id=ref_user_id,
         username="manager1",
+        telegram="@manager1",
         referral_code="mgr1",
         total_referred=5,
         referred_creators=3,
