@@ -50,6 +50,7 @@ async def test_referal_command_sends_stats_and_keyboard(
             income_current_month=0.0,
             income_total=0.0,
             paid_total=0.0,
+            has_pending_payout=False,
         )
     )
     client = FakeMessengerClient()
@@ -96,6 +97,7 @@ async def test_referal_command_shows_payout_button_when_balance_positive(
             income_current_month=100.0,
             income_total=500.0,
             paid_total=0.0,
+            has_pending_payout=False,
         )
     )
     client = FakeMessengerClient()
@@ -115,6 +117,49 @@ async def test_referal_command_shows_payout_button_when_balance_positive(
     assert "Выплачено: 0.00" in client.sent_text[0]["text"]
     assert "Текущий баланс: 500.00" in client.sent_text[0]["text"]
     assert client.sent_text[0]["keyboard"] is not None
+
+
+@pytest.mark.asyncio
+async def test_referal_command_hides_payout_button_when_pending_request(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """referal_command hides payout keyboard when has_pending_payout is True."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await user_repo.save(
+        __user(external_id="789", username="carol"),
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=0,
+            orders_count=0,
+            income_current_month=0.0,
+            income_total=100.0,
+            paid_total=0.0,
+            has_pending_payout=True,
+        )
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(text="/referal", user=FakeUser(789, "u", "carol"))
+
+    await referal_command(
+        message,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        config=MagicMock(spec=AppConfig),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    assert "Текущий баланс: 100.00" in client.sent_text[0]["text"]
+    assert client.sent_text[0]["keyboard"] is None
 
 
 @pytest.mark.asyncio
@@ -139,6 +184,7 @@ async def test_payout_button_callback_creates_request_and_answers(
             income_current_month=0.0,
             income_total=300.50,
             paid_total=0.0,
+            has_pending_payout=False,
         )
     )
     mock_payout_repo = MagicMock()
@@ -161,7 +207,9 @@ async def test_payout_button_callback_creates_request_and_answers(
         payout_request_repo=mock_payout_repo,
         transaction_manager=mock_tm,
         config=MagicMock(
-            spec=AppConfig, referral=MagicMock(referral_support_chat_id="")
+            spec=AppConfig,
+            referral=MagicMock(referral_support_chat_id=""),
+            admin=MagicMock(admin_base_url=""),
         ),
         messenger_client=client,
         event_adapter=adapter,
@@ -172,6 +220,65 @@ async def test_payout_button_callback_creates_request_and_answers(
         "Запрос на выплату отправлен" in a.get("text", "")
         for a in client.answered_callbacks
     )
+
+
+@pytest.mark.asyncio
+async def test_payout_callback_includes_admin_link_when_base_url_set(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """When admin_base_url is set, support message contains admin edit link."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await user_repo.save(
+        __user(external_id="888", username="u8"),
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=0,
+            orders_count=0,
+            income_current_month=0.0,
+            income_total=200.0,
+            paid_total=0.0,
+            has_pending_payout=False,
+        )
+    )
+    mock_payout_repo = MagicMock()
+    mock_payout_repo.save = AsyncMock(return_value=None)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=REFERRAL_PAYOUT_CALLBACK,
+        user=FakeUser(888, "u", "u8"),
+        callback_id="cb_admin",
+    )
+
+    await payout_button_callback(
+        callback,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        payout_request_repo=mock_payout_repo,
+        transaction_manager=mock_tm,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_support_chat_id="support_chat"),
+            admin=MagicMock(admin_base_url="https://admin.example.com/admin"),
+        ),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    assert client.sent_text[0]["chat_id"] == "support_chat"
+    assert "Открыть в админке" in client.sent_text[0]["text"]
+    assert "payoutrequestmodel/edit/" in client.sent_text[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -194,6 +301,7 @@ async def test_payout_callback_support_send_failure_still_answers(
             income_current_month=0.0,
             income_total=100.0,
             paid_total=0.0,
+            has_pending_payout=False,
         )
     )
     mock_payout_repo = MagicMock()
@@ -226,6 +334,7 @@ async def test_payout_callback_support_send_failure_still_answers(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_support_chat_id="support_chat"),
+            admin=MagicMock(admin_base_url=""),
         ),
         messenger_client=client,
         event_adapter=adapter,

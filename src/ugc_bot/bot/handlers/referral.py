@@ -57,9 +57,11 @@ def _referral_stats_text(
     )
 
 
-def _referral_keyboard(balance: float) -> Keyboard | None:
-    """Build keyboard with payout button only when balance is positive."""
-    if balance <= 0:
+def _referral_keyboard(
+    balance: float, has_pending_payout: bool
+) -> Keyboard | None:
+    """Payout button only when balance > 0 and no pending payout request."""
+    if balance <= 0 or has_pending_payout:
         return None
     return Keyboard(
         kind=KeyboardKind.INLINE,
@@ -112,7 +114,7 @@ async def referal_command(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
-        keyboard=_referral_keyboard(balance),
+        keyboard=_referral_keyboard(balance, stats.has_pending_payout),
     )
 
 
@@ -165,11 +167,16 @@ async def payout_button_callback(
         support_text = (
             f"💰 Запрос на выплату\n\n"
             f"Пользователь: {user.username or '—'}\n"
-            f"telegram: {user.telegram}\n"
+            f"telegram: @{user.telegram}\n"
             f"Request ID: {request.request_id}\n"
             f"Сумма: {request_amount:.2f} ₽\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
         )
+        admin_base = (config.admin.admin_base_url or "").strip()
+        if admin_base:
+            base = admin_base.rstrip("/")
+            edit_url = f"{base}/payoutrequestmodel/edit/{request.request_id}"
+            support_text += f"\n\nОткрыть в админке: {edit_url}"
         try:
             await messenger_client.send_text(
                 chat_id=support_chat_id,

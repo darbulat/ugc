@@ -48,6 +48,7 @@ from ugc_bot.infrastructure.db.models import (
     InteractionModel,
     OrderModel,
     OrderResponseModel,
+    PayoutRequestModel,
     UserModel,
 )
 from ugc_bot.logging_setup import configure_logging
@@ -665,6 +666,30 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     ]
 
 
+class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
+    """Admin view for payout requests (referral)."""
+
+    can_create = False
+    column_list = [
+        PayoutRequestModel.request_id,
+        PayoutRequestModel.user_id,
+        PayoutRequestModel.requested_at,
+        PayoutRequestModel.status,
+        PayoutRequestModel.amount,
+    ]
+    form_columns = [
+        PayoutRequestModel.status,
+        PayoutRequestModel.amount,
+    ]
+    column_labels = {
+        PayoutRequestModel.request_id: "ID заявки",
+        PayoutRequestModel.user_id: "User ID",
+        PayoutRequestModel.requested_at: "Дата запроса",
+        PayoutRequestModel.status: "Статус",
+        PayoutRequestModel.amount: "Сумма",
+    }
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -817,6 +842,7 @@ def create_admin_app() -> FastAPI:  # noqa: C901
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)
     admin.add_view(ContactPricingAdmin)
+    admin.add_view(PayoutRequestAdmin)
 
     return app
 

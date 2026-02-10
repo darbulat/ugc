@@ -67,6 +67,7 @@ async def test_get_user_referral_stats_empty_returns_zeros() -> None:
     assert stats.income_current_month == 0.0
     assert stats.income_total == 0.0
     assert stats.paid_total == 0.0
+    assert stats.has_pending_payout is False
 
 
 @pytest.mark.asyncio
@@ -137,6 +138,7 @@ async def test_get_user_referral_stats_with_one_binding_no_orders() -> None:
     assert stats.orders_count == 0
     assert stats.income_total == 0.0
     assert stats.paid_total == 0.0
+    assert stats.has_pending_payout is False
 
 
 @pytest.mark.asyncio
@@ -241,6 +243,7 @@ async def test_get_user_referral_stats_with_completed_order_counts_income() -> (
     assert stats.orders_count == 1
     assert stats.income_total > 0
     assert stats.paid_total == 0.0
+    assert stats.has_pending_payout is False
 
 
 @pytest.mark.asyncio
@@ -357,3 +360,38 @@ async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
     stats = await service.get_user_referral_stats(user_id)
     assert stats.paid_total == 150.0
     assert stats.income_total == 0.0
+    assert stats.has_pending_payout is True
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_has_pending_payout_when_pending() -> (
+    None
+):
+    """has_pending_payout is True when user has at least one PENDING request."""
+    now = datetime.now(timezone.utc)
+    user_id = uuid4()
+
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=user_id,
+            requested_at=now,
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("50.00"),
+        )
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=payout_repo,
+        transaction_manager=None,
+    )
+    stats = await service.get_user_referral_stats(user_id)
+    assert stats.has_pending_payout is True
+    assert stats.paid_total == 0.0
