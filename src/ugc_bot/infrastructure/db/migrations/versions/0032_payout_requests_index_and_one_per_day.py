@@ -18,7 +18,7 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE UNIQUE INDEX uq_payout_requests_user_id_request_date "
-        "ON payout_requests (user_id, (requested_at AT TIME ZONE 'UTC')::date)"
+        "ON payout_requests (user_id, (CAST(requested_at AT TIME ZONE 'UTC' AS date)))"
     )
     op.create_index(
         "ix_user_referral_bindings_referred_user_id",
