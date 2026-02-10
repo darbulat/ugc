@@ -19,6 +19,7 @@ from ugc_bot.application.ports import (
     OrderResponseRepository,
     OutboxRepository,
     PaymentRepository,
+    PayoutRequestRepository,
     UserReferralBindingRepository,
     UserReferralPendingRepository,
     UserRepository,
@@ -34,6 +35,7 @@ from ugc_bot.domain.entities import (
     OrderResponse,
     OutboxEvent,
     Payment,
+    PayoutRequest,
     User,
     UserReferralBinding,
     UserReferralPending,
@@ -202,6 +204,33 @@ class InMemoryUserReferralPendingRepository(UserReferralPendingRepository):
     ) -> None:
         """Delete pending referral by user ID."""
         self._pending.pop(user_id, None)
+
+
+@dataclass
+class InMemoryPayoutRequestRepository(PayoutRequestRepository):
+    """In-memory implementation of payout request repository."""
+
+    _requests: Dict[UUID, PayoutRequest] = field(default_factory=dict)
+
+    async def save(
+        self,
+        request: PayoutRequest,
+        session: object | None = None,
+    ) -> None:
+        """Persist payout request."""
+        self._requests[request.request_id] = request
+
+    async def get_by_id(
+        self, request_id: UUID, session: object | None = None
+    ) -> Optional[PayoutRequest]:
+        """Fetch payout request by ID."""
+        return self._requests.get(request_id)
+
+    async def list_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> Iterable[PayoutRequest]:
+        """List payout requests by user ID."""
+        return [r for r in self._requests.values() if r.user_id == user_id]
 
 
 @dataclass

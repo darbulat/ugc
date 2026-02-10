@@ -238,6 +238,7 @@ def build_bot_services(
             payment_repo=repos["payment_repo"],
             interaction_repo=repos["interaction_repo"],
             user_repo=repos["user_repo"],
+            payout_request_repo=repos["payout_request_repo"],
             transaction_manager=transaction_manager,
         ),
         "issue_lock_manager": issue_lock_manager,

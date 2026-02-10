@@ -1614,6 +1614,7 @@ def _to_payout_request_entity(
         user_id=model.user_id,
         requested_at=model.requested_at,
         status=model.status,
+        amount=model.amount,
     )
 
 
@@ -1625,6 +1626,7 @@ def _to_payout_request_model(request: PayoutRequest) -> PayoutRequestModel:
         user_id=request.user_id,
         requested_at=request.requested_at,
         status=request.status,
+        amount=request.amount,
     )
 
 

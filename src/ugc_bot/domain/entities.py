@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
@@ -222,3 +223,4 @@ class PayoutRequest:
     user_id: UUID
     requested_at: datetime
     status: PayoutRequestStatus
+    amount: Optional[Decimal] = None

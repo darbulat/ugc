@@ -10,11 +10,16 @@ from ugc_bot.application.ports import (
     OrderRepository,
     OrderResponseRepository,
     PaymentRepository,
+    PayoutRequestRepository,
     TransactionManager,
     UserReferralBindingRepository,
     UserRepository,
 )
-from ugc_bot.domain.enums import InteractionStatus, OrderStatus
+from ugc_bot.domain.enums import (
+    InteractionStatus,
+    OrderStatus,
+    PayoutRequestStatus,
+)
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 FIRST_YEAR_RATE = 0.10
@@ -23,12 +28,13 @@ AFTER_FIRST_YEAR_RATE = 0.03
 
 @dataclass(slots=True)
 class UserReferralStats:
-    """Referrer user statistics (referrals, orders, income)."""
+    """Referrer user statistics (referrals, orders, income, payouts)."""
 
     creators_count: int
     orders_count: int
     income_current_month: float
     income_total: float
+    paid_total: float
 
 
 def _years_since(date: datetime, reference: datetime) -> float:
@@ -57,6 +63,7 @@ class ReferralIncomeService:
     payment_repo: PaymentRepository
     interaction_repo: InteractionRepository
     user_repo: UserRepository
+    payout_request_repo: PayoutRequestRepository
     transaction_manager: TransactionManager | None = None
 
     async def get_user_referral_stats(
@@ -158,11 +165,25 @@ class ReferralIncomeService:
 
         orders_count = len(seen_orders)
 
+        paid_total = 0.0
+        payout_requests = list(
+            await self.payout_request_repo.list_by_user(
+                referrer_user_id, session=session
+            )
+        )
+        for req in payout_requests:
+            if (
+                req.status == PayoutRequestStatus.PAID
+                and req.amount is not None
+            ):
+                paid_total += float(req.amount)
+
         return UserReferralStats(
             creators_count=creators_count,
             orders_count=orders_count,
             income_current_month=round(income_current_month, 2),
             income_total=round(income_total, 2),
+            paid_total=round(paid_total, 2),
         )
 
     async def count_completed_orders_for_user(

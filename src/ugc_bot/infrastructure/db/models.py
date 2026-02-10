@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models for persistence."""
 
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Optional
 from uuid import UUID
@@ -550,4 +551,8 @@ class PayoutRequestModel(Base):
         _enum_column(PayoutRequestStatus),
         nullable=False,
         server_default=text("'pending'"),
+    )
+    amount: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2),
+        nullable=True,
     )

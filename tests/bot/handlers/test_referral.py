@@ -49,6 +49,7 @@ async def test_referal_command_sends_stats_and_keyboard(
             orders_count=0,
             income_current_month=0.0,
             income_total=0.0,
+            paid_total=0.0,
         )
     )
     client = FakeMessengerClient()
@@ -67,6 +68,52 @@ async def test_referal_command_sends_stats_and_keyboard(
     assert len(client.sent_text) == 1
     assert "Реферальная статистика" in client.sent_text[0]["text"]
     assert "Приведено креаторов: 0" in client.sent_text[0]["text"]
+    assert "Выплачено: 0.00" in client.sent_text[0]["text"]
+    assert "Текущий баланс: 0.00" in client.sent_text[0]["text"]
+    # No payout button when balance is zero
+    assert client.sent_text[0]["keyboard"] is None
+
+
+@pytest.mark.asyncio
+async def test_referal_command_shows_payout_button_when_balance_positive(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """referal_command shows payout keyboard when income_total > 0."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await user_repo.save(
+        __user(external_id="456", username="bob"),
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=1,
+            orders_count=2,
+            income_current_month=100.0,
+            income_total=500.0,
+            paid_total=0.0,
+        )
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(text="/referal", user=FakeUser(456, "u", "bob"))
+
+    await referal_command(
+        message,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        config=MagicMock(spec=AppConfig),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    assert "Выплачено: 0.00" in client.sent_text[0]["text"]
+    assert "Текущий баланс: 500.00" in client.sent_text[0]["text"]
     assert client.sent_text[0]["keyboard"] is not None
 
 
@@ -84,6 +131,16 @@ async def test_payout_button_callback_creates_request_and_answers(
         __user(external_id="456", username="bob"),
     )
     user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=0,
+            orders_count=0,
+            income_current_month=0.0,
+            income_total=300.50,
+            paid_total=0.0,
+        )
+    )
     mock_payout_repo = MagicMock()
     mock_payout_repo.save = AsyncMock(return_value=None)
     mock_tm = MagicMock()
@@ -100,6 +157,7 @@ async def test_payout_button_callback_creates_request_and_answers(
     await payout_button_callback(
         callback,
         user_role_service=user_role_service,
+        referral_income_service=mock_income,
         payout_request_repo=mock_payout_repo,
         transaction_manager=mock_tm,
         config=MagicMock(
@@ -128,6 +186,16 @@ async def test_payout_callback_support_send_failure_still_answers(
 
     await user_repo.save(__user(external_id="777", username="u7"))
     user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=0,
+            orders_count=0,
+            income_current_month=0.0,
+            income_total=100.0,
+            paid_total=0.0,
+        )
+    )
     mock_payout_repo = MagicMock()
     mock_payout_repo.save = AsyncMock(return_value=None)
     mock_tm = MagicMock()
@@ -152,6 +220,7 @@ async def test_payout_callback_support_send_failure_still_answers(
     await payout_button_callback(
         callback,
         user_role_service=user_role_service,
+        referral_income_service=mock_income,
         payout_request_repo=mock_payout_repo,
         transaction_manager=mock_tm,
         config=MagicMock(

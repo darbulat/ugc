@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from math import ceil
 from uuid import uuid4
 
@@ -41,6 +42,8 @@ def _referral_stats_text(
     orders_count: int,
     income_current_month: float,
     income_total: float,
+    paid_total: float,
+    balance: float,
 ) -> str:
     """Format referral stats message."""
     return (
@@ -48,12 +51,16 @@ def _referral_stats_text(
         f"Приведено креаторов: {creators_count}\n"
         f"Выполнено заказов: {orders_count}\n\n"
         f"Доход за текущий месяц: {income_current_month:.2f} ₽\n"
-        f"Общий баланс: {income_total:.2f} ₽"
+        f"Накоплено (всего): {income_total:.2f} ₽\n"
+        f"Выплачено: {paid_total:.2f} ₽\n"
+        f"Текущий баланс: {balance:.2f} ₽"
     )
 
 
-def _referral_keyboard() -> Keyboard:
-    """Build keyboard with payout button."""
+def _referral_keyboard(balance: float) -> Keyboard | None:
+    """Build keyboard with payout button only when balance is positive."""
+    if balance <= 0:
+        return None
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
@@ -93,16 +100,19 @@ async def referal_command(
         return
 
     stats = await referral_income_service.get_user_referral_stats(user.user_id)
+    balance = stats.income_total - stats.paid_total
     text = _referral_stats_text(
         creators_count=stats.creators_count,
         orders_count=stats.orders_count,
         income_current_month=stats.income_current_month,
         income_total=stats.income_total,
+        paid_total=stats.paid_total,
+        balance=balance,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
-        keyboard=_referral_keyboard(),
+        keyboard=_referral_keyboard(balance),
     )
 
 
@@ -110,6 +120,7 @@ async def referal_command(
 async def payout_button_callback(
     callback: CallbackQuery,
     user_role_service,
+    referral_income_service: ReferralIncomeService,
     payout_request_repo,
     transaction_manager,
     config: AppConfig,
@@ -132,11 +143,16 @@ async def payout_button_callback(
     if user is None:
         return
 
+    stats = await referral_income_service.get_user_referral_stats(user.user_id)
+    balance = stats.income_total - stats.paid_total
+    request_amount = Decimal(str(round(balance, 2)))
+
     request = PayoutRequest(
         request_id=uuid4(),
         user_id=user.user_id,
         requested_at=datetime.now(timezone.utc),
         status=PayoutRequestStatus.PENDING,
+        amount=request_amount,
     )
 
     async def _run(session: object | None) -> None:
@@ -151,6 +167,7 @@ async def payout_button_callback(
             f"Пользователь: {user.username or '—'}\n"
             f"User ID: {user.external_id}\n"
             f"Request ID: {request.request_id}\n"
+            f"Сумма: {request_amount:.2f} ₽\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
         )
         try:

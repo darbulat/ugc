@@ -1,6 +1,7 @@
 """Tests for ReferralIncomeService."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,7 @@ from ugc_bot.domain.entities import (
     Order,
     OrderResponse,
     Payment,
+    PayoutRequest,
     User,
     UserReferralBinding,
 )
@@ -23,6 +25,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     OrderType,
     PaymentStatus,
+    PayoutRequestStatus,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
@@ -30,6 +33,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOrderRepository,
     InMemoryOrderResponseRepository,
     InMemoryPaymentRepository,
+    InMemoryPayoutRequestRepository,
     InMemoryUserReferralBindingRepository,
     InMemoryUserRepository,
 )
@@ -52,6 +56,7 @@ async def test_get_user_referral_stats_empty_returns_zeros() -> None:
         payment_repo=payment_repo,
         interaction_repo=interaction_repo,
         user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
         transaction_manager=None,
     )
     user_id = uuid4()
@@ -61,6 +66,7 @@ async def test_get_user_referral_stats_empty_returns_zeros() -> None:
     assert stats.orders_count == 0
     assert stats.income_current_month == 0.0
     assert stats.income_total == 0.0
+    assert stats.paid_total == 0.0
 
 
 @pytest.mark.asyncio
@@ -78,6 +84,7 @@ async def test_count_completed_orders_for_user_returns_zero_when_none() -> None:
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=interaction_repo,
         user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
         transaction_manager=None,
     )
     user_id = uuid4()
@@ -122,12 +129,14 @@ async def test_get_user_referral_stats_with_one_binding_no_orders() -> None:
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
         user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
         transaction_manager=None,
     )
     stats = await service.get_user_referral_stats(referrer_id)
     assert stats.creators_count == 1
     assert stats.orders_count == 0
     assert stats.income_total == 0.0
+    assert stats.paid_total == 0.0
 
 
 @pytest.mark.asyncio
@@ -224,12 +233,14 @@ async def test_get_user_referral_stats_with_completed_order_counts_income() -> (
         payment_repo=payment_repo,
         interaction_repo=interaction_repo,
         user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
         transaction_manager=None,
     )
     stats = await service.get_user_referral_stats(referrer_id)
     assert stats.creators_count == 1
     assert stats.orders_count == 1
     assert stats.income_total > 0
+    assert stats.paid_total == 0.0
 
 
 @pytest.mark.asyncio
@@ -291,7 +302,58 @@ async def test_count_completed_orders_for_user_with_one_completed_order() -> (
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=interaction_repo,
         user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
         transaction_manager=None,
     )
     count = await service.count_completed_orders_for_user(user_id)
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
+    """paid_total is sum of amounts of payout requests with status PAID."""
+    now = datetime.now(timezone.utc)
+    user_id = uuid4()
+
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=user_id,
+            requested_at=now,
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("100.50"),
+        )
+    )
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=user_id,
+            requested_at=now,
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("49.50"),
+        )
+    )
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=user_id,
+            requested_at=now,
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("200.00"),
+        )
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=payout_repo,
+        transaction_manager=None,
+    )
+    stats = await service.get_user_referral_stats(user_id)
+    assert stats.paid_total == 150.0
+    assert stats.income_total == 0.0
