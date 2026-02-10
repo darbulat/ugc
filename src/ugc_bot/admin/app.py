@@ -846,25 +846,37 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
 
 
 def _dashboard_open_in_new_tab_html() -> str:
-    """HTML: offer dashboard link (target=_blank) so new tab opens on click.
+    """HTML: open /admin/dashboard in new tab and redirect current to /admin/.
 
-    Browsers block window.open() when not triggered by user gesture; after
-    navigating to this page the gesture is lost, so we use a clickable link
-    with target='_blank' which always works.
+    Uses a hidden link with target='_blank' and programmatic click so the new
+    tab is opened as a result of user navigation; then redirects current tab.
     """
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<title>Дашборд</title></head><body>"
-        "<p>Нажмите ссылку, чтобы открыть дашборд в новой вкладке:</p>"
+        "<title>Дашборд</title>"
+        "<script>"
+        "(function(){"
+        "var a = document.createElement('a');"
+        "a.href = '/admin/dashboard';"
+        "a.target = '_blank';"
+        "a.rel = 'noopener noreferrer';"
+        "document.body.appendChild(a);"
+        "a.click();"
+        "document.body.removeChild(a);"
+        "window.location.href = '/admin/';"
+        "})();"
+        "</script></head><body>"
+        "<p>Открытие дашборда…</p>"
         "<p><a href='/admin/dashboard' target='_blank' "
-        "rel='noopener noreferrer'>Открыть дашборд</a></p>"
+        "rel='noopener noreferrer'>Открыть дашборд</a>, "
+        "если вкладка не открылась.</p>"
         "<p><a href='/admin/'>Вернуться в админку</a></p>"
         "</body></html>"
     )
 
 
 class DashboardLinkView(BaseView):
-    """Sidebar link to the MVP dashboard (above model views)."""
+    """Sidebar link: open dashboard in new tab, current tab stays in admin."""
 
     name = "Дашборд"
     icon = "fa-solid fa-chart-line"
@@ -872,7 +884,7 @@ class DashboardLinkView(BaseView):
     @expose("/dashboard-mvp", methods=["GET"])
     @login_required
     async def dashboard_redirect(self, request: Request):
-        """Open MVP dashboard in a new tab and return current tab to admin."""
+        """Open dashboard in new tab and return current tab to admin."""
         return HTMLResponse(_dashboard_open_in_new_tab_html())
 
 

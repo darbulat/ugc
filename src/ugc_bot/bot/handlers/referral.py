@@ -123,6 +123,10 @@ async def referral_command(
         paid_total=stats.paid_total,
         balance=balance,
     )
+    bot_username = (config.referral.referral_bot_username or "").strip()
+    if bot_username and user.referral_code:
+        link = f"https://t.me/{bot_username}?start=ref_{user.referral_code}"
+        text = f"Ваша реферальная ссылка:\n{link}\n\n{text}"
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
