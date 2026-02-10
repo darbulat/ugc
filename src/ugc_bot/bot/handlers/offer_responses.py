@@ -164,10 +164,8 @@ async def handle_offer_response(
         result = await offer_response_service.respond_and_finalize(
             order_id, user.user_id
         )
-    except OrderCreationError as exc:
-        await _send_order_closed_and_remove_keyboard(
-            incoming, messenger_client
-        )
+    except OrderCreationError:
+        await _send_order_closed_and_remove_keyboard(incoming, messenger_client)
         return
 
     await messenger_client.answer_callback(
