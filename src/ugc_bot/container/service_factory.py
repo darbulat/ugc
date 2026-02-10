@@ -245,6 +245,7 @@ def build_bot_services(
         "order_repo": repos["order_repo"],
         "order_response_repo": repos["order_response_repo"],
         "interaction_repo": repos["interaction_repo"],
+        "user_repo": repos["user_repo"],
         "user_referral_binding_repo": repos["user_referral_binding_repo"],
         "payout_request_repo": repos["payout_request_repo"],
         "outbox_publisher": outbox_publisher,
