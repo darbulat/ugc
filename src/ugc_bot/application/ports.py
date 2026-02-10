@@ -586,6 +586,22 @@ class UserReferralPendingRepository(ABC):
     ) -> None:
         """Delete pending referral by user ID."""
 
+    @abstractmethod
+    async def list_by_referrer(
+        self,
+        referrer_user_id: UUID,
+        offset: int = 0,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> Iterable[UserReferralPending]:
+        """List pending referrals by referrer user ID with pagination."""
+
+    @abstractmethod
+    async def count_by_referrer(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count pending referrals by referrer user ID."""
+
 
 class PayoutRequestRepository(ABC):
     """Port for payout request persistence."""

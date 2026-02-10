@@ -1577,6 +1577,45 @@ class SqlAlchemyUserReferralPendingRepository(UserReferralPendingRepository):
             )
         )
 
+    async def list_by_referrer(
+        self,
+        referrer_user_id: UUID,
+        offset: int = 0,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> Iterable[UserReferralPending]:
+        """List pending referrals by referrer user ID with pagination."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(UserReferralPendingModel)
+            .where(
+                UserReferralPendingModel.referrer_user_id == referrer_user_id
+            )
+            .order_by(UserReferralPendingModel.created_at)
+            .offset(offset)
+            .limit(limit)
+        )
+        return [
+            _to_user_referral_pending_entity(m)
+            for m in exec_result.scalars().all()
+        ]
+
+    async def count_by_referrer(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count pending referrals by referrer user ID."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(UserReferralPendingModel)
+            .where(
+                UserReferralPendingModel.referrer_user_id == referrer_user_id
+            )
+        )
+        return int(exec_result.scalar_one() or 0)
+
 
 @dataclass(slots=True)
 class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):

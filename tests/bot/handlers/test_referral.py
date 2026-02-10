@@ -21,6 +21,7 @@ from ugc_bot.bot.handlers.referral import (
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserReferralBindingRepository,
+    InMemoryUserReferralPendingRepository,
     InMemoryUserRepository,
 )
 
@@ -757,6 +758,7 @@ async def test_referral_list_command_empty_sends_no_referrals_message(
     await user_repo.save(__user(external_id="789", username="carol"))
     user_role_service = UserRoleService(user_repo=user_repo)
     binding_repo = InMemoryUserReferralBindingRepository()
+    pending_repo = InMemoryUserReferralPendingRepository()
     mock_tm = MagicMock()
     mock_tm.transaction = lambda: __fake_tx()
 
@@ -770,6 +772,7 @@ async def test_referral_list_command_empty_sends_no_referrals_message(
         message,
         user_role_service=user_role_service,
         user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
         user_repo=user_repo,
         referral_income_service=MagicMock(spec=ReferralIncomeService),
         transaction_manager=mock_tm,
@@ -821,6 +824,7 @@ async def test_referral_list_command_with_one_referral_sends_page(
     mock_income = MagicMock(spec=ReferralIncomeService)
     mock_income.count_completed_orders_for_user = AsyncMock(return_value=2)
 
+    pending_repo = InMemoryUserReferralPendingRepository()
     mock_tm = MagicMock()
     mock_tm.transaction = lambda: __fake_tx()
 
@@ -834,6 +838,7 @@ async def test_referral_list_command_with_one_referral_sends_page(
         message,
         user_role_service=UserRoleService(user_repo=user_repo),
         user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
@@ -845,6 +850,8 @@ async def test_referral_list_command_with_one_referral_sends_page(
     assert "рефералы" in client.sent_text[0]["text"]
     assert "referred_user" in client.sent_text[0]["text"]
     assert "выполнено заказов: 2" in client.sent_text[0]["text"]
+    assert "Не заполнили профиль креатора" in client.sent_text[0]["text"]
+    assert "Нет рефералов без профиля" in client.sent_text[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -886,6 +893,7 @@ async def test_referral_list_pagination_callback_edits_message(
 
     mock_income = MagicMock(spec=ReferralIncomeService)
     mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    pending_repo = InMemoryUserReferralPendingRepository()
     mock_tm = MagicMock()
     mock_tm.transaction = lambda: __fake_tx()
 
@@ -906,6 +914,7 @@ async def test_referral_list_pagination_callback_edits_message(
         callback,
         user_role_service=UserRoleService(user_repo=user_repo),
         user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
@@ -917,6 +926,335 @@ async def test_referral_list_pagination_callback_edits_message(
     assert "страница 2/2" in client.edited_text[0]["text"]
     assert client.edited_text[0]["keyboard"] is not None
     assert len(client.answered_callbacks) == 1
+
+
+@pytest.mark.asyncio
+async def test_referral_list_command_only_pending_shows_block2_with_names(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """referral_list with only pending shows block 2 with usernames."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.domain.entities import User, UserReferralPending
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    referrer = __user(external_id="888", username="manager")
+    pending_user = User(
+        user_id=uuid4(),
+        external_id="pend1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="pending_blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        telegram="pending_blogger",
+    )
+    await user_repo.save(referrer)
+    await user_repo.save(pending_user)
+
+    binding_repo = InMemoryUserReferralBindingRepository()
+    pending_repo = InMemoryUserReferralPendingRepository()
+    await pending_repo.save(
+        UserReferralPending(
+            user_id=pending_user.user_id,
+            referrer_user_id=referrer.user_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="/referral_list", user=FakeUser(888, "u", "manager")
+    )
+
+    await referral_list_command(
+        message,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=mock_income,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    text = client.sent_text[0]["text"]
+    assert "Ваши рефералы: пока никого" in text
+    assert "Не заполнили профиль креатора" in text
+    assert "pending_blogger" in text or "@pending_blogger" in text
+
+
+@pytest.mark.asyncio
+async def test_referral_list_command_both_bindings_and_pending_shows_two_blocks(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """referral_list with bindings and pending shows both blocks filled."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.domain.entities import (
+        User,
+        UserReferralBinding,
+        UserReferralPending,
+    )
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    referrer = __user(external_id="777", username="manager2")
+    referred = User(
+        user_id=uuid4(),
+        external_id="refd2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="referred_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    pending_user = User(
+        user_id=uuid4(),
+        external_id="pend2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="pending_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(referrer)
+    await user_repo.save(referred)
+    await user_repo.save(pending_user)
+
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer.user_id,
+            referred_user_id=referred.user_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    pending_repo = InMemoryUserReferralPendingRepository()
+    await pending_repo.save(
+        UserReferralPending(
+            user_id=pending_user.user_id,
+            referrer_user_id=referrer.user_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="/referral_list", user=FakeUser(777, "u", "manager2")
+    )
+
+    await referral_list_command(
+        message,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=mock_income,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    text = client.sent_text[0]["text"]
+    assert "Ваши рефералы" in text and "страница" in text
+    assert "referred_user" in text
+    assert "Не заполнили профиль креатора" in text
+    assert "pending_user" in text
+
+
+@pytest.mark.asyncio
+async def test_referral_list_command_user_not_found_sends_message(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """referral_list when user not in repo sends user not found."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    user_role_service = UserRoleService(user_repo=user_repo)
+    binding_repo = InMemoryUserReferralBindingRepository()
+    pending_repo = InMemoryUserReferralPendingRepository()
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="/referral_list", user=FakeUser(99999, "u", "unknown")
+    )
+
+    await referral_list_command(
+        message,
+        user_role_service=user_role_service,
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=MagicMock(spec=ReferralIncomeService),
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    assert "Пользователь не найден" in client.sent_text[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_referral_list_pagination_callback_invalid_page_uses_one(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """referral_list callback with non-numeric data uses page 1."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.domain.entities import User, UserReferralBinding
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    referrer = __user(external_id="555", username="ref")
+    await user_repo.save(referrer)
+    binding_repo = InMemoryUserReferralBindingRepository()
+    for i in range(3):
+        u = User(
+            user_id=uuid4(),
+            external_id=f"x{i}",
+            messenger_type=MessengerType.TELEGRAM,
+            username=f"u{i}",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        await user_repo.save(u)
+        await binding_repo.save(
+            UserReferralBinding(
+                referrer_user_id=referrer.user_id,
+                referred_user_id=u.user_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+    pending_repo = InMemoryUserReferralPendingRepository()
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{REFERRAL_LIST_CALLBACK_PREFIX}abc",
+        user=FakeUser(555, "u", "ref"),
+        callback_id="cb",
+        message=FakeMessage(
+            text="", user=FakeUser(555, "u", "ref"), message_id=1
+        ),
+    )
+
+    await referral_list_pagination_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=mock_income,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.edited_text) == 1
+    assert "страница 1/1" in client.edited_text[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_referral_list_command_page1_shows_forward_button(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """referral_list page 1 with multiple pages shows Вперёд button."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.domain.entities import User, UserReferralBinding
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    referrer = __user(external_id="444", username="mgr")
+    await user_repo.save(referrer)
+    binding_repo = InMemoryUserReferralBindingRepository()
+    for i in range(11):
+        u = User(
+            user_id=uuid4(),
+            external_id=f"y{i}",
+            messenger_type=MessengerType.TELEGRAM,
+            username=f"u{i}",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        await user_repo.save(u)
+        await binding_repo.save(
+            UserReferralBinding(
+                referrer_user_id=referrer.user_id,
+                referred_user_id=u.user_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+    pending_repo = InMemoryUserReferralPendingRepository()
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(text="/referral_list", user=FakeUser(444, "u", "mgr"))
+
+    await referral_list_command(
+        message,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=mock_income,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    keyboard = client.sent_text[0].get("keyboard")
+    assert keyboard is not None
+    forward_texts = [
+        btn.text for row in keyboard.rows for btn in row if btn.text == "Вперёд"
+    ]
+    assert len(forward_texts) == 1
 
 
 def __fake_tx():

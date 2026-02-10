@@ -205,6 +205,32 @@ class InMemoryUserReferralPendingRepository(UserReferralPendingRepository):
         """Delete pending referral by user ID."""
         self._pending.pop(user_id, None)
 
+    async def list_by_referrer(
+        self,
+        referrer_user_id: UUID,
+        offset: int = 0,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> Iterable[UserReferralPending]:
+        """List pending referrals by referrer user ID with pagination."""
+        by_referrer = [
+            p
+            for p in self._pending.values()
+            if p.referrer_user_id == referrer_user_id
+        ]
+        by_referrer.sort(key=lambda x: x.created_at)
+        return by_referrer[offset : offset + limit]
+
+    async def count_by_referrer(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count pending referrals by referrer user ID."""
+        return sum(
+            1
+            for p in self._pending.values()
+            if p.referrer_user_id == referrer_user_id
+        )
+
 
 @dataclass
 class InMemoryPayoutRequestRepository(PayoutRequestRepository):

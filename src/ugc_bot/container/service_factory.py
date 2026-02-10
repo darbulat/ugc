@@ -266,6 +266,7 @@ def build_bot_services(
         "interaction_repo": repos["interaction_repo"],
         "user_repo": repos["user_repo"],
         "user_referral_binding_repo": repos["user_referral_binding_repo"],
+        "user_referral_pending_repo": repos["user_referral_pending_repo"],
         "payout_request_repo": repos["payout_request_repo"],
         "outbox_publisher": outbox_publisher,
         "transaction_manager": transaction_manager,

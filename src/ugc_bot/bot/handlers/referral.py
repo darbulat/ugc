@@ -20,6 +20,7 @@ from ugc_bot.application.ports import (
     PayoutRequestRepository,
     TransactionManager,
     UserReferralBindingRepository,
+    UserReferralPendingRepository,
     UserRepository,
 )
 from ugc_bot.application.services.referral_income_service import (
@@ -43,6 +44,7 @@ REFERRAL_PAYOUT_CALLBACK = "referral:payout"
 REFERRAL_LIST_CALLBACK_PREFIX = "referral_list:"
 PAYOUT_BUTTON_TEXT = "Выплатить"
 REFERRAL_LIST_PAGE_SIZE = 10
+REFERRAL_LIST_PENDING_LIMIT = 50
 
 
 def _referral_stats_text(
@@ -258,13 +260,14 @@ async def referral_list_command(
     message: Message,
     user_role_service: UserRoleService,
     user_referral_binding_repo: UserReferralBindingRepository,
+    user_referral_pending_repo: UserReferralPendingRepository,
     user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
     transaction_manager: TransactionManager,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle /referral_list — list users referred by current user (page 1)."""
+    """Handle /referral_list — list referrals and pending (no profile) users."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -281,10 +284,13 @@ async def referral_list_command(
         return
 
     async with transaction_manager.transaction() as session:
-        total = await user_referral_binding_repo.count_by_referrer(
+        total_bindings = await user_referral_binding_repo.count_by_referrer(
             user.user_id, session=session
         )
-    if total == 0:
+        total_pending = await user_referral_pending_repo.count_by_referrer(
+            user.user_id, session=session
+        )
+    if total_bindings == 0 and total_pending == 0:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="У вас пока нет приведённых пользователей.",
@@ -295,6 +301,7 @@ async def referral_list_command(
         referrer_user_id=user.user_id,
         page=1,
         user_referral_binding_repo=user_referral_binding_repo,
+        user_referral_pending_repo=user_referral_pending_repo,
         user_repo=user_repo,
         referral_income_service=referral_income_service,
         transaction_manager=transaction_manager,
@@ -313,6 +320,7 @@ async def referral_list_pagination_callback(
     callback: CallbackQuery,
     user_role_service: UserRoleService,
     user_referral_binding_repo: UserReferralBindingRepository,
+    user_referral_pending_repo: UserReferralPendingRepository,
     user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
     transaction_manager: TransactionManager,
@@ -345,6 +353,7 @@ async def referral_list_pagination_callback(
         referrer_user_id=user.user_id,
         page=page,
         user_referral_binding_repo=user_referral_binding_repo,
+        user_referral_pending_repo=user_referral_pending_repo,
         user_repo=user_repo,
         referral_income_service=referral_income_service,
         transaction_manager=transaction_manager,
@@ -359,59 +368,104 @@ async def referral_list_pagination_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
 
-async def _render_referral_list_page(
+def _user_display_name(telegram: str | None, username: str | None) -> str:
+    """Format user for list display: @telegram or username or placeholder."""
+    if telegram:
+        return f"@{telegram}"
+    return username or "—"
+
+
+async def _build_referral_block1(
     *,
     referrer_user_id: UUID,
     page: int,
     user_referral_binding_repo: UserReferralBindingRepository,
     user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
-    transaction_manager: TransactionManager,
-) -> tuple[str, Keyboard]:
-    """Build one page of referral list text and pagination keyboard."""
-    async with transaction_manager.transaction() as session:
-        total = await user_referral_binding_repo.count_by_referrer(
-            referrer_user_id, session=session
+    session: object,
+) -> tuple[list[str], int, int, int]:
+    """Build block 1 (bindings). Returns (lines, total_pages, total, page)."""
+    total_bindings = await user_referral_binding_repo.count_by_referrer(
+        referrer_user_id, session=session
+    )
+    if total_bindings == 0:
+        return (["Ваши рефералы: пока никого."], 1, 0, 1)
+    total_pages = max(1, ceil(total_bindings / REFERRAL_LIST_PAGE_SIZE))
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * REFERRAL_LIST_PAGE_SIZE
+    bindings = list(
+        await user_referral_binding_repo.list_by_referrer(
+            referrer_user_id,
+            offset=offset,
+            limit=REFERRAL_LIST_PAGE_SIZE,
+            session=session,
         )
-        total_pages = max(1, ceil(total / REFERRAL_LIST_PAGE_SIZE))
-        page = max(1, min(page, total_pages))
-        offset = (page - 1) * REFERRAL_LIST_PAGE_SIZE
-
-        bindings = list(
-            await user_referral_binding_repo.list_by_referrer(
-                referrer_user_id,
-                offset=offset,
-                limit=REFERRAL_LIST_PAGE_SIZE,
-                session=session,
+    )
+    names: list[str] = []
+    for binding in bindings:
+        referred = await user_repo.get_by_id(
+            binding.referred_user_id, session=session
+        )
+        names.append(
+            _user_display_name(
+                referred.telegram if referred else None,
+                referred.username if referred else None,
             )
         )
-        names: list[str] = []
-        for binding in bindings:
-            referred = await user_repo.get_by_id(
+    lines = [f"Ваши рефералы (страница {page}/{total_pages}):"]
+    for idx, (binding, name) in enumerate(
+        zip(bindings, names, strict=True), start=offset + 1
+    ):
+        completed = (
+            await referral_income_service.count_completed_orders_for_user(
                 binding.referred_user_id, session=session
             )
-            if referred:
-                name = (
-                    f"@{referred.telegram}"
-                    if referred.telegram
-                    else (referred.username or "—")
-                )
-            else:
-                name = "—"
-            names.append(name)
+        )
+        lines.append(f"{idx}. {name} — выполнено заказов: {completed}")
+    return (lines, total_pages, total_bindings, page)
 
-        lines = [f"Ваши рефералы (страница {page}/{total_pages}):"]
-        for idx, (binding, name) in enumerate(
-            zip(bindings, names, strict=True), start=offset + 1
-        ):
-            completed = (
-                await referral_income_service.count_completed_orders_for_user(
-                    binding.referred_user_id, session=session
-                )
-            )
-            lines.append(f"{idx}. {name} — выполнено заказов: {completed}")
 
-    buttons_rows: list[list[Button]] = []
+async def _build_pending_block2(
+    *,
+    referrer_user_id: UUID,
+    user_referral_pending_repo: UserReferralPendingRepository,
+    user_repo: UserRepository,
+    session: object,
+) -> list[str]:
+    """Build block 2 lines (pending users without creator profile)."""
+    lines = ["Не заполнили профиль креатора (напоминайте заполнить):"]
+    pending_count = await user_referral_pending_repo.count_by_referrer(
+        referrer_user_id, session=session
+    )
+    if pending_count == 0:
+        lines.append("Нет рефералов без профиля.")
+        return lines
+    pending_list = list(
+        await user_referral_pending_repo.list_by_referrer(
+            referrer_user_id,
+            offset=0,
+            limit=REFERRAL_LIST_PENDING_LIMIT,
+            session=session,
+        )
+    )
+    for pending in pending_list:
+        u = await user_repo.get_by_id(pending.user_id, session=session)
+        name = _user_display_name(
+            u.telegram if u else None,
+            u.username if u else None,
+        )
+        lines.append(f"• {name}")
+    return lines
+
+
+def _referral_list_pagination_keyboard(
+    page: int,
+    total_pages: int,
+    total_bindings: int,
+) -> Keyboard:
+    """Pagination keyboard for referral list when bindings exist."""
+    if total_bindings == 0:
+        return Keyboard(kind=KeyboardKind.INLINE, rows=[])
     nav_buttons: list[Button] = []
     if page > 1:
         nav_buttons.append(
@@ -427,12 +481,43 @@ async def _render_referral_list_page(
                 callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page + 1}",
             )
         )
-    if nav_buttons:
-        buttons_rows.append(nav_buttons)
+    rows = [nav_buttons] if nav_buttons else []
+    return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
-    keyboard = (
-        Keyboard(kind=KeyboardKind.INLINE, rows=buttons_rows)
-        if buttons_rows
-        else Keyboard(kind=KeyboardKind.INLINE, rows=[])
+
+async def _render_referral_list_page(
+    *,
+    referrer_user_id: UUID,
+    page: int,
+    user_referral_binding_repo: UserReferralBindingRepository,
+    user_referral_pending_repo: UserReferralPendingRepository,
+    user_repo: UserRepository,
+    referral_income_service: ReferralIncomeService,
+    transaction_manager: TransactionManager,
+) -> tuple[str, Keyboard]:
+    """Build referral list: block 1 (bindings), block 2 (pending)."""
+    async with transaction_manager.transaction() as session:
+        (
+            block1_lines,
+            total_pages,
+            total_bindings,
+            current_page,
+        ) = await _build_referral_block1(
+            referrer_user_id=referrer_user_id,
+            page=page,
+            user_referral_binding_repo=user_referral_binding_repo,
+            user_repo=user_repo,
+            referral_income_service=referral_income_service,
+            session=session,
+        )
+        block2_lines = await _build_pending_block2(
+            referrer_user_id=referrer_user_id,
+            user_referral_pending_repo=user_referral_pending_repo,
+            user_repo=user_repo,
+            session=session,
+        )
+    text = "\n".join(block1_lines) + "\n\n" + "\n".join(block2_lines)
+    keyboard = _referral_list_pagination_keyboard(
+        current_page, total_pages, total_bindings
     )
-    return "\n".join(lines), keyboard
+    return text, keyboard
