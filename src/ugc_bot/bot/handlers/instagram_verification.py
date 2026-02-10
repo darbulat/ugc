@@ -103,8 +103,10 @@ async def start_verification(
     await messenger_client.send_text(
         chat_id=incoming.chat_id, text=instruction, parse_mode="HTML"
     )
+    code_escaped = html.escape(verification.code)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=verification.code,
+        text=f"<code>{code_escaped}</code>",
+        parse_mode="HTML",
         keyboard=blogger_verification_sent_keyboard(),
     )
