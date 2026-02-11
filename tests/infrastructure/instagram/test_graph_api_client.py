@@ -51,8 +51,10 @@ async def test_get_username_by_id_no_token() -> None:
 
 @pytest.mark.asyncio
 async def test_get_username_by_id_http_error() -> None:
-    """Test username retrieval with HTTP error."""
-    client = HttpInstagramGraphApiClient(access_token="test_token")
+    """Test username retrieval with HTTP error (no retry for 4xx)."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token", retry_attempts=1
+    )
 
     mock_response = MagicMock()
     mock_response.status_code = 404
@@ -71,12 +73,15 @@ async def test_get_username_by_id_http_error() -> None:
         username = await client.get_username_by_id("123456")
 
         assert username is None
+        mock_client.get.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_get_username_by_id_request_error() -> None:
-    """Test username retrieval with request error."""
-    client = HttpInstagramGraphApiClient(access_token="test_token")
+    """Test username retrieval with request error (no retry when attempts=1)."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token", retry_attempts=1
+    )
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
@@ -88,6 +93,70 @@ async def test_get_username_by_id_request_error() -> None:
         username = await client.get_username_by_id("123456")
 
         assert username is None
+        mock_client.get.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_username_by_id_retry_succeeds_after_request_error() -> None:
+    """Test retry: first call RequestError, second call returns username."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token",
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"username": "retry_user"}
+    mock_response.raise_for_status.return_value = None
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.side_effect = [
+            httpx.RequestError("Connection error"),
+            mock_response,
+        ]
+        mock_client_class.return_value = mock_client
+
+        username = await client.get_username_by_id("123456")
+
+        assert username == "retry_user"
+        assert mock_client.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_username_by_id_retry_succeeds_after_503() -> None:
+    """Test retry: first call 503, second call returns username."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token",
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+
+    error_response = MagicMock()
+    error_response.status_code = 503
+    error_response.text = "Service Unavailable"
+    error_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Service Unavailable",
+        request=MagicMock(),
+        response=error_response,
+    )
+    success_response = MagicMock()
+    success_response.json.return_value = {"username": "after_503"}
+    success_response.raise_for_status.return_value = None
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.side_effect = [error_response, success_response]
+        mock_client_class.return_value = mock_client
+
+        username = await client.get_username_by_id("123456")
+
+        assert username == "after_503"
+        assert mock_client.get.call_count == 2
 
 
 @pytest.mark.asyncio
