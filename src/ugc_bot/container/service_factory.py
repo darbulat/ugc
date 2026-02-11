@@ -147,6 +147,12 @@ def build_bot_services(
     offer_response_rate_limiter: Any,
 ) -> BotServices:
     """Build all services and repos for the bot dispatcher."""
+    referral_service = ReferralService(
+        user_repo=repos["user_repo"],
+        user_referral_pending_repo=repos["user_referral_pending_repo"],
+        user_referral_binding_repo=repos["user_referral_binding_repo"],
+        transaction_manager=transaction_manager,
+    )
     return {
         "metrics_collector": metrics_collector,
         "content_moderation_service": ContentModerationService(),
@@ -158,18 +164,14 @@ def build_bot_services(
         "blogger_registration_service": BloggerRegistrationService(
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
-            referral_service=ReferralService(
-                user_repo=repos["user_repo"],
-                user_referral_pending_repo=repos["user_referral_pending_repo"],
-                user_referral_binding_repo=repos["user_referral_binding_repo"],
-                transaction_manager=transaction_manager,
-            ),
+            referral_service=referral_service,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),
         "advertiser_registration_service": AdvertiserRegistrationService(
             user_repo=repos["user_repo"],
             advertiser_repo=repos["advertiser_repo"],
+            referral_service=referral_service,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),

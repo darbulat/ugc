@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, union_all, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -52,6 +52,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     OrderType,
     OutboxEventStatus,
+    PaymentStatus,
     WorkFormat,
 )
 from ugc_bot.infrastructure.db.models import (
@@ -126,6 +127,21 @@ class SqlAlchemyUserRepository(UserRepository):
         )
         result = exec_result.scalar_one_or_none()
         return _to_user_entity(result) if result else None
+
+    async def get_by_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, User]:
+        """Fetch users by IDs in one query."""
+        if not user_ids:
+            return {}
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(UserModel).where(UserModel.user_id.in_(user_ids))
+        )
+        rows = exec_result.scalars().all()
+        return {row.user_id: _to_user_entity(row) for row in rows}
 
     async def get_by_external(
         self,
@@ -592,6 +608,48 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
         )
         result = exec_result.scalar_one()
         return int(result)
+
+    async def count_completed_orders_by_blogger_ids(
+        self,
+        blogger_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, int]:
+        """Count completed orders (CLOSED, interaction OK) per blogger ID."""
+        if not blogger_ids:
+            return {}
+        db_session = _get_async_session(session)
+        query = (
+            select(
+                OrderResponseModel.blogger_id,
+                func.count().label("cnt"),
+            )
+            .select_from(OrderResponseModel)
+            .join(
+                OrderModel,
+                and_(
+                    OrderResponseModel.order_id == OrderModel.order_id,
+                    OrderModel.status == OrderStatus.CLOSED,
+                ),
+            )
+            .join(
+                InteractionModel,
+                and_(
+                    InteractionModel.order_id == OrderResponseModel.order_id,
+                    InteractionModel.blogger_id
+                    == OrderResponseModel.blogger_id,
+                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
+                    InteractionModel.status == InteractionStatus.OK,
+                ),
+            )
+            .where(OrderResponseModel.blogger_id.in_(blogger_ids))
+            .group_by(OrderResponseModel.blogger_id)
+        )
+        exec_result = await db_session.execute(query)
+        rows = exec_result.all()
+        result = {uid: 0 for uid in blogger_ids}
+        for row in rows:
+            result[row.blogger_id] = int(row.cnt)
+        return result
 
 
 @dataclass(slots=True)
@@ -1712,12 +1770,157 @@ class SqlReferralOrderIncomeLoader:
             .where(
                 UserReferralBindingModel.referrer_user_id == referrer_user_id,
                 OrderModel.status == OrderStatus.CLOSED,
+                PaymentModel.status == PaymentStatus.PAID,
                 InteractionModel.status == InteractionStatus.OK,
                 OrderModel.bloggers_needed > 0,
             )
             .limit(limit)
         )
         result = await db_session.execute(query)
+        rows = result.all()
+        return [
+            ReferralOrderIncomeRow(
+                creator_created_at=row.creator_created_at,
+                order_completed_at=row.order_completed_at,
+                payment_amount=float(row.payment_amount),
+                bloggers_needed=row.bloggers_needed,
+                order_id=row.order_id,
+            )
+            for row in rows
+        ]
+
+    async def load_referral_order_income_rows_advertisers(
+        self,
+        referrer_user_id: UUID,
+        limit: int,
+        session: object | None = None,
+    ) -> list[ReferralOrderIncomeRow]:
+        """Return rows for referred advertisers (CLOSED, PAID)."""
+        db_session = _get_async_session(session)
+        query = (
+            select(
+                UserModel.created_at.label("creator_created_at"),
+                func.coalesce(
+                    OrderModel.completed_at, OrderModel.created_at
+                ).label("order_completed_at"),
+                PaymentModel.amount.label("payment_amount"),
+                func.coalesce(1).label("bloggers_needed"),
+                OrderModel.order_id.label("order_id"),
+            )
+            .select_from(UserReferralBindingModel)
+            .join(
+                OrderModel,
+                OrderModel.advertiser_id
+                == UserReferralBindingModel.referred_user_id,
+            )
+            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+            .join(
+                UserModel,
+                UserReferralBindingModel.referred_user_id == UserModel.user_id,
+            )
+            .where(
+                UserReferralBindingModel.referrer_user_id == referrer_user_id,
+                OrderModel.status == OrderStatus.CLOSED,
+                PaymentModel.status == PaymentStatus.PAID,
+            )
+            .limit(limit)
+        )
+        result = await db_session.execute(query)
+        rows = result.all()
+        return [
+            ReferralOrderIncomeRow(
+                creator_created_at=row.creator_created_at,
+                order_completed_at=row.order_completed_at,
+                payment_amount=float(row.payment_amount),
+                bloggers_needed=1,
+                order_id=row.order_id,
+            )
+            for row in rows
+        ]
+
+    async def load_referral_order_income_rows_combined(
+        self,
+        referrer_user_id: UUID,
+        limit: int,
+        session: object | None = None,
+    ) -> list[ReferralOrderIncomeRow]:
+        """Blogger + advertiser rows in one query (UNION ALL, one LIMIT)."""
+        db_session = _get_async_session(session)
+        bloggers_query = (
+            select(
+                UserModel.created_at.label("creator_created_at"),
+                func.coalesce(
+                    OrderModel.completed_at, OrderModel.created_at
+                ).label("order_completed_at"),
+                PaymentModel.amount.label("payment_amount"),
+                OrderModel.bloggers_needed.label("bloggers_needed"),
+                OrderModel.order_id.label("order_id"),
+            )
+            .select_from(UserReferralBindingModel)
+            .join(
+                OrderResponseModel,
+                UserReferralBindingModel.referred_user_id
+                == OrderResponseModel.blogger_id,
+            )
+            .join(
+                OrderModel, OrderResponseModel.order_id == OrderModel.order_id
+            )
+            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+            .join(
+                InteractionModel,
+                and_(
+                    InteractionModel.order_id == OrderModel.order_id,
+                    InteractionModel.blogger_id
+                    == UserReferralBindingModel.referred_user_id,
+                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
+                ),
+            )
+            .join(
+                UserModel,
+                UserReferralBindingModel.referred_user_id == UserModel.user_id,
+            )
+            .where(
+                UserReferralBindingModel.referrer_user_id == referrer_user_id,
+                OrderModel.status == OrderStatus.CLOSED,
+                PaymentModel.status == PaymentStatus.PAID,
+                InteractionModel.status == InteractionStatus.OK,
+                OrderModel.bloggers_needed > 0,
+            )
+        )
+        advertisers_query = (
+            select(
+                UserModel.created_at.label("creator_created_at"),
+                func.coalesce(
+                    OrderModel.completed_at, OrderModel.created_at
+                ).label("order_completed_at"),
+                PaymentModel.amount.label("payment_amount"),
+                func.coalesce(1).label("bloggers_needed"),
+                OrderModel.order_id.label("order_id"),
+            )
+            .select_from(UserReferralBindingModel)
+            .join(
+                OrderModel,
+                OrderModel.advertiser_id
+                == UserReferralBindingModel.referred_user_id,
+            )
+            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+            .join(
+                UserModel,
+                UserReferralBindingModel.referred_user_id == UserModel.user_id,
+            )
+            .where(
+                UserReferralBindingModel.referrer_user_id == referrer_user_id,
+                OrderModel.status == OrderStatus.CLOSED,
+                PaymentModel.status == PaymentStatus.PAID,
+            )
+        )
+        combined = union_all(bloggers_query, advertisers_query).subquery()
+        stmt = (
+            select(combined)
+            .order_by(combined.c.order_completed_at.desc())
+            .limit(limit)
+        )
+        result = await db_session.execute(stmt)
         rows = result.all()
         return [
             ReferralOrderIncomeRow(

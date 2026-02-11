@@ -140,6 +140,36 @@ async def test_register_advertiser_records_metrics_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_register_advertiser_referral_binding_called() -> None:
+    """create_binding_from_pending is called when referral_service is set."""
+
+    from unittest.mock import AsyncMock, Mock
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+    mock_referral = Mock()
+    mock_referral.create_binding_from_pending = AsyncMock(return_value=None)
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        referral_service=mock_referral,
+    )
+
+    await service.register_advertiser(
+        user_id=user_id,
+        phone="@contact",
+        brand="B",
+    )
+
+    mock_referral.create_binding_from_pending.assert_called_once()
+    call_kw = mock_referral.create_binding_from_pending.call_args[1]
+    assert call_kw["creator_user_id"] == user_id
+    assert "session" in call_kw
+
+
+@pytest.mark.asyncio
 async def test_get_profile_returns_saved_profile() -> None:
     """Return profile from repository."""
 

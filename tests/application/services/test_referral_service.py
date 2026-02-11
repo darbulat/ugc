@@ -1,9 +1,11 @@
 """Tests for ReferralService."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.domain.entities import (
@@ -296,3 +298,50 @@ async def test_create_binding_from_pending_with_session_uses_session() -> None:
     )
     assert result is not None
     assert result.referred_user_id == referred_id
+
+
+@pytest.mark.asyncio
+async def test_create_binding_integrity_error_returns_existing() -> None:
+    """On IntegrityError (race), return existing binding and delete pending."""
+    referrer_id = uuid4()
+    referred_id = uuid4()
+    now = datetime.now(timezone.utc)
+    pending_repo = InMemoryUserReferralPendingRepository()
+    await pending_repo.save(
+        UserReferralPending(
+            user_id=referred_id,
+            referrer_user_id=referrer_id,
+            created_at=now,
+        )
+    )
+    existing_binding = UserReferralBinding(
+        referrer_user_id=referrer_id,
+        referred_user_id=referred_id,
+        created_at=now,
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    get_calls = []
+
+    async def get_by_referred_user(referred_user_id, session=None):
+        get_calls.append(1)
+        return existing_binding if len(get_calls) > 1 else None
+
+    async def save_raise_integrity(binding: UserReferralBinding, session=None):
+        raise IntegrityError("", "", "")
+
+    binding_repo.get_by_referred_user = AsyncMock(
+        side_effect=get_by_referred_user
+    )
+    binding_repo.save = AsyncMock(side_effect=save_raise_integrity)
+
+    service = ReferralService(
+        user_repo=InMemoryUserRepository(),
+        user_referral_pending_repo=pending_repo,
+        user_referral_binding_repo=binding_repo,
+        transaction_manager=None,
+    )
+    result = await service.create_binding_from_pending(referred_id)
+    assert result is not None
+    assert result.referrer_user_id == referrer_id
+    assert result.referred_user_id == referred_id
+    assert await pending_repo.get_by_user(referred_id) is None

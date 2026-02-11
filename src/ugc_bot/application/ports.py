@@ -5,7 +5,9 @@ from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     AsyncContextManager,
+    Dict,
     Iterable,
+    List,
     Optional,
     Protocol,
 )
@@ -43,6 +45,19 @@ class UserRepository(ABC):
         self, user_id: UUID, session: object | None = None
     ) -> Optional[User]:
         """Fetch a user by ID."""
+
+    async def get_by_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, User]:
+        """Fetch users by IDs. Override for batch implementation."""
+        result: Dict[UUID, User] = {}
+        for uid in user_ids:
+            u = await self.get_by_id(uid, session=session)
+            if u is not None:
+                result[uid] = u
+        return result
 
     @abstractmethod
     async def get_by_external(
@@ -204,6 +219,14 @@ class OrderResponseRepository(ABC):
         self, order_id: UUID, session: object | None = None
     ) -> int:
         """Count responses by order."""
+
+    @abstractmethod
+    async def count_completed_orders_by_blogger_ids(
+        self,
+        blogger_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, int]:
+        """Count completed orders (CLOSED, interaction OK) per blogger ID."""
 
 
 class OfferDispatchRepository(ABC):
@@ -636,7 +659,25 @@ class ReferralOrderIncomeRowLoader(Protocol):
         limit: int,
         session: object | None = None,
     ) -> list[ReferralOrderIncomeRow]:
-        """Return completed-order rows for referred creators (CLOSED, OK)."""
+        """Return completed-order rows for referred creators."""
+        ...
+
+    async def load_referral_order_income_rows_advertisers(
+        self,
+        referrer_user_id: UUID,
+        limit: int,
+        session: object | None = None,
+    ) -> list[ReferralOrderIncomeRow]:
+        """Return rows for referred advertisers (CLOSED, PAID)."""
+        ...
+
+    async def load_referral_order_income_rows_combined(
+        self,
+        referrer_user_id: UUID,
+        limit: int,
+        session: object | None = None,
+    ) -> list[ReferralOrderIncomeRow]:
+        """Optional: blogger + advertiser rows in one query (UNION)."""
         ...
 
 

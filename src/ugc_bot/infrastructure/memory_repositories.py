@@ -468,6 +468,8 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
     """In-memory implementation of order response repository."""
 
     responses: list[OrderResponse] = field(default_factory=list)
+    order_repo: Optional[OrderRepository] = None
+    interaction_repo: Optional[InteractionRepository] = None
 
     async def save(
         self, response: OrderResponse, session: object | None = None
@@ -510,6 +512,36 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
         return len(
             [resp for resp in self.responses if resp.order_id == order_id]
         )
+
+    async def count_completed_orders_by_blogger_ids(
+        self,
+        blogger_ids: list[UUID],
+        session: object | None = None,
+    ) -> dict[UUID, int]:
+        """Count completed orders per blogger (order/interaction if set)."""
+        if self.order_repo is None or self.interaction_repo is None:
+            return {uid: 0 for uid in blogger_ids}
+        result = {uid: 0 for uid in blogger_ids}
+        for blogger_id in blogger_ids:
+            responses = await self.list_by_blogger(blogger_id, session=session)
+            for resp in responses:
+                order = await self.order_repo.get_by_id(
+                    resp.order_id, session=session
+                )
+                if order is None or order.status != OrderStatus.CLOSED:
+                    continue
+                interaction = await self.interaction_repo.get_by_participants(
+                    order_id=resp.order_id,
+                    blogger_id=blogger_id,
+                    advertiser_id=order.advertiser_id,
+                    session=session,
+                )
+                if (
+                    interaction is not None
+                    and interaction.status == InteractionStatus.OK
+                ):
+                    result[blogger_id] = result.get(blogger_id, 0) + 1
+        return result
 
 
 @dataclass

@@ -822,7 +822,9 @@ async def test_referral_list_command_with_one_referral_sends_page(
     )
 
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.count_completed_orders_for_user = AsyncMock(return_value=2)
+    mock_income.count_completed_orders_by_user_ids = AsyncMock(
+        return_value={referred.user_id: 2}
+    )
 
     pending_repo = InMemoryUserReferralPendingRepository()
     mock_tm = MagicMock()
@@ -892,7 +894,9 @@ async def test_referral_list_pagination_callback_edits_message(
         )
 
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    mock_income.count_completed_orders_by_user_ids = AsyncMock(
+        side_effect=lambda user_ids, **kw: {uid: 0 for uid in user_ids}
+    )
     pending_repo = InMemoryUserReferralPendingRepository()
     mock_tm = MagicMock()
     mock_tm.transaction = lambda: __fake_tx()
@@ -1056,7 +1060,9 @@ async def test_referral_list_command_both_bindings_and_pending_shows_two_blocks(
     )
 
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    mock_income.count_completed_orders_by_user_ids = AsyncMock(
+        side_effect=lambda user_ids, **kw: {uid: 0 for uid in user_ids}
+    )
     mock_tm = MagicMock()
     mock_tm.transaction = lambda: __fake_tx()
 
@@ -1161,7 +1167,9 @@ async def test_referral_list_pagination_callback_invalid_page_uses_one(
         )
     pending_repo = InMemoryUserReferralPendingRepository()
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    mock_income.count_completed_orders_by_user_ids = AsyncMock(
+        side_effect=lambda user_ids, **kw: {uid: 0 for uid in user_ids}
+    )
     mock_tm = MagicMock()
     mock_tm.transaction = lambda: __fake_tx()
     client = FakeMessengerClient()
@@ -1229,7 +1237,9 @@ async def test_referral_list_command_page1_shows_forward_button(
         )
     pending_repo = InMemoryUserReferralPendingRepository()
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.count_completed_orders_for_user = AsyncMock(return_value=0)
+    mock_income.count_completed_orders_by_user_ids = AsyncMock(
+        side_effect=lambda user_ids, **kw: {uid: 0 for uid in user_ids}
+    )
     mock_tm = MagicMock()
     mock_tm.transaction = lambda: __fake_tx()
     client = FakeMessengerClient()

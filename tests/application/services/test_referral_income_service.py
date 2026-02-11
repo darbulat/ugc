@@ -96,6 +96,37 @@ async def test_count_completed_orders_for_user_returns_zero_when_none() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_user_referral_stats_binding_without_user_skipped() -> None:
+    """When referred user has no User record, that binding is skipped."""
+    referrer_id = uuid4()
+    referred_id = uuid4()
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    user_repo = InMemoryUserRepository()
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_order_income_loader=None,
+    )
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.creators_count == 1
+    assert stats.orders_count == 0
+    assert stats.income_total == 0.0
+
+
+@pytest.mark.asyncio
 async def test_get_user_referral_stats_with_one_binding_no_orders() -> None:
     """get_user_referral_stats with one referred user and no orders."""
     from datetime import datetime, timezone
@@ -276,15 +307,6 @@ async def test_count_completed_orders_for_user_with_one_completed_order() -> (
             completed_at=now,
         )
     )
-    order_response_repo = InMemoryOrderResponseRepository()
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=user_id,
-            responded_at=now,
-        )
-    )
     interaction_repo = InMemoryInteractionRepository()
     await interaction_repo.save(
         Interaction(
@@ -301,6 +323,17 @@ async def test_count_completed_orders_for_user_with_one_completed_order() -> (
             updated_at=now,
         )
     )
+    order_response_repo = InMemoryOrderResponseRepository(
+        order_repo=order_repo, interaction_repo=interaction_repo
+    )
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order_id,
+            blogger_id=user_id,
+            responded_at=now,
+        )
+    )
 
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
@@ -314,6 +347,52 @@ async def test_count_completed_orders_for_user_with_one_completed_order() -> (
     )
     count = await service.count_completed_orders_for_user(user_id)
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_count_completed_orders_for_user_skips_non_closed_order() -> None:
+    """count_completed_orders_for_user skips orders that are not CLOSED."""
+    now = datetime.now(timezone.utc)
+    user_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
+    order_repo = InMemoryOrderRepository()
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=advertiser_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://x.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=1,
+            status=OrderStatus.ACTIVE,
+            created_at=now,
+            completed_at=None,
+        )
+    )
+    order_response_repo = InMemoryOrderResponseRepository()
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order_id,
+            blogger_id=user_id,
+            responded_at=now,
+        )
+    )
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=order_response_repo,
+        order_repo=order_repo,
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+    )
+    count = await service.count_completed_orders_for_user(user_id)
+    assert count == 0
 
 
 @pytest.mark.asyncio
@@ -496,6 +575,92 @@ async def test_count_completed_orders_for_user_with_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_count_completed_orders_by_user_ids_returns_dict() -> None:
+    """count_completed_orders_by_user_ids returns counts per user id."""
+    now = datetime.now(timezone.utc)
+    user_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
+    order_repo = InMemoryOrderRepository()
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=advertiser_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://x.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=1,
+            status=OrderStatus.CLOSED,
+            created_at=now,
+            completed_at=now,
+        )
+    )
+    interaction_repo = InMemoryInteractionRepository()
+    await interaction_repo.save(
+        Interaction(
+            interaction_id=uuid4(),
+            order_id=order_id,
+            blogger_id=user_id,
+            advertiser_id=advertiser_id,
+            status=InteractionStatus.OK,
+            from_advertiser=None,
+            from_blogger=None,
+            postpone_count=0,
+            next_check_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    order_response_repo = InMemoryOrderResponseRepository(
+        order_repo=order_repo, interaction_repo=interaction_repo
+    )
+    await order_response_repo.save(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order_id,
+            blogger_id=user_id,
+            responded_at=now,
+        )
+    )
+    other_id = uuid4()
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=order_response_repo,
+        order_repo=order_repo,
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=interaction_repo,
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+    )
+    counts = await service.count_completed_orders_by_user_ids(
+        [user_id, other_id]
+    )
+    assert counts == {user_id: 1, other_id: 0}
+
+
+@pytest.mark.asyncio
+async def test_count_completed_orders_by_user_ids_with_session() -> None:
+    """count_completed_orders_by_user_ids with session uses it."""
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+    )
+    counts = await service.count_completed_orders_by_user_ids(
+        [uuid4()], session=MagicMock()
+    )
+    assert counts == {} or list(counts.values())[0] == 0
+
+
+@pytest.mark.asyncio
 async def test_get_user_referral_stats_uses_loader_when_provided() -> None:
     """When loader and session are set, stats use loader (single-query path)."""
     from contextlib import asynccontextmanager
@@ -516,6 +681,9 @@ async def test_get_user_referral_stats_uses_loader_when_provided() -> None:
     )
     mock_loader = MagicMock()
     mock_loader.load_referral_order_income_rows = AsyncMock(return_value=[row])
+    mock_loader.load_referral_order_income_rows_advertisers = AsyncMock(
+        return_value=[]
+    )
     binding_repo = InMemoryUserReferralBindingRepository()
     referred_id = uuid4()
     await binding_repo.save(
@@ -549,6 +717,73 @@ async def test_get_user_referral_stats_uses_loader_when_provided() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stats_uses_combined_loader_when_available() -> None:
+    """When loader has async combined method, it is used for stats."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    creator_created = now - timedelta(days=100)
+    order_completed = now - timedelta(days=10)
+    row = ReferralOrderIncomeRow(
+        creator_created_at=creator_created,
+        order_completed_at=order_completed,
+        payment_amount=100.0,
+        bloggers_needed=1,
+        order_id=order_id,
+    )
+
+    class CombinedLoader:
+        async def load_referral_order_income_rows(
+            self, referrer_user_id, limit, session=None
+        ):
+            return []
+
+        async def load_referral_order_income_rows_advertisers(
+            self, referrer_user_id, limit, session=None
+        ):
+            return []
+
+        async def load_referral_order_income_rows_combined(
+            self, referrer_user_id, limit, session=None
+        ):
+            return [row]
+
+    binding_repo = InMemoryUserReferralBindingRepository()
+    referred_id = uuid4()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield object()
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=MagicMock(transaction=lambda: fake_tx()),
+        referral_order_income_loader=CombinedLoader(),
+    )
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.creators_count == 1
+    assert stats.orders_count == 1
+    assert stats.income_total == 10.0
+
+
+@pytest.mark.asyncio
 async def test_get_user_referral_stats_loader_rate_after_first_year() -> None:
     """When order is exactly 1 year after creator registration, rate is 3%."""
     from contextlib import asynccontextmanager
@@ -569,6 +804,9 @@ async def test_get_user_referral_stats_loader_rate_after_first_year() -> None:
     )
     mock_loader = MagicMock()
     mock_loader.load_referral_order_income_rows = AsyncMock(return_value=[row])
+    mock_loader.load_referral_order_income_rows_advertisers = AsyncMock(
+        return_value=[]
+    )
     binding_repo = InMemoryUserReferralBindingRepository()
     referred_id = uuid4()
     await binding_repo.save(
@@ -619,6 +857,9 @@ async def test_get_user_referral_stats_uses_custom_rate_when_set() -> None:
     )
     mock_loader = MagicMock()
     mock_loader.load_referral_order_income_rows = AsyncMock(return_value=[row])
+    mock_loader.load_referral_order_income_rows_advertisers = AsyncMock(
+        return_value=[]
+    )
     binding_repo = InMemoryUserReferralBindingRepository()
     referred_id = uuid4()
     await binding_repo.save(
@@ -684,6 +925,9 @@ async def test_get_user_referral_stats_custom_rate_none_keeps_default() -> None:
     )
     mock_loader = MagicMock()
     mock_loader.load_referral_order_income_rows = AsyncMock(return_value=[row])
+    mock_loader.load_referral_order_income_rows_advertisers = AsyncMock(
+        return_value=[]
+    )
     binding_repo = InMemoryUserReferralBindingRepository()
     referred_id = uuid4()
     await binding_repo.save(
@@ -724,3 +968,209 @@ async def test_get_user_referral_stats_custom_rate_none_keeps_default() -> None:
     )
     stats = await service.get_user_referral_stats(referrer_id)
     assert stats.income_total == 10.0
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_counts_advertiser_order_income() -> None:
+    """Referred advertiser CLOSED order with PAID payment counts as income."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=advertiser_id,
+            external_id="adv",
+            messenger_type=MessengerType.TELEGRAM,
+            username="advertiser",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=100),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=advertiser_id,
+            created_at=now,
+        )
+    )
+    order_repo = InMemoryOrderRepository()
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=advertiser_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://x.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=5000.0,
+            bloggers_needed=2,
+            status=OrderStatus.CLOSED,
+            created_at=now,
+            completed_at=now,
+        )
+    )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=Decimal("5000.0"),
+            currency="RUB",
+            external_id="ext",
+            created_at=now,
+            paid_at=now,
+        )
+    )
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=order_repo,
+        payment_repo=payment_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_order_income_loader=None,
+    )
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.creators_count == 1
+    assert stats.orders_count == 1
+    assert stats.income_total == 500.0
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_loader_includes_advertiser_rows() -> (
+    None
+):
+    """Loader advertiser rows are included in income and orders_count."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    creator_created = now - timedelta(days=200)
+    order_completed = now - timedelta(days=5)
+    row = ReferralOrderIncomeRow(
+        creator_created_at=creator_created,
+        order_completed_at=order_completed,
+        payment_amount=2000.0,
+        bloggers_needed=1,
+        order_id=order_id,
+    )
+    mock_loader = MagicMock()
+    mock_loader.load_referral_order_income_rows = AsyncMock(return_value=[])
+    mock_loader.load_referral_order_income_rows_advertisers = AsyncMock(
+        return_value=[row]
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    referred_id = uuid4()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield object()
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=MagicMock(transaction=lambda: fake_tx()),
+        referral_order_income_loader=mock_loader,
+    )
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.orders_count == 1
+    assert stats.income_total == 200.0
+
+
+@pytest.mark.asyncio
+async def test_advertiser_order_ignored_when_payment_not_paid() -> None:
+    """Referred advertiser order with non-PAID payment is not counted."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=advertiser_id,
+            external_id="adv",
+            messenger_type=MessengerType.TELEGRAM,
+            username="advertiser",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=50),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=advertiser_id,
+            created_at=now,
+        )
+    )
+    order_repo = InMemoryOrderRepository()
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=advertiser_id,
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://x.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=1,
+            status=OrderStatus.CLOSED,
+            created_at=now,
+            completed_at=now,
+        )
+    )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PENDING,
+            amount=Decimal("1000.0"),
+            currency="RUB",
+            external_id="ext",
+            created_at=now,
+            paid_at=None,
+        )
+    )
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=order_repo,
+        payment_repo=payment_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_order_income_loader=None,
+    )
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.creators_count == 1
+    assert stats.orders_count == 0
+    assert stats.income_total == 0.0

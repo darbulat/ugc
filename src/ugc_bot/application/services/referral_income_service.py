@@ -1,8 +1,9 @@
 """Service for calculating referral user income and stats."""
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from ugc_bot.application.ports import (
@@ -16,10 +17,11 @@ from ugc_bot.application.ports import (
     UserReferralBindingRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import PayoutRequest, UserReferralBinding
+from ugc_bot.domain.entities import PayoutRequest, User, UserReferralBinding
 from ugc_bot.domain.enums import (
     InteractionStatus,
     OrderStatus,
+    PaymentStatus,
     PayoutRequestStatus,
 )
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -117,12 +119,16 @@ class ReferralIncomeService:
     ) -> UserReferralStats:
         """Get referrer statistics: referred users, orders, income.
 
-        Income is calculated from orders where:
-        - Order status is CLOSED
-        - Referred user is in order_responses
-        - Interaction status is OK (good feedback from advertiser)
-        - platform_revenue_per_creator = payment.amount / order.bloggers_needed
-        - Rate: 10% first year, 3% after (from referred user registration date)
+        Income is from referred bloggers and referred advertisers. Only
+        payments in status PAID are counted.
+
+        Bloggers: order CLOSED, referred user in order_responses, interaction
+        OK, payment PAID; platform_revenue_per_creator = payment.amount /
+        order.bloggers_needed; rate 10% first year, 3% after (from referred
+        user registration date).
+
+        Advertisers: order CLOSED, order.advertiser_id = referred user,
+        payment PAID; commission = full payment.amount * rate (same 10%/3%).
 
         stats_limit: max referrals to include in stats (default 10_000;
            0 or None = use default. Set 0 in config for unlimited).
@@ -146,12 +152,26 @@ class ReferralIncomeService:
         session: object,
         custom_rate: Optional[float] = None,
     ) -> tuple[float, float, int]:
-        """Compute income and order count from loader rows (single query)."""
+        """Compute income from loader rows (bloggers + advertisers)."""
         assert self.referral_order_income_loader is not None
         loader = self.referral_order_income_loader
-        rows = await loader.load_referral_order_income_rows(
-            referrer_user_id, limit=limit, session=session
+        combined = getattr(
+            loader, "load_referral_order_income_rows_combined", None
         )
+        if asyncio.iscoroutinefunction(combined):
+            rows = await loader.load_referral_order_income_rows_combined(
+                referrer_user_id, limit=limit, session=session
+            )
+        else:
+            rows_bloggers = await loader.load_referral_order_income_rows(
+                referrer_user_id, limit=limit, session=session
+            )
+            rows_advertisers = (
+                await loader.load_referral_order_income_rows_advertisers(
+                    referrer_user_id, limit=limit, session=session
+                )
+            )
+            rows = rows_bloggers + rows_advertisers
         now_utc = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
         income_current_month = 0.0
         income_total = 0.0
@@ -175,6 +195,50 @@ class ReferralIncomeService:
             ):
                 income_current_month += commission
         return (income_current_month, income_total, len(seen_orders))
+
+    async def _income_from_advertiser_orders(
+        self,
+        creator_id: UUID,
+        creator: User,
+        now_utc: datetime,
+        session: object | None,
+        custom_rate: Optional[float],
+    ) -> tuple[float, float, set[UUID]]:
+        """Income from referred user's orders as advertiser (CLOSED, PAID)."""
+        income_cm = 0.0
+        income_tot = 0.0
+        seen: set[UUID] = set()
+        orders = list(
+            await self.order_repo.list_by_advertiser(
+                creator_id, session=session
+            )
+        )
+        for order in orders:
+            if order.status != OrderStatus.CLOSED:
+                continue
+            payment = await self.payment_repo.get_by_order(
+                order.order_id, session=session
+            )
+            if payment is None or payment.status != PaymentStatus.PAID:
+                continue
+            completed_at = order.completed_at or order.created_at
+            rate = _effective_rate(
+                creator.created_at, completed_at, custom_rate
+            )
+            commission = float(payment.amount) * rate
+            income_tot += commission
+            seen.add(order.order_id)
+            completed_at_utc = (
+                completed_at
+                if completed_at.tzinfo
+                else completed_at.replace(tzinfo=timezone.utc)
+            )
+            if (
+                completed_at_utc.month == now_utc.month
+                and completed_at_utc.year == now_utc.year
+            ):
+                income_cm += commission
+        return income_cm, income_tot, seen
 
     async def _compute_income_from_bindings(
         self,
@@ -209,7 +273,7 @@ class ReferralIncomeService:
                 payment = await self.payment_repo.get_by_order(
                     order.order_id, session=session
                 )
-                if payment is None:
+                if payment is None or payment.status != PaymentStatus.PAID:
                     continue
                 interaction = await self.interaction_repo.get_by_participants(
                     order_id=order.order_id,
@@ -244,6 +308,12 @@ class ReferralIncomeService:
                     and completed_at_utc.year == now_utc.year
                 ):
                     income_current_month += commission
+            cm, tot, adv_seen = await self._income_from_advertiser_orders(
+                creator_id, creator, now_utc, session, custom_rate
+            )
+            income_current_month += cm
+            income_total += tot
+            seen_orders |= adv_seen
         return (income_current_month, income_total, len(seen_orders))
 
     async def _compute_stats(
@@ -327,30 +397,30 @@ class ReferralIncomeService:
         """Count completed orders (CLOSED, OK interaction) for blogger user."""
 
         async def _run(sess: object | None) -> int:
-            count = 0
-            responses = list(
-                await self.order_response_repo.list_by_blogger(
-                    user_id, session=sess
+            counts = await (
+                self.order_response_repo.count_completed_orders_by_blogger_ids(
+                    [user_id], session=sess
                 )
             )
-            for response in responses:
-                order = await self.order_repo.get_by_id(
-                    response.order_id, session=sess
+            return counts.get(user_id, 0)
+
+        if session is not None:
+            return await _run(session)
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def count_completed_orders_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, int]:
+        """Count completed orders (CLOSED, OK interaction) per blogger ID."""
+
+        async def _run(sess: object | None) -> Dict[UUID, int]:
+            return await (
+                self.order_response_repo.count_completed_orders_by_blogger_ids(
+                    user_ids, session=sess
                 )
-                if order is None or order.status != OrderStatus.CLOSED:
-                    continue
-                interaction = await self.interaction_repo.get_by_participants(
-                    order_id=order.order_id,
-                    blogger_id=user_id,
-                    advertiser_id=order.advertiser_id,
-                    session=sess,
-                )
-                if (
-                    interaction is not None
-                    and interaction.status == InteractionStatus.OK
-                ):
-                    count += 1
-            return count
+            )
 
         if session is not None:
             return await _run(session)

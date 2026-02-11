@@ -241,6 +241,26 @@ async def test_user_repository_get_by_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_user_repository_get_by_ids() -> None:
+    """Fetch users by ids (batch)."""
+    model = UserModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000116"),
+        external_id="get_by_ids",
+        messenger_type=MessengerType.TELEGRAM,
+        username="bob",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory([model]))
+    users = await repo.get_by_ids([model.user_id], session=_repo_session(repo))
+    assert model.user_id in users
+    assert users[model.user_id].username == "bob"
+    empty = await repo.get_by_ids([], session=_repo_session(repo))
+    assert empty == {}
+
+
+@pytest.mark.asyncio
 async def test_user_repository_save() -> None:
     """Save user via repository."""
 
@@ -1181,6 +1201,26 @@ async def test_order_response_repository_methods() -> None:
         == 2
     )
 
+    from types import SimpleNamespace
+
+    blogger_id = UUID("00000000-0000-0000-0000-000000000192")
+    row_data = SimpleNamespace(blogger_id=blogger_id, cnt=2)
+    repo_completed = SqlAlchemyOrderResponseRepository(
+        session_factory=_session_factory([row_data])
+    )
+    completed = await repo_completed.count_completed_orders_by_blogger_ids(
+        [blogger_id], session=_repo_session(repo_completed)
+    )
+    assert completed == {blogger_id: 2}
+
+    empty_repo = SqlAlchemyOrderResponseRepository(
+        session_factory=_session_factory([])
+    )
+    empty_completed = await empty_repo.count_completed_orders_by_blogger_ids(
+        [], session=_repo_session(empty_repo)
+    )
+    assert empty_completed == {}
+
 
 @pytest.mark.asyncio
 async def test_outbox_repository_save_and_get() -> None:
@@ -2094,4 +2134,73 @@ async def test_sql_referral_order_income_loader_returns_rows() -> None:
     assert isinstance(rows[0], ReferralOrderIncomeRow)
     assert rows[0].payment_amount == 100.0
     assert rows[0].bloggers_needed == 2
+    assert rows[0].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_sql_referral_order_income_loader_advertisers_returns_rows() -> (
+    None
+):
+    """Advertiser loader returns rows with bloggers_needed=1."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlReferralOrderIncomeLoader,
+    )
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    row_data = SimpleNamespace(
+        creator_created_at=now,
+        order_completed_at=now,
+        payment_amount=300.0,
+        bloggers_needed=1,
+        order_id=order_id,
+    )
+    session = FakeSession([row_data])
+    loader = SqlReferralOrderIncomeLoader()
+    rows = await loader.load_referral_order_income_rows_advertisers(
+        referrer_id, limit=10, session=session
+    )
+    assert len(rows) == 1
+    assert isinstance(rows[0], ReferralOrderIncomeRow)
+    assert rows[0].payment_amount == 300.0
+    assert rows[0].bloggers_needed == 1
+    assert rows[0].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_sql_referral_order_income_loader_combined_returns_rows() -> None:
+    """SqlReferralOrderIncomeLoader.load_referral_order_income_rows_combined."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlReferralOrderIncomeLoader,
+    )
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    row_data = SimpleNamespace(
+        creator_created_at=now,
+        order_completed_at=now,
+        payment_amount=50.0,
+        bloggers_needed=1,
+        order_id=order_id,
+    )
+    session = FakeSession([row_data])
+    loader = SqlReferralOrderIncomeLoader()
+    rows = await loader.load_referral_order_income_rows_combined(
+        referrer_id, limit=10, session=session
+    )
+    assert len(rows) == 1
+    assert isinstance(rows[0], ReferralOrderIncomeRow)
+    assert rows[0].payment_amount == 50.0
     assert rows[0].order_id == order_id

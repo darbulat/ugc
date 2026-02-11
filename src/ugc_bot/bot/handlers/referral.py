@@ -213,7 +213,7 @@ async def payout_button_callback(
         support_text = (
             f"💰 Запрос на выплату\n\n"
             f"Пользователь: {user.username or '—'}\n"
-            f"telegram: @{user.telegram}\n"
+            f"telegram: @{user.telegram or '—'}\n"
             f"Request ID: {request.request_id}\n"
             f"Сумма: {request_amount:.2f} ₽\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
@@ -401,28 +401,29 @@ async def _build_referral_block1(
             session=session,
         )
     )
-    names: list[str] = []
-    for binding in bindings:
-        referred = await user_repo.get_by_id(
-            binding.referred_user_id, session=session
+    referred_ids = [b.referred_user_id for b in bindings]
+    users_map = await user_repo.get_by_ids(referred_ids, session=session)
+    completed_map = (
+        await referral_income_service.count_completed_orders_by_user_ids(
+            referred_ids, session=session
         )
+    )
+    names = []
+    for b in bindings:
+        u = users_map.get(b.referred_user_id)
         names.append(
             _user_display_name(
-                referred.telegram if referred else None,
-                referred.username if referred else None,
+                u.telegram if u else None,
+                u.username if u else None,
             )
         )
     lines = [f"Ваши рефералы (страница {page}/{total_pages}):"]
     for idx, (binding, name) in enumerate(
         zip(bindings, names, strict=True), start=offset + 1
     ):
-        completed = (
-            await referral_income_service.count_completed_orders_for_user(
-                binding.referred_user_id, session=session
-            )
-        )
+        completed = completed_map.get(binding.referred_user_id, 0)
         lines.append(f"{idx}. {name} — выполнено заказов: {completed}")
-    return (lines, total_pages, total_bindings, page)
+    return lines, total_pages, total_bindings, page
 
 
 async def _build_pending_block2(
@@ -448,13 +449,18 @@ async def _build_pending_block2(
             session=session,
         )
     )
-    for pending in pending_list:
-        u = await user_repo.get_by_id(pending.user_id, session=session)
-        name = _user_display_name(
-            u.telegram if u else None,
-            u.username if u else None,
+    if pending_list:
+        pending_user_ids = [p.user_id for p in pending_list]
+        users_map = await user_repo.get_by_ids(
+            pending_user_ids, session=session
         )
-        lines.append(f"• {name}")
+        for pending in pending_list:
+            u = users_map.get(pending.user_id)
+            name = _user_display_name(
+                u.telegram if u else None,
+                u.username if u else None,
+            )
+            lines.append(f"• {name}")
     return lines
 
 

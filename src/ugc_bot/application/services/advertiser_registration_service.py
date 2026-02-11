@@ -13,6 +13,7 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
@@ -23,6 +24,7 @@ class AdvertiserRegistrationService:
 
     user_repo: UserRepository
     advertiser_repo: AdvertiserProfileRepository
+    referral_service: Optional[ReferralService] = None
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
@@ -63,6 +65,12 @@ class AdvertiserRegistrationService:
                 company_activity=company_activity,
             )
             await self.advertiser_repo.save(profile, session=session)
+
+            if self.referral_service:
+                await self.referral_service.create_binding_from_pending(
+                    creator_user_id=user_id,
+                    session=session,
+                )
 
             if self.metrics_collector:
                 self.metrics_collector.record_advertiser_registration(

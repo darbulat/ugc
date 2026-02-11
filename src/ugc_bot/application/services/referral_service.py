@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from ugc_bot.application.ports import (
     TransactionManager,
     UserReferralBindingRepository,
@@ -112,7 +114,20 @@ class ReferralService:
                 referred_user_id=creator_user_id,
                 created_at=datetime.now(timezone.utc),
             )
-            await self.user_referral_binding_repo.save(binding, session=sess)
+            try:
+                await self.user_referral_binding_repo.save(
+                    binding, session=sess
+                )
+            except IntegrityError:
+                existing = (
+                    await self.user_referral_binding_repo.get_by_referred_user(
+                        creator_user_id, session=sess
+                    )
+                )
+                await self.user_referral_pending_repo.delete_by_user(
+                    creator_user_id, session=sess
+                )
+                return existing
             await self.user_referral_pending_repo.delete_by_user(
                 creator_user_id, session=sess
             )
