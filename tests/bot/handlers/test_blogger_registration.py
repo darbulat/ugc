@@ -368,7 +368,11 @@ async def test_handle_agreements_requires_consent(
     )
 
     assert message.answers
-    assert "Подтвердить согласие" in message.answers[0]
+    first_answer = message.answers[0]
+    text = first_answer[0] if isinstance(first_answer, tuple) else first_answer
+    assert "Подтвердить согласие" in text
+    # Keyboard with the button is re-sent so user can press it
+    assert isinstance(first_answer, tuple) and len(first_answer) == 2
 
 
 @pytest.mark.asyncio
