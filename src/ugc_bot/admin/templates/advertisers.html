@@ -33,5 +33,21 @@
     {% if advertisers|length == 0 %}
       <div class="empty">Заказчики не найдены.</div>
     {% endif %}
+    {% if total_pages > 1 %}
+      <nav class="pagination" aria-label="Пагинация заказчиков">
+        <span class="pagination__info">
+          {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} из {{ total }}
+        </span>
+        <div class="pagination__links">
+          {% if page > 1 %}
+            <a class="pagination__link" href="/admin/users/advertisers?page={{ page - 1 }}&per_page={{ per_page }}">← Назад</a>
+          {% endif %}
+          <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
+          {% if page < total_pages %}
+            <a class="pagination__link" href="/admin/users/advertisers?page={{ page + 1 }}&per_page={{ per_page }}">Вперёд →</a>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
   </section>
 {% endblock %}

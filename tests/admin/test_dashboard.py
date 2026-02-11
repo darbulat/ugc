@@ -14,6 +14,19 @@ _TEST_ADMIN_PASSWORD = "Str0ng-Test-P@ssw0rd"
 _TEST_ADMIN_SECRET = "test-s3cr3t-k3y-min-32-chars-long"
 
 
+def _paginated(items: list[dict[str, Any]], total: int | None = None) -> dict:
+    """Paginated response for list_creators / list_advertisers / list_orders."""
+    n = total if total is not None else len(items)
+    total_pages = max(1, (n + 24) // 25) if n else 1
+    return {
+        "items": items,
+        "total": n,
+        "page": 1,
+        "per_page": 25,
+        "total_pages": total_pages,
+    }
+
+
 def _build_admin_client(
     monkeypatch,  # type: ignore[no-untyped-def]
     *,
@@ -38,17 +51,17 @@ def _build_admin_client(
     monkeypatch.setattr(
         AdminDashboardService,
         "list_creators",
-        AsyncMock(return_value=creators),
+        AsyncMock(return_value=_paginated(creators)),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_advertisers",
-        AsyncMock(return_value=advertisers),
+        AsyncMock(return_value=_paginated(advertisers)),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_orders",
-        AsyncMock(return_value=orders),
+        AsyncMock(return_value=_paginated(orders)),
     )
     monkeypatch.setattr(
         AdminDashboardService,
@@ -217,7 +230,7 @@ def test_admin_dashboard_api(monkeypatch) -> None:
 
 
 def test_admin_orders_api(monkeypatch) -> None:
-    """Orders API returns list items."""
+    """Orders API returns paginated list."""
     orders = [
         {
             "order_id": "order-1",
@@ -240,7 +253,12 @@ def test_admin_orders_api(monkeypatch) -> None:
     )
     response = client.get("/admin/api/orders?period=today")
     assert response.status_code == 200
-    assert response.json() == {"items": orders}
+    data = response.json()
+    assert data["items"] == orders
+    assert data["total"] == 1
+    assert "page" in data
+    assert "per_page" in data
+    assert "total_pages" in data
 
 
 def test_admin_api_returns_401_when_not_authenticated(monkeypatch) -> None:
@@ -301,20 +319,19 @@ def test_admin_orders_redirect_when_not_authenticated(monkeypatch) -> None:
 
 def test_admin_orders_with_status_filter(monkeypatch) -> None:
     """Orders API passes status filter to list_orders."""
-    list_orders_mock = AsyncMock(
-        return_value=[
-            {
-                "order_id": "order-1",
-                "advertiser": "Brand",
-                "status_label": "closed",
-                "picked_count": 1,
-                "needed_count": 3,
-                "created_at": "2026-01-01T00:00:00",
-                "status_age_hours": 12.0,
-                "has_problem": False,
-            }
-        ]
-    )
+    orders = [
+        {
+            "order_id": "order-1",
+            "advertiser": "Brand",
+            "status_label": "closed",
+            "picked_count": 1,
+            "needed_count": 3,
+            "created_at": "2026-01-01T00:00:00",
+            "status_age_hours": 12.0,
+            "has_problem": False,
+        }
+    ]
+    list_orders_mock = AsyncMock(return_value=_paginated(orders))
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
@@ -329,12 +346,12 @@ def test_admin_orders_with_status_filter(monkeypatch) -> None:
     monkeypatch.setattr(
         AdminDashboardService,
         "list_creators",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_advertisers",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
@@ -352,7 +369,10 @@ def test_admin_orders_with_status_filter(monkeypatch) -> None:
     response = client.get("/admin/api/orders?period=today&status=closed")
     assert response.status_code == 200
     list_orders_mock.assert_called_once_with(
-        period="today", status_filter="closed"
+        period="today",
+        status_filter="closed",
+        page=1,
+        per_page=25,
     )
 
 
@@ -433,17 +453,17 @@ def test_admin_order_detail_404_when_not_found(monkeypatch) -> None:
     monkeypatch.setattr(
         AdminDashboardService,
         "list_creators",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_advertisers",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_orders",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
 
     app = create_admin_app()
@@ -486,17 +506,17 @@ def test_admin_user_card_html(monkeypatch) -> None:
     monkeypatch.setattr(
         AdminDashboardService,
         "list_creators",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_advertisers",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_orders",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
@@ -598,7 +618,7 @@ def test_admin_creators_api_with_complaints_filter(monkeypatch) -> None:
             "has_complaints": True,
         }
     ]
-    list_creators_mock = AsyncMock(return_value=creators)
+    list_creators_mock = AsyncMock(return_value=_paginated(creators))
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
@@ -618,12 +638,12 @@ def test_admin_creators_api_with_complaints_filter(monkeypatch) -> None:
     monkeypatch.setattr(
         AdminDashboardService,
         "list_advertisers",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_orders",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
@@ -637,16 +657,18 @@ def test_admin_creators_api_with_complaints_filter(monkeypatch) -> None:
         "/admin/api/users/creators?period=today&with_complaints=true"
     )
     assert response.status_code == 200
-    assert response.json() == {"items": creators}
+    assert response.json()["items"] == creators
     list_creators_mock.assert_called_once_with(
         period="today",
         only_new=False,
         only_with_complaints=True,
+        page=1,
+        per_page=25,
     )
 
 
 def test_admin_advertisers_api(monkeypatch) -> None:
-    """Advertisers API returns list."""
+    """Advertisers API returns paginated list."""
     advertisers = [
         {"user_id": "a1", "brand": "Brand", "created_at": "2026-01-01"}
     ]
@@ -660,7 +682,12 @@ def test_admin_advertisers_api(monkeypatch) -> None:
     )
     response = client.get("/admin/api/users/advertisers")
     assert response.status_code == 200
-    assert response.json() == {"items": advertisers}
+    data = response.json()
+    assert data["items"] == advertisers
+    assert data["total"] == 1
+    assert "page" in data
+    assert "per_page" in data
+    assert "total_pages" in data
 
 
 def test_admin_order_api_404_when_not_found(monkeypatch) -> None:
@@ -687,17 +714,17 @@ def test_admin_order_api_404_when_not_found(monkeypatch) -> None:
     monkeypatch.setattr(
         AdminDashboardService,
         "list_creators",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_advertisers",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
     monkeypatch.setattr(
         AdminDashboardService,
         "list_orders",
-        AsyncMock(return_value=[]),
+        AsyncMock(return_value=_paginated([])),
     )
 
     app = create_admin_app()

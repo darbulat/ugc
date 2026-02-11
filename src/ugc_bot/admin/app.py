@@ -198,21 +198,29 @@ def _register_dashboard_routes(  # noqa: C901
         period: str = "today",
         only_new: bool = False,
         with_complaints: bool = False,
+        page: int = 1,
+        per_page: int = 25,
     ):
         """Render creator list page."""
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
         period_key = _normalize_period(period)
-        creators = await dashboard_service.list_creators(
+        result = await dashboard_service.list_creators(
             period=period_key,
             only_new=only_new,
             only_with_complaints=with_complaints,
+            page=page,
+            per_page=per_page,
         )
         return templates.TemplateResponse(
             request,
             "creators.html",
             {
-                "creators": creators,
+                "creators": result["items"],
+                "total": result["total"],
+                "page": result["page"],
+                "per_page": result["per_page"],
+                "total_pages": result["total_pages"],
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
                 "period_labels": _PERIOD_LABELS,
@@ -223,15 +231,27 @@ def _register_dashboard_routes(  # noqa: C901
         )
 
     @app.get("/admin/users/advertisers", response_class=HTMLResponse)
-    async def admin_advertisers(request: Request):
+    async def admin_advertisers(
+        request: Request,
+        page: int = 1,
+        per_page: int = 25,
+    ):
         """Render advertiser list page."""
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
-        advertisers = await dashboard_service.list_advertisers()
+        result = await dashboard_service.list_advertisers(
+            page=page, per_page=per_page
+        )
         return templates.TemplateResponse(
             request,
             "advertisers.html",
-            {"advertisers": advertisers},
+            {
+                "advertisers": result["items"],
+                "total": result["total"],
+                "page": result["page"],
+                "per_page": result["per_page"],
+                "total_pages": result["total_pages"],
+            },
         )
 
     @app.get("/admin/orders", response_class=HTMLResponse)
@@ -239,19 +259,28 @@ def _register_dashboard_routes(  # noqa: C901
         request: Request,
         period: str = "today",
         status: str | None = None,
+        page: int = 1,
+        per_page: int = 25,
     ):
         """Render order list page."""
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
         period_key = _normalize_period(period)
-        orders = await dashboard_service.list_orders(
-            period=period_key, status_filter=status
+        result = await dashboard_service.list_orders(
+            period=period_key,
+            status_filter=status,
+            page=page,
+            per_page=per_page,
         )
         return templates.TemplateResponse(
             request,
             "orders.html",
             {
-                "orders": orders,
+                "orders": result["items"],
+                "total": result["total"],
+                "page": result["page"],
+                "per_page": result["per_page"],
+                "total_pages": result["total_pages"],
                 "period": period_key,
                 "periods": _DASHBOARD_PERIODS,
                 "period_labels": _PERIOD_LABELS,
@@ -309,34 +338,43 @@ def _register_dashboard_routes(  # noqa: C901
         period: str = "today",
         only_new: bool = False,
         with_complaints: bool = False,
+        page: int = 1,
+        per_page: int = 25,
     ) -> dict:
-        """Return creator list as JSON."""
+        """Return creator list as JSON with pagination."""
         period_key = _normalize_period(period)
-        creators = await dashboard_service.list_creators(
+        return await dashboard_service.list_creators(
             period=period_key,
             only_new=only_new,
             only_with_complaints=with_complaints,
+            page=page,
+            per_page=per_page,
         )
-        return {"items": creators}
 
     @app.get(
         "/admin/api/users/advertisers", dependencies=[Depends(_require_admin)]
     )
-    async def advertisers_api() -> dict:
-        """Return advertiser list as JSON."""
-        advertisers = await dashboard_service.list_advertisers()
-        return {"items": advertisers}
+    async def advertisers_api(page: int = 1, per_page: int = 25) -> dict:
+        """Return advertiser list as JSON with pagination."""
+        return await dashboard_service.list_advertisers(
+            page=page, per_page=per_page
+        )
 
     @app.get("/admin/api/orders", dependencies=[Depends(_require_admin)])
     async def orders_api(
-        period: str = "today", status: str | None = None
+        period: str = "today",
+        status: str | None = None,
+        page: int = 1,
+        per_page: int = 25,
     ) -> dict:
-        """Return order list as JSON."""
+        """Return order list as JSON with pagination."""
         period_key = _normalize_period(period)
-        orders = await dashboard_service.list_orders(
-            period=period_key, status_filter=status
+        return await dashboard_service.list_orders(
+            period=period_key,
+            status_filter=status,
+            page=page,
+            per_page=per_page,
         )
-        return {"items": orders}
 
     @app.get(
         "/admin/api/orders/{order_id}", dependencies=[Depends(_require_admin)]

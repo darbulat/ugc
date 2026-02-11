@@ -538,11 +538,19 @@ async def test_list_creators(service) -> None:
             1,
         ),
     ]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    creators = await svc.list_creators(
+    result = await svc.list_creators(
         "today", only_new=False, only_with_complaints=False
     )
+    assert result["total"] == 1
+    assert result["page"] == 1
+    assert result["per_page"] == 25
+    assert result["total_pages"] == 1
+    creators = result["items"]
     assert len(creators) == 1
     assert creators[0]["username"] == "user1"
     assert creators[0]["instagram"] == "https://instagram.com/u1"
@@ -558,9 +566,15 @@ async def test_list_advertisers(service) -> None:
     rows = [
         (user, "Brand", 10, 5, 0),
     ]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    advertisers = await svc.list_advertisers()
+    result = await svc.list_advertisers()
+    assert result["total"] == 1
+    assert "items" in result
+    advertisers = result["items"]
     assert len(advertisers) == 1
     assert advertisers[0]["name"] == "Brand"
     assert advertisers[0]["orders_total"] == 10
@@ -575,9 +589,14 @@ async def test_list_orders(service) -> None:
     rows = [
         (order, 3, 0, "Advertiser1"),
     ]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    orders = await svc.list_orders("today", status_filter=None)
+    result = await svc.list_orders("today", status_filter=None)
+    assert result["total"] == 1
+    orders = result["items"]
     assert len(orders) == 1
     assert orders[0]["order_id"] == str(order.order_id)
     assert orders[0]["advertiser"] == "Advertiser1"
@@ -598,11 +617,81 @@ async def test_list_orders_with_status_filter(service) -> None:
     """list_orders filters by status_label when provided."""
     order = _make_order(bloggers_needed=3, status=OrderStatus.CLOSED)
     rows = [(order, 3, 0, "Advertiser")]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    orders = await svc.list_orders("today", status_filter="completed")
+    result = await svc.list_orders("today", status_filter="completed")
+    orders = result["items"]
     assert len(orders) == 1
     assert orders[0]["status_label"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_list_orders_status_filter_complaint_branch(service) -> None:
+    """list_orders with status_filter=complaint builds complaint condition."""
+    order = _make_order()
+    rows = [(order, 1, 1, "Advertiser")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders("today", status_filter="complaint")
+    assert result["total"] == 1
+    assert result["items"][0]["status_label"] == "complaint"
+
+
+@pytest.mark.asyncio
+async def test_list_orders_status_filter_active_branch(service) -> None:
+    """list_orders with status_filter=active builds active SQL condition."""
+    order = _make_order()
+    rows = [(order, 0, 0, "Advertiser")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders("today", status_filter="active")
+    assert len(result["items"]) == 1
+    assert result["items"][0]["status_label"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_list_orders_status_filter_archive_branch(service) -> None:
+    """list_orders with status_filter=archive builds archive SQL condition."""
+    order = _make_order(
+        bloggers_needed=5,
+        status=OrderStatus.CLOSED,
+        completed_at=datetime.now(timezone.utc) - timedelta(days=14),
+    )
+    rows = [(order, 5, 0, "Advertiser")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders("today", status_filter="archive")
+    assert len(result["items"]) == 1
+    assert result["items"][0]["status_label"] == "archive"
+
+
+@pytest.mark.asyncio
+async def test_list_orders_status_filter_unknown_returns_none_condition(
+    service,
+) -> None:
+    """list_orders with unknown status_filter applies no extra SQL condition."""
+    order = _make_order()
+    rows = [(order, 0, 0, "Advertiser")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders("today", status_filter="unknown")
+    assert result["total"] == 1
+    assert len(result["items"]) == 1
 
 
 @pytest.mark.asyncio
@@ -696,10 +785,13 @@ async def test_user_status_label_active(service) -> None:
     """_user_status_label returns active for ACTIVE status."""
     user = _make_user(status=UserStatus.ACTIVE)
     rows = [(user, "url", 0, 0)]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    creators = await svc.list_creators("today", False, False)
-    assert creators[0]["status"] == "active"
+    result = await svc.list_creators("today", False, False)
+    assert result["items"][0]["status"] == "active"
 
 
 @pytest.mark.asyncio
@@ -707,10 +799,13 @@ async def test_user_status_label_limited(service) -> None:
     """_user_status_label returns limited for non-ACTIVE status."""
     user = _make_user(status=UserStatus.BLOCKED)
     rows = [(user, "url", 0, 0)]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    creators = await svc.list_creators("today", False, False)
-    assert creators[0]["status"] == "limited"
+    result = await svc.list_creators("today", False, False)
+    assert result["items"][0]["status"] == "limited"
 
 
 @pytest.mark.asyncio
@@ -718,9 +813,13 @@ async def test_order_status_complaint_when_open_complaints(service) -> None:
     """Order status is complaint when open_complaints > 0."""
     order = _make_order()
     rows = [(order, 5, 1, "Advertiser")]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    orders = await svc.list_orders("today", None)
+    result = await svc.list_orders("today", None)
+    orders = result["items"]
     assert orders[0]["status_label"] == "complaint"
     assert orders[0]["has_problem"] is True
 
@@ -730,10 +829,13 @@ async def test_order_status_completed_when_enough_responses(service) -> None:
     """Order status is completed when picked >= needed."""
     order = _make_order(bloggers_needed=5)
     rows = [(order, 5, 0, "Advertiser")]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    orders = await svc.list_orders("today", None)
-    assert orders[0]["status_label"] == "completed"
+    result = await svc.list_orders("today", None)
+    assert result["items"][0]["status_label"] == "completed"
 
 
 @pytest.mark.asyncio
@@ -777,10 +879,13 @@ async def test_advertiser_fallback_to_username_when_no_brand(service) -> None:
     """Advertiser name falls back to username when brand is None."""
     user = _make_user()
     rows = [(user, None, 0, 0, 0)]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    advertisers = await svc.list_advertisers()
-    assert advertisers[0]["name"] == "user1"
+    result = await svc.list_advertisers()
+    assert result["items"][0]["name"] == "user1"
 
 
 @pytest.mark.asyncio
@@ -788,12 +893,15 @@ async def test_list_creators_only_new_filter(service) -> None:
     """list_creators with only_new=True applies date filter."""
     user = _make_user()
     rows = [(user, "url", 0, 0)]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    creators = await svc.list_creators(
+    result = await svc.list_creators(
         "today", only_new=True, only_with_complaints=False
     )
-    assert len(creators) == 1
+    assert len(result["items"]) == 1
 
 
 @pytest.mark.asyncio
@@ -801,13 +909,16 @@ async def test_list_creators_only_with_complaints_filter(service) -> None:
     """list_creators with only_with_complaints=True filters by complaints."""
     user = _make_user()
     rows = [(user, "url", 0, 2)]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    creators = await svc.list_creators(
+    result = await svc.list_creators(
         "today", only_new=False, only_with_complaints=True
     )
-    assert len(creators) == 1
-    assert creators[0]["complaints"] == 2
+    assert len(result["items"]) == 1
+    assert result["items"][0]["complaints"] == 2
 
 
 @pytest.mark.asyncio
@@ -845,10 +956,13 @@ async def test_order_status_archive_when_old_and_no_complaints(service) -> None:
         completed_at=datetime.now(timezone.utc) - timedelta(days=14),
     )
     rows = [(order, 5, 0, "Advertiser")]
-    results = [_FakeResult(all_rows=rows)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
     svc = service(results)
-    orders = await svc.list_orders("today", None)
-    assert orders[0]["status_label"] == "archive"
+    result = await svc.list_orders("today", None)
+    assert result["items"][0]["status_label"] == "archive"
 
 
 @pytest.mark.asyncio

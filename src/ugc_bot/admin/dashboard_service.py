@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import ColumnElement
 
@@ -80,6 +80,18 @@ class OrderCard:
     has_problem: bool
 
 
+def _paginated(total: int, page: int, per_page: int, items: list) -> dict:
+    """Build paginated result: items, total, page, per_page, total_pages."""
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+    }
+
+
 class AdminDashboardService:
     """Aggregate operational metrics for the admin dashboard."""
 
@@ -146,28 +158,59 @@ class AdminDashboardService:
         period: PeriodKey,
         only_new: bool,
         only_with_complaints: bool,
-    ) -> list[dict]:
-        """Return creator list with counts and filters."""
+        page: int = 1,
+        per_page: int = 25,
+    ) -> dict:
+        """Return paginated creator list with counts and filters."""
         window = self._build_period_window(period)
+        page = max(1, page)
+        per_page = max(1, min(100, per_page))
         async with self._session_factory() as session:
-            return await self._list_creators(
+            total = await self._count_creators(
                 session, window, only_new, only_with_complaints
             )
+            items = await self._list_creators(
+                session,
+                window,
+                only_new,
+                only_with_complaints,
+                limit=per_page,
+                offset=(page - 1) * per_page,
+            )
+        return _paginated(total, page, per_page, items)
 
-    async def list_advertisers(self) -> list[dict]:
-        """Return advertiser list with order and complaint counts."""
+    async def list_advertisers(self, page: int = 1, per_page: int = 25) -> dict:
+        """Return paginated advertiser list with order and complaint counts."""
+        page = max(1, page)
+        per_page = max(1, min(100, per_page))
         async with self._session_factory() as session:
-            return await self._list_advertisers(session)
+            total = await self._count_advertisers(session)
+            items = await self._list_advertisers(
+                session, limit=per_page, offset=(page - 1) * per_page
+            )
+        return _paginated(total, page, per_page, items)
 
     async def list_orders(
         self,
         period: PeriodKey,
         status_filter: str | None = None,
-    ) -> list[dict]:
-        """Return order list for the selected period."""
+        page: int = 1,
+        per_page: int = 25,
+    ) -> dict:
+        """Return paginated order list for the selected period."""
         window = self._build_period_window(period)
+        page = max(1, page)
+        per_page = max(1, min(100, per_page))
         async with self._session_factory() as session:
-            return await self._list_orders(session, window, status_filter)
+            total = await self._count_orders(session, window, status_filter)
+            items = await self._list_orders(
+                session,
+                window,
+                status_filter,
+                limit=per_page,
+                offset=(page - 1) * per_page,
+            )
+        return _paginated(total, page, per_page, items)
 
     async def get_order_card(self, order_id: UUID) -> dict | None:
         """Return detailed order card data for a single order."""
@@ -577,12 +620,60 @@ class AdminDashboardService:
             )
         return sorted(delayed, key=lambda row: row["created_at"])
 
+    async def _count_creators(
+        self,
+        session: AsyncSession,
+        window: PeriodWindow,
+        only_new: bool,
+        only_with_complaints: bool,
+    ) -> int:
+        """Count creators matching filters."""
+        responses = (
+            select(
+                OrderResponseModel.blogger_id.label("user_id"),
+                func.count(OrderResponseModel.response_id).label("responses"),
+            )
+            .group_by(OrderResponseModel.blogger_id)
+            .subquery()
+        )
+        complaints = (
+            select(
+                ComplaintModel.reported_id.label("user_id"),
+                func.count(ComplaintModel.complaint_id).label("complaints"),
+            )
+            .group_by(ComplaintModel.reported_id)
+            .subquery()
+        )
+        query = (
+            select(func.count(UserModel.user_id))
+            .select_from(UserModel)
+            .join(
+                BloggerProfileModel,
+                BloggerProfileModel.user_id == UserModel.user_id,
+            )
+            .outerjoin(responses, responses.c.user_id == UserModel.user_id)
+            .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
+        )
+        if only_new:
+            query = query.where(
+                and_(
+                    UserModel.created_at >= window.current_start,
+                    UserModel.created_at < window.current_end,
+                )
+            )
+        if only_with_complaints:
+            query = query.where(func.coalesce(complaints.c.complaints, 0) > 0)
+        result = await session.execute(query)
+        return int(result.scalar() or 0)
+
     async def _list_creators(
         self,
         session: AsyncSession,
         window: PeriodWindow,
         only_new: bool,
         only_with_complaints: bool,
+        limit: int = 25,
+        offset: int = 0,
     ) -> list[dict]:
         """List creators with response and complaint counts."""
         responses = (
@@ -624,6 +715,8 @@ class AdminDashboardService:
             )
         if only_with_complaints:
             query = query.where(func.coalesce(complaints.c.complaints, 0) > 0)
+        query = query.order_by(UserModel.created_at.desc())
+        query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
         return [
@@ -639,7 +732,25 @@ class AdminDashboardService:
             for user, instagram_url, responses_count, complaints_count in rows
         ]
 
-    async def _list_advertisers(self, session: AsyncSession) -> list[dict]:
+    async def _count_advertisers(self, session: AsyncSession) -> int:
+        """Count advertisers with profile."""
+        query = (
+            select(func.count(UserModel.user_id))
+            .select_from(UserModel)
+            .join(
+                AdvertiserProfileModel,
+                AdvertiserProfileModel.user_id == UserModel.user_id,
+            )
+        )
+        result = await session.execute(query)
+        return int(result.scalar() or 0)
+
+    async def _list_advertisers(
+        self,
+        session: AsyncSession,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> list[dict]:
         """List advertisers with order and complaint counts."""
         responses = self._order_responses_subquery()
         orders = (
@@ -685,6 +796,8 @@ class AdminDashboardService:
             .outerjoin(orders, orders.c.advertiser_id == UserModel.user_id)
             .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
         )
+        query = query.order_by(UserModel.created_at.desc())
+        query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
         payload: list[dict] = []
@@ -702,11 +815,50 @@ class AdminDashboardService:
             )
         return payload
 
+    async def _count_orders(
+        self,
+        session: AsyncSession,
+        window: PeriodWindow,
+        status_filter: str | None,
+    ) -> int:
+        """Count orders in period matching status filter."""
+        responses = self._order_responses_subquery()
+        open_complaints = self._open_complaints_subquery()
+        query = (
+            select(func.count(OrderModel.order_id))
+            .select_from(OrderModel)
+            .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
+            .outerjoin(
+                AdvertiserProfileModel,
+                AdvertiserProfileModel.user_id == OrderModel.advertiser_id,
+            )
+            .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
+            .outerjoin(
+                open_complaints,
+                open_complaints.c.order_id == OrderModel.order_id,
+            )
+            .where(
+                and_(
+                    OrderModel.created_at >= window.current_start,
+                    OrderModel.created_at < window.current_end,
+                )
+            )
+        )
+        status_cond = self._order_status_filter_condition(
+            responses, open_complaints, status_filter
+        )
+        if status_cond is not None:
+            query = query.where(status_cond)
+        result = await session.execute(query)
+        return int(result.scalar() or 0)
+
     async def _list_orders(
         self,
         session: AsyncSession,
         window: PeriodWindow,
         status_filter: str | None,
+        limit: int = 25,
+        offset: int = 0,
     ) -> list[dict]:
         """List orders with derived status labels and flags."""
         responses = self._order_responses_subquery()
@@ -739,18 +891,20 @@ class AdminDashboardService:
                 )
             )
         )
+        status_cond = self._order_status_filter_condition(
+            responses, open_complaints, status_filter
+        )
+        if status_cond is not None:
+            query = query.where(status_cond)
+        query = query.order_by(OrderModel.created_at.desc())
+        query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
         now = datetime.now(self._timezone)
-        cards = [
+        return [
             self._build_order_row(now, order, responses_count, open_count, name)
             for order, responses_count, open_count, name in rows
         ]
-        if status_filter:
-            cards = [
-                card for card in cards if card["status_label"] == status_filter
-            ]
-        return cards
 
     async def _get_order_card(
         self, session: AsyncSession, order_id: UUID
@@ -871,6 +1025,42 @@ class AdminDashboardService:
             func.coalesce(responses_subquery.c.responses, 0)
             >= OrderModel.bloggers_needed
         )
+
+    def _order_status_filter_condition(
+        self,
+        responses_subquery: Any,
+        open_complaints_subquery: Any,
+        status_filter: str | None,
+    ) -> ColumnElement[bool] | None:
+        """Return SQL condition for order status_filter."""
+        if not status_filter:
+            return None
+        open_cnt = func.coalesce(open_complaints_subquery.c.open_complaints, 0)
+        completed = self._completed_order_condition(responses_subquery)
+        cutoff = datetime.now(self._timezone) - timedelta(
+            days=self._thresholds.archive_days
+        )
+        if status_filter == "complaint":
+            return open_cnt > 0
+        if status_filter == "active":
+            return and_(open_cnt == 0, ~completed)
+        if status_filter == "archive":
+            return and_(
+                open_cnt == 0,
+                completed,
+                OrderModel.completed_at.isnot(None),
+                OrderModel.completed_at < cutoff,
+            )
+        if status_filter == "completed":
+            return and_(
+                open_cnt == 0,
+                completed,
+                or_(
+                    OrderModel.completed_at.is_(None),
+                    OrderModel.completed_at >= cutoff,
+                ),
+            )
+        return None
 
     def _is_completed(self, order: OrderModel, responses: int) -> bool:
         """Return True when order is completed."""
