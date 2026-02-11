@@ -119,11 +119,11 @@ def create_backup(
                 gzip_process.communicate()
                 dump_process.wait()
                 if dump_process.returncode != 0:
-                    stderr = dump_process.stderr.read().decode()
+                    stderr_bytes = dump_process.stderr.read()
                     raise subprocess.CalledProcessError(
                         dump_process.returncode,
                         pg_dump_cmd,
-                        stderr=stderr,
+                        stderr=stderr_bytes,
                     )
         else:
             # No compression
@@ -140,7 +140,9 @@ def create_backup(
         return backup_path
 
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode() if e.stderr else str(e)
+        error_msg = (
+            e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or str(e))
+        )
         print(f"Error creating backup: {error_msg}", file=sys.stderr)
         if backup_path.exists():
             backup_path.unlink()
