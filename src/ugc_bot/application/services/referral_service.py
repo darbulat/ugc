@@ -52,7 +52,9 @@ class ReferralService:
     ) -> bool:
         """Save pending referral if referrer exists.
 
-        Returns True if saved or user already had a pending referral.
+        Returns True if saved, user already had a pending referral,
+        or user already has a binding (no pending needed).
+        Does not create pending when user is already referred (has binding).
         """
 
         async def _run(session: object | None) -> bool:
@@ -68,6 +70,14 @@ class ReferralService:
                 user_id, session=session
             )
             if existing is not None:
+                return True
+
+            existing_binding = (
+                await self.user_referral_binding_repo.get_by_referred_user(
+                    user_id, session=session
+                )
+            )
+            if existing_binding is not None:
                 return True
 
             pending = UserReferralPending(

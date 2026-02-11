@@ -194,6 +194,42 @@ async def test_save_pending_referral_when_pending_exists_returns_true() -> None:
 
 
 @pytest.mark.asyncio
+async def test_save_pending_referral_skips_if_already_bound() -> None:
+    """Returns True and does not create pending if user already has binding."""
+    user_repo = InMemoryUserRepository()
+    referrer = User(
+        user_id=uuid4(),
+        external_id="r",
+        messenger_type=MessengerType.TELEGRAM,
+        username="ref",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        referral_code="code1",
+    )
+    await user_repo.save(referrer)
+    referred_id = uuid4()
+    pending_repo = InMemoryUserReferralPendingRepository()
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer.user_id,
+            referred_user_id=referred_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    service = ReferralService(
+        user_repo=user_repo,
+        user_referral_pending_repo=pending_repo,
+        user_referral_binding_repo=binding_repo,
+        transaction_manager=None,
+    )
+    result = await service.save_pending_referral(referred_id, "code1")
+    assert result is True
+    assert await pending_repo.get_by_user(referred_id) is None
+
+
+@pytest.mark.asyncio
 async def test_create_binding_from_pending_creates_binding() -> None:
     """create_binding_from_pending creates binding and deletes pending."""
     referrer_id = uuid4()
