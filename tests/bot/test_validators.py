@@ -1,6 +1,7 @@
 """Tests for bot input validators."""
 
 from ugc_bot.bot.validators import (
+    normalize_instagram_url,
     normalize_url,
     validate_audience_geo,
     validate_barter_description,
@@ -296,3 +297,46 @@ class TestNormalizeUrl:
 
     def test_empty_returns_empty(self) -> None:
         assert normalize_url("") == ""
+
+
+class TestNormalizeInstagramUrl:
+    """Tests for normalize_instagram_url."""
+
+    def test_strips_query_string(self) -> None:
+        url = "https://www.instagram.com/kamil_bakhteev?igsh=bjh1MHRkczhxcTho&utm_source=qr"
+        assert (
+            normalize_instagram_url(url)
+            == "https://instagram.com/kamil_bakhteev"
+        )
+
+    def test_strips_fragment(self) -> None:
+        url = "https://instagram.com/user#section"
+        assert normalize_instagram_url(url) == "https://instagram.com/user"
+
+    def test_removes_www(self) -> None:
+        assert (
+            normalize_instagram_url("https://www.instagram.com/name")
+            == "https://instagram.com/name"
+        )
+
+    def test_adds_https_when_no_scheme(self) -> None:
+        assert (
+            normalize_instagram_url("www.instagram.com/name")
+            == "https://instagram.com/name"
+        )
+        assert (
+            normalize_instagram_url("instagram.com/user")
+            == "https://instagram.com/user"
+        )
+
+    def test_combined_normalization(self) -> None:
+        url = "www.instagram.com/user?igsh=abc&utm_source=qr"
+        assert normalize_instagram_url(url) == "https://instagram.com/user"
+
+    def test_empty_returns_empty(self) -> None:
+        assert normalize_instagram_url("") == ""
+        assert normalize_instagram_url("   ") == ""
+
+    def test_already_normalized_unchanged(self) -> None:
+        url = "https://instagram.com/username"
+        assert normalize_instagram_url(url) == url

@@ -756,6 +756,49 @@ async def test_edit_profile_enter_value_instagram_success(user_repo) -> None:
 
 
 @pytest.mark.asyncio
+async def test_edit_profile_enter_value_instagram_normalized_with_query(
+    user_repo,
+) -> None:
+    """Instagram URL with query string is normalized when saving profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000831"),
+        external_id="31",
+        username="user",
+    )
+    message = FakeMessage(
+        text="https://www.instagram.com/edited_user?igsh=abc&utm_source=qr",
+        user=FakeUser(31),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "instagram_url",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "31",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    role_service = FakeUserRoleService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
+        max_order_price=10_000.0,
+    )
+    assert state.cleared is True
+    assert (
+        reg_service.update_calls[0][1].get("instagram_url")
+        == "https://instagram.com/edited_user"
+    )
+
+
+@pytest.mark.asyncio
 async def test_edit_profile_enter_value_audience_gender_success(
     user_repo,
 ) -> None:

@@ -40,6 +40,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
+    normalize_instagram_url,
     validate_audience_geo,
     validate_city,
     validate_nickname,
@@ -224,7 +225,7 @@ async def handle_instagram(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    instagram_url = (incoming.text or "").strip()
+    instagram_url = normalize_instagram_url((incoming.text or "").strip())
     if not instagram_url:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

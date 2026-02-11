@@ -72,6 +72,18 @@ def normalize_url(value: str) -> str:
     return v
 
 
+def normalize_instagram_url(url: str) -> str:
+    """Normalize Instagram URL: strip query/fragment, remove www., add https://."""
+    s = (url or "").strip()
+    if not s:
+        return s
+    s = s.split("?")[0].split("#")[0].rstrip("?#")
+    s = s.replace("www.instagram.com", "instagram.com")
+    if not s.startswith("http://") and not s.startswith("https://"):
+        s = f"https://{s}"
+    return s
+
+
 def validate_url(value: str, max_len: int = URL_MAX) -> str | None:
     """Validate URL format (http/https or domain without scheme) and length."""
     v = (value or "").strip()

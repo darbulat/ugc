@@ -169,6 +169,25 @@ async def test_instagram_success_in_handler(user_repo, blogger_repo) -> None:
 
 
 @pytest.mark.asyncio
+async def test_instagram_url_normalized_with_query_and_www(
+    user_repo, blogger_repo
+) -> None:
+    """URL with query and www is accepted and stored normalized."""
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    message = FakeMessage(
+        text="https://www.instagram.com/norm_user?igsh=bjh1MHRkczhxcTho&utm_source=qr",
+        user=FakeUser(1, "user", "User"),
+    )
+    state = FakeFSMContext()
+
+    await handle_instagram(message, state, registration_service)
+
+    assert state._data["instagram_url"] == "https://instagram.com/norm_user"
+
+
+@pytest.mark.asyncio
 async def test_gender_invalid() -> None:
     """Reject invalid gender."""
 

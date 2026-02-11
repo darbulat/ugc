@@ -39,6 +39,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
+    normalize_instagram_url,
     validate_audience_geo,
     validate_brand,
     validate_city,
@@ -353,6 +354,7 @@ async def _blog_update_instagram(
             "Неверный формат ссылки. Пример: instagram.com/name"
         )
         return None
+    text = normalize_instagram_url(text)
     if not _INSTAGRAM_URL_REGEX.match(text):
         await message.answer("Неверный формат ссылки Instagram.")
         return None
