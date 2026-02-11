@@ -82,8 +82,7 @@ def create_backup(
                 )
                 dump_process.stdout.close()
                 gzip_process.communicate()
-                dump_process.communicate()
-
+                dump_process.wait()
                 if dump_process.returncode != 0:
                     stderr = dump_process.stderr.read().decode()
                     raise subprocess.CalledProcessError(
