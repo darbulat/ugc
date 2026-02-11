@@ -1,7 +1,6 @@
 """Blogger registration flow handlers."""
 
 import logging
-import re
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -31,6 +30,7 @@ from ugc_bot.bot.handlers.keyboards import (
     flow_keyboard,
     flow_keyboard_remove,
 )
+from ugc_bot.bot.handlers.profile import INSTAGRAM_URL_REGEX
 from ugc_bot.bot.handlers.start import CREATOR_LABEL
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
@@ -58,10 +58,6 @@ CREATOR_CHOOSE_ACTION_TEXT = "Выберите действие:"
 CREATOR_INTRO_NOT_REGISTERED = (
     "Ты — UGC‑креатор.\n"
     "После регистрации бренды смогут находить тебя и отправлять предложения."
-)
-
-_INSTAGRAM_URL_REGEX = re.compile(
-    r"^(https?://)?(www\.)?instagram\.com/[A-Za-z0-9._]+/?$"
 )
 
 
@@ -238,7 +234,7 @@ async def handle_instagram(
             text="Неверный формат ссылки. Прикрепите instagram.com/name",
         )
         return
-    if not _INSTAGRAM_URL_REGEX.match(instagram_url):
+    if not INSTAGRAM_URL_REGEX.match(instagram_url):
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=(

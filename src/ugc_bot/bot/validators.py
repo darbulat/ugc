@@ -77,6 +77,7 @@ def normalize_instagram_url(url: str) -> str:
     s = (url or "").strip()
     if not s:
         return s
+    s = s.lower()
     s = s.split("?")[0].split("#")[0].rstrip("?#")
     s = s.replace("www.instagram.com", "instagram.com")
     if not s.startswith("http://") and not s.startswith("https://"):

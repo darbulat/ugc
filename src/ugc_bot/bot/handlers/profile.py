@@ -159,7 +159,7 @@ def _format_profile_text(
 
 logger = logging.getLogger(__name__)
 
-_INSTAGRAM_URL_REGEX = re.compile(
+INSTAGRAM_URL_REGEX = re.compile(
     r"^(https?://)?(www\.)?instagram\.com/[A-Za-z0-9._]+/?$"
 )
 
@@ -355,7 +355,7 @@ async def _blog_update_instagram(
         )
         return None
     text = normalize_instagram_url(text)
-    if not _INSTAGRAM_URL_REGEX.match(text):
+    if not INSTAGRAM_URL_REGEX.match(text):
         await message.answer("Неверный формат ссылки Instagram.")
         return None
     existing = await blogger_registration_service.get_profile_by_instagram_url(
