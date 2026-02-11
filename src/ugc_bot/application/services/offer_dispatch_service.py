@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.geography import (
+    blogger_matches_geography,
+    parse_geography,
+)
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     OfferDispatchRepository,
@@ -72,6 +76,10 @@ class OfferDispatchService:
         )
         already_sent_set = frozenset(already_sent)
 
+        geography_spec = None
+        if order.geography:
+            geography_spec = parse_geography(order.geography)
+
         users: list[User] = []
         for user_id in confirmed_ids:
             if user_id == order.advertiser_id:
@@ -83,6 +91,18 @@ class OfferDispatchService:
                 continue
             if user.status != UserStatus.ACTIVE:
                 continue
+            if geography_spec is not None:
+                profile = await self.blogger_repo.get_by_user_id(
+                    user_id, session=session
+                )
+                if profile is None:
+                    continue
+                if not blogger_matches_geography(
+                    profile.city,
+                    geography_spec,
+                    audience_geo=profile.audience_geo,
+                ):
+                    continue
             users.append(user)
         return users
 

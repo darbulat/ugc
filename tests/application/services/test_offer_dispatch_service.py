@@ -502,6 +502,232 @@ async def test_dispatch_no_profiles_returns_empty() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_filters_by_geography_city() -> None:
+    """With order geography 'Казань', only bloggers from Казань are returned."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000670"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000671"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        geography="Казань",
+    )
+    await order_repo.save(order)
+
+    kazan_blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000672"),
+        external_id="kazan",
+        messenger_type=MessengerType.TELEGRAM,
+        username="kazan_blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    moscow_blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000673"),
+        external_id="moscow",
+        messenger_type=MessengerType.TELEGRAM,
+        username="moscow_blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(kazan_blogger)
+    await user_repo.save(moscow_blogger)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=kazan_blogger.user_id,
+            instagram_url="https://instagram.com/kazan",
+            confirmed=True,
+            city="Казань",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Казань",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=moscow_blogger.user_id,
+            instagram_url="https://instagram.com/moscow",
+            confirmed=True,
+            city="Москва",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Москва",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == kazan_blogger.user_id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_geography_country_includes_all() -> None:
+    """With order geography 'РФ', all confirmed bloggers are returned."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000680"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000681"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        geography="РФ",
+    )
+    await order_repo.save(order)
+
+    blogger1 = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000682"),
+        external_id="b1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger1",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger2 = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000683"),
+        external_id="b2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger2",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger1)
+    await user_repo.save(blogger2)
+    for user, city in [(blogger1, "Казань"), (blogger2, "Москва")]:
+        await blogger_repo.save(
+            BloggerProfile(
+                user_id=user.user_id,
+                instagram_url=f"https://instagram.com/{user.username}",
+                confirmed=True,
+                city=city,
+                topics={"selected": ["tech"]},
+                audience_gender=AudienceGender.ALL,
+                audience_age_min=18,
+                audience_age_max=35,
+                audience_geo=city,
+                price=1000.0,
+                barter=False,
+                work_format=WorkFormat.UGC_ONLY,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 2
+    assert {u.user_id for u in result} == {blogger1.user_id, blogger2.user_id}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_geography_empty_no_filter() -> None:
+    """No order geography: all confirmed bloggers returned."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000690"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000691"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000692"),
+        external_id="b",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger.user_id,
+            instagram_url="https://instagram.com/blogger",
+            confirmed=True,
+            city="Владивосток",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Владивосток",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger.user_id
+
+
+@pytest.mark.asyncio
 async def test_dispatch_excludes_order_author() -> None:
     """Do not send order to its author even if they are a confirmed blogger."""
 
