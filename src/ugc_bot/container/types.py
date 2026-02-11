@@ -15,7 +15,6 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -55,7 +54,6 @@ class BotServices(TypedDict):
     contact_pricing_service: ContactPricingService
     profile_service: ProfileService
     complaint_service: ComplaintService
-    fsm_draft_service: FsmDraftService
     nps_service: NpsService
     referral_service: ReferralService
     referral_income_service: ReferralIncomeService

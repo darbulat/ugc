@@ -7,10 +7,8 @@ import pytest
 from tests.helpers.factories import create_test_user
 from tests.helpers.fakes import (
     FakeFSMContext,
-    FakeFsmDraftService,
     FakeMessage,
     FakeUser,
-    RecordingFsmDraftService,
 )
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -19,7 +17,6 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
     AdvertiserRegistrationStates,
-    advertiser_draft_choice,
     handle_advertiser_start,
     handle_agreements_confirm,
     handle_brand,
@@ -29,12 +26,7 @@ from ugc_bot.bot.handlers.advertiser_registration import (
     handle_phone,
     handle_site_link,
 )
-from ugc_bot.bot.handlers.keyboards import (
-    CONFIRM_AGREEMENT_BUTTON_TEXT,
-    DRAFT_QUESTION_TEXT,
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
-)
+from ugc_bot.bot.handlers.keyboards import CONFIRM_AGREEMENT_BUTTON_TEXT
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -58,7 +50,6 @@ async def test_start_advertiser_registration_requires_user(
         state,
         service,
         profile_service=profile_service,
-        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert message.answers
@@ -89,7 +80,6 @@ async def test_start_advertiser_registration_sets_state(
         state,
         service,
         profile_service=profile_service,
-        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert state._data["user_id"] is not None
@@ -124,7 +114,6 @@ async def test_start_advertiser_registration_skips_name_when_username_set(
         state,
         service,
         profile_service=profile_service,
-        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert state._data["user_id"] is not None
@@ -165,7 +154,6 @@ async def test_start_advertiser_registration_blocked_user(
         state,
         service,
         profile_service=profile_service,
-        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert message.answers
@@ -201,7 +189,6 @@ async def test_start_advertiser_registration_paused_user(
         state,
         service,
         profile_service=profile_service,
-        fsm_draft_service=FakeFsmDraftService(),
     )
 
     assert message.answers
@@ -265,9 +252,7 @@ async def test_handle_advertiser_start_user_not_found(
     message = FakeMessage(text="Начать", user=FakeUser(999, "x", "X"))
     state = FakeFSMContext()
 
-    await handle_advertiser_start(
-        message, state, user_service, profile_service, FakeFsmDraftService()
-    )
+    await handle_advertiser_start(message, state, user_service, profile_service)
 
     assert message.answers
     first_ans = message.answers[0]
@@ -301,9 +286,7 @@ async def test_handle_advertiser_start_shows_menu_when_profile_exists(
     message = FakeMessage(text="Начать", user=FakeUser(30, "adv", "Adv"))
     state = FakeFSMContext()
 
-    await handle_advertiser_start(
-        message, state, user_service, profile_service, FakeFsmDraftService()
-    )
+    await handle_advertiser_start(message, state, user_service, profile_service)
 
     assert message.answers
     first_ans = message.answers[0]
@@ -440,98 +423,6 @@ async def test_handle_brand_requires_value(user_repo) -> None:
     assert message.answers
     ans = message.answers[0]
     assert "символ" in (ans if isinstance(ans, str) else ans[0]).lower()
-
-
-@pytest.mark.asyncio
-async def test_handle_advertiser_start_with_draft_shows_draft_question(
-    user_repo, advertiser_repo
-) -> None:
-    """When draft exists, show DRAFT_QUESTION_TEXT and set choosing_draft."""
-    service = UserRoleService(user_repo=user_repo)
-    user = await service.set_user(
-        external_id="50",
-        messenger_type=MessengerType.TELEGRAM,
-        username="",
-    )
-    draft = {"user_id": user.user_id, "name": "Draft"}
-    draft_service = RecordingFsmDraftService(draft_to_return=draft)
-    profile_service = build_profile_service(
-        user_repo, advertiser_repo=advertiser_repo
-    )
-    message = FakeMessage(text="Начать", user=FakeUser(50, "", "User"))
-    state = FakeFSMContext()
-
-    await handle_advertiser_start(
-        message, state, service, profile_service, draft_service
-    )
-
-    assert DRAFT_QUESTION_TEXT in (
-        message.answers[0]
-        if isinstance(message.answers[0], str)
-        else message.answers[0][0]
-    )
-    assert state.state == AdvertiserRegistrationStates.choosing_draft_restore
-
-
-@pytest.mark.asyncio
-async def test_advertiser_draft_choice_resume_restores(user_repo) -> None:
-    """RESUME_DRAFT restores draft and shows first prompt."""
-    from datetime import datetime, timezone
-
-    from ugc_bot.domain.entities import FsmDraft
-
-    service = UserRoleService(user_repo=user_repo)
-    user = await service.set_user(
-        external_id="51",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-    )
-    draft = FsmDraft(
-        user_id=user.user_id,
-        flow_type="advertiser_registration",
-        state_key="AdvertiserRegistrationStates:name",
-        data={"user_id": user.user_id, "name": "Test"},
-        updated_at=datetime.now(timezone.utc),
-    )
-    draft_service = RecordingFsmDraftService(draft_to_return=draft)
-    message = FakeMessage(
-        text=RESUME_DRAFT_BUTTON_TEXT, user=FakeUser(51, "adv", "Adv")
-    )
-    state = FakeFSMContext()
-    state._data = {"user_id": user.user_id}
-    state.state = AdvertiserRegistrationStates.choosing_draft_restore
-
-    await advertiser_draft_choice(message, state, draft_service)
-
-    assert state.state == AdvertiserRegistrationStates.name
-    assert "Как вас зовут" in (
-        message.answers[0]
-        if isinstance(message.answers[0], str)
-        else message.answers[0][0]
-    )
-
-
-@pytest.mark.asyncio
-async def test_advertiser_draft_choice_start_over(user_repo) -> None:
-    """START_OVER deletes draft and shows first step."""
-    service = UserRoleService(user_repo=user_repo)
-    user = await service.set_user(
-        external_id="52",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-    )
-    draft_service = RecordingFsmDraftService(draft_to_return=None)
-    message = FakeMessage(
-        text=START_OVER_BUTTON_TEXT, user=FakeUser(52, "adv", "Adv")
-    )
-    state = FakeFSMContext()
-    state._data = {"user_id": user.user_id}
-    state.state = AdvertiserRegistrationStates.choosing_draft_restore
-
-    await advertiser_draft_choice(message, state, draft_service)
-
-    assert state.state == AdvertiserRegistrationStates.name
-    assert len(draft_service.delete_calls) == 1
 
 
 @pytest.mark.asyncio

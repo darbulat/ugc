@@ -1,7 +1,6 @@
 """Advertiser registration flow handlers."""
 
 import logging
-from typing import cast
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -18,23 +17,19 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
     CONFIRM_AGREEMENT_BUTTON_TEXT,
-    DRAFT_QUESTION_TEXT,
     advertiser_menu_keyboard,
     advertiser_start_keyboard,
-    draft_choice_keyboard,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
-    handle_draft_choice,
     handle_role_choice,
     parse_user_id_from_state,
     resolve_messenger_dependencies,
@@ -94,7 +89,6 @@ async def choose_advertiser_role(
 class AdvertiserRegistrationStates(StatesGroup):
     """States for advertiser registration."""
 
-    choosing_draft_restore = State()
     name = State()
     phone = State()
     city = State()
@@ -128,7 +122,6 @@ async def handle_advertiser_start(
     state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
-    fsm_draft_service: FsmDraftService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -159,19 +152,6 @@ async def handle_advertiser_start(
         return
 
     await state_store.update_data(user_id=user.user_id)
-    draft = await fsm_draft_service.get_draft(
-        user.user_id, ADVERTISER_FLOW_TYPE
-    )
-    if draft is not None:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=DRAFT_QUESTION_TEXT,
-            keyboard=draft_choice_keyboard(),
-        )
-        await state_store.set_state(
-            AdvertiserRegistrationStates.choosing_draft_restore.state
-        )
-        return
     if user.username and len(user.username.strip()) >= 2:
         await state_store.update_data(name=user.username)
         await messenger_client.send_text(
@@ -190,33 +170,6 @@ async def handle_advertiser_start(
             state_store,
             event_adapter,
         )
-
-
-@router.message(AdvertiserRegistrationStates.choosing_draft_restore)
-async def advertiser_draft_choice(
-    message: Message,
-    state: FSMContext,
-    fsm_draft_service: FsmDraftService,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
-) -> None:
-    """Handle Continue or Start over when draft exists."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    await handle_draft_choice(
-        incoming,
-        messenger_client,
-        AiogramStateStore(state),
-        fsm_draft_service,
-        flow_type=ADVERTISER_FLOW_TYPE,
-        user_id_key="user_id",
-        first_state=cast(str, AdvertiserRegistrationStates.name.state),
-        first_prompt="Как вас зовут?",
-        first_keyboard=flow_keyboard_remove(),
-        session_expired_msg="Сессия истекла. Начните снова.",
-    )
 
 
 @router.message(AdvertiserRegistrationStates.name)

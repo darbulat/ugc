@@ -19,14 +19,6 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.messenger.state import StateStore
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
-from ugc_bot.bot.handlers.draft_prompts import get_draft_prompt
-from ugc_bot.bot.handlers.keyboards import (
-    DRAFT_RESTORED_TEXT,
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
-    draft_choice_keyboard,
-)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -149,51 +141,6 @@ async def _answer_callback_or_fallback(
         )
     elif answer is not None:
         await answer(text)
-
-
-def _normalize_draft_choice_args(
-    messenger_client: MessengerClient | StateStore,
-    state: StateStore | FsmDraftService,
-    fsm_draft_service: FsmDraftService | None,
-) -> tuple[MessengerClient | None, StateStore, FsmDraftService]:
-    """Normalize draft choice arguments for test and production calls."""
-    if fsm_draft_service is None and hasattr(messenger_client, "get_data"):
-        return (
-            None,
-            cast(StateStore, messenger_client),
-            cast(FsmDraftService, state),
-        )
-    if fsm_draft_service is None:
-        raise ValueError("fsm_draft_service is required")
-    return (
-        cast(MessengerClient | None, messenger_client),
-        cast(StateStore, state),
-        fsm_draft_service,
-    )
-
-
-async def _send_draft_text(
-    messenger_client: MessengerClient | None,
-    message: IncomingMessage | Any,
-    *,
-    text: str,
-    keyboard: Keyboard | None = None,
-) -> None:
-    """Send draft-related text via client or message.answer."""
-    if messenger_client is not None:
-        await messenger_client.send_text(
-            chat_id=message.chat_id, text=text, keyboard=keyboard
-        )
-        return
-    answer = getattr(message, "answer", None)
-    if callable(answer):
-        try:
-            if keyboard is None:
-                await answer(text)
-            else:
-                await answer(text, keyboard=keyboard)
-        except TypeError:  # pragma: no cover - depends on test doubles
-            await answer(text)
 
 
 class LegacyMessengerClient:
@@ -653,85 +600,3 @@ async def get_user_and_ensure_allowed_callback(
         )
         return None
     return user
-
-
-async def handle_draft_choice(
-    message: IncomingMessage | Any,
-    messenger_client: MessengerClient | StateStore,
-    state: StateStore | FsmDraftService,
-    fsm_draft_service: FsmDraftService | None = None,
-    *,
-    flow_type: str,
-    user_id_key: str,
-    first_state: str,
-    first_prompt: str,
-    first_keyboard: Keyboard,
-    session_expired_msg: str,
-    draft_used_msg: str = "Черновик использован. Начинаем с начала.",
-    keyboard_for_restored_state: Callable[[str, dict], Keyboard] | None = None,
-) -> None:
-    """Handle draft restore: resume, start over, or ask to choose."""
-    resolved_client, resolved_state, resolved_service = (
-        _normalize_draft_choice_args(messenger_client, state, fsm_draft_service)
-    )
-    text = (message.text or "").strip()
-    data = await resolved_state.get_data()
-    user_id = parse_user_id_from_state(data, key=user_id_key)
-    if user_id is None:
-        await resolved_state.clear()
-        await _send_draft_text(
-            resolved_client,
-            message,
-            text=session_expired_msg,
-            keyboard=first_keyboard,
-        )
-        return
-
-    if text == RESUME_DRAFT_BUTTON_TEXT:
-        draft = await resolved_service.get_draft(user_id, flow_type)
-        if draft is None:
-            await _send_draft_text(
-                resolved_client, message, text=draft_used_msg
-            )
-            await _send_draft_text(
-                resolved_client,
-                message,
-                text=first_prompt,
-                keyboard=first_keyboard,
-            )
-            await resolved_state.set_state(first_state)
-            return
-        await resolved_service.delete_draft(user_id, flow_type)
-        await resolved_state.update_data(**draft.data)
-        await resolved_state.set_state(draft.state_key)
-        prompt = get_draft_prompt(draft.state_key, draft.data)
-        reply_markup = (
-            keyboard_for_restored_state(draft.state_key, draft.data)
-            if keyboard_for_restored_state is not None
-            else first_keyboard
-        )
-        await _send_draft_text(
-            resolved_client,
-            message,
-            text=f"{DRAFT_RESTORED_TEXT}\n\n{prompt}",
-            keyboard=reply_markup,
-        )
-        return
-
-    if text == START_OVER_BUTTON_TEXT:
-        await resolved_service.delete_draft(user_id, flow_type)
-        await _send_draft_text(
-            resolved_client,
-            message,
-            text=first_prompt,
-            keyboard=first_keyboard,
-        )
-        await resolved_state.set_state(first_state)
-        return
-
-    await _send_draft_text(
-        resolved_client,
-        message,
-        text="Выберите «Продолжить» или «Начать заново».",
-        keyboard=draft_choice_keyboard(),
-    )

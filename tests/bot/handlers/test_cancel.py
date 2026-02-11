@@ -4,7 +4,6 @@ import pytest
 
 from tests.helpers.fakes import (
     FakeFSMContext,
-    FakeFsmDraftService,
     FakeMessage,
     FakeUser,
 )
@@ -26,14 +25,12 @@ async def test_support_button_sends_support_text_and_menu(
     )
     message = FakeMessage(text="Поддержка", user=FakeUser(1, "u", "User"))
     state = FakeFSMContext(state=None)
-    draft_service = FakeFsmDraftService()
 
     await support_button(
         message,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
-        fsm_draft_service=draft_service,
     )
 
     assert message.answers
@@ -61,14 +58,12 @@ async def test_support_button_clears_state_when_in_fsm(
     )
     message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
     state = FakeFSMContext(state="OrderCreationStates:product_link")
-    draft_service = FakeFsmDraftService()
 
     await support_button(
         message,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
-        fsm_draft_service=draft_service,
     )
 
     assert state.cleared is True

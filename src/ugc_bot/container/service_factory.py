@@ -15,7 +15,6 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -232,10 +231,6 @@ def build_bot_services(
         "complaint_service": ComplaintService(
             complaint_repo=repos["complaint_repo"],
             metrics_collector=metrics_collector,
-            transaction_manager=transaction_manager,
-        ),
-        "fsm_draft_service": FsmDraftService(
-            draft_repo=repos["draft_repo"],
             transaction_manager=transaction_manager,
         ),
         "nps_service": NpsService(

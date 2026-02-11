@@ -13,7 +13,7 @@ from ugc_bot.infrastructure.db.base import Base
 
 E2E_PORT = 8001
 BASE_URL = f"http://127.0.0.1:{E2E_PORT}"
-TABLES_TO_EXCLUDE = {"outbox_events", "blogger_profiles", "fsm_drafts"}
+TABLES_TO_EXCLUDE = {"outbox_events", "blogger_profiles"}
 
 
 @pytest.fixture(scope="session")

@@ -8,7 +8,6 @@ import pytest
 from tests.helpers.factories import create_test_user
 from tests.helpers.fakes import (
     FakeFSMContext,
-    FakeFsmDraftService,
     FakeMessage,
     FakeUser,
 )
@@ -347,9 +346,7 @@ async def test_edit_profile_start_user_missing(user_repo) -> None:
     message = FakeMessage(text="Редактировать профиль", user=FakeUser(1))
     state = FakeFSMContext()
     service = _FakeProfileServiceUserMissing()
-    await edit_profile_start(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
-    )
+    await edit_profile_start(message, state, service)
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
 
@@ -368,9 +365,7 @@ async def test_edit_profile_start_blogger_missing(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=False, has_advertiser=False
     )
-    await edit_profile_start(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
-    )
+    await edit_profile_start(message, state, service)
     assert message.answers
     assert "Профиль не заполнен" in message.answers[0]
 
@@ -389,9 +384,7 @@ async def test_edit_profile_start_success(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    await edit_profile_start(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
-    )
+    await edit_profile_start(message, state, service)
     assert message.answers
     assert "Выберите раздел" in message.answers[0][0]
     assert state.state is not None
@@ -1553,9 +1546,7 @@ async def test_edit_profile_start_from_user_none(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    await edit_profile_start(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
-    )
+    await edit_profile_start(message, state, service)
     assert not message.answers
 
 
@@ -1575,9 +1566,7 @@ async def test_edit_profile_start_both_profiles_shows_type_choice(
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=True
     )
-    await edit_profile_start(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
-    )
+    await edit_profile_start(message, state, service)
     assert "Выберите профиль для редактирования" in message.answers[0][0]
     assert state.state == EditProfileStates.choosing_profile_type
 
@@ -1596,9 +1585,7 @@ async def test_edit_profile_start_advertiser_only(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=False, has_advertiser=True
     )
-    await edit_profile_start(
-        message, state, service, fsm_draft_service=FakeFsmDraftService()
-    )
+    await edit_profile_start(message, state, service)
     assert "Выберите раздел" in message.answers[0][0]
     assert state._data.get("edit_profile_type") == "advertiser"
     assert state.state == EditProfileStates.choosing_field

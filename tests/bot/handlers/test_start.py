@@ -4,11 +4,9 @@ import pytest
 
 from tests.helpers.fakes import (
     FakeFSMContext,
-    FakeFsmDraftService,
     FakeMessage,
     FakeReferralService,
     FakeUser,
-    RecordingFsmDraftService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
@@ -58,6 +56,41 @@ async def test_start_command_sends_role_keyboard(
     keyboard = message.answers[0][1]
     assert keyboard is not None
     assert keyboard.rows == _role_keyboard().rows
+
+
+@pytest.mark.asyncio
+async def test_start_command_with_referral_code_saves_pending(
+    user_repo, messenger_client, event_adapter
+) -> None:
+    """Start with referral code in text calls save_pending_referral."""
+
+    class RecordingReferralService(FakeReferralService):
+        def parse_referral_code(self, text: str | None) -> str | None:
+            return "ref_123" if text and "ref" in text else None
+
+        def __init__(self) -> None:
+            self.save_calls: list[tuple[object, str]] = []
+
+        async def save_pending_referral(
+            self, user_id: object, code: str
+        ) -> bool:
+            self.save_calls.append((user_id, code))
+            return True
+
+    service = UserRoleService(user_repo=user_repo)
+    referral_service = RecordingReferralService()
+    message = FakeMessage(
+        text="/start ref_123", user=FakeUser(1, "test", "Alice")
+    )
+    await start_command(
+        message,
+        user_role_service=service,
+        referral_service=referral_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(referral_service.save_calls) == 1
+    assert referral_service.save_calls[0][1] == "ref_123"
 
 
 @pytest.mark.asyncio
@@ -275,14 +308,12 @@ async def test_support_button_sends_support_text(
     )
     message = FakeMessage(text="Поддержка", user=FakeUser(1, "u", "User"))
     state = FakeFSMContext(state=None)
-    draft_service = FakeFsmDraftService()
 
     await support_button(
         message,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
-        fsm_draft_service=draft_service,
     )
 
     assert message.answers
@@ -305,14 +336,12 @@ async def test_support_button_without_from_user_returns_early(
     )
     message = FakeMessage(text="Поддержка", user=None)
     state = FakeFSMContext(state=None)
-    draft_service = FakeFsmDraftService()
 
     await support_button(
         message,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
-        fsm_draft_service=draft_service,
     )
     assert not message.answers
 
@@ -329,57 +358,16 @@ async def test_support_button_clears_fsm_state(user_repo, blogger_repo) -> None:
     )
     message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
     state = FakeFSMContext(state="BloggerRegistrationStates:instagram")
-    draft_service = FakeFsmDraftService()
 
     await support_button(
         message,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
-        fsm_draft_service=draft_service,
     )
 
     assert state.cleared is True
     assert "Служба поддержки" in message.answers[0][0]
-
-
-@pytest.mark.asyncio
-async def test_support_button_saves_draft_when_in_flow(
-    user_repo, blogger_repo
-) -> None:
-    """Support button saves draft when user in draftable flow and has data."""
-
-    from tests.helpers.services import build_profile_service
-
-    service = UserRoleService(user_repo=user_repo)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo
-    )
-    user = await service.set_user(
-        external_id="2",
-        messenger_type=MessengerType.TELEGRAM,
-        username="u",
-    )
-    message = FakeMessage(text="Поддержка", user=FakeUser(2, "u", "User"))
-    state = FakeFSMContext(state="BloggerRegistrationStates:instagram")
-    state._data = {"user_id": user.user_id, "external_id": "2"}
-    draft_service = RecordingFsmDraftService()
-
-    await support_button(
-        message,
-        user_role_service=service,
-        profile_service=profile_service,
-        state=state,
-        fsm_draft_service=draft_service,
-    )
-
-    assert state.cleared is True
-    assert len(draft_service.save_calls) == 1
-    saved_user_id, flow_type, state_key, data = draft_service.save_calls[0]
-    assert saved_user_id == user.user_id
-    assert flow_type == "blogger_registration"
-    assert state_key == "BloggerRegistrationStates:instagram"
-    assert data.get("user_id") == user.user_id
 
 
 @pytest.mark.asyncio
@@ -406,14 +394,12 @@ async def test_support_button_shows_advertiser_menu_when_has_profile(
         text="Поддержка", user=FakeUser(5, "adv", "Advertiser")
     )
     state = FakeFSMContext(state=None)
-    draft_service = FakeFsmDraftService()
 
     await support_button(
         message,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
-        fsm_draft_service=draft_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

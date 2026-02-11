@@ -1,11 +1,8 @@
 """Order creation flow: states, constants, and keyboards."""
 
-from typing import Callable
-
 from aiogram.fsm.state import State, StatesGroup
 
-from ugc_bot.application.messenger.dto import Button, Keyboard
-from ugc_bot.bot.handlers.keyboards import flow_keyboard, flow_keyboard_remove
+from ugc_bot.application.messenger.dto import Button
 
 ORDER_FLOW_TYPE = "order_creation"
 
@@ -47,7 +44,6 @@ DEADLINES_TO_OFFER = {
 class OrderCreationStates(StatesGroup):
     """States for order creation."""
 
-    choosing_draft_restore = State()
     order_type = State()
     offer_text = State()
     cooperation_format = State()
@@ -109,42 +105,3 @@ def deadlines_keyboard() -> list[list[Button]]:
         [Button(text=DEADLINES_7)],
         [Button(text=DEADLINES_14)],
     ]
-
-
-def make_keyboard_for_order_state(
-    allowed_blogger_counts: frozenset[int],
-) -> Callable[[str, dict], Keyboard]:
-    """Return keyboard getter for order creation state (draft restore)."""
-
-    def _keyboard_for_order_state(state_key: str, data: dict) -> Keyboard:
-        keyboards: dict[str, Keyboard] = {
-            "OrderCreationStates:order_type": flow_keyboard(
-                keyboard=order_type_keyboard()
-            ),
-            "OrderCreationStates:offer_text": flow_keyboard_remove(),
-            "OrderCreationStates:cooperation_format": flow_keyboard(
-                keyboard=cooperation_format_keyboard()
-            ),
-            "OrderCreationStates:price": flow_keyboard_remove(),
-            "OrderCreationStates:barter_description": flow_keyboard_remove(),
-            "OrderCreationStates:bloggers_needed": flow_keyboard(
-                keyboard=bloggers_needed_keyboard(allowed_blogger_counts)
-            ),
-            "OrderCreationStates:product_link": flow_keyboard_remove(),
-            "OrderCreationStates:order_photo": flow_keyboard(
-                keyboard=order_photo_keyboard()
-            ),
-            "OrderCreationStates:content_usage": flow_keyboard(
-                keyboard=content_usage_keyboard()
-            ),
-            "OrderCreationStates:deadlines": flow_keyboard(
-                keyboard=deadlines_keyboard()
-            ),
-            "OrderCreationStates:geography": flow_keyboard_remove(),
-        }
-        return keyboards.get(
-            state_key,
-            flow_keyboard(keyboard=order_type_keyboard()),
-        )
-
-    return _keyboard_for_order_state

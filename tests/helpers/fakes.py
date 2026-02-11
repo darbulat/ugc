@@ -353,46 +353,6 @@ class FakeFSMContext:
         self.cleared = True
 
 
-class FakeFsmDraftService:
-    """Minimal FSM draft service stub for handler tests."""
-
-    async def save_draft(
-        self, user_id: object, flow_type: str, state_key: str, data: object
-    ) -> None:
-        """No-op."""
-
-    async def get_draft(self, user_id: object, flow_type: str) -> None:
-        """Return None (no draft)."""
-        return
-
-    async def delete_draft(self, user_id: object, flow_type: str) -> None:
-        """No-op."""
-
-
-class RecordingFsmDraftService(FakeFsmDraftService):
-    """Records save_draft calls and returns configured draft."""
-
-    def __init__(self, draft_to_return: object = None) -> None:
-        """Initialize with optional draft to return from get_draft."""
-        self.save_calls: list[tuple[object, str, str, object]] = []
-        self.delete_calls: list[tuple[object, str]] = []
-        self._draft = draft_to_return
-
-    async def save_draft(
-        self, user_id: object, flow_type: str, state_key: str, data: object
-    ) -> None:
-        """Record the call."""
-        self.save_calls.append((user_id, flow_type, state_key, data))
-
-    async def get_draft(self, user_id: object, flow_type: str) -> object:
-        """Return configured draft or None."""
-        return self._draft
-
-    async def delete_draft(self, user_id: object, flow_type: str) -> None:
-        """Record the call."""
-        self.delete_calls.append((user_id, flow_type))
-
-
 class FakeSession:
     """Minimal async session stub for tests."""
 

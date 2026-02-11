@@ -14,25 +14,6 @@ EDIT_PROFILE_BUTTON_TEXT = "Редактировать профиль"
 MY_PROFILE_BUTTON_TEXT = "👤 Мой профиль"
 WORK_FORMAT_ADS_BUTTON_TEXT = "📢 Размещать рекламу у себя в аккаунте"
 WORK_FORMAT_UGC_ONLY_BUTTON_TEXT = "❌ Только UGC (без размещения)"
-RESUME_DRAFT_BUTTON_TEXT = "Продолжить"
-START_OVER_BUTTON_TEXT = "Начать заново"
-
-DRAFT_QUESTION_TEXT = "У вас есть черновик. Продолжить?"
-DRAFT_RESTORED_TEXT = "Черновик восстановлен."
-
-
-def draft_choice_keyboard() -> Keyboard:
-    """Keyboard for draft restore: Continue or Start over."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=RESUME_DRAFT_BUTTON_TEXT)],
-            [Button(text=START_OVER_BUTTON_TEXT)],
-        ],
-        resize=True,
-        one_time=True,
-    )
 
 
 def support_keyboard(one_time_keyboard: bool = True) -> Keyboard:

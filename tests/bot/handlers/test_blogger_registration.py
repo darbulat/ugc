@@ -1,6 +1,5 @@
 """Tests for blogger registration handlers."""
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -12,10 +11,8 @@ from tests.helpers.factories import (
 )
 from tests.helpers.fakes import (
     FakeFSMContext,
-    FakeFsmDraftService,
     FakeMessage,
     FakeUser,
-    RecordingFsmDraftService,
 )
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.blogger_registration_service import (
@@ -25,7 +22,6 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.blogger_registration import (
     BloggerRegistrationStates,
     _start_registration_flow,
-    blogger_draft_choice,
     choose_creator_role,
     handle_age,
     handle_agreements,
@@ -44,16 +40,11 @@ from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     CREATE_PROFILE_BUTTON_TEXT,
-    DRAFT_QUESTION_TEXT,
-    DRAFT_RESTORED_TEXT,
     MY_PROFILE_BUTTON_TEXT,
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import FsmDraft
 from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
@@ -70,9 +61,7 @@ async def test_start_registration_requires_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(
-        message, state, service, FakeFsmDraftService()
-    )
+    await _start_registration_flow(message, state, service)
 
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
@@ -91,9 +80,7 @@ async def test_start_registration_sets_state(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(7, "alice", "Alice"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(
-        message, state, service, FakeFsmDraftService()
-    )
+    await _start_registration_flow(message, state, service)
 
     assert state._data["external_id"] == "7"
     assert state.state is not None
@@ -116,9 +103,7 @@ async def test_start_registration_blocked_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(8, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(
-        message, state, service, FakeFsmDraftService()
-    )
+    await _start_registration_flow(message, state, service)
 
     assert message.answers
     assert "Заблокированные" in message.answers[0]
@@ -141,9 +126,7 @@ async def test_start_registration_paused_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(9, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(
-        message, state, service, FakeFsmDraftService()
-    )
+    await _start_registration_flow(message, state, service)
 
     assert message.answers
     assert "паузе" in message.answers[0]
@@ -471,110 +454,6 @@ async def test_handle_agreements_shows_verification_button(
 
 
 @pytest.mark.asyncio
-async def test_start_registration_shows_draft_question_when_draft_exists(
-    user_repo,
-) -> None:
-    """When draft exists, show draft question and set choosing_draft_restore."""
-
-    service = UserRoleService(user_repo=user_repo)
-    user = await service.set_user(
-        external_id="7",
-        messenger_type=MessengerType.TELEGRAM,
-        username="alice",
-    )
-    draft = FsmDraft(
-        user_id=user.user_id,
-        flow_type="blogger_registration",
-        state_key="BloggerRegistrationStates:city",
-        data={"user_id": user.user_id, "external_id": "7", "nickname": "alice"},
-        updated_at=datetime.now(timezone.utc),
-    )
-    draft_service = RecordingFsmDraftService(draft_to_return=draft)
-    message = FakeMessage(text=None, user=FakeUser(7, "alice", "Alice"))
-    state = FakeFSMContext()
-
-    await _start_registration_flow(message, state, service, draft_service)
-
-    assert DRAFT_QUESTION_TEXT in (
-        message.answers[0]
-        if isinstance(message.answers[0], str)
-        else message.answers[0][0]
-    )
-    assert state.state == BloggerRegistrationStates.choosing_draft_restore
-
-
-@pytest.mark.asyncio
-async def test_blogger_draft_choice_continue_restores(user_repo) -> None:
-    """RESUME_DRAFT_BUTTON restores state and sends restored + prompt."""
-
-    service = UserRoleService(user_repo=user_repo)
-    user = await service.set_user(
-        external_id="8",
-        messenger_type=MessengerType.TELEGRAM,
-        username="bob",
-    )
-    draft = FsmDraft(
-        user_id=user.user_id,
-        flow_type="blogger_registration",
-        state_key="BloggerRegistrationStates:city",
-        data={"user_id": user.user_id, "external_id": "8", "nickname": "bob"},
-        updated_at=datetime.now(timezone.utc),
-    )
-    draft_service = RecordingFsmDraftService(draft_to_return=draft)
-    message = FakeMessage(
-        text=RESUME_DRAFT_BUTTON_TEXT, user=FakeUser(8, "bob", "Bob")
-    )
-    state = FakeFSMContext()
-    state._data = {"user_id": user.user_id}
-    state.state = BloggerRegistrationStates.choosing_draft_restore
-
-    await blogger_draft_choice(message, state, draft_service)
-
-    assert state.state == "BloggerRegistrationStates:city"
-    assert state._data.get("nickname") == "bob"
-    assert len(draft_service.delete_calls) == 1
-    text = (
-        message.answers[0]
-        if isinstance(message.answers[0], str)
-        else message.answers[0][0]
-    )
-    assert DRAFT_RESTORED_TEXT in text
-    assert "город" in text.lower()
-
-
-@pytest.mark.asyncio
-async def test_blogger_draft_choice_start_over_deletes_and_starts(
-    user_repo,
-) -> None:
-    """START_OVER_BUTTON deletes draft and shows first step."""
-
-    service = UserRoleService(user_repo=user_repo)
-    user = await service.set_user(
-        external_id="9",
-        messenger_type=MessengerType.TELEGRAM,
-        username="carol",
-    )
-    draft_service = RecordingFsmDraftService(draft_to_return=None)
-    message = FakeMessage(
-        text=START_OVER_BUTTON_TEXT, user=FakeUser(9, "carol", "Carol")
-    )
-    state = FakeFSMContext()
-    state._data = {"user_id": user.user_id}
-    state.state = BloggerRegistrationStates.choosing_draft_restore
-
-    await blogger_draft_choice(message, state, draft_service)
-
-    assert state.state == BloggerRegistrationStates.name
-    assert len(draft_service.delete_calls) == 1
-    text = (
-        message.answers[0]
-        if isinstance(message.answers[0], str)
-        else message.answers[0][0]
-    )
-    assert "ваше имя" in text.lower()
-
-
-@pytest.mark.asyncio
 async def test_start_registration_no_username_asks_name(user_repo) -> None:
     """When user has no username, ask for name first."""
     service = UserRoleService(user_repo=user_repo)
@@ -586,9 +465,7 @@ async def test_start_registration_no_username_asks_name(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(10, "", "User"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(
-        message, state, service, FakeFsmDraftService()
-    )
+    await _start_registration_flow(message, state, service)
 
     ans = message.answers[0]
     assert "ваше имя" in (ans if isinstance(ans, str) else ans[0]).lower()
@@ -815,9 +692,7 @@ async def test_start_registration_button(user_repo) -> None:
     )
     state = FakeFSMContext()
 
-    await start_registration_button(
-        message, state, user_service, FakeFsmDraftService()
-    )
+    await start_registration_button(message, state, user_service)
 
     assert message.answers
     ans = message.answers[0]

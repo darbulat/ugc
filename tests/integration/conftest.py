@@ -34,7 +34,7 @@ def engine(test_database_url: str):
     engine = create_engine(test_database_url, echo=False)
 
     # Exclude tables with JSONB (not compatible with SQLite)
-    tables_to_exclude = {"outbox_events", "blogger_profiles", "fsm_drafts"}
+    tables_to_exclude = {"outbox_events", "blogger_profiles"}
     tables_to_create = [
         table
         for table in Base.metadata.tables.values()

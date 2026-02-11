@@ -2,7 +2,6 @@
 
 import logging
 import re
-from typing import cast
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -19,19 +18,16 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     CREATE_PROFILE_BUTTON_TEXT,
-    DRAFT_QUESTION_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     blogger_after_registration_keyboard,
     creator_filled_profile_keyboard,
     creator_start_keyboard,
-    draft_choice_keyboard,
     flow_keyboard,
     flow_keyboard_remove,
 )
@@ -39,7 +35,6 @@ from ugc_bot.bot.handlers.start import CREATOR_LABEL
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
-    handle_draft_choice,
     handle_role_choice,
     parse_user_id_from_state,
     resolve_messenger_dependencies,
@@ -72,7 +67,6 @@ _INSTAGRAM_URL_REGEX = re.compile(
 class BloggerRegistrationStates(StatesGroup):
     """States for blogger registration."""
 
-    choosing_draft_restore = State()
     name = State()
     instagram = State()
     city = State()
@@ -121,11 +115,10 @@ async def _start_registration_flow(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
-    fsm_draft_service: FsmDraftService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Start blogger registration: check draft, then first step (name)."""
+    """Start blogger registration: first step (name)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -145,18 +138,6 @@ async def _start_registration_flow(
     await state_store.update_data(
         user_id=user.user_id, external_id=user.external_id
     )
-    draft = await fsm_draft_service.get_draft(user.user_id, BLOGGER_FLOW_TYPE)
-    if draft is not None:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=DRAFT_QUESTION_TEXT,
-            keyboard=draft_choice_keyboard(),
-        )
-        await state_store.set_state(
-            BloggerRegistrationStates.choosing_draft_restore.state
-        )
-        return
-
     if user.username and len(user.username.strip()) >= 2:
         await state_store.update_data(nickname=user.username)
         await messenger_client.send_text(
@@ -183,7 +164,6 @@ async def start_registration_button(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
-    fsm_draft_service: FsmDraftService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -193,36 +173,8 @@ async def start_registration_button(
         message,
         state,
         user_role_service,
-        fsm_draft_service,
         messenger_client,
         event_adapter,
-    )
-
-
-@router.message(BloggerRegistrationStates.choosing_draft_restore)
-async def blogger_draft_choice(
-    message: Message,
-    state: FSMContext,
-    fsm_draft_service: FsmDraftService,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
-) -> None:
-    """Handle Continue or Start over when draft exists."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    await handle_draft_choice(
-        incoming,
-        messenger_client,
-        AiogramStateStore(state),
-        fsm_draft_service,
-        flow_type=BLOGGER_FLOW_TYPE,
-        user_id_key="user_id",
-        first_state=cast(str, BloggerRegistrationStates.name.state),
-        first_prompt="Введите ваше имя:",
-        first_keyboard=flow_keyboard_remove(),
-        session_expired_msg="Сессия истекла. Начните с «Создать профиль».",
     )
 
 

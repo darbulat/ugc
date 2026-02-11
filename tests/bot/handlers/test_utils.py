@@ -11,23 +11,15 @@ from ugc_bot.application.messenger.dto import (
     IncomingMessage,
     IncomingUser,
 )
-from ugc_bot.bot.handlers.keyboards import (
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
-    draft_choice_keyboard,
-)
 from ugc_bot.bot.handlers.utils import (
     LegacyMessengerClient,
     RateLimiter,
     _answer_callback_or_fallback,
-    _normalize_draft_choice_args,
     _resolve_user_lookup_from_callback,
     _resolve_user_lookup_from_message,
-    _send_draft_text,
     _send_text_or_answer,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
-    handle_draft_choice,
     parse_user_id_from_state,
     send_with_retry,
 )
@@ -191,26 +183,6 @@ async def test_send_text_or_answer_fallback_text_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_draft_text_fallback_text_only() -> None:
-    """Draft text fallback uses message.answer for text-only send."""
-    calls: list[str] = []
-
-    class DummyMessage:
-        chat_id = "1"
-
-        async def answer(self, text: str) -> None:
-            calls.append(text)
-
-    await _send_draft_text(
-        None,
-        DummyMessage(),
-        text="draft",
-        keyboard=None,
-    )
-    assert calls == ["draft"]
-
-
-@pytest.mark.asyncio
 async def test_get_user_and_ensure_allowed_none() -> None:
     """When user is None, send user_not_found_msg and return None."""
 
@@ -366,23 +338,6 @@ async def test_get_user_and_ensure_allowed_callback_ok() -> None:
     assert messenger_client.answered_callbacks == []
 
 
-def test_normalize_draft_choice_args_shifts_when_no_client() -> None:
-    """Shift args when called without messenger client."""
-
-    class DummyState:
-        async def get_data(self) -> dict:
-            return {}
-
-    dummy_state = DummyState()
-    dummy_service = object()
-    client, state, service = _normalize_draft_choice_args(
-        dummy_state, dummy_service, None
-    )
-    assert client is None
-    assert state is dummy_state
-    assert service is dummy_service
-
-
 @pytest.mark.asyncio
 async def test_send_text_or_answer_handles_type_error() -> None:
     """Fallback to answer(text) when keyboard arg is unsupported."""
@@ -396,29 +351,9 @@ async def test_send_text_or_answer_handles_type_error() -> None:
         chat_id="1",
         text="hello",
         answer=answer,
-        keyboard=draft_choice_keyboard(),
+        keyboard=None,
     )
     assert calls == ["hello"]
-
-
-@pytest.mark.asyncio
-async def test_send_draft_text_handles_type_error() -> None:
-    """Fallback to answer(text) when keyboard arg is unsupported."""
-    calls: list[str] = []
-
-    class DummyMessage:
-        chat_id = "1"
-
-        async def answer(self, text: str) -> None:
-            calls.append(text)
-
-    await _send_draft_text(
-        None,
-        DummyMessage(),
-        text="draft",
-        keyboard=draft_choice_keyboard(),
-    )
-    assert calls == ["draft"]
 
 
 @pytest.mark.asyncio
@@ -440,7 +375,7 @@ async def test_send_with_retry_uses_send_message() -> None:
         retries=1,
         delay_seconds=0.0,
         logger=__import__("logging").getLogger("test"),
-        keyboard=draft_choice_keyboard(),
+        keyboard=None,
     )
     assert ok is True
     assert bot.calls
@@ -472,12 +407,6 @@ async def test_answer_callback_or_fallback_uses_answer() -> None:
         None, callback_id="", text="ok", answer=answer
     )
     assert calls == ["ok"]
-
-
-def test_normalize_draft_choice_args_requires_service() -> None:
-    """Raise when draft service is missing and no state provided."""
-    with pytest.raises(ValueError):
-        _normalize_draft_choice_args(object(), object(), None)
 
 
 @pytest.mark.asyncio
@@ -548,232 +477,3 @@ async def test_legacy_messenger_client_edit_markup_uses_event() -> None:
     client = LegacyMessengerClient(DummyEvent())
     await client.edit_reply_markup(chat_id="1", message_id="1", keyboard=None)
     assert calls == [None]
-
-
-@pytest.mark.asyncio
-async def test_handle_draft_choice_session_expired() -> None:
-    """When user_id missing from state, clear and send session_expired_msg."""
-
-    class FakeState:
-        async def get_data(self) -> dict:
-            return {}
-
-        async def clear(self) -> None:
-            self.cleared = True
-
-        async def set_state(self, state) -> None:
-            pass
-
-        async def update_data(self, **kwargs) -> None:
-            pass
-
-    messenger_client = FakeMessengerClient()
-    message = IncomingMessage(
-        chat_id="1",
-        user=IncomingUser(
-            external_id="1",
-            messenger_type=MessengerType.TELEGRAM,
-        ),
-        text="",
-    )
-    state = FakeState()
-    state.cleared = False
-
-    async def get_draft(*args):  # type: ignore[no-untyped-def]
-        return None
-
-    async def delete_draft(*args):  # type: ignore[no-untyped-def]
-        pass
-
-    draft_service = type(
-        "S", (), {"get_draft": get_draft, "delete_draft": delete_draft}
-    )()
-
-    await handle_draft_choice(
-        message,
-        messenger_client,
-        state,
-        draft_service,
-        flow_type="test",
-        user_id_key="user_id",
-        first_state="FirstState",
-        first_prompt="Start",
-        first_keyboard=draft_choice_keyboard(),
-        session_expired_msg="Session expired",
-    )
-    assert state.cleared
-    assert len(messenger_client.sent_text) == 1
-    assert messenger_client.sent_text[0]["text"] == "Session expired"
-
-
-@pytest.mark.asyncio
-async def test_handle_draft_choice_resume_draft_none() -> None:
-    """When RESUME_DRAFT but draft None, show draft_used_msg and first step."""
-
-    class FakeState:
-        async def get_data(self) -> dict:
-            return {"user_id": str(uuid4())}
-
-        async def clear(self) -> None:
-            pass
-
-        async def set_state(self, state) -> None:
-            self.state = state
-
-        async def update_data(self, **kwargs) -> None:
-            pass
-
-    messenger_client = FakeMessengerClient()
-    message = IncomingMessage(
-        chat_id="1",
-        user=IncomingUser(
-            external_id="1",
-            messenger_type=MessengerType.TELEGRAM,
-        ),
-        text=RESUME_DRAFT_BUTTON_TEXT,
-    )
-    state = FakeState()
-
-    async def get_draft(*args):  # type: ignore[no-untyped-def]
-        return None
-
-    async def delete_draft(*args):  # type: ignore[no-untyped-def]
-        pass
-
-    draft_service = type(
-        "S", (), {"get_draft": get_draft, "delete_draft": delete_draft}
-    )()
-
-    await handle_draft_choice(
-        message,
-        messenger_client,
-        state,
-        draft_service,
-        flow_type="test",
-        user_id_key="user_id",
-        first_state="FirstState",
-        first_prompt="Start",
-        first_keyboard=draft_choice_keyboard(),
-        session_expired_msg="Expired",
-        draft_used_msg="Draft used",
-    )
-    assert len(messenger_client.sent_text) >= 2
-    assert messenger_client.sent_text[0]["text"] == "Draft used"
-    assert messenger_client.sent_text[1]["text"] == "Start"
-
-
-@pytest.mark.asyncio
-async def test_handle_draft_choice_start_over() -> None:
-    """When START_OVER, delete draft and show first step."""
-
-    class FakeState:
-        async def get_data(self) -> dict:
-            return {"user_id": str(uuid4())}
-
-        async def clear(self) -> None:
-            pass
-
-        async def set_state(self, state) -> None:
-            self.state = state
-
-        async def update_data(self, **kwargs) -> None:
-            pass
-
-    messenger_client = FakeMessengerClient()
-    message = IncomingMessage(
-        chat_id="1",
-        user=IncomingUser(
-            external_id="1",
-            messenger_type=MessengerType.TELEGRAM,
-        ),
-        text=START_OVER_BUTTON_TEXT,
-    )
-    state = FakeState()
-    delete_calls = []
-
-    async def mock_delete(*args):  # type: ignore[no-untyped-def]
-        delete_calls.append(args)
-
-    async def get_draft(*args):  # type: ignore[no-untyped-def]
-        return None
-
-    draft_service = type(
-        "S",
-        (),
-        {"get_draft": get_draft, "delete_draft": mock_delete},
-    )()
-
-    await handle_draft_choice(
-        message,
-        messenger_client,
-        state,
-        draft_service,
-        flow_type="test",
-        user_id_key="user_id",
-        first_state="FirstState",
-        first_prompt="Start",
-        first_keyboard=draft_choice_keyboard(),
-        session_expired_msg="Expired",
-    )
-    assert len(delete_calls) == 1
-    assert len(messenger_client.sent_text) == 1
-    assert messenger_client.sent_text[0]["text"] == "Start"
-
-
-@pytest.mark.asyncio
-async def test_handle_draft_choice_invalid_choice() -> None:
-    """When text is neither RESUME nor START_OVER, ask to choose."""
-
-    class FakeState:
-        async def get_data(self) -> dict:
-            return {"user_id": str(uuid4())}
-
-        async def clear(self) -> None:
-            pass
-
-        async def set_state(self, state) -> None:
-            pass
-
-        async def update_data(self, **kwargs) -> None:
-            pass
-
-    messenger_client = FakeMessengerClient()
-    message = IncomingMessage(
-        chat_id="1",
-        user=IncomingUser(
-            external_id="1",
-            messenger_type=MessengerType.TELEGRAM,
-        ),
-        text="invalid",
-    )
-    state = FakeState()
-
-    async def get_draft(*args):  # type: ignore[no-untyped-def]
-        return None
-
-    async def delete_draft(*args):  # type: ignore[no-untyped-def]
-        pass
-
-    draft_service = type(
-        "S",
-        (),
-        {"get_draft": get_draft, "delete_draft": delete_draft},
-    )()
-
-    await handle_draft_choice(
-        message,
-        messenger_client,
-        state,
-        draft_service,
-        flow_type="test",
-        user_id_key="user_id",
-        first_state="FirstState",
-        first_prompt="Start",
-        first_keyboard=draft_choice_keyboard(),
-        session_expired_msg="Expired",
-    )
-    assert len(messenger_client.sent_text) == 1
-    assert (
-        "Продолжить" in messenger_client.sent_text[0]["text"]
-        or "Начать заново" in messenger_client.sent_text[0]["text"]
-    )

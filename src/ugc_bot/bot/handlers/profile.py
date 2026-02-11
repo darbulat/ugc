@@ -2,7 +2,6 @@
 
 import logging
 import re
-from typing import cast
 from uuid import UUID
 
 from aiogram import Router
@@ -23,23 +22,19 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
-    DRAFT_QUESTION_TEXT,
     EDIT_PROFILE_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     advertiser_menu_keyboard,
     blogger_profile_view_keyboard,
-    draft_choice_keyboard,
     flow_keyboard,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.utils import (
-    handle_draft_choice,
     parse_user_id_from_state,
     resolve_messenger_dependencies,
 )
@@ -62,7 +57,6 @@ from ugc_bot.domain.enums import (
     UserStatus,
     WorkFormat,
 )
-from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 
@@ -597,7 +591,6 @@ async def _update_blogger_field(
 class EditProfileStates(StatesGroup):
     """States for editing blogger or advertiser profile."""
 
-    choosing_draft_restore = State()
     choosing_profile_type = State()
     choosing_field = State()
     entering_value = State()
@@ -695,11 +688,10 @@ async def edit_profile_start(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
-    fsm_draft_service: FsmDraftService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Show field selection for profile edit, or draft restore choice."""
+    """Show field selection for profile edit."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -729,15 +721,6 @@ async def edit_profile_start(
         edit_user_id=user.user_id,
         edit_external_id=str(message_ctx.from_user.id),
     )
-    draft = await fsm_draft_service.get_draft(
-        user.user_id, EDIT_PROFILE_FLOW_TYPE
-    )
-    if draft is not None:
-        await message_ctx.answer(
-            DRAFT_QUESTION_TEXT, reply_markup=draft_choice_keyboard()
-        )
-        await state.set_state(EditProfileStates.choosing_draft_restore)
-        return
     if blogger is not None and advertiser is not None:
         await message_ctx.answer(
             "Выберите профиль для редактирования:",
@@ -759,34 +742,6 @@ async def edit_profile_start(
         reply_markup=_edit_field_keyboard("advertiser"),
     )
     await state.set_state(EditProfileStates.choosing_field)
-
-
-@router.message(EditProfileStates.choosing_draft_restore)
-async def edit_profile_draft_choice(
-    message: Message,
-    state: FSMContext,
-    fsm_draft_service: FsmDraftService,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
-) -> None:
-    """Handle Continue or Start over when edit profile draft exists."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    await handle_draft_choice(
-        incoming,
-        messenger_client,
-        AiogramStateStore(state),
-        fsm_draft_service,
-        flow_type=EDIT_PROFILE_FLOW_TYPE,
-        user_id_key="edit_user_id",
-        first_state=cast(str, EditProfileStates.choosing_field.state),
-        first_prompt="Выберите раздел для редактирования:",
-        first_keyboard=_edit_field_keyboard("blogger"),
-        session_expired_msg="Сессия истекла. Откройте «Мой профиль» снова.",
-        draft_used_msg="Черновик уже использован. Выберите раздел.",
-    )
 
 
 @router.message(EditProfileStates.choosing_profile_type)

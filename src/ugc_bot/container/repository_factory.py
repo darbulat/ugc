@@ -7,7 +7,6 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
-    SqlAlchemyFsmDraftRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyNpsRepository,
@@ -68,9 +67,6 @@ def build_repos(
             session_factory=session_factory
         ),
         "outbox_repo": SqlAlchemyOutboxRepository(
-            session_factory=session_factory
-        ),
-        "draft_repo": SqlAlchemyFsmDraftRepository(
             session_factory=session_factory
         ),
         "nps_repo": SqlAlchemyNpsRepository(session_factory=session_factory),

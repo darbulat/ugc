@@ -1,7 +1,6 @@
 """Order creation flow handlers."""
 
 import logging
-from typing import cast
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -15,14 +14,11 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CREATE_ORDER_BUTTON_TEXT,
-    DRAFT_QUESTION_TEXT,
-    draft_choice_keyboard,
     flow_keyboard,
     flow_keyboard_remove,
 )
@@ -38,7 +34,6 @@ from ugc_bot.bot.handlers.order_creation_states import (
     DEADLINES_7,
     DEADLINES_14,
     DEADLINES_TO_OFFER,
-    ORDER_FLOW_TYPE,
     ORDER_PHOTO_ADD,
     ORDER_PHOTO_SKIP,
     ORDER_TYPE_UGC_ONLY,
@@ -48,7 +43,6 @@ from ugc_bot.bot.handlers.order_creation_states import (
     content_usage_keyboard,
     cooperation_format_keyboard,
     deadlines_keyboard,
-    make_keyboard_for_order_state,
     order_photo_keyboard,
     order_type_keyboard,
 )
@@ -56,7 +50,6 @@ from ugc_bot.bot.handlers.payments import send_order_invoice
 from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
-    handle_draft_choice,
     parse_user_id_from_state,
     resolve_messenger_dependencies,
 )
@@ -86,7 +79,6 @@ async def start_order_creation(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     order_service: OrderService,
-    fsm_draft_service: FsmDraftService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -116,54 +108,12 @@ async def start_order_creation(
         return
 
     await state_store.update_data(user_id=user.user_id)
-    draft = await fsm_draft_service.get_draft(user.user_id, ORDER_FLOW_TYPE)
-    if draft is not None:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=DRAFT_QUESTION_TEXT,
-            keyboard=draft_choice_keyboard(),
-        )
-        await state_store.set_state(
-            OrderCreationStates.choosing_draft_restore.state
-        )
-        return
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Что вам нужно?",
         keyboard=flow_keyboard(keyboard=order_type_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
-
-
-@router.message(OrderCreationStates.choosing_draft_restore)
-async def order_draft_choice(
-    message: Message,
-    state: FSMContext,
-    fsm_draft_service: FsmDraftService,
-    allowed_blogger_counts: frozenset[int],
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
-) -> None:
-    """Handle Continue or Start over when draft exists."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    await handle_draft_choice(
-        incoming,
-        messenger_client,
-        AiogramStateStore(state),
-        fsm_draft_service,
-        flow_type=ORDER_FLOW_TYPE,
-        user_id_key="user_id",
-        first_state=cast(str, OrderCreationStates.order_type.state),
-        first_prompt="Что вам нужно?",
-        first_keyboard=flow_keyboard(keyboard=order_type_keyboard()),
-        session_expired_msg="Сессия истекла. Начните с «Создать заказ».",
-        keyboard_for_restored_state=make_keyboard_for_order_state(
-            allowed_blogger_counts
-        ),
-    )
 
 
 @router.message(OrderCreationStates.order_type)

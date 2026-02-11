@@ -1,6 +1,5 @@
 """Tests for order creation handlers."""
 
-from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -9,11 +8,9 @@ from tests.helpers.factories import create_test_advertiser_profile
 from tests.helpers.fakes import (
     FakeBot,
     FakeFSMContext,
-    FakeFsmDraftService,
     FakeMessage,
     FakePhotoSize,
     FakeUser,
-    RecordingFsmDraftService,
 )
 from tests.helpers.services import (
     build_contact_pricing_service,
@@ -21,10 +18,6 @@ from tests.helpers.services import (
     build_profile_service,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import (
-    RESUME_DRAFT_BUTTON_TEXT,
-    START_OVER_BUTTON_TEXT,
-)
 from ugc_bot.bot.handlers.order_creation import (
     CONTENT_USAGE_BOTH,
     COOP_BARTER,
@@ -47,11 +40,9 @@ from ugc_bot.bot.handlers.order_creation import (
     handle_order_type,
     handle_price,
     handle_product_link,
-    order_draft_choice,
     start_order_creation,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import FsmDraft
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
 # Valid offer text: min 20 chars per validator
@@ -82,7 +73,6 @@ async def test_start_order_creation_requires_role(
         user_service,
         profile_service,
         order_service,
-        FakeFsmDraftService(),
     )
     assert "Пользователь не найден" in message.answers[0]
 
@@ -116,7 +106,6 @@ async def test_order_creation_flow_new_advertiser(
         user_service,
         profile_service,
         order_service,
-        FakeFsmDraftService(),
     )
     assert "Что вам нужно?" in message.answers[0]
 
@@ -218,7 +207,6 @@ async def test_order_creation_flow_with_barter(
         user_service,
         profile_service,
         order_service,
-        FakeFsmDraftService(),
     )
 
     await handle_order_type(
@@ -304,7 +292,6 @@ async def test_start_order_creation_no_advertiser_profile(
         user_service,
         profile_service,
         order_service,
-        FakeFsmDraftService(),
     )
 
     assert message.answers
@@ -343,7 +330,6 @@ async def test_start_order_creation_blocked_user(
         user_service,
         profile_service,
         order_service,
-        FakeFsmDraftService(),
     )
 
     assert "Заблокированные" in message.answers[0]
@@ -378,135 +364,6 @@ async def test_handle_price_exceeds_max_rejected() -> None:
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
     assert "превышает" in text
-
-
-@pytest.mark.asyncio
-async def test_start_order_creation_with_draft(
-    user_repo, advertiser_repo, order_repo
-) -> None:
-    """Show draft choice when draft exists."""
-
-    user_service = UserRoleService(user_repo=user_repo)
-    order_service = build_order_service(user_repo, advertiser_repo, order_repo)
-    user = await user_service.set_user(
-        external_id="10",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-    )
-    await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, advertiser_repo=advertiser_repo
-    )
-
-    draft = FsmDraft(
-        user_id=user.user_id,
-        flow_type="order_creation",
-        state_key="OrderCreationStates:cooperation_format",
-        data={
-            "user_id": user.user_id,
-            "order_type": "ugc_only",
-            "offer_text": "Draft",
-        },
-        updated_at=datetime.now(timezone.utc),
-    )
-    draft_service = RecordingFsmDraftService(draft_to_return=draft)
-
-    message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
-    state = FakeFSMContext()
-
-    await start_order_creation(
-        message,
-        state,
-        user_service,
-        profile_service,
-        order_service,
-        draft_service,
-    )
-
-    assert message.answers
-    first = message.answers[0]
-    text = first[0] if isinstance(first, tuple) else first
-    assert "Черновик" in text or "черновик" in text.lower()
-
-
-@pytest.mark.asyncio
-async def test_order_draft_choice_resume(
-    user_repo, advertiser_repo, order_repo, pricing_repo
-) -> None:
-    """Resume draft restores state and shows keyboard for that state."""
-
-    user_service = UserRoleService(user_repo=user_repo)
-    user = await user_service.set_user(
-        external_id="11",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-    )
-    await create_test_advertiser_profile(advertiser_repo, user.user_id)
-
-    draft = FsmDraft(
-        user_id=user.user_id,
-        flow_type="order_creation",
-        state_key="OrderCreationStates:content_usage",
-        data={
-            "user_id": user.user_id,
-            "order_type": "ugc_only",
-            "offer_text": "Offer",
-            "cooperation_format": COOP_PAYMENT,
-            "price": 1000.0,
-            "bloggers_needed": 3,
-            "product_link": "https://example.com",
-        },
-        updated_at=datetime.now(timezone.utc),
-    )
-    draft_service = RecordingFsmDraftService(draft_to_return=draft)
-
-    message = FakeMessage(
-        text=RESUME_DRAFT_BUTTON_TEXT, user=FakeUser(11, "adv", "Adv")
-    )
-    state = FakeFSMContext()
-    state._data = {"user_id": user.user_id}
-    state.state = OrderCreationStates.choosing_draft_restore
-
-    await order_draft_choice(
-        message, state, draft_service, TEST_ALLOWED_BLOGGER_COUNTS
-    )
-
-    assert message.answers
-    first = message.answers[0]
-    text = first[0] if isinstance(first, tuple) else first
-    assert "UGC-видео" in text or "восстановлен" in text.lower()
-
-
-@pytest.mark.asyncio
-async def test_order_draft_choice_start_over(
-    user_repo, advertiser_repo, order_repo
-) -> None:
-    """Start over clears draft and shows order type."""
-
-    user_service = UserRoleService(user_repo=user_repo)
-    user = await user_service.set_user(
-        external_id="12",
-        messenger_type=MessengerType.TELEGRAM,
-        username="adv",
-    )
-    await create_test_advertiser_profile(advertiser_repo, user.user_id)
-
-    draft_service = RecordingFsmDraftService(draft_to_return=None)
-    message = FakeMessage(
-        text=START_OVER_BUTTON_TEXT, user=FakeUser(12, "adv", "Adv")
-    )
-    state = FakeFSMContext()
-    state._data = {"user_id": user.user_id}
-    state.state = OrderCreationStates.choosing_draft_restore
-
-    await order_draft_choice(
-        message, state, draft_service, TEST_ALLOWED_BLOGGER_COUNTS
-    )
-
-    assert message.answers
-    first = message.answers[0]
-    text = first[0] if isinstance(first, tuple) else first
-    assert "Что вам нужно?" in text
 
 
 @pytest.mark.asyncio
@@ -593,7 +450,6 @@ async def test_order_creation_flow_coop_both(
         user_service,
         profile_service,
         order_service,
-        FakeFsmDraftService(),
     )
 
     await handle_order_type(
@@ -901,7 +757,6 @@ async def test_order_creation_flow_ugc_plus_placement(
         user_service,
         profile_service,
         order_service,
-        FakeFsmDraftService(),
     )
     await handle_order_type(
         FakeMessage(text=ORDER_TYPE_UGC_PLUS_PLACEMENT, user=None), state

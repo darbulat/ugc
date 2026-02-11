@@ -10,7 +10,6 @@ from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
     Complaint,
-    FsmDraft,
     InstagramVerificationCode,
     Interaction,
     Order,
@@ -40,7 +39,6 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
     ContactPricingModel,
-    FsmDraftModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     OrderModel,
@@ -57,7 +55,6 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
-    SqlAlchemyFsmDraftRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyNpsRepository,
@@ -175,7 +172,7 @@ class FakeSession:
         self.merged = model
 
     async def delete(self, model):  # type: ignore[no-untyped-def]
-        """Mock delete for FSM draft repo."""
+        """Mock delete."""
         self.deleted = model
 
 
@@ -374,108 +371,6 @@ async def test_blogger_profile_repository_get_by_instagram_url_not_found() -> (
     )
 
     assert profile is None
-
-
-@pytest.mark.asyncio
-async def test_fsm_draft_repository_get_returns_draft() -> None:
-    """Fetch FSM draft by user_id and flow_type returns deserialized draft."""
-
-    user_id = UUID("00000000-0000-0000-0000-000000000501")
-    model = FsmDraftModel(
-        user_id=user_id,
-        flow_type="blogger_registration",
-        state_key="BloggerRegistrationStates:city",
-        data={"user_id": str(user_id), "nickname": "alice"},
-        updated_at=datetime.now(timezone.utc),
-    )
-    repo = SqlAlchemyFsmDraftRepository(session_factory=_session_factory(model))
-    draft = await repo.get(
-        user_id=user_id,
-        flow_type="blogger_registration",
-        session=_repo_session(repo),
-    )
-    assert draft is not None
-    assert isinstance(draft, FsmDraft)
-    assert draft.state_key == "BloggerRegistrationStates:city"
-    assert draft.data.get("nickname") == "alice"
-
-
-@pytest.mark.asyncio
-async def test_fsm_draft_repository_get_returns_none() -> None:
-    """Fetch FSM draft when none exists returns None."""
-
-    user_id = UUID("00000000-0000-0000-0000-000000000502")
-    repo = SqlAlchemyFsmDraftRepository(session_factory=_session_factory(None))
-    draft = await repo.get(
-        user_id=user_id,
-        flow_type="order_creation",
-        session=_repo_session(repo),
-    )
-    assert draft is None
-
-
-@pytest.mark.asyncio
-async def test_fsm_draft_repository_save_merges() -> None:
-    """Save FSM draft merges model into session."""
-
-    session = FakeSession(None)
-    repo = SqlAlchemyFsmDraftRepository(
-        session_factory=type(
-            "Maker",
-            (),
-            {"__call__": lambda self: session},
-        )()
-    )
-    user_id = UUID("00000000-0000-0000-0000-000000000503")
-    await repo.save(
-        user_id=user_id,
-        flow_type="order_creation",
-        state_key="OrderCreationStates:product_link",
-        data={"user_id": user_id, "product_link": "https://x.com"},
-        session=session,
-    )
-    assert session.merged is not None
-    assert session.merged.user_id == user_id
-    assert session.merged.flow_type == "order_creation"
-    assert session.merged.data.get("product_link") == "https://x.com"
-
-
-@pytest.mark.asyncio
-async def test_fsm_draft_repository_delete_deletes_model() -> None:
-    """Delete FSM draft calls session.delete when draft exists."""
-
-    user_id = UUID("00000000-0000-0000-0000-000000000504")
-    model = FsmDraftModel(
-        user_id=user_id,
-        flow_type="edit_profile",
-        state_key="EditProfileStates:choosing_field",
-        data={"edit_user_id": str(user_id)},
-        updated_at=datetime.now(timezone.utc),
-    )
-    repo = SqlAlchemyFsmDraftRepository(session_factory=_session_factory(model))
-    session = _repo_session(repo)
-    await repo.delete(
-        user_id=user_id,
-        flow_type="edit_profile",
-        session=session,
-    )
-    assert session.deleted is not None
-    assert session.deleted.flow_type == "edit_profile"
-
-
-@pytest.mark.asyncio
-async def test_fsm_draft_repository_delete_no_op_when_none() -> None:
-    """Delete FSM draft does not call delete when no draft exists."""
-
-    user_id = UUID("00000000-0000-0000-0000-000000000505")
-    repo = SqlAlchemyFsmDraftRepository(session_factory=_session_factory(None))
-    session = _repo_session(repo)
-    await repo.delete(
-        user_id=user_id,
-        flow_type="order_creation",
-        session=session,
-    )
-    assert session.deleted is None
 
 
 @pytest.mark.asyncio

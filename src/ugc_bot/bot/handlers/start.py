@@ -16,7 +16,6 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.messenger.state import StateStore
-from ugc_bot.application.services.fsm_draft_service import FsmDraftService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -84,22 +83,6 @@ async def change_role_button(
     )
 
 
-_STATE_TO_FLOW: dict[str, str] = {
-    "BloggerRegistrationStates": "blogger_registration",
-    "AdvertiserRegistrationStates": "advertiser_registration",
-    "OrderCreationStates": "order_creation",
-    "EditProfileStates": "edit_profile",
-}
-
-
-def _flow_type_from_state(state_key: str | None) -> str | None:
-    """Return flow_type if state_key belongs to a draftable flow, else None."""
-    if not state_key or ":" not in state_key:
-        return None
-    prefix = state_key.split(":")[0]
-    return _STATE_TO_FLOW.get(prefix)
-
-
 @router.message(Command("support"))
 @router.message(lambda msg: (msg.text or "").strip() == SUPPORT_BUTTON_TEXT)
 async def support_button(
@@ -107,11 +90,10 @@ async def support_button(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state: FSMContext,
-    fsm_draft_service: FsmDraftService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle Support: save draft if in flow, clear FSM, send support text."""
+    """Handle Support: clear FSM, send support text."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -121,7 +103,6 @@ async def support_button(
         user_role_service=user_role_service,
         profile_service=profile_service,
         state_store=AiogramStateStore(state),
-        fsm_draft_service=fsm_draft_service,
         messenger_client=messenger_client,
     )
 
@@ -195,28 +176,11 @@ async def _support_button(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state_store: StateStore,
-    fsm_draft_service: FsmDraftService,
     messenger_client: MessengerClient,
 ) -> None:
-    """Handle Support: save draft if in flow, clear FSM, send support text."""
+    """Handle Support: clear FSM, send support text."""
     if not incoming.user.external_id:
         return
-    state_key = await state_store.get_state()
-    data = await state_store.get_data()
-    flow_type = _flow_type_from_state(state_key)
-    if flow_type and data:
-        user = await user_role_service.get_user(
-            external_id=incoming.user.external_id,
-            messenger_type=incoming.user.messenger_type,
-        )
-        if user is not None:
-            await fsm_draft_service.save_draft(
-                user_id=user.user_id,
-                flow_type=flow_type,
-                state_key=state_key or "",
-                data=data,
-            )
-
     await state_store.clear()
 
     user = await user_role_service.get_user(
