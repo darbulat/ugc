@@ -286,7 +286,13 @@ def cleanup_old_s3_backups(
 def main() -> None:
     """Main entry point."""
     db_from_url = _parse_database_url(os.getenv("DATABASE_URL", ""))
-    postgres_password = os.getenv("POSTGRES_PASSWORD", "")
+    # Prefer POSTGRES_* when set (e.g. in Docker they match the postgres container).
+    postgres_host = os.getenv("POSTGRES_HOST", "").strip()
+    postgres_port = os.getenv("POSTGRES_PORT", "").strip()
+    postgres_db = os.getenv("POSTGRES_DB", "").strip()
+    postgres_user = os.getenv("POSTGRES_USER", "").strip()
+    postgres_password = os.getenv("POSTGRES_PASSWORD", "").strip()
+
     if db_from_url:
         defaults = {
             "host": db_from_url["host"],
@@ -297,12 +303,23 @@ def main() -> None:
         }
     else:
         defaults = {
-            "host": os.getenv("POSTGRES_HOST", "localhost"),
-            "port": int(os.getenv("POSTGRES_PORT", "5432")),
-            "database": os.getenv("POSTGRES_DB", "ugc"),
-            "user": os.getenv("POSTGRES_USER", "ugc"),
+            "host": postgres_host or "localhost",
+            "port": int(postgres_port) if postgres_port else 5432,
+            "database": postgres_db or "ugc",
+            "user": postgres_user or "ugc",
             "password": postgres_password,
         }
+
+    if postgres_host:
+        defaults["host"] = postgres_host
+    if postgres_port:
+        defaults["port"] = int(postgres_port)
+    if postgres_db:
+        defaults["database"] = postgres_db
+    if postgres_user:
+        defaults["user"] = postgres_user
+    if postgres_password:
+        defaults["password"] = postgres_password
 
     parser = argparse.ArgumentParser(description="Create PostgreSQL database backup")
     parser.add_argument(
