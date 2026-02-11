@@ -13,6 +13,8 @@
 - `BACKUP_KEEP_DAYS` - количество дней хранения бэкапов (по умолчанию: 7)
 - `BACKUP_INTERVAL_HOURS` - интервал между бэкапами в часах (по умолчанию: 24)
 
+Параметры подключения к БД берутся из `DATABASE_URL` (если задан) или из `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. Если в `DATABASE_URL` пароль не указан, используется `POSTGRES_PASSWORD`. Убедитесь, что пароль совпадает с тем, с которым запущен сервис `db` (иначе будет ошибка «password authentication failed»).
+
 ### Запуск
 
 Сервис автоматически запускается при старте Docker Compose:

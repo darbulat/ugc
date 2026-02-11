@@ -119,11 +119,11 @@ def create_backup(
                 gzip_process.communicate()
                 dump_process.wait()
                 if dump_process.returncode != 0:
-                    stderr = dump_process.stderr.read().decode()
+                    stderr_bytes = dump_process.stderr.read()
                     raise subprocess.CalledProcessError(
                         dump_process.returncode,
                         pg_dump_cmd,
-                        stderr=stderr,
+                        stderr=stderr_bytes,
                     )
         else:
             # No compression
@@ -140,7 +140,9 @@ def create_backup(
         return backup_path
 
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode() if e.stderr else str(e)
+        error_msg = (
+            e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or str(e))
+        )
         print(f"Error creating backup: {error_msg}", file=sys.stderr)
         if backup_path.exists():
             backup_path.unlink()
@@ -284,13 +286,23 @@ def cleanup_old_s3_backups(
 def main() -> None:
     """Main entry point."""
     db_from_url = _parse_database_url(os.getenv("DATABASE_URL", ""))
-    defaults = {
-        "host": db_from_url["host"] if db_from_url else os.getenv("POSTGRES_HOST", "localhost"),
-        "port": int(db_from_url["port"]) if db_from_url else int(os.getenv("POSTGRES_PORT", "5432")),
-        "database": db_from_url["database"] if db_from_url else os.getenv("POSTGRES_DB", "ugc"),
-        "user": db_from_url["user"] if db_from_url else os.getenv("POSTGRES_USER", "ugc"),
-        "password": db_from_url["password"] if db_from_url else os.getenv("POSTGRES_PASSWORD", ""),
-    }
+    postgres_password = os.getenv("POSTGRES_PASSWORD", "")
+    if db_from_url:
+        defaults = {
+            "host": db_from_url["host"],
+            "port": int(db_from_url["port"]),
+            "database": db_from_url["database"],
+            "user": db_from_url["user"],
+            "password": db_from_url["password"] or postgres_password,
+        }
+    else:
+        defaults = {
+            "host": os.getenv("POSTGRES_HOST", "localhost"),
+            "port": int(os.getenv("POSTGRES_PORT", "5432")),
+            "database": os.getenv("POSTGRES_DB", "ugc"),
+            "user": os.getenv("POSTGRES_USER", "ugc"),
+            "password": postgres_password,
+        }
 
     parser = argparse.ArgumentParser(description="Create PostgreSQL database backup")
     parser.add_argument(
