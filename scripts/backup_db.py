@@ -82,7 +82,8 @@ def create_backup(
                     stdin=dump_process.stdout,
                     stdout=f,
                 )
-                dump_process.stdout.close()
+                # Do not close dump_process.stdout: gzip reads from it. EOF comes when
+                # pg_dump exits and closes its stdout.
                 gzip_process.communicate()
                 dump_process.wait()
                 if dump_process.returncode != 0:
