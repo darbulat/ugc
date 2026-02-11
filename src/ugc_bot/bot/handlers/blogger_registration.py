@@ -641,6 +641,9 @@ async def handle_agreements(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Нажмите кнопку «Подтвердить согласие».",
+            keyboard=flow_keyboard(
+                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            ),
         )
         return
 
