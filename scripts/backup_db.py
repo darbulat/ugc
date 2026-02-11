@@ -8,8 +8,40 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_database_url(url: str) -> dict[str, str | int] | None:
+    """
+    Parse PostgreSQL DATABASE_URL into host, port, database, user, password.
+
+    Supports postgresql:// and postgresql+psycopg://. Returns None if URL
+    is empty, invalid or not PostgreSQL.
+    """
+    url = (url or "").strip()
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None
+    if not parsed.scheme or not parsed.scheme.startswith("postgresql"):
+        return None
+    hostname = parsed.hostname or "localhost"
+    port = parsed.port if parsed.port is not None else 5432
+    path = (parsed.path or "").strip("/")
+    database = path or "ugc"
+    user = unquote(parsed.username) if parsed.username else ""
+    password = unquote(parsed.password) if parsed.password else ""
+    return {
+        "host": hostname,
+        "port": port,
+        "database": database,
+        "user": user,
+        "password": password,
+    }
 
 
 def create_backup(
@@ -251,32 +283,41 @@ def cleanup_old_s3_backups(
 
 def main() -> None:
     """Main entry point."""
+    db_from_url = _parse_database_url(os.getenv("DATABASE_URL", ""))
+    defaults = {
+        "host": db_from_url["host"] if db_from_url else os.getenv("POSTGRES_HOST", "localhost"),
+        "port": int(db_from_url["port"]) if db_from_url else int(os.getenv("POSTGRES_PORT", "5432")),
+        "database": db_from_url["database"] if db_from_url else os.getenv("POSTGRES_DB", "ugc"),
+        "user": db_from_url["user"] if db_from_url else os.getenv("POSTGRES_USER", "ugc"),
+        "password": db_from_url["password"] if db_from_url else os.getenv("POSTGRES_PASSWORD", ""),
+    }
+
     parser = argparse.ArgumentParser(description="Create PostgreSQL database backup")
     parser.add_argument(
         "--host",
-        default=os.getenv("POSTGRES_HOST", "localhost"),
-        help="Database host (default: POSTGRES_HOST env or localhost)",
+        default=defaults["host"],
+        help="Database host (default: from DATABASE_URL or POSTGRES_HOST)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("POSTGRES_PORT", "5432")),
-        help="Database port (default: POSTGRES_PORT env or 5432)",
+        default=defaults["port"],
+        help="Database port (default: from DATABASE_URL or POSTGRES_PORT)",
     )
     parser.add_argument(
         "--database",
-        default=os.getenv("POSTGRES_DB", "ugc"),
-        help="Database name (default: POSTGRES_DB env or ugc)",
+        default=defaults["database"],
+        help="Database name (default: from DATABASE_URL or POSTGRES_DB)",
     )
     parser.add_argument(
         "--user",
-        default=os.getenv("POSTGRES_USER", "ugc"),
-        help="Database user (default: POSTGRES_USER env or ugc)",
+        default=defaults["user"],
+        help="Database user (default: from DATABASE_URL or POSTGRES_USER)",
     )
     parser.add_argument(
         "--password",
-        default=os.getenv("POSTGRES_PASSWORD", ""),
-        help="Database password (default: POSTGRES_PASSWORD env)",
+        default=defaults["password"],
+        help="Database password (default: from DATABASE_URL or POSTGRES_PASSWORD)",
     )
     parser.add_argument(
         "--output-dir",

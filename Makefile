@@ -55,15 +55,9 @@ docker-down:
 admin:
 	uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001 --log-config config/uvicorn_log_config.json
 
-# Database backup commands
+# Database backup commands (DB params from DATABASE_URL or POSTGRES_* in .env)
 backup-db:
-	docker compose run --rm db_backup python scripts/backup_db.py \
-		--host db \
-		--port 5432 \
-		--database $${POSTGRES_DB:-ugc} \
-		--user $${POSTGRES_USER:-ugc} \
-		--password $${POSTGRES_PASSWORD:-ugc} \
-		--output-dir /backups
+	docker compose run --rm db_backup python scripts/backup_db.py --output-dir /backups
 
 restore-db:
 	@if [ -z "$(BACKUP_FILE)" ]; then \

@@ -8,9 +8,49 @@ import pytest
 
 from scripts.backup_db import (
     _get_s3_config,
+    _parse_database_url,
     cleanup_old_s3_backups,
     upload_backup_to_s3,
 )
+
+
+def test_parse_database_url_returns_none_for_empty_or_non_postgres() -> None:
+    """_parse_database_url returns None for empty or non-PostgreSQL URL."""
+    assert _parse_database_url("") is None
+    assert _parse_database_url("sqlite:///file.db") is None
+    assert _parse_database_url("mysql://user:pass@host/db") is None
+
+
+def test_parse_database_url_parses_postgresql_url() -> None:
+    """_parse_database_url extracts host, port, database, user, password."""
+    url = "postgresql://ugc:secret@db:5432/ugc"
+    got = _parse_database_url(url)
+    assert got is not None
+    assert got["host"] == "db"
+    assert got["port"] == 5432
+    assert got["database"] == "ugc"
+    assert got["user"] == "ugc"
+    assert got["password"] == "secret"
+
+
+def test_parse_database_url_parses_postgresql_psycopg_url() -> None:
+    """_parse_database_url accepts postgresql+psycopg scheme."""
+    url = "postgresql+psycopg://u:p@localhost:5433/mydb"
+    got = _parse_database_url(url)
+    assert got is not None
+    assert got["host"] == "localhost"
+    assert got["port"] == 5433
+    assert got["database"] == "mydb"
+    assert got["user"] == "u"
+    assert got["password"] == "p"
+
+
+def test_parse_database_url_defaults_port_and_database() -> None:
+    """_parse_database_url uses 5432 and ugc when port/path missing."""
+    got = _parse_database_url("postgresql://u:p@host/")
+    assert got is not None
+    assert got["port"] == 5432
+    assert got["database"] == "ugc"
 
 
 def test_get_s3_config_returns_none_when_disabled(
