@@ -1,6 +1,5 @@
 """Tests for order service."""
 
-from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -294,38 +293,6 @@ async def test_create_order_metrics_recorded_when_collector_set(
     assert call_kw["advertiser_id"] == str(user_id)
     assert call_kw["price"] == 1000.0
     assert call_kw["bloggers_needed"] == 3
-
-
-@pytest.mark.asyncio
-async def test_create_order_new_advertiser_bloggers_over_10_rejected(
-    user_repo, advertiser_repo, order_repo
-) -> None:
-    """New advertiser cannot request more than 10 bloggers."""
-    user_id = await create_test_advertiser(
-        user_repo, advertiser_repo, status=UserStatus.ACTIVE
-    )
-    service = build_order_service(user_repo, advertiser_repo, order_repo)
-
-    with patch(
-        "ugc_bot.application.services.order_service._validate_order_input"
-    ) as mock_val:
-        mock_val.return_value = (
-            "https://example.com",
-            "Offer",
-            None,
-        )
-        with pytest.raises(
-            OrderCreationError, match="NEW advertisers can request up to 10"
-        ):
-            await service.create_order(
-                advertiser_id=user_id,
-                order_type=OrderType.UGC_ONLY,
-                product_link="https://example.com",
-                offer_text="Offer",
-                barter_description=None,
-                price=1000.0,
-                bloggers_needed=15,
-            )
 
 
 @pytest.mark.asyncio

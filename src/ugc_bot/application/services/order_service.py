@@ -145,17 +145,6 @@ class OrderService:
                 )
             )
 
-            is_new = (
-                await self.order_repo.count_by_advertiser(
-                    advertiser_id, session=session
-                )
-                == 0
-            )
-            if is_new and bloggers_needed > 10:
-                raise OrderCreationError(
-                    "NEW advertisers can request up to 10 bloggers."
-                )
-
             order = Order(
                 order_id=uuid4(),
                 advertiser_id=advertiser_id,
