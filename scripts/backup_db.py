@@ -230,7 +230,9 @@ def upload_backup_to_s3(backup_path: Path, s3_config: dict) -> bool:
             config=config,
         )
         key = f"backups/{backup_path.name}"
-        client.upload_file(str(backup_path), s3_config["bucket"], key)
+        with open(backup_path, "rb") as f:
+            body = f.read()
+        client.put_object(Bucket=s3_config["bucket"], Key=key, Body=body)
         print(f"Uploaded to S3: s3://{s3_config['bucket']}/{key}")
         return True
     except Exception as e:

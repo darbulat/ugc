@@ -126,7 +126,7 @@ def test_upload_backup_to_s3_calls_client_with_path_style(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """upload_backup_to_s3 uses path-style boto3 client and upload_file."""
+    """upload_backup_to_s3 uses path-style boto3 client and put_object."""
     (tmp_path / "ugc_backup_20240206_120000.sql.gz").write_bytes(b"x")
     backup_path = tmp_path / "ugc_backup_20240206_120000.sql.gz"
     s3_config = {
@@ -148,13 +148,11 @@ def test_upload_backup_to_s3_calls_client_with_path_style(
     assert call_kw["endpoint_url"] == "https://s3.example.com"
     assert call_kw["aws_access_key_id"] == "ak"
     assert call_kw["aws_secret_access_key"] == "sk"
-    mock_client.upload_file.assert_called_once()
-    assert mock_client.upload_file.call_args[0][0] == str(backup_path)
-    assert mock_client.upload_file.call_args[0][1] == "bkt"
-    assert (
-        mock_client.upload_file.call_args[0][2]
-        == "backups/ugc_backup_20240206_120000.sql.gz"
-    )
+    mock_client.put_object.assert_called_once()
+    put_kw = mock_client.put_object.call_args[1]
+    assert put_kw["Bucket"] == "bkt"
+    assert put_kw["Key"] == "backups/ugc_backup_20240206_120000.sql.gz"
+    assert put_kw["Body"] == b"x"
 
 
 def test_upload_backup_to_s3_returns_false_on_exception(
@@ -172,7 +170,7 @@ def test_upload_backup_to_s3_returns_false_on_exception(
     }
 
     mock_client = MagicMock()
-    mock_client.upload_file.side_effect = OSError("network error")
+    mock_client.put_object.side_effect = OSError("network error")
 
     with patch("boto3.client", return_value=mock_client):
         result = upload_backup_to_s3(backup_path, s3_config)
