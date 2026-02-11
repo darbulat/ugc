@@ -216,7 +216,12 @@ def upload_backup_to_s3(backup_path: Path, s3_config: dict) -> bool:
         return False
 
     try:
-        config = Config(s3={"addressing_style": "path"})
+        config = Config(
+            s3={
+                "addressing_style": "path",
+                "payload_signing_enabled": False,
+            },
+        )
         client = boto3.client(
             "s3",
             endpoint_url=s3_config["endpoint_url"],
@@ -254,7 +259,12 @@ def cleanup_old_s3_backups(
         return
 
     try:
-        config = Config(s3={"addressing_style": "path"})
+        config = Config(
+            s3={
+                "addressing_style": "path",
+                "payload_signing_enabled": False,
+            },
+        )
         client = boto3.client(
             "s3",
             endpoint_url=s3_config["endpoint_url"],
