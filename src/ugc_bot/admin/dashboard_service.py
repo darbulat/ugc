@@ -158,6 +158,9 @@ class AdminDashboardService:
                 session, window.current_start, window.current_end
             )
             timings["turnover"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
+            creators_by_city = await self._get_creators_by_city(session)
+            timings["creators_by_city"] = (time.perf_counter() - t0) * 1000
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
         need_balance_for_filter = referrers_filter in (
@@ -259,6 +262,7 @@ class AdminDashboardService:
             "referrals": referral_data,
             "payout_requests": payout_requests,
             "turnover_period": turnover_period,
+            "creators_by_city": creators_by_city,
         }
         if include_timings:
             result["_timings_ms"] = timings
@@ -579,6 +583,22 @@ class AdminDashboardService:
                 advertisers_current, advertisers_prev
             ),
         }
+
+    async def _get_creators_by_city(
+        self, session: AsyncSession
+    ) -> list[dict[str, Any]]:
+        """Return creators count grouped by city, sorted by count descending."""
+        query = (
+            select(
+                BloggerProfileModel.city,
+                func.count(BloggerProfileModel.user_id).label("count"),
+            )
+            .group_by(BloggerProfileModel.city)
+            .order_by(func.count(BloggerProfileModel.user_id).desc())
+        )
+        result = await session.execute(query)
+        rows = result.all()
+        return [{"city": row[0], "count": int(row[1])} for row in rows]
 
     async def _get_order_cards(
         self, session: AsyncSession, window: PeriodWindow

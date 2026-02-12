@@ -168,6 +168,10 @@ def service(thresholds) -> AdminDashboardService:
 @pytest.mark.asyncio
 async def test_get_dashboard_returns_structure(service) -> None:
     """get_dashboard returns expected structure."""
+    creators_by_city_rows = [
+        ("Moscow", 5),
+        ("Санкт-Петербург", 2),
+    ]
     results = [
         _FakeResult(scalar_value=2),
         _FakeResult(scalar_value=1),
@@ -180,6 +184,7 @@ async def test_get_dashboard_returns_structure(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=creators_by_city_rows),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -202,6 +207,44 @@ async def test_get_dashboard_returns_structure(service) -> None:
     assert "total_balance" in data["referrals"]
     assert "payout_requests" in data
     assert "turnover_period" in data
+    assert "creators_by_city" in data
+    assert data["creators_by_city"] == [
+        {"city": "Moscow", "count": 5},
+        {"city": "Санкт-Петербург", "count": 2},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_creators_by_city_returns_sorted_and_handles_empty_city(
+    service,
+) -> None:
+    """creators_by_city sorted by count desc; empty city in payload."""
+    creators_by_city_rows = [
+        ("Moscow", 10),
+        ("", 3),
+        ("Казань", 2),
+    ]
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[_order_cards_row()]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=creators_by_city_rows),
+    ]
+    svc = service(results)
+    data = await svc.get_dashboard("today")
+    by_city = data["creators_by_city"]
+    assert len(by_city) == 3
+    assert by_city[0] == {"city": "Moscow", "count": 10}
+    assert by_city[1] == {"city": "", "count": 3}
+    assert by_city[2] == {"city": "Казань", "count": 2}
 
 
 @pytest.mark.asyncio

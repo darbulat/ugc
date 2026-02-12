@@ -101,6 +101,31 @@
   </section>
 
   <section class="section">
+    <h2>Креаторы по городам</h2>
+    {% set creators_by_city = payload.creators_by_city | default([]) %}
+    {% if creators_by_city %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Город</th>
+            <th>Количество</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in creators_by_city %}
+            <tr>
+              <td>{{ row.city if row.city else 'Не указан' }}</td>
+              <td>{{ row.count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Нет данных.</div>
+    {% endif %}
+  </section>
+
+  <section class="section">
     <h2>Динамика за период</h2>
     <div id="charts-period" data-period="{{ period }}"></div>
     <div class="charts-row">
