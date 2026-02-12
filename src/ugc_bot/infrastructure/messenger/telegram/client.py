@@ -5,7 +5,11 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+)
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -29,6 +33,16 @@ TELEGRAM_API_RETRY_DELAY_SECONDS = 0.5
 T = TypeVar("T")
 
 
+def is_user_blocked_bot(exc: BaseException) -> bool:
+    """True if user blocked the bot (no point retrying)."""
+    if isinstance(exc, TelegramForbiddenError):
+        return True
+    if isinstance(exc, TelegramBadRequest):
+        msg = (getattr(exc, "message", None) or str(exc)).lower()
+        return "blocked" in msg
+    return False
+
+
 class TelegramMessengerClient(MessengerClient):
     """Messenger client backed by aiogram Bot with retry on network errors."""
 
@@ -45,11 +59,17 @@ class TelegramMessengerClient(MessengerClient):
         self._retry_delay_seconds = retry_delay_seconds
 
     async def _with_retry(self, coro_factory: Callable[[], Awaitable[T]]) -> T:
-        """Execute coroutine with retry on TelegramNetworkError."""
+        """Execute coroutine with retry on TelegramNetworkError only.
+
+        Do not retry when user blocked the bot (TelegramForbiddenError or
+        TelegramBadRequest with 'blocked' in message).
+        """
         last_exc: TelegramNetworkError | None = None
         for attempt in range(1, self._retry_attempts + 1):
             try:
                 return await coro_factory()
+            except (TelegramForbiddenError, TelegramBadRequest):
+                raise
             except TelegramNetworkError as exc:
                 last_exc = exc
                 if attempt < self._retry_attempts:

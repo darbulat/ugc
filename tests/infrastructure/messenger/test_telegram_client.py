@@ -3,7 +3,11 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+)
 from aiogram.methods import SendMessage
 
 from ugc_bot.application.messenger.dto import (
@@ -16,6 +20,7 @@ from ugc_bot.application.messenger.dto import (
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
     build_keyboard_markup,
+    is_user_blocked_bot,
 )
 
 
@@ -297,3 +302,77 @@ async def test_send_text_raises_after_all_retries_exhausted(
     with pytest.raises(TelegramNetworkError, match="Connection reset by peer"):
         await client.send_text(chat_id="123", text="Hello")
     assert fake_bot.send_message.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_send_text_no_retry_on_telegram_forbidden_error(
+    fake_bot: MagicMock,
+) -> None:
+    """send_text does not retry when user blocked the bot."""
+    fake_bot.send_message = AsyncMock(
+        side_effect=TelegramForbiddenError(
+            message="Forbidden: bot was blocked by the user",
+            method=SendMessage(chat_id=0, text=""),
+        ),
+    )
+    client = TelegramMessengerClient(
+        bot=fake_bot,
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+    with pytest.raises(TelegramForbiddenError, match="blocked"):
+        await client.send_text(chat_id="123", text="Hello")
+    assert fake_bot.send_message.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_send_text_no_retry_on_telegram_bad_request_blocked(
+    fake_bot: MagicMock,
+) -> None:
+    """send_text does not retry on TelegramBadRequest with 'blocked'."""
+    fake_bot.send_message = AsyncMock(
+        side_effect=TelegramBadRequest(
+            message="Forbidden: bot was blocked by the user",
+            method=SendMessage(chat_id=0, text=""),
+        ),
+    )
+    client = TelegramMessengerClient(
+        bot=fake_bot,
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+    with pytest.raises(TelegramBadRequest, match="blocked"):
+        await client.send_text(chat_id="123", text="Hello")
+    assert fake_bot.send_message.call_count == 1
+
+
+def test_is_user_blocked_bot_telegram_forbidden() -> None:
+    """is_user_blocked_bot returns True for TelegramForbiddenError."""
+    exc = TelegramForbiddenError(
+        message="Forbidden",
+        method=SendMessage(chat_id=0, text=""),
+    )
+    assert is_user_blocked_bot(exc) is True
+
+
+def test_is_user_blocked_bot_telegram_bad_request_blocked() -> None:
+    """is_user_blocked_bot True for TelegramBadRequest with 'blocked'."""
+    exc = TelegramBadRequest(
+        message="Forbidden: bot was blocked by the user",
+        method=SendMessage(chat_id=0, text=""),
+    )
+    assert is_user_blocked_bot(exc) is True
+
+
+def test_is_user_blocked_bot_telegram_bad_request_other() -> None:
+    """is_user_blocked_bot False for TelegramBadRequest without 'blocked'."""
+    exc = TelegramBadRequest(
+        message="Bad Request: chat not found",
+        method=SendMessage(chat_id=0, text=""),
+    )
+    assert is_user_blocked_bot(exc) is False
+
+
+def test_is_user_blocked_bot_other_exception() -> None:
+    """is_user_blocked_bot returns False for other exceptions."""
+    assert is_user_blocked_bot(RuntimeError("fail")) is False

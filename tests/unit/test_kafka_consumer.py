@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, Mock, patch
 from uuid import UUID
 
 import pytest
+from aiogram.exceptions import TelegramForbiddenError
+from aiogram.methods import SendMessage
 
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
@@ -799,6 +801,106 @@ async def test_send_offers_sends_to_dlq(
         retry_delay_seconds=0.0,
     )
     assert published["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_send_offers_user_blocked_bot_no_retry_no_dlq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When user blocked the bot, do not retry and do not publish to DLQ."""
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    offer_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000923"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(advertiser)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000924"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000925"),
+        external_id="2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(blogger)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger.user_id,
+            instagram_url="https://instagram.com/blogger",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+
+    blocked_error = TelegramForbiddenError(
+        message="Forbidden: bot was blocked by the user",
+        method=SendMessage(chat_id=0, text=""),
+    )
+
+    class BlockedUserBot:
+        async def send_message(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise blocked_error
+
+        async def send_photo(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise blocked_error
+
+    published = {"value": False}
+
+    async def fake_publish(_producer, _topic, _payload):  # type: ignore[no-untyped-def]
+        published["value"] = True
+
+    monkeypatch.setattr("ugc_bot.kafka_consumer._publish_dlq", fake_publish)
+
+    messenger_client = TelegramMessengerClient(BlockedUserBot())
+    await _send_offers(
+        order.order_id,
+        messenger_client,
+        offer_service,
+        dlq_producer=None,
+        dlq_topic="dlq",
+        retries=3,
+        retry_delay_seconds=0.0,
+    )
+    assert published["value"] is False
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,7 @@ from ugc_bot.infrastructure.messenger.telegram.adapter import (
 )
 from ugc_bot.infrastructure.messenger.telegram.client import (
     build_keyboard_markup,
+    is_user_blocked_bot,
 )
 
 
@@ -385,6 +386,8 @@ async def send_with_retry(
                     **(extra or {}),
                 },
             )
+            if is_user_blocked_bot(exc):
+                return False
             if attempt < retries:
                 await asyncio.sleep(delay_seconds)
     return False

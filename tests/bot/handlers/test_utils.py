@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from aiogram.exceptions import TelegramForbiddenError
+from aiogram.methods import SendMessage
 
 from tests.helpers.fakes import FakeMessengerClient
 from ugc_bot.application.messenger.dto import (
@@ -70,6 +72,33 @@ async def test_send_with_retry_failure() -> None:
         logger=__import__("logging").getLogger("test"),
     )
     assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_send_with_retry_user_blocked_bot_no_retry() -> None:
+    """When user blocked the bot, return False immediately without retry."""
+    blocked_error = TelegramForbiddenError(
+        message="Forbidden: bot was blocked by the user",
+        method=SendMessage(chat_id=0, text=""),
+    )
+    call_count = 0
+
+    class BlockedUserMessenger:
+        async def send_text(self, *, chat_id: str, text: str, **kwargs) -> None:
+            nonlocal call_count
+            call_count += 1
+            raise blocked_error
+
+    ok = await send_with_retry(
+        BlockedUserMessenger(),
+        chat_id="1",
+        text="hi",
+        retries=3,
+        delay_seconds=0.0,
+        logger=__import__("logging").getLogger("test"),
+    )
+    assert ok is False
+    assert call_count == 1
 
 
 def test_parse_user_id_from_state_missing() -> None:

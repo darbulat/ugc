@@ -32,6 +32,7 @@ from ugc_bot.exception_hooks import (
 )
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
+    is_user_blocked_bot,
 )
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
@@ -185,6 +186,8 @@ async def _send_offer_to_blogger(
                     "error": str(exc),
                 },
             )
+            if is_user_blocked_bot(exc):
+                return
             if attempt >= retries:
                 logger.error(
                     "All retries failed for offer send, publishing to DLQ",
