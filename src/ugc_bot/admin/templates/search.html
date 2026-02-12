@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Поиск пользователей{% endblock %}
+{% block content %}
+  <section class="section">
+    <h1>Поиск пользователей</h1>
+    <form class="search-form" action="/admin/search" method="get" role="search">
+      <input type="search" name="q" placeholder="Никнейм, Telegram или ID" value="{{ query }}" />
+      <button type="submit">Искать</button>
+    </form>
+    {% if query and users is defined %}
+      <p class="muted">Найдено: {{ users | length }}</p>
+      {% if users %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Никнейм</th>
+              <th>Telegram</th>
+              <th>External ID</th>
+              <th>Действие</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+              <tr>
+                <td>{{ u.user_id }}</td>
+                <td>{{ u.username }}</td>
+                <td>{{ u.telegram }}</td>
+                <td>{{ u.external_id }}</td>
+                <td>
+                  <a href="/admin/users/{{ u.user_id }}">Карточка</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty">Ничего не найдено.</div>
+      {% endif %}
+    {% endif %}
+  </section>
+{% endblock %}

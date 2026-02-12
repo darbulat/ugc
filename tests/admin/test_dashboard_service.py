@@ -21,6 +21,24 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.models import OrderModel, UserModel
 
 
+class _ChartRow:
+    """Row-like for chart queries: .day, .amount (turnover), [1] for count."""
+
+    def __init__(self, day, count_or_amount) -> None:
+        self.day = day
+        self._value = count_or_amount
+        self.amount = (
+            count_or_amount
+            if isinstance(count_or_amount, (Decimal, float))
+            else None
+        )
+
+    def __getitem__(self, i: int):
+        if i == 1:
+            return self._value
+        raise IndexError(i)
+
+
 class _FakeResult:
     """Fake SQLAlchemy result supporting scalar, all, one_or_none."""
 
@@ -148,6 +166,8 @@ async def test_get_dashboard_returns_structure(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -163,11 +183,13 @@ async def test_get_dashboard_returns_structure(service) -> None:
     assert "open_complaints" in data["problems"]
     assert "delays" in data["problems"]
     assert "delayed_orders" in data
+    assert "open_complaints_list" in data
     assert "referrals" in data
     assert "referrers" in data["referrals"]
     assert "total_earned" in data["referrals"]
     assert "total_balance" in data["referrals"]
     assert "payout_requests" in data
+    assert "turnover_period" in data
 
 
 @pytest.mark.asyncio
@@ -192,8 +214,10 @@ async def test_get_dashboard_includes_referral_referrers(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[ref_row]),
         _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -233,7 +257,9 @@ async def test_get_dashboard_includes_payout_requests(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[payout_row]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -366,8 +392,10 @@ async def test_get_dashboard_referrers_balance_and_sort_when_income_service_set(
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[ref_row]),
         _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     mock_income = AsyncMock()
     mock_income.get_user_referral_stats = AsyncMock(
@@ -401,6 +429,8 @@ async def test_get_dashboard_build_delta_previous_zero(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -434,6 +464,8 @@ async def test_get_dashboard_order_cards_counts(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -455,6 +487,8 @@ async def test_build_period_window_today(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -471,6 +505,7 @@ async def test_build_period_window_yesterday(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -493,6 +528,8 @@ async def test_build_period_window_7d(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("7d")
@@ -512,6 +549,8 @@ async def test_build_period_window_30d(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("30d")
@@ -744,9 +783,11 @@ async def test_list_delayed_orders_includes_reasons(
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=rows),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -774,6 +815,8 @@ async def test_count_open_complaints(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -851,6 +894,8 @@ async def test_build_delta_negative_change(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -940,6 +985,8 @@ async def test_is_archived_false_when_open_complaints(service) -> None:
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -980,9 +1027,11 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
         _FakeResult(all_rows=rows),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
     ]
     svc = service(results)
     data = await svc.get_dashboard("today")
@@ -999,3 +1048,427 @@ async def test_progress_ratio_zero_when_needed_zero(service) -> None:
     card = await svc.get_order_card(order.order_id)
     assert card is not None
     assert card["progress"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_charts_returns_structure(service) -> None:
+    """get_dashboard_charts returns time-series data for all charts."""
+    day_creators = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    # Rows: .day and [1] for count; .day and .amount for turnover
+    row_reg = _ChartRow(day_creators, 5)
+    row_orders = _ChartRow(day_creators, 3)
+    row_turnover = _ChartRow(day_creators, Decimal("100.50"))
+    results = [
+        _FakeResult(all_rows=[row_reg]),
+        _FakeResult(all_rows=[row_reg]),
+        _FakeResult(all_rows=[row_orders]),
+        _FakeResult(all_rows=[row_turnover]),
+    ]
+    svc = service(results)
+    data = await svc.get_dashboard_charts("7d")
+    assert "registrations_creators" in data
+    assert "registrations_advertisers" in data
+    assert "orders" in data
+    assert "turnover" in data
+    assert len(data["registrations_creators"]) == 1
+    assert data["registrations_creators"][0]["date"] == day_creators.strftime(
+        "%Y-%m-%d"
+    )
+    assert data["registrations_creators"][0]["count"] == 5
+    assert data["orders"][0]["count"] == 3
+    assert data["turnover"][0]["amount"] == 100.5
+
+
+@pytest.mark.asyncio
+async def test_search_users_returns_matches(service) -> None:
+    """search_users returns users matching username/telegram."""
+    uid = uuid4()
+    row = SimpleNamespace(
+        user_id=uid,
+        username="john",
+        telegram="@john",
+        external_id="123",
+    )
+    svc = service([_FakeResult(all_rows=[row])])
+    result = await svc.search_users("john", limit=10)
+    assert len(result) == 1
+    assert result[0]["user_id"] == str(uid)
+    assert result[0]["username"] == "john"
+    assert result[0]["telegram"] == "@john"
+    assert result[0]["external_id"] == "123"
+
+
+@pytest.mark.asyncio
+async def test_search_users_empty_query_returns_empty(service) -> None:
+    """search_users returns [] for empty or whitespace query."""
+    svc = service([])
+    assert await svc.search_users("") == []
+    assert await svc.search_users("   ") == []
+
+
+@pytest.mark.asyncio
+async def test_search_users_by_uuid(service) -> None:
+    """search_users includes UUID condition when query is valid UUID."""
+    uid = uuid4()
+    row = SimpleNamespace(
+        user_id=uid,
+        username="u",
+        telegram="@u",
+        external_id="1",
+    )
+    svc = service([_FakeResult(all_rows=[row])])
+    result = await svc.search_users(str(uid))
+    assert len(result) == 1
+    assert result[0]["user_id"] == str(uid)
+
+
+@pytest.mark.asyncio
+async def test_search_users_by_digit_external_id(service) -> None:
+    """search_users includes external_id when query is digit."""
+    uid = uuid4()
+    row = SimpleNamespace(
+        user_id=uid,
+        username="u",
+        telegram="@u",
+        external_id="999",
+    )
+    svc = service([_FakeResult(all_rows=[row])])
+    result = await svc.search_users("999")
+    assert len(result) == 1
+    assert result[0]["external_id"] == "999"
+
+
+@pytest.mark.asyncio
+async def test_list_creators_with_sort_and_search(service) -> None:
+    """list_creators with sort and search query uses correct params."""
+    user = _make_user()
+    rows = [(user, "https://instagram.com/u", 2, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_creators(
+        "today",
+        only_new=False,
+        only_with_complaints=False,
+        sort="username",
+        order="asc",
+        q="john",
+    )
+    assert result["total"] == 1
+    assert result["items"][0]["username"] == "user1"
+
+
+@pytest.mark.asyncio
+async def test_list_advertisers_with_sort_and_search(service) -> None:
+    """list_advertisers with sort and search uses correct params."""
+    user = _make_user()
+    rows = [(user, "Brand", 10, 5, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_advertisers(
+        sort="orders_total",
+        order="desc",
+        q="brand",
+    )
+    assert result["total"] == 1
+    assert result["items"][0]["orders_total"] == 10
+
+
+@pytest.mark.asyncio
+async def test_list_orders_with_sort(service) -> None:
+    """list_orders with sort uses correct order column."""
+    order = _make_order()
+    rows = [(order, 2, 0, "AdvertiserA")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders(
+        "today",
+        status_filter=None,
+        sort="advertiser",
+        order="asc",
+    )
+    assert result["total"] == 1
+    assert result["items"][0]["advertiser"] == "AdvertiserA"
+
+
+@pytest.mark.asyncio
+async def test_apply_referrers_filter_active_in_period(service) -> None:
+    """_apply_referrers_filter keeps only referrers with new_in_period > 0."""
+    referrers = [
+        {"user_id": "1", "new_in_period": 2, "balance": 0},
+        {"user_id": "2", "new_in_period": 0, "balance": 10},
+    ]
+    filtered = service([])._apply_referrers_filter(
+        referrers, "active_in_period"
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["user_id"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_apply_referrers_filter_top_by_balance(service) -> None:
+    """_apply_referrers_filter keeps only referrers with balance > 0."""
+    referrers = [
+        {"user_id": "1", "balance": 50},
+        {"user_id": "2", "balance": 0},
+    ]
+    filtered = service([])._apply_referrers_filter(referrers, "top_by_balance")
+    assert len(filtered) == 1
+    assert filtered[0]["user_id"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_referrers_filter_default_sort(service) -> None:
+    """_referrers_filter_default_sort returns correct key per filter."""
+    svc = service([])
+    assert (
+        svc._referrers_filter_default_sort("top_by_referred")
+        == "total_referred"
+    )
+    assert (
+        svc._referrers_filter_default_sort("active_in_period")
+        == "new_in_period"
+    )
+    assert svc._referrers_filter_default_sort("top_by_balance") == "balance"
+    assert (
+        svc._referrers_filter_default_sort("top_by_earnings_period")
+        == "balance"
+    )
+    assert svc._referrers_filter_default_sort("all") is None
+
+
+@pytest.mark.asyncio
+async def test_sort_referrers_by_balance_and_creators(service) -> None:
+    """_sort_referrers sorts by balance and creators."""
+    referrers = [
+        {"user_id": "a", "balance": 10, "referred_creators": 1},
+        {"user_id": "b", "balance": 50, "referred_creators": 2},
+    ]
+    svc = service([])
+    desc = svc._sort_referrers(referrers, "balance", "desc")
+    assert desc[0]["user_id"] == "b"
+    asc_creators = svc._sort_referrers(referrers, "creators", "asc")
+    assert asc_creators[0]["user_id"] == "a"
+
+
+@pytest.mark.asyncio
+async def test_sort_referrers_unknown_key_returns_unchanged(service) -> None:
+    """_sort_referrers returns referrers unchanged for unknown sort key."""
+    referrers = [{"user_id": "a", "earned_in_period": 10}]
+    svc = service([])
+    result = svc._sort_referrers(referrers, "earned_in_period", "desc")
+    assert result == referrers
+
+
+@pytest.mark.asyncio
+async def test_apply_referrers_filter_top_by_earnings_period(service) -> None:
+    """Filter top_by_earnings_period keeps referrers with balance."""
+    referrers = [
+        {"user_id": "1", "balance": 20},
+        {"user_id": "2", "balance": 0},
+    ]
+    filtered = service([])._apply_referrers_filter(
+        referrers, "top_by_earnings_period"
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["user_id"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_list_creators_with_digit_search_hits_user_search_condition(
+    service,
+) -> None:
+    """list_creators with digit q uses _user_search_condition (external_id)."""
+    user = _make_user()
+    rows = [(user, "https://instagram.com/u", 0, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_creators(
+        "today", only_new=False, only_with_complaints=False, q="999"
+    )
+    assert result["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_orders_sort_picked_count(service) -> None:
+    """list_orders with sort=picked_count uses responses coalesce."""
+    order = _make_order()
+    rows = [(order, 2, 0, "Ad")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders(
+        "today", status_filter=None, sort="picked_count", order="desc"
+    )
+    assert result["items"][0]["picked_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_list_orders_sort_status_age_hours(service) -> None:
+    """list_orders with sort=status_age_hours uses completed_at/created_at."""
+    order = _make_order()
+    rows = [(order, 1, 0, "Ad")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders(
+        "today", status_filter=None, sort="status_age_hours", order="asc"
+    )
+    assert len(result["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_advertisers_sort_complaints(service) -> None:
+    """list_advertisers with sort=complaints uses complaints column."""
+    user = _make_user()
+    rows = [(user, "B", 5, 2, 1)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_advertisers(sort="complaints", order="desc")
+    assert result["items"][0]["complaints"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_advertisers_sort_orders_completed(service) -> None:
+    """list_advertisers with sort=orders_completed uses orders_completed."""
+    user = _make_user()
+    rows = [(user, "B", 10, 7, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_advertisers(sort="orders_completed", order="desc")
+    assert result["items"][0]["orders_completed"] == 7
+
+
+@pytest.mark.asyncio
+async def test_apply_referrers_filter_top_by_referred_returns_all(
+    service,
+) -> None:
+    """_apply_referrers_filter with top_by_referred returns all referrers."""
+    referrers = [{"user_id": "1", "total_referred": 5}]
+    result = service([])._apply_referrers_filter(referrers, "top_by_referred")
+    assert result == referrers
+
+
+@pytest.mark.asyncio
+async def test_apply_referrers_filter_unknown_returns_unchanged(
+    service,
+) -> None:
+    """Unknown referrers_filter returns referrers unchanged."""
+    referrers = [{"user_id": "1"}]
+    result = service([])._apply_referrers_filter(referrers, "unknown")
+    assert result == referrers
+
+
+@pytest.mark.asyncio
+async def test_list_creators_sort_responses(service) -> None:
+    """list_creators with sort=responses uses responses column."""
+    user = _make_user()
+    rows = [(user, "https://instagram.com/u", 10, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_creators(
+        "today", False, False, sort="responses", order="desc"
+    )
+    assert result["items"][0]["responses"] == 10
+
+
+@pytest.mark.asyncio
+async def test_list_creators_sort_complaints(service) -> None:
+    """list_creators with sort=complaints uses complaints column."""
+    user = _make_user()
+    rows = [(user, "url", 0, 3)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_creators(
+        "today", False, False, sort="complaints", order="desc"
+    )
+    assert result["items"][0]["complaints"] == 3
+
+
+@pytest.mark.asyncio
+async def test_list_creators_unknown_sort_uses_default(service) -> None:
+    """list_creators with unknown sort uses default order (created_at desc)."""
+    user = _make_user()
+    rows = [(user, "url", 0, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_creators(
+        "today", False, False, sort="unknown_sort", order="asc"
+    )
+    assert len(result["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_advertisers_sort_name(service) -> None:
+    """list_advertisers with sort=name uses brand/username."""
+    user = _make_user()
+    rows = [(user, "BrandName", 0, 0, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_advertisers(sort="name", order="asc")
+    assert result["items"][0]["name"] == "BrandName"
+
+
+@pytest.mark.asyncio
+async def test_list_advertisers_unknown_sort_uses_default(service) -> None:
+    """list_advertisers with unknown sort uses default order."""
+    user = _make_user()
+    rows = [(user, "B", 0, 0, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_advertisers(sort="unknown_sort")
+    assert len(result["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_orders_unknown_sort_uses_created_at(service) -> None:
+    """list_orders with unknown sort uses created_at order."""
+    order = _make_order()
+    rows = [(order, 0, 0, "Ad")]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders(
+        "today", status_filter=None, sort="unknown", order="asc"
+    )
+    assert len(result["items"]) == 1

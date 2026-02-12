@@ -1,5 +1,6 @@
 """Admin dashboard aggregation service."""
 
+import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
@@ -8,11 +9,13 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.domain.enums import (
     ComplaintStatus,
     OrderStatus,
+    PaymentStatus,
     PayoutRequestStatus,
     UserStatus,
 )
@@ -22,6 +25,7 @@ from ugc_bot.infrastructure.db.models import (
     ComplaintModel,
     OrderModel,
     OrderResponseModel,
+    PaymentModel,
     PayoutRequestModel,
     UserModel,
     UserReferralBindingModel,
@@ -113,6 +117,9 @@ class AdminDashboardService:
         period: PeriodKey,
         referrers_page: int = 1,
         referrers_per_page: int = 25,
+        referrers_sort: str | None = None,
+        referrers_order: str = "desc",
+        referrers_filter: str | None = None,
     ) -> dict:
         """Return dashboard cards and delayed orders list."""
         window = self._build_period_window(period)
@@ -120,10 +127,24 @@ class AdminDashboardService:
             registrations = await self._get_registration_cards(session, window)
             orders = await self._get_order_cards(session, window)
             open_complaints = await self._count_open_complaints(session)
+            open_complaints_list = await self._list_open_complaints(session)
             delayed_orders = await self._list_delayed_orders(session)
             referrers = await self._get_referral_referrers(session, window)
             payout_requests = await self._list_payout_requests(session)
+            turnover_period = await self._turnover_in_period(
+                session, window.current_start, window.current_end
+            )
         referral_data = await self._enrich_referrers_with_balance(referrers)
+        referral_data["referrers"] = self._apply_referrers_filter(
+            referral_data["referrers"],
+            referrers_filter,
+        )
+        referral_data["referrers"] = self._sort_referrers(
+            referral_data["referrers"],
+            referrers_sort
+            or self._referrers_filter_default_sort(referrers_filter),
+            referrers_order,
+        )
         total_referrers = len(referral_data["referrers"])
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
@@ -140,18 +161,204 @@ class AdminDashboardService:
         referral_data["referrers_page"] = page
         referral_data["referrers_per_page"] = per_page
         referral_data["referrers_total_pages"] = total_pages
+        referral_data["referrers_sort"] = (
+            referrers_sort
+            or self._referrers_filter_default_sort(referrers_filter)
+            or "balance"
+        )
+        referral_data["referrers_order"] = (
+            "asc" if referrers_order == "asc" else "desc"
+        )
+        referral_data["referrers_filter"] = referrers_filter or "all"
+        creators_count = registrations["creators"]["count"]
+        advertisers_count = registrations["advertisers"]["count"]
+        ratio = (
+            creators_count / advertisers_count
+            if advertisers_count
+            else (float(creators_count) if creators_count else 0.0)
+        )
         return {
             "period": period,
             "registrations": registrations,
+            "imbalance": {
+                "creators": creators_count,
+                "advertisers": advertisers_count,
+                "ratio": round(ratio, 2) if advertisers_count else None,
+                "label": (
+                    f"{creators_count} креаторов / "
+                    + (
+                        f"{advertisers_count} заказчиков"
+                        if advertisers_count
+                        else "0 заказчиков"
+                    )
+                ),
+            },
             "orders": orders,
             "problems": {
                 "open_complaints": open_complaints,
                 "delays": len(delayed_orders),
             },
             "delayed_orders": delayed_orders,
+            "open_complaints_list": open_complaints_list,
             "referrals": referral_data,
             "payout_requests": payout_requests,
+            "turnover_period": turnover_period,
         }
+
+    async def get_dashboard_charts(self, period: PeriodKey) -> dict:
+        """Return time-series data for dashboard charts (by day)."""
+        window = self._build_period_window(period)
+        async with self._session_factory() as session:
+            reg_creators = await self._chart_registrations_by_day(
+                session,
+                BloggerProfileModel,
+                window.current_start,
+                window.current_end,
+            )
+            reg_advertisers = await self._chart_registrations_by_day(
+                session,
+                AdvertiserProfileModel,
+                window.current_start,
+                window.current_end,
+            )
+            orders = await self._chart_orders_by_day(
+                session,
+                window.current_start,
+                window.current_end,
+            )
+            turnover = await self._chart_turnover_by_day(
+                session,
+                window.current_start,
+                window.current_end,
+            )
+        return {
+            "registrations_creators": reg_creators,
+            "registrations_advertisers": reg_advertisers,
+            "orders": orders,
+            "turnover": turnover,
+        }
+
+    async def _chart_registrations_by_day(
+        self,
+        session: AsyncSession,
+        profile_model: type[Any],
+        start: datetime,
+        end: datetime,
+    ) -> list[dict]:
+        """Count registrations by day (users with profile created in range)."""
+        day = func.date_trunc("day", UserModel.created_at)
+        query = (
+            select(
+                day.label("day"),
+                func.count(UserModel.user_id).label("count"),
+            )
+            .select_from(UserModel)
+            .join(profile_model, profile_model.user_id == UserModel.user_id)
+            .where(
+                and_(UserModel.created_at >= start, UserModel.created_at < end)
+            )
+            .group_by(day)
+            .order_by(day)
+        )
+        result = await session.execute(query)
+        rows = result.all()
+        return [
+            {
+                "date": row.day.strftime("%Y-%m-%d") if row.day else "",
+                "count": int(row[1]),
+            }
+            for row in rows
+        ]
+
+    async def _chart_orders_by_day(
+        self,
+        session: AsyncSession,
+        start: datetime,
+        end: datetime,
+    ) -> list[dict]:
+        """Count orders created by day."""
+        day = func.date_trunc("day", OrderModel.created_at)
+        query = (
+            select(
+                day.label("day"), func.count(OrderModel.order_id).label("count")
+            )
+            .select_from(OrderModel)
+            .where(
+                and_(
+                    OrderModel.created_at >= start,
+                    OrderModel.created_at < end,
+                )
+            )
+            .group_by(day)
+            .order_by(day)
+        )
+        result = await session.execute(query)
+        rows = result.all()
+        return [
+            {
+                "date": row.day.strftime("%Y-%m-%d") if row.day else "",
+                "count": int(row[1]),
+            }
+            for row in rows
+        ]
+
+    async def _turnover_in_period(
+        self,
+        session: AsyncSession,
+        start: datetime,
+        end: datetime,
+    ) -> float:
+        """Total turnover (sum of paid payments) in period."""
+        date_col = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
+        query = (
+            select(func.coalesce(func.sum(PaymentModel.amount), 0))
+            .select_from(PaymentModel)
+            .where(
+                and_(
+                    PaymentModel.status == PaymentStatus.PAID,
+                    date_col >= start,
+                    date_col < end,
+                )
+            )
+        )
+        result = await session.execute(query)
+        value = result.scalar()
+        return round(float(value or 0), 2)
+
+    async def _chart_turnover_by_day(
+        self,
+        session: AsyncSession,
+        start: datetime,
+        end: datetime,
+    ) -> list[dict]:
+        """Sum paid payment amounts by day (paid_at or created_at)."""
+        date_col = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
+        day = func.date_trunc("day", date_col)
+        query = (
+            select(
+                day.label("day"),
+                func.coalesce(func.sum(PaymentModel.amount), 0).label("amount"),
+            )
+            .select_from(PaymentModel)
+            .where(
+                and_(
+                    PaymentModel.status == PaymentStatus.PAID,
+                    date_col >= start,
+                    date_col < end,
+                )
+            )
+            .group_by(day)
+            .order_by(day)
+        )
+        result = await session.execute(query)
+        rows = result.all()
+        return [
+            {
+                "date": row.day.strftime("%Y-%m-%d") if row.day else "",
+                "amount": round(float(row.amount), 2),
+            }
+            for row in rows
+        ]
 
     async def list_creators(
         self,
@@ -160,14 +367,18 @@ class AdminDashboardService:
         only_with_complaints: bool,
         page: int = 1,
         per_page: int = 25,
+        q: str | None = None,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> dict:
         """Return paginated creator list with counts and filters."""
         window = self._build_period_window(period)
         page = max(1, page)
         per_page = max(1, min(100, per_page))
+        search_query = (q or "").strip() or None
         async with self._session_factory() as session:
             total = await self._count_creators(
-                session, window, only_new, only_with_complaints
+                session, window, only_new, only_with_complaints, search_query
             )
             items = await self._list_creators(
                 session,
@@ -176,17 +387,33 @@ class AdminDashboardService:
                 only_with_complaints,
                 limit=per_page,
                 offset=(page - 1) * per_page,
+                search_query=search_query,
+                sort_by=sort,
+                order_asc=order == "asc",
             )
         return _paginated(total, page, per_page, items)
 
-    async def list_advertisers(self, page: int = 1, per_page: int = 25) -> dict:
+    async def list_advertisers(
+        self,
+        page: int = 1,
+        per_page: int = 25,
+        q: str | None = None,
+        sort: str = "created_at",
+        order: str = "desc",
+    ) -> dict:
         """Return paginated advertiser list with order and complaint counts."""
         page = max(1, page)
         per_page = max(1, min(100, per_page))
+        search_query = (q or "").strip() or None
         async with self._session_factory() as session:
-            total = await self._count_advertisers(session)
+            total = await self._count_advertisers(session, search_query)
             items = await self._list_advertisers(
-                session, limit=per_page, offset=(page - 1) * per_page
+                session,
+                limit=per_page,
+                offset=(page - 1) * per_page,
+                search_query=search_query,
+                sort_by=sort,
+                order_asc=order == "asc",
             )
         return _paginated(total, page, per_page, items)
 
@@ -196,6 +423,8 @@ class AdminDashboardService:
         status_filter: str | None = None,
         page: int = 1,
         per_page: int = 25,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> dict:
         """Return paginated order list for the selected period."""
         window = self._build_period_window(period)
@@ -209,6 +438,8 @@ class AdminDashboardService:
                 status_filter,
                 limit=per_page,
                 offset=(page - 1) * per_page,
+                sort_by=sort,
+                order_asc=order == "asc",
             )
         return _paginated(total, page, per_page, items)
 
@@ -337,6 +568,57 @@ class AdminDashboardService:
         )
         result = await session.execute(query)
         return int(result.scalar() or 0)
+
+    async def _list_open_complaints(
+        self, session: AsyncSession, limit: int = 50
+    ) -> list[dict]:
+        """Return list of open complaints with reporter/reported names."""
+        Reporter = aliased(UserModel, name="reporter")
+        Reported = aliased(UserModel, name="reported")
+        query = (
+            select(
+                ComplaintModel.complaint_id,
+                ComplaintModel.order_id,
+                ComplaintModel.reason,
+                ComplaintModel.created_at,
+                ComplaintModel.status,
+                Reporter.username.label("reporter_username"),
+                Reporter.telegram.label("reporter_telegram"),
+                Reported.username.label("reported_username"),
+                Reported.telegram.label("reported_telegram"),
+            )
+            .select_from(ComplaintModel)
+            .join(Reporter, Reporter.user_id == ComplaintModel.reporter_id)
+            .join(Reported, Reported.user_id == ComplaintModel.reported_id)
+            .where(ComplaintModel.status.in_(_OPEN_COMPLAINT_STATUSES))
+            .order_by(ComplaintModel.created_at.desc())
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        rows = result.all()
+        status_labels = {
+            ComplaintStatus.PENDING: "На рассмотрении",
+            ComplaintStatus.REVIEWED: "Просмотрена",
+        }
+        return [
+            {
+                "complaint_id": str(row.complaint_id),
+                "order_id": str(row.order_id),
+                "reason": row.reason or "",
+                "created_at": row.created_at,
+                "status": row.status.value if row.status else "",
+                "status_label": status_labels.get(
+                    row.status, row.status.value if row.status else ""
+                ),
+                "reporter": row.reporter_telegram
+                or row.reporter_username
+                or "",
+                "reported": row.reported_telegram
+                or row.reported_username
+                or "",
+            }
+            for row in rows
+        ]
 
     async def _get_referral_referrers(
         self, session: AsyncSession, window: PeriodWindow
@@ -491,6 +773,42 @@ class AdminDashboardService:
         async with self._session_factory() as session:
             return await self._get_user_card(session, user_id)
 
+    async def search_users(self, query: str, limit: int = 20) -> list[dict]:
+        """Search users by username, telegram or external_id (exact)."""
+        if not query or not query.strip():
+            return []
+        q = query.strip()
+        async with self._session_factory() as session:
+            conditions: list[ColumnElement[bool]] = [
+                UserModel.username.ilike(f"%{q}%"),
+                UserModel.telegram.ilike(f"%{q}%"),
+            ]
+            with contextlib.suppress(ValueError, TypeError):
+                conditions.append(UserModel.user_id == UUID(q))  # type: ignore[arg-type]
+            if q.isdigit():
+                conditions.append(UserModel.external_id == q)  # type: ignore[arg-type]
+            stmt = (
+                select(
+                    UserModel.user_id,
+                    UserModel.username,
+                    UserModel.telegram,
+                    UserModel.external_id,
+                )
+                .where(or_(*conditions))
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            rows = result.all()
+            return [
+                {
+                    "user_id": str(row.user_id),
+                    "username": row.username or "",
+                    "telegram": row.telegram or "",
+                    "external_id": row.external_id or "",
+                }
+                for row in rows
+            ]
+
     async def _get_user_card(
         self, session: AsyncSession, user_id: UUID
     ) -> dict | None:
@@ -620,12 +938,84 @@ class AdminDashboardService:
             )
         return sorted(delayed, key=lambda row: row["created_at"])
 
+    def _apply_referrers_filter(
+        self,
+        referrers: list[dict],
+        filter_by: str | None,
+    ) -> list[dict]:
+        """Filter referrers by activity or earnings in period."""
+        if not referrers or not filter_by or filter_by == "all":
+            return referrers
+        if filter_by == "active_in_period":
+            return [r for r in referrers if (r.get("new_in_period") or 0) > 0]
+        if filter_by in ("top_by_earnings_period", "top_by_balance"):
+            return [r for r in referrers if (r.get("balance") or 0) > 0]
+        if filter_by == "top_by_referred":
+            return referrers
+        return referrers
+
+    def _referrers_filter_default_sort(
+        self, filter_by: str | None
+    ) -> str | None:
+        """Default sort key when a referrer filter is selected."""
+        if filter_by == "top_by_referred":
+            return "total_referred"
+        if filter_by == "active_in_period":
+            return "new_in_period"
+        if filter_by in ("top_by_earnings_period", "top_by_balance"):
+            return "balance"
+        return None
+
+    def _sort_referrers(
+        self,
+        referrers: list[dict],
+        sort_by: str | None,
+        order: str,
+    ) -> list[dict]:
+        """Sort referrers by given field (balance, total_referred, etc.)."""
+        if not referrers or not sort_by:
+            return referrers
+        key_map = {
+            "balance": lambda x: (
+                x.get("balance") is None,
+                x.get("balance") or 0,
+            ),
+            "total_referred": lambda x: x.get("total_referred", 0),
+            "creators": lambda x: x.get("referred_creators", 0),
+            "advertisers": lambda x: x.get("referred_advertisers", 0),
+            "new_in_period": lambda x: x.get("new_in_period", 0),
+        }
+        key_fn = key_map.get(sort_by)
+        if key_fn is None:
+            return referrers
+        reverse = order != "asc"
+        return sorted(
+            referrers,
+            key=lambda x: (key_fn(x), x.get("user_id", "")),
+            reverse=reverse,
+        )
+
+    def _user_search_condition(self, search_query: str | None):
+        """Return SQL condition for username/telegram/external_id search."""
+        if not search_query:
+            return None
+        conditions: list[ColumnElement[bool]] = [
+            UserModel.username.ilike(f"%{search_query}%"),
+            UserModel.telegram.ilike(f"%{search_query}%"),
+        ]
+        with contextlib.suppress(ValueError, TypeError):
+            conditions.append(UserModel.user_id == UUID(search_query))  # type: ignore[arg-type]
+        if search_query.isdigit():
+            conditions.append(UserModel.external_id == search_query)  # type: ignore[arg-type]
+        return or_(*conditions)
+
     async def _count_creators(
         self,
         session: AsyncSession,
         window: PeriodWindow,
         only_new: bool,
         only_with_complaints: bool,
+        search_query: str | None = None,
     ) -> int:
         """Count creators matching filters."""
         responses = (
@@ -663,6 +1053,9 @@ class AdminDashboardService:
             )
         if only_with_complaints:
             query = query.where(func.coalesce(complaints.c.complaints, 0) > 0)
+        search_cond = self._user_search_condition(search_query)
+        if search_cond is not None:
+            query = query.where(search_cond)
         result = await session.execute(query)
         return int(result.scalar() or 0)
 
@@ -674,6 +1067,9 @@ class AdminDashboardService:
         only_with_complaints: bool,
         limit: int = 25,
         offset: int = 0,
+        search_query: str | None = None,
+        sort_by: str = "created_at",
+        order_asc: bool = False,
     ) -> list[dict]:
         """List creators with response and complaint counts."""
         responses = (
@@ -715,7 +1111,18 @@ class AdminDashboardService:
             )
         if only_with_complaints:
             query = query.where(func.coalesce(complaints.c.complaints, 0) > 0)
-        query = query.order_by(UserModel.created_at.desc())
+        search_cond = self._user_search_condition(search_query)
+        if search_cond is not None:
+            query = query.where(search_cond)
+        order_column = self._creators_sort_column(
+            sort_by, responses, complaints
+        )
+        if order_column is not None:
+            query = query.order_by(
+                order_column.asc() if order_asc else order_column.desc()
+            )
+        else:
+            query = query.order_by(UserModel.created_at.desc())
         query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
@@ -732,7 +1139,23 @@ class AdminDashboardService:
             for user, instagram_url, responses_count, complaints_count in rows
         ]
 
-    async def _count_advertisers(self, session: AsyncSession) -> int:
+    def _creators_sort_column(self, sort_by: str, responses, complaints):
+        """Return sort column for creators list or None for default."""
+        if sort_by == "username":
+            return UserModel.username
+        if sort_by == "created_at":
+            return UserModel.created_at
+        if sort_by == "responses":
+            return func.coalesce(responses.c.responses, 0)
+        if sort_by == "complaints":
+            return func.coalesce(complaints.c.complaints, 0)
+        return None
+
+    async def _count_advertisers(
+        self,
+        session: AsyncSession,
+        search_query: str | None = None,
+    ) -> int:
         """Count advertisers with profile."""
         query = (
             select(func.count(UserModel.user_id))
@@ -742,14 +1165,36 @@ class AdminDashboardService:
                 AdvertiserProfileModel.user_id == UserModel.user_id,
             )
         )
+        search_cond = self._user_search_condition(search_query)
+        if search_cond is not None:
+            query = query.where(search_cond)
         result = await session.execute(query)
         return int(result.scalar() or 0)
+
+    def _advertisers_sort_column(self, sort_by: str, orders, complaints):
+        """Return sort column for advertisers list or None for default."""
+        if sort_by == "created_at":
+            return UserModel.created_at
+        if sort_by == "name":
+            return func.coalesce(
+                AdvertiserProfileModel.brand, UserModel.username
+            )
+        if sort_by == "orders_total":
+            return func.coalesce(orders.c.orders_total, 0)
+        if sort_by == "orders_completed":
+            return func.coalesce(orders.c.orders_completed, 0)
+        if sort_by == "complaints":
+            return func.coalesce(complaints.c.complaints, 0)
+        return None
 
     async def _list_advertisers(
         self,
         session: AsyncSession,
         limit: int = 25,
         offset: int = 0,
+        search_query: str | None = None,
+        sort_by: str = "created_at",
+        order_asc: bool = False,
     ) -> list[dict]:
         """List advertisers with order and complaint counts."""
         responses = self._order_responses_subquery()
@@ -796,7 +1241,18 @@ class AdminDashboardService:
             .outerjoin(orders, orders.c.advertiser_id == UserModel.user_id)
             .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
         )
-        query = query.order_by(UserModel.created_at.desc())
+        search_cond = self._user_search_condition(search_query)
+        if search_cond is not None:
+            query = query.where(search_cond)
+        order_column = self._advertisers_sort_column(
+            sort_by, orders, complaints
+        )
+        if order_column is not None:
+            query = query.order_by(
+                order_column.asc() if order_asc else order_column.desc()
+            )
+        else:
+            query = query.order_by(UserModel.created_at.desc())
         query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
@@ -859,6 +1315,8 @@ class AdminDashboardService:
         status_filter: str | None,
         limit: int = 25,
         offset: int = 0,
+        sort_by: str = "created_at",
+        order_asc: bool = False,
     ) -> list[dict]:
         """List orders with derived status labels and flags."""
         responses = self._order_responses_subquery()
@@ -896,7 +1354,23 @@ class AdminDashboardService:
         )
         if status_cond is not None:
             query = query.where(status_cond)
-        query = query.order_by(OrderModel.created_at.desc())
+        if sort_by == "picked_count":
+            order_col: Any = func.coalesce(responses.c.responses, 0)
+        elif sort_by == "advertiser":
+            order_col = func.coalesce(
+                AdvertiserProfileModel.brand, UserModel.username
+            )
+        elif sort_by == "status_age_hours":
+            order_col = func.coalesce(
+                OrderModel.completed_at, OrderModel.created_at
+            )
+        elif sort_by == "created_at":
+            order_col = OrderModel.created_at
+        else:
+            order_col = OrderModel.created_at
+        query = query.order_by(
+            order_col.asc() if order_asc else order_col.desc()
+        )
         query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()

@@ -16,6 +16,23 @@
   </section>
 
   <section class="section grid">
+    {% set imb = payload.imbalance | default({}) %}
+    <div class="card">
+      <h2>Баланс ролей (за период)</h2>
+      <div class="metric">
+        <div class="metric__label">{{ imb.label | default('—') }}</div>
+        <div class="metric__value">
+          {% if imb.ratio is defined and imb.ratio is not none %}
+            Соотношение: {{ imb.ratio }} креаторов на заказчика
+          {% else %}
+            —
+          {% endif %}
+        </div>
+        {% if imb.ratio is defined and imb.ratio is not none and imb.ratio > 2 %}
+          <div class="metric__delta negative">Перекос: мало заказчиков</div>
+        {% endif %}
+      </div>
+    </div>
     <div class="card">
       <h2>Регистрации</h2>
       <div class="metric">
@@ -60,6 +77,14 @@
       </div>
     </div>
 
+    {% set turnover_period = payload.turnover_period | default(none) %}
+    <div class="card">
+      <h2>Деньги за период</h2>
+      <div class="metric">
+        <div class="metric__label">Оборот (оплачено)</div>
+        <div class="metric__value">{% if turnover_period is not none %}{{ "%.2f"|format(turnover_period) }}{% else %}—{% endif %}</div>
+      </div>
+    </div>
     <div class="card">
       <h2>Проблемы</h2>
       <div class="metric">
@@ -76,8 +101,75 @@
   </section>
 
   <section class="section">
+    <h2>Динамика за период</h2>
+    <div id="charts-period" data-period="{{ period }}"></div>
+    <div class="charts-row">
+      <div class="chart-container"><canvas id="chart-registrations" width="400" height="200"></canvas></div>
+      <div class="chart-container"><canvas id="chart-orders" width="400" height="200"></canvas></div>
+      <div class="chart-container"><canvas id="chart-turnover" width="400" height="200"></canvas></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+      (function() {
+        var period = document.getElementById('charts-period').getAttribute('data-period') || '7d';
+        fetch('/admin/api/dashboard/charts?period=' + encodeURIComponent(period), { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var commonOpts = { responsive: true, maintainAspectRatio: true };
+            if (data.registrations_creators && data.registrations_creators.length) {
+              var dates = data.registrations_creators.map(function(x) { return x.date; });
+              var advMap = {};
+              (data.registrations_advertisers || []).forEach(function(x) { advMap[x.date] = x.count; });
+              var advData = dates.map(function(d) { return advMap[d] || 0; });
+              new Chart(document.getElementById('chart-registrations'), {
+                type: 'line',
+                data: {
+                  labels: dates,
+                  datasets: [
+                    { label: 'Креаторы', data: data.registrations_creators.map(function(x) { return x.count; }), borderColor: 'rgb(75, 192, 192)', tension: 0.1 },
+                    { label: 'Заказчики', data: advData, borderColor: 'rgb(255, 159, 64)', tension: 0.1 }
+                  ]
+                },
+                options: commonOpts
+              });
+            }
+            if (data.orders && data.orders.length) {
+              new Chart(document.getElementById('chart-orders'), {
+                type: 'bar',
+                data: {
+                  labels: data.orders.map(function(x) { return x.date; }),
+                  datasets: [{ label: 'Заказы', data: data.orders.map(function(x) { return x.count; }), backgroundColor: 'rgba(54, 162, 235, 0.5)' }]
+                },
+                options: commonOpts
+              });
+            }
+            if (data.turnover && data.turnover.length) {
+              new Chart(document.getElementById('chart-turnover'), {
+                type: 'bar',
+                data: {
+                  labels: data.turnover.map(function(x) { return x.date; }),
+                  datasets: [{ label: 'Оборот', data: data.turnover.map(function(x) { return x.amount; }), backgroundColor: 'rgba(153, 102, 255, 0.5)' }]
+                },
+                options: commonOpts
+              });
+            }
+          })
+          .catch(function() {});
+      })();
+    </script>
+  </section>
+
+  <section class="section">
     <h2>Рефералы (менеджеры)</h2>
     <p class="muted">Аналитика по привлечённым пользователям: кто из рефереров сколько привёл креаторов и заказчиков и сколько новых за выбранный период.</p>
+    {% set ref_filter = payload.referrals.referrers_filter | default('all') %}
+    <div class="filters">
+      <a class="chip {% if ref_filter == 'all' %}chip--active{% endif %}" href="/admin/dashboard?period={{ period }}&referrers_filter=all&referrers_per_page={{ payload.referrals.referrers_per_page | default(25) }}">Все</a>
+      <a class="chip {% if ref_filter == 'top_by_balance' %}chip--active{% endif %}" href="/admin/dashboard?period={{ period }}&referrers_filter=top_by_balance&referrers_per_page={{ payload.referrals.referrers_per_page | default(25) }}">Топ по балансу</a>
+      <a class="chip {% if ref_filter == 'top_by_referred' %}chip--active{% endif %}" href="/admin/dashboard?period={{ period }}&referrers_filter=top_by_referred&referrers_per_page={{ payload.referrals.referrers_per_page | default(25) }}">Топ по привлечённым</a>
+      <a class="chip {% if ref_filter == 'top_by_earnings_period' %}chip--active{% endif %}" href="/admin/dashboard?period={{ period }}&referrers_filter=top_by_earnings_period&referrers_per_page={{ payload.referrals.referrers_per_page | default(25) }}">С заработком за период</a>
+      <a class="chip {% if ref_filter == 'active_in_period' %}chip--active{% endif %}" href="/admin/dashboard?period={{ period }}&referrers_filter=active_in_period&referrers_per_page={{ payload.referrals.referrers_per_page | default(25) }}">С активностью за период</a>
+    </div>
     {% if payload.referrals.total_earned is not none or payload.referrals.total_balance is not none %}
       <div class="referral-totals">
         <div class="metric">
@@ -95,17 +187,19 @@
     {% set ref_page = payload.referrals.referrers_page | default(1) %}
     {% set ref_per_page = payload.referrals.referrers_per_page | default(25) %}
     {% set ref_total_pages = payload.referrals.referrers_total_pages | default(1) %}
+    {% set ref_sort = payload.referrals.referrers_sort | default('balance') %}
+    {% set ref_order = payload.referrals.referrers_order | default('desc') %}
     {% if referrers %}
       <table class="table">
         <thead>
           <tr>
             <th>Менеджер</th>
             <th>Код</th>
-            <th>Баланс (доступно к выводу)</th>
-            <th>Всего привлечено</th>
-            <th>Креаторы</th>
-            <th>Заказчики</th>
-            <th>Новых за период</th>
+            <th><a href="/admin/dashboard?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=balance&referrers_order={% if ref_sort == 'balance' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Баланс</a></th>
+            <th><a href="/admin/dashboard?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=total_referred&referrers_order={% if ref_sort == 'total_referred' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Всего привлечено</a></th>
+            <th><a href="/admin/dashboard?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=creators&referrers_order={% if ref_sort == 'creators' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Креаторы</a></th>
+            <th><a href="/admin/dashboard?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=advertisers&referrers_order={% if ref_sort == 'advertisers' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Заказчики</a></th>
+            <th><a href="/admin/dashboard?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=new_in_period&referrers_order={% if ref_sort == 'new_in_period' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Новых за период</a></th>
           </tr>
         </thead>
         <tbody>
@@ -129,11 +223,11 @@
           </span>
           <div class="pagination__links">
             {% if ref_page > 1 %}
-              <a class="pagination__link" href="/admin/dashboard?period={{ period }}&referrers_page={{ ref_page - 1 }}&referrers_per_page={{ ref_per_page }}">← Назад</a>
+              <a class="pagination__link" href="/admin/dashboard?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_page={{ ref_page - 1 }}&referrers_per_page={{ ref_per_page }}&referrers_sort={{ referrers_sort or ref_sort }}&referrers_order={{ referrers_order or ref_order }}">← Назад</a>
             {% endif %}
             <span class="pagination__current">Страница {{ ref_page }} из {{ ref_total_pages }}</span>
             {% if ref_page < ref_total_pages %}
-              <a class="pagination__link" href="/admin/dashboard?period={{ period }}&referrers_page={{ ref_page + 1 }}&referrers_per_page={{ ref_per_page }}">Вперёд →</a>
+              <a class="pagination__link" href="/admin/dashboard?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_page={{ ref_page + 1 }}&referrers_per_page={{ ref_per_page }}&referrers_sort={{ referrers_sort or ref_sort }}&referrers_order={{ referrers_order or ref_order }}">Вперёд →</a>
             {% endif %}
           </div>
         </nav>
@@ -178,7 +272,9 @@
   </section>
 
   <section class="section">
-    <h2>Требует внимания ({{ payload.problems.delays }})</h2>
+    <h2>Требует внимания (задержки: {{ payload.problems.delays }}, жалобы: {{ payload.problems.open_complaints }})</h2>
+
+    <h3>Задержки</h3>
     {% if payload.delayed_orders %}
       <table class="table">
         <thead>
@@ -212,6 +308,44 @@
       </table>
     {% else %}
       <div class="empty">Задержек нет.</div>
+    {% endif %}
+
+    <h3>Жалобы</h3>
+    {% set open_complaints_list = payload.open_complaints_list | default([]) %}
+    {% if open_complaints_list %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Заказ</th>
+            <th>Заявитель</th>
+            <th>Ответчик</th>
+            <th>Причина</th>
+            <th>Дата</th>
+            <th>Статус</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in open_complaints_list %}
+            <tr>
+              <td>
+                <a href="/admin/orders/{{ c.order_id }}">{{ c.order_id }}</a>
+              </td>
+              <td>{{ c.reporter }}</td>
+              <td>{{ c.reported }}</td>
+              <td>{{ c.reason[:80] }}{% if c.reason|length > 80 %}…{% endif %}</td>
+              <td>{{ c.created_at }}</td>
+              <td>{{ c.status_label }}</td>
+              <td>
+                <a href="/admin/orders/{{ c.order_id }}">Заказ</a>
+                <a href="/admin/complaint-model/edit/{{ c.complaint_id }}">Редактировать</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Открытых жалоб нет.</div>
     {% endif %}
   </section>
 {% endblock %}

@@ -3,6 +3,11 @@
 {% block content %}
   <section class="section">
     <h1>Заказчики</h1>
+    <form class="filters filters--search" action="/admin/users/advertisers" method="get">
+      <input type="hidden" name="per_page" value="{{ per_page }}" />
+      <input type="search" name="q" placeholder="Ник / Telegram ID" value="{{ search_query | default('') }}" />
+      <button type="submit">Искать</button>
+    </form>
   </section>
 
   <section class="section">
@@ -10,11 +15,11 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>Имя / компания</th>
-          <th>Дата регистрации</th>
-          <th>Заказов создано</th>
-          <th>Заказов завершено</th>
-          <th>Жалоб</th>
+          <th><a href="/admin/users/advertisers?sort=name&order={% if sort == 'name' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Имя / компания</a></th>
+          <th><a href="/admin/users/advertisers?sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
+          <th><a href="/admin/users/advertisers?sort=orders_total&order={% if sort == 'orders_total' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов создано</a></th>
+          <th><a href="/admin/users/advertisers?sort=orders_completed&order={% if sort == 'orders_completed' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов завершено</a></th>
+          <th><a href="/admin/users/advertisers?sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
         </tr>
       </thead>
       <tbody>
@@ -40,11 +45,11 @@
         </span>
         <div class="pagination__links">
           {% if page > 1 %}
-            <a class="pagination__link" href="/admin/users/advertisers?page={{ page - 1 }}&per_page={{ per_page }}">← Назад</a>
+            <a class="pagination__link" href="/admin/users/advertisers?page={{ page - 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">← Назад</a>
           {% endif %}
           <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
           {% if page < total_pages %}
-            <a class="pagination__link" href="/admin/users/advertisers?page={{ page + 1 }}&per_page={{ per_page }}">Вперёд →</a>
+            <a class="pagination__link" href="/admin/users/advertisers?page={{ page + 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">Вперёд →</a>
           {% endif %}
         </div>
       </nav>

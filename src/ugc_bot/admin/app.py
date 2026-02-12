@@ -169,6 +169,9 @@ def _register_dashboard_routes(  # noqa: C901
         period: str = "today",
         referrers_page: int = 1,
         referrers_per_page: int = 25,
+        referrers_sort: str = "",
+        referrers_order: str = "desc",
+        referrers_filter: str = "all",
     ):
         """Render dashboard page with KPI cards."""
         if not await auth.authenticate(request):
@@ -178,6 +181,9 @@ def _register_dashboard_routes(  # noqa: C901
             period_key,
             referrers_page=referrers_page,
             referrers_per_page=referrers_per_page,
+            referrers_sort=referrers_sort or None,
+            referrers_order=referrers_order,
+            referrers_filter=referrers_filter or None,
         )
         return templates.TemplateResponse(
             request,
@@ -189,6 +195,9 @@ def _register_dashboard_routes(  # noqa: C901
                 "period_labels": _PERIOD_LABELS,
                 "status_labels": _STATUS_LABELS,
                 "delay_reason_labels": _DELAY_REASON_LABELS,
+                "referrers_sort": referrers_sort,
+                "referrers_order": referrers_order,
+                "referrers_filter": referrers_filter,
             },
         )
 
@@ -200,6 +209,9 @@ def _register_dashboard_routes(  # noqa: C901
         with_complaints: bool = False,
         page: int = 1,
         per_page: int = 25,
+        q: str = "",
+        sort: str = "created_at",
+        order: str = "desc",
     ):
         """Render creator list page."""
         if not await auth.authenticate(request):
@@ -211,6 +223,9 @@ def _register_dashboard_routes(  # noqa: C901
             only_with_complaints=with_complaints,
             page=page,
             per_page=per_page,
+            q=q or None,
+            sort=sort,
+            order=order,
         )
         return templates.TemplateResponse(
             request,
@@ -227,6 +242,9 @@ def _register_dashboard_routes(  # noqa: C901
                 "user_status_labels": _USER_STATUS_LABELS,
                 "only_new": only_new,
                 "with_complaints": with_complaints,
+                "search_query": q,
+                "sort": sort,
+                "order": order,
             },
         )
 
@@ -235,12 +253,19 @@ def _register_dashboard_routes(  # noqa: C901
         request: Request,
         page: int = 1,
         per_page: int = 25,
+        q: str = "",
+        sort: str = "created_at",
+        order: str = "desc",
     ):
         """Render advertiser list page."""
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
         result = await dashboard_service.list_advertisers(
-            page=page, per_page=per_page
+            page=page,
+            per_page=per_page,
+            q=q or None,
+            sort=sort,
+            order=order,
         )
         return templates.TemplateResponse(
             request,
@@ -251,6 +276,9 @@ def _register_dashboard_routes(  # noqa: C901
                 "page": result["page"],
                 "per_page": result["per_page"],
                 "total_pages": result["total_pages"],
+                "search_query": q,
+                "sort": sort,
+                "order": order,
             },
         )
 
@@ -261,6 +289,8 @@ def _register_dashboard_routes(  # noqa: C901
         status: str | None = None,
         page: int = 1,
         per_page: int = 25,
+        sort: str = "created_at",
+        order: str = "desc",
     ):
         """Render order list page."""
         if not await auth.authenticate(request):
@@ -271,6 +301,8 @@ def _register_dashboard_routes(  # noqa: C901
             status_filter=status,
             page=page,
             per_page=per_page,
+            sort=sort,
+            order=order,
         )
         return templates.TemplateResponse(
             request,
@@ -286,6 +318,8 @@ def _register_dashboard_routes(  # noqa: C901
                 "period_labels": _PERIOD_LABELS,
                 "status_filter": status,
                 "status_labels": _STATUS_LABELS,
+                "sort": sort,
+                "order": order,
             },
         )
 
@@ -332,6 +366,14 @@ def _register_dashboard_routes(  # noqa: C901
         return await dashboard_service.get_dashboard(period_key)
 
     @app.get(
+        "/admin/api/dashboard/charts", dependencies=[Depends(_require_admin)]
+    )
+    async def dashboard_charts_api(period: str = "7d") -> dict:
+        """Return chart time-series data as JSON."""
+        period_key = _normalize_period(period)
+        return await dashboard_service.get_dashboard_charts(period_key)
+
+    @app.get(
         "/admin/api/users/creators", dependencies=[Depends(_require_admin)]
     )
     async def creators_api(
@@ -340,6 +382,9 @@ def _register_dashboard_routes(  # noqa: C901
         with_complaints: bool = False,
         page: int = 1,
         per_page: int = 25,
+        q: str = "",
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> dict:
         """Return creator list as JSON with pagination."""
         period_key = _normalize_period(period)
@@ -349,15 +394,28 @@ def _register_dashboard_routes(  # noqa: C901
             only_with_complaints=with_complaints,
             page=page,
             per_page=per_page,
+            q=q or None,
+            sort=sort,
+            order=order,
         )
 
     @app.get(
         "/admin/api/users/advertisers", dependencies=[Depends(_require_admin)]
     )
-    async def advertisers_api(page: int = 1, per_page: int = 25) -> dict:
+    async def advertisers_api(
+        page: int = 1,
+        per_page: int = 25,
+        q: str = "",
+        sort: str = "created_at",
+        order: str = "desc",
+    ) -> dict:
         """Return advertiser list as JSON with pagination."""
         return await dashboard_service.list_advertisers(
-            page=page, per_page=per_page
+            page=page,
+            per_page=per_page,
+            q=q or None,
+            sort=sort,
+            order=order,
         )
 
     @app.get("/admin/api/orders", dependencies=[Depends(_require_admin)])
@@ -366,6 +424,8 @@ def _register_dashboard_routes(  # noqa: C901
         status: str | None = None,
         page: int = 1,
         per_page: int = 25,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> dict:
         """Return order list as JSON with pagination."""
         period_key = _normalize_period(period)
@@ -374,6 +434,8 @@ def _register_dashboard_routes(  # noqa: C901
             status_filter=status,
             page=page,
             per_page=per_page,
+            sort=sort,
+            order=order,
         )
 
     @app.get(
@@ -385,6 +447,27 @@ def _register_dashboard_routes(  # noqa: C901
         if order is None:
             raise HTTPException(status_code=404, detail="Заказ не найден")
         return order
+
+    @app.get("/admin/search", response_class=HTMLResponse)
+    async def admin_search(
+        request: Request,
+        q: str = "",
+    ):
+        """Search users by nickname or Telegram ID; render results page."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        users = await dashboard_service.search_users(q, limit=50)
+        return templates.TemplateResponse(
+            request,
+            "search.html",
+            {"query": q, "users": users},
+        )
+
+    @app.get("/admin/api/search", dependencies=[Depends(_require_admin)])
+    async def search_api(q: str = "") -> dict:
+        """Return search results as JSON."""
+        users = await dashboard_service.search_users(q, limit=20)
+        return {"query": q, "users": users}
 
 
 async def _get_obj_by_pk(

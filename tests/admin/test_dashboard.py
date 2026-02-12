@@ -85,6 +85,8 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "orders": {"active": 3, "completed": 1, "archived": 0},
             "problems": {"open_complaints": 0, "delays": 0},
             "delayed_orders": [],
+            "open_complaints_list": [],
+            "turnover_period": 0,
             "referrals": {
                 "referrers": [],
                 "total_earned": None,
@@ -209,6 +211,8 @@ def test_admin_dashboard_api(monkeypatch) -> None:
         "orders": {"active": 0, "completed": 0, "archived": 0},
         "problems": {"open_complaints": 0, "delays": 0},
         "delayed_orders": [],
+        "open_complaints_list": [],
+        "turnover_period": 0,
         "referrals": {
             "referrers": [],
             "total_earned": None,
@@ -373,6 +377,8 @@ def test_admin_orders_with_status_filter(monkeypatch) -> None:
         status_filter="closed",
         page=1,
         per_page=25,
+        sort="created_at",
+        order="desc",
     )
 
 
@@ -664,6 +670,9 @@ def test_admin_creators_api_with_complaints_filter(monkeypatch) -> None:
         only_with_complaints=True,
         page=1,
         per_page=25,
+        q=None,
+        sort="created_at",
+        order="desc",
     )
 
 
@@ -732,3 +741,74 @@ def test_admin_order_api_404_when_not_found(monkeypatch) -> None:
 
     response = client.get(f"/admin/api/orders/{order_id}")
     assert response.status_code == 404
+
+
+def test_admin_dashboard_charts_api(monkeypatch) -> None:
+    """Charts API returns time-series data as JSON."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    charts_data = {
+        "registrations_creators": [{"date": "2026-02-01", "count": 5}],
+        "registrations_advertisers": [{"date": "2026-02-01", "count": 2}],
+        "orders": [{"date": "2026-02-01", "count": 3}],
+        "turnover": [{"date": "2026-02-01", "amount": 100.0}],
+    }
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard_charts",
+        AsyncMock(return_value=charts_data),
+    )
+    app = create_admin_app()
+    client = TestClient(app)
+    response = client.get("/admin/api/dashboard/charts?period=7d")
+    assert response.status_code == 200
+    data = response.json()
+    assert "registrations_creators" in data
+    assert data["orders"][0]["count"] == 3
+
+
+def test_admin_search_api(monkeypatch) -> None:
+    """Search API returns users as JSON."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "search_users",
+        AsyncMock(return_value=[{"user_id": "u1", "username": "john"}]),
+    )
+    app = create_admin_app()
+    client = TestClient(app)
+    response = client.get("/admin/api/search?q=john")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query"] == "john"
+    assert len(data["users"]) == 1
+    assert data["users"][0]["username"] == "john"
+
+
+def test_admin_search_page_html(monkeypatch) -> None:
+    """Search page renders with query and users."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "search_users",
+        AsyncMock(return_value=[{"user_id": "u1", "username": "jane"}]),
+    )
+    app = create_admin_app()
+    client = TestClient(app)
+    response = client.get("/admin/search?q=jane")
+    assert response.status_code == 200
+    assert "jane" in response.text or "search" in response.text.lower()

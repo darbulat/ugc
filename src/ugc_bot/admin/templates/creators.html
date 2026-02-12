@@ -3,12 +3,20 @@
 {% block content %}
   <section class="section">
     <h1>Креаторы</h1>
+    <form class="filters filters--search" action="/admin/users/creators" method="get">
+      <input type="hidden" name="period" value="{{ period }}" />
+      <input type="hidden" name="only_new" value="{{ 'true' if only_new else 'false' }}" />
+      <input type="hidden" name="with_complaints" value="{{ 'true' if with_complaints else 'false' }}" />
+      <input type="hidden" name="per_page" value="{{ per_page }}" />
+      <input type="search" name="q" placeholder="Ник / Telegram ID" value="{{ search_query | default('') }}" />
+      <button type="submit">Искать</button>
+    </form>
     <div class="filters">
       <div class="periods">
         {% for p in periods %}
           <a
             class="chip {% if p == period %}chip--active{% endif %}"
-            href="/admin/users/creators?period={{ p }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&per_page={{ per_page }}"
+            href="/admin/users/creators?period={{ p }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}"
           >
             {{ period_labels.get(p, p) }}
           </a>
@@ -17,13 +25,13 @@
       <div class="toggles">
         <a
           class="chip {% if only_new %}chip--active{% endif %}"
-          href="/admin/users/creators?period={{ period }}&only_new={{ 'false' if only_new else 'true' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&per_page={{ per_page }}"
+          href="/admin/users/creators?period={{ period }}&only_new={{ 'false' if only_new else 'true' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}"
         >
           Новые
         </a>
         <a
           class="chip {% if with_complaints %}chip--active{% endif %}"
-          href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'false' if with_complaints else 'true' }}&per_page={{ per_page }}"
+          href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'false' if with_complaints else 'true' }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}"
         >
           С жалобами
         </a>
@@ -36,10 +44,10 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>Ник / Instagram</th>
-          <th>Дата регистрации</th>
-          <th>Откликов</th>
-          <th>Жалоб</th>
+          <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=username&order={% if sort == 'username' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Ник / Instagram</a></th>
+          <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
+          <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=responses&order={% if sort == 'responses' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Откликов</a></th>
+          <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
           <th>Статус</th>
         </tr>
       </thead>
@@ -66,11 +74,11 @@
         </span>
         <div class="pagination__links">
           {% if page > 1 %}
-            <a class="pagination__link" href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&page={{ page - 1 }}&per_page={{ per_page }}">← Назад</a>
+            <a class="pagination__link" href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&page={{ page - 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">← Назад</a>
           {% endif %}
           <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
           {% if page < total_pages %}
-            <a class="pagination__link" href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&page={{ page + 1 }}&per_page={{ per_page }}">Вперёд →</a>
+            <a class="pagination__link" href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&page={{ page + 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">Вперёд →</a>
           {% endif %}
         </div>
       </nav>

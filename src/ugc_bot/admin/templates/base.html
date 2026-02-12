@@ -16,6 +16,10 @@
         <a href="/admin/users/creators">Креаторы</a>
         <a href="/admin/users/advertisers">Заказчики</a>
         <a href="/admin/orders">Заказы</a>
+        <form class="nav__search" action="/admin/search" method="get" role="search">
+          <input type="search" name="q" placeholder="Ник / Telegram ID" value="{{ request.query_params.get('q', '') }}" />
+          <button type="submit">Найти</button>
+        </form>
       </div>
     </nav>
     <main class="container">{% block content %}{% endblock %}</main>

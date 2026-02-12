@@ -8,7 +8,7 @@
         {% for p in periods %}
           <a
             class="chip {% if p == period %}chip--active{% endif %}"
-            href="/admin/orders?period={{ p }}{% if status_filter %}&status={{ status_filter }}{% endif %}&per_page={{ per_page }}"
+            href="/admin/orders?period={{ p }}{% if status_filter %}&status={{ status_filter }}{% endif %}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
           >
             {{ period_labels.get(p, p) }}
           </a>
@@ -18,14 +18,14 @@
         {% for key, label in status_labels.items() %}
           <a
             class="chip {% if status_filter == key %}chip--active{% endif %}"
-            href="/admin/orders?period={{ period }}&status={{ key }}&per_page={{ per_page }}"
+            href="/admin/orders?period={{ period }}&status={{ key }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
           >
             {{ label }}
           </a>
         {% endfor %}
         <a
           class="chip {% if not status_filter %}chip--active{% endif %}"
-          href="/admin/orders?period={{ period }}&per_page={{ per_page }}"
+          href="/admin/orders?period={{ period }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
         >
           Все
         </a>
@@ -38,11 +38,11 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>Заказчик</th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=advertiser&order={% if sort == 'advertiser' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Заказчик</a></th>
           <th>Статус</th>
-          <th>Подобрано</th>
-          <th>Дата создания</th>
-          <th>Время в статусе (ч)</th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=picked_count&order={% if sort == 'picked_count' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Подобрано</a></th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Дата создания</a></th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=status_age_hours&order={% if sort == 'status_age_hours' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Время в статусе (ч)</a></th>
           <th>Проблема</th>
         </tr>
       </thead>
@@ -76,11 +76,11 @@
         </span>
         <div class="pagination__links">
           {% if page > 1 %}
-            <a class="pagination__link" href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ page - 1 }}&per_page={{ per_page }}">← Назад</a>
+            <a class="pagination__link" href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ page - 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}">← Назад</a>
           {% endif %}
           <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
           {% if page < total_pages %}
-            <a class="pagination__link" href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ page + 1 }}&per_page={{ per_page }}">Вперёд →</a>
+            <a class="pagination__link" href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ page + 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}">Вперёд →</a>
           {% endif %}
         </div>
       </nav>
