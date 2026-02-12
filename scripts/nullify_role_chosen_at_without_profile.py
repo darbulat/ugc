@@ -43,7 +43,7 @@ async def run(dry_run: bool) -> int:
                 UserModel.role_chosen_at.isnot(None)
             )
         )
-        user_ids = [row[0] for row in result.scalars().all()]
+        user_ids = list(result.scalars().all())
 
     if not user_ids:
         print("No users with role_chosen_at set.")
