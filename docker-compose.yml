@@ -377,6 +377,10 @@ services:
       DATA_SOURCE_USER: ${POSTGRES_USER:-ugc}
       DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:-ugc}
     env_file: .env
+    volumes:
+      - ./config/postgres/postgres_exporter.yml:/etc/postgres_exporter/postgres_exporter.yml:ro
+    command:
+      - --config.file=/etc/postgres_exporter/postgres_exporter.yml
     expose:
       - "9187"
     depends_on:

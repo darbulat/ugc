@@ -1,0 +1,3 @@
+# Optional config for postgres_exporter. Connection uses DATA_SOURCE_* env vars.
+# Empty auth_modules; no custom queries. Suppresses "no such file or directory" warning.
+auth_modules: {}
