@@ -869,6 +869,13 @@ class AdminDashboardService:
                 "instagram_url": blogger.instagram_url,
                 "confirmed": blogger.confirmed,
                 "city": blogger.city,
+                "blogger_gender": getattr(
+                    blogger.blogger_gender,
+                    "value",
+                    str(blogger.blogger_gender),
+                )
+                if getattr(blogger, "blogger_gender", None)
+                else "",
                 "topics": blogger.topics,
                 "audience_gender": getattr(
                     blogger.audience_gender,

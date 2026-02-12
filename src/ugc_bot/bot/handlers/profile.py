@@ -54,6 +54,7 @@ from ugc_bot.bot.validators import (
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     MessengerType,
     UserStatus,
     WorkFormat,
@@ -72,6 +73,11 @@ _AUDIENCE_GENDER_LABELS: dict[AudienceGender, str] = {
     AudienceGender.MALE: "Мужчины",
     AudienceGender.FEMALE: "Женщины",
     AudienceGender.ALL: "Все",
+}
+
+_BLOGGER_GENDER_LABELS: dict[BloggerGender, str] = {
+    BloggerGender.MALE: "Мужской",
+    BloggerGender.FEMALE: "Женский",
 }
 
 _ROLE_LABELS: dict[str, str] = {
@@ -120,6 +126,11 @@ def _format_profile_text(
         gender_label = _AUDIENCE_GENDER_LABELS.get(
             blogger.audience_gender, blogger.audience_gender.value
         )
+        blogger_gender_label = "—"
+        if blogger.blogger_gender is not None:
+            blogger_gender_label = _BLOGGER_GENDER_LABELS.get(
+                blogger.blogger_gender, blogger.blogger_gender.value
+            )
         lines.extend(
             [
                 "",
@@ -127,6 +138,7 @@ def _format_profile_text(
                 f"   Instagram: {blogger.instagram_url}",
                 f"   Подтверждён: {confirmed}",
                 f"   Город: {blogger.city}",
+                f"   Пол: {blogger_gender_label}",
                 f"   Тематики: {topics}",
                 f"   Целевая аудитория: {gender_label}, "
                 f"{blogger.audience_age_min}–{blogger.audience_age_max} лет",
@@ -167,6 +179,7 @@ _EDIT_FIELDS = [
     ("Имя", "nickname"),
     ("Instagram", "instagram_url"),
     ("Город", "city"),
+    ("Пол", "blogger_gender"),
     ("Тематики", "topics"),
     ("Пол аудитории", "audience_gender"),
     ("Возраст аудитории", "audience_age"),
@@ -404,6 +417,25 @@ async def _blog_update_topics(
     )
 
 
+async def _blog_update_blogger_gender(
+    text: str,
+    user_id: UUID,
+    message: MessageContext,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update blogger_gender. Returns profile or None."""
+    if text == "Мужской":
+        blogger_gender = BloggerGender.MALE
+    elif text == "Женский":
+        blogger_gender = BloggerGender.FEMALE
+    else:
+        await message.answer("Выберите одну из кнопок: Мужской или Женский.")
+        return None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, blogger_gender=blogger_gender
+    )
+
+
 async def _blog_update_audience_gender(
     text: str,
     user_id: UUID,
@@ -559,6 +591,7 @@ async def _update_blogger_field(
     updaters = {
         "instagram_url": _blog_update_instagram,
         "city": _blog_update_city,
+        "blogger_gender": _blog_update_blogger_gender,
         "topics": _blog_update_topics,
         "audience_gender": _blog_update_audience_gender,
         "audience_age": _blog_update_audience_age,
@@ -839,6 +872,7 @@ async def edit_profile_choose_field(
         "nickname": "Введите новое имя:",
         "instagram_url": "Прикрепите ссылку instagram.com/name:",
         "city": "Из какого вы города?",
+        "blogger_gender": "Укажите ваш пол:",
         "topics": "Напишите 1–3 тематики через запятую:",
         "audience_gender": "Кто в основном смотрит ваш контент?",
         "audience_age": "Основной возраст вашей аудитории?",
@@ -866,6 +900,16 @@ async def edit_profile_choose_field(
                     [Button(text="👩 В основном женщины")],
                     [Button(text="👨 В основном мужчины")],
                     [Button(text="👥 Примерно поровну")],
+                ],
+            ),
+        )
+    elif field_key == "blogger_gender":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=flow_keyboard(
+                keyboard=[
+                    [Button(text="Мужской")],
+                    [Button(text="Женский")],
                 ],
             ),
         )

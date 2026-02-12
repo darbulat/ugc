@@ -26,6 +26,7 @@ from ugc_bot.bot.handlers.blogger_registration import (
     handle_age,
     handle_agreements,
     handle_barter,
+    handle_blogger_gender,
     handle_city,
     handle_gender,
     handle_geo,
@@ -47,6 +48,7 @@ from ugc_bot.bot.handlers.keyboards import (
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     MessengerType,
     UserStatus,
     WorkFormat,
@@ -331,6 +333,7 @@ async def test_handle_agreements_creates_profile(
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
 
     await handle_agreements(
@@ -408,6 +411,7 @@ async def test_handle_instagram_duplicate_url(user_repo, blogger_repo) -> None:
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
+        blogger_gender=BloggerGender.MALE,
     )
     await blogger_repo.save(existing_profile)
 
@@ -457,6 +461,7 @@ async def test_handle_agreements_shows_verification_button(
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
 
     await handle_agreements(
@@ -510,19 +515,59 @@ async def test_handle_city_empty_rejects(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_valid_stores_and_asks_topics() -> None:
-    """handle_city stores city and asks for topics."""
+async def test_handle_city_valid_stores_and_asks_blogger_gender() -> None:
+    """handle_city stores city and asks for blogger gender."""
     state = FakeFSMContext()
     message = FakeMessage(text="Москва", user=FakeUser(1, "u", "U"))
 
     await handle_city(message, state)
 
     assert state._data["city"] == "Москва"
+    assert state.state == BloggerRegistrationStates.blogger_gender
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "пол" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_blogger_gender_valid_stores_and_asks_topics() -> None:
+    """handle_blogger_gender stores gender and asks for topics."""
+    state = FakeFSMContext()
+    message = FakeMessage(text="Мужской", user=FakeUser(1, "u", "U"))
+
+    await handle_blogger_gender(message, state)
+
+    assert state._data["blogger_gender"] == BloggerGender.MALE
     assert state.state == BloggerRegistrationStates.topics
     assert message.answers
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
     assert "контент" in text.lower() or "тематик" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_blogger_gender_female_stores() -> None:
+    """handle_blogger_gender stores FEMALE."""
+    state = FakeFSMContext()
+    message = FakeMessage(text="Женский", user=FakeUser(1, "u", "U"))
+
+    await handle_blogger_gender(message, state)
+
+    assert state._data["blogger_gender"] == BloggerGender.FEMALE
+
+
+@pytest.mark.asyncio
+async def test_handle_blogger_gender_invalid_rejects() -> None:
+    """handle_blogger_gender rejects invalid input."""
+    state = FakeFSMContext()
+    message = FakeMessage(text="Другое", user=FakeUser(1, "u", "U"))
+
+    await handle_blogger_gender(message, state)
+
+    assert "blogger_gender" not in state._data
+    assert message.answers
+    assert "Выберите" in message.answers[0] or "кнопок" in message.answers[0]
 
 
 @pytest.mark.asyncio
@@ -922,6 +967,7 @@ async def test_handle_agreements_from_user_none(
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
 
     await handle_agreements(
@@ -968,6 +1014,7 @@ async def test_handle_agreements_unique_violation(
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
 
     with patch.object(

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     ComplaintStatus,
     InteractionStatus,
     MessengerType,
@@ -41,6 +42,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     MessengerType: "messenger_type",
     UserStatus: "user_status",
     AudienceGender: "audience_gender",
+    BloggerGender: "blogger_gender",
     OrderStatus: "order_status",
     OrderType: "order_type",
     InteractionStatus: "interaction_status",
@@ -150,6 +152,9 @@ class BloggerProfileModel(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    blogger_gender: Mapped[Optional[BloggerGender]] = mapped_column(
+        _enum_column(BloggerGender), nullable=True
     )
 
 

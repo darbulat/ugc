@@ -8,6 +8,7 @@ from uuid import UUID
 
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     ComplaintStatus,
     InteractionStatus,
     MessengerType,
@@ -58,6 +59,7 @@ class BloggerProfile:
     work_format: WorkFormat
     updated_at: datetime
     wanted_to_change_terms_count: int = 0
+    blogger_gender: Optional[BloggerGender] = None
 
 
 @dataclass(frozen=True)

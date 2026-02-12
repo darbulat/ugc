@@ -7,6 +7,7 @@ from uuid import UUID
 from ugc_bot.domain.entities import BloggerProfile, Order, User
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     MessengerType,
     OrderStatus,
     OrderType,
@@ -78,6 +79,7 @@ def test_blogger_profile_mapping_roundtrip() -> None:
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
+        blogger_gender=BloggerGender.MALE,
     )
 
     model = _to_blogger_profile_model(profile)
@@ -85,6 +87,7 @@ def test_blogger_profile_mapping_roundtrip() -> None:
 
     assert entity.instagram_url == profile.instagram_url
     assert entity.audience_gender == profile.audience_gender
+    assert entity.blogger_gender == profile.blogger_gender
     assert entity.price == profile.price
 
 

@@ -28,6 +28,13 @@ class AudienceGender(StrEnum):
     ALL = "all"
 
 
+class BloggerGender(StrEnum):
+    """Blogger's own gender."""
+
+    MALE = "m"
+    FEMALE = "f"
+
+
 class WorkFormat(StrEnum):
     """Creator work format with brands."""
 

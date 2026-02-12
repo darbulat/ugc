@@ -15,6 +15,7 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     MessengerType,
     UserStatus,
     WorkFormat,
@@ -65,6 +66,7 @@ async def test_register_blogger_success() -> None:
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
 
     assert profile.user_id == user_id
@@ -138,6 +140,7 @@ async def test_register_blogger_duplicate_instagram_url() -> None:
             price=2000.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
     assert "уже зарегистрирован" in str(exc_info.value)
@@ -168,6 +171,7 @@ async def test_register_blogger_empty_instagram() -> None:
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
 
@@ -193,6 +197,7 @@ async def test_register_blogger_missing_user() -> None:
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
 
@@ -221,6 +226,7 @@ async def test_register_blogger_invalid_age() -> None:
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
 
@@ -249,6 +255,7 @@ async def test_register_blogger_invalid_geo_and_price() -> None:
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
     with pytest.raises(BloggerRegistrationError):
@@ -264,6 +271,7 @@ async def test_register_blogger_invalid_geo_and_price() -> None:
             price=0.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
 
@@ -292,6 +300,7 @@ async def test_register_blogger_non_positive_age_is_rejected() -> None:
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
 
@@ -324,6 +333,7 @@ async def test_register_blogger_records_metrics_when_enabled() -> None:
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
 
     metrics.record_blogger_registration.assert_called_once_with(str(user_id))
@@ -361,6 +371,7 @@ async def test_register_blogger_records_metrics_with_transaction_manager(
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
 
     metrics.record_blogger_registration.assert_called_once_with(str(user_id))
@@ -392,6 +403,7 @@ async def test_register_blogger_with_transaction_manager(
         price=1500.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
     )
     assert profile.user_id == user_id
     assert profile.confirmed is False
@@ -611,6 +623,7 @@ async def test_register_blogger_user_not_found_with_transaction_manager(
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
 
@@ -638,6 +651,7 @@ async def test_register_blogger_empty_city() -> None:
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
 
 
@@ -777,6 +791,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
     assert "Instagram" in str(exc_info.value)
 
@@ -793,6 +808,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
     assert "City" in str(exc_info.value)
 
@@ -809,6 +825,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
     assert "geo" in str(exc_info.value).lower()
 
@@ -825,6 +842,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
     assert "age" in str(exc_info.value).lower()
 
@@ -841,6 +859,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             price=1500.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
     assert (
         "max" in str(exc_info.value).lower()
@@ -860,6 +879,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             price=0.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
     assert "Price" in str(exc_info.value)
 
@@ -927,5 +947,6 @@ async def test_register_blogger_duplicate_instagram_with_transaction_manager(
             price=2000.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
         )
     assert "уже зарегистрирован" in str(exc_info.value)

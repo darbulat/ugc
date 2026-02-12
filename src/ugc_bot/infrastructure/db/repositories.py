@@ -44,6 +44,7 @@ from ugc_bot.domain.entities import (
     UserReferralPending,
 )
 from ugc_bot.domain.enums import (
+    BloggerGender,
     ComplaintStatus,
     InteractionStatus,
     MessengerType,
@@ -870,6 +871,9 @@ def _to_blogger_profile_entity(
     work_format = model.work_format
     if isinstance(work_format, str):
         work_format = WorkFormat(work_format)
+    blogger_gender = getattr(model, "blogger_gender", None)
+    if blogger_gender is not None and isinstance(blogger_gender, str):
+        blogger_gender = BloggerGender(blogger_gender)
     return BloggerProfile(
         user_id=model.user_id,
         instagram_url=model.instagram_url,
@@ -887,6 +891,7 @@ def _to_blogger_profile_entity(
             model, "wanted_to_change_terms_count", 0
         ),
         updated_at=model.updated_at,
+        blogger_gender=blogger_gender,
     )
 
 
@@ -910,6 +915,7 @@ def _to_blogger_profile_model(
         work_format=profile.work_format,
         wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
         updated_at=profile.updated_at,
+        blogger_gender=profile.blogger_gender,
     )
 
 

@@ -26,7 +26,12 @@ from ugc_bot.bot.handlers.profile import (
     show_profile,
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    BloggerGender,
+    MessengerType,
+    WorkFormat,
+)
 
 
 class FakeProfileService:
@@ -70,6 +75,7 @@ class FakeProfileService:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
+            blogger_gender=None,
         )
 
     async def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
@@ -170,6 +176,7 @@ def _make_blogger_profile(user_id: UUID) -> BloggerProfile:
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
+        blogger_gender=None,
     )
 
 
@@ -487,6 +494,36 @@ async def test_edit_profile_choose_field_city(user_repo) -> None:
     assert message.answers
     assert "город" in message.answers[0][0].lower()
     assert state._data.get("editing_field") == "city"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_blogger_gender(user_repo) -> None:
+    """Choosing Пол prompts for blogger gender with keyboard."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000820"),
+        external_id="11",
+        username="user",
+    )
+    message = FakeMessage(text="Пол", user=FakeUser(11))
+    state = FakeFSMContext()
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    role_service = FakeUserRoleService()
+    await edit_profile_choose_field(
+        message, state, profile_service, reg_service, role_service
+    )
+    assert message.answers
+    assert "пол" in message.answers[0][0].lower()
+    assert state._data.get("editing_field") == "blogger_gender"
+    assert message.reply_markups
+    keyboard = message.reply_markups[0]
+    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    assert rows is not None
+    assert any(b.text == "Мужской" for row in rows for b in row)
+    assert any(b.text == "Женский" for row in rows for b in row)
 
 
 @pytest.mark.asyncio
@@ -835,6 +872,84 @@ async def test_edit_profile_enter_value_audience_gender_success(
         reg_service.update_calls[0][1].get("audience_gender")
         == AudienceGender.ALL
     )
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_blogger_gender_success(
+    user_repo,
+) -> None:
+    """Enter valid blogger gender (Male) updates profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000824"),
+        external_id="21",
+        username="user",
+    )
+    message = FakeMessage(text="Мужской", user=FakeUser(21))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "blogger_gender",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "21",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    role_service = FakeUserRoleService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
+        max_order_price=10_000.0,
+    )
+    assert (
+        reg_service.update_calls[0][1].get("blogger_gender")
+        == BloggerGender.MALE
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_blogger_gender_invalid(
+    user_repo,
+) -> None:
+    """Enter invalid blogger gender asks to use buttons."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000825"),
+        external_id="22",
+        username="user",
+    )
+    message = FakeMessage(text="Другое", user=FakeUser(22))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "blogger_gender",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "22",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    role_service = FakeUserRoleService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
+        max_order_price=10_000.0,
+    )
+    assert not reg_service.update_calls
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "кнопок" in text or "Мужской" in text
 
 
 @pytest.mark.asyncio

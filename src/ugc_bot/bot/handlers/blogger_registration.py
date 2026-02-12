@@ -48,7 +48,12 @@ from ugc_bot.bot.validators import (
     validate_topics,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.enums import AudienceGender, MessengerType, WorkFormat
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    BloggerGender,
+    MessengerType,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
@@ -67,6 +72,7 @@ class BloggerRegistrationStates(StatesGroup):
     name = State()
     instagram = State()
     city = State()
+    blogger_gender = State()
     topics = State()
     audience_gender = State()
     audience_age = State()
@@ -293,6 +299,45 @@ async def handle_city(
         return
 
     await state_store.update_data(city=city)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Укажите ваш пол:",
+        keyboard=flow_keyboard(
+            keyboard=[
+                [Button(text="Мужской")],
+                [Button(text="Женский")],
+            ],
+        ),
+    )
+    await state_store.set_state(BloggerRegistrationStates.blogger_gender.state)
+
+
+@router.message(BloggerRegistrationStates.blogger_gender)
+async def handle_blogger_gender(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Store blogger gender."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
+    if text == "Мужской":
+        blogger_gender = BloggerGender.MALE
+    elif text == "Женский":
+        blogger_gender = BloggerGender.FEMALE
+    else:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите одну из кнопок: Мужской или Женский.",
+        )
+        return
+
+    await state_store.update_data(blogger_gender=blogger_gender)
     topics_text = (
         "О чём ваш контент?\n"
         "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, "
@@ -671,6 +716,7 @@ async def handle_agreements(
             price=data["price"],
             barter=data["barter"],
             work_format=data["work_format"],
+            blogger_gender=data["blogger_gender"],
         )
     except Exception as exc:
         error_str = str(exc)

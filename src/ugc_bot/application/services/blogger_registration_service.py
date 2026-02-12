@@ -16,7 +16,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.domain.entities import BloggerProfile
-from ugc_bot.domain.enums import AudienceGender, WorkFormat
+from ugc_bot.domain.enums import AudienceGender, BloggerGender, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -87,6 +87,7 @@ class BloggerRegistrationService:
         price: float,
         barter: bool,
         work_format: WorkFormat,
+        blogger_gender: BloggerGender,
     ) -> BloggerProfile:
         """Create a blogger profile after validating input."""
 
@@ -131,6 +132,7 @@ class BloggerRegistrationService:
                 barter=barter,
                 work_format=work_format,
                 updated_at=datetime.now(timezone.utc),
+                blogger_gender=blogger_gender,
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -163,6 +165,7 @@ class BloggerRegistrationService:
         price: Optional[float] = None,
         barter: Optional[bool] = None,
         work_format: Optional[WorkFormat] = None,
+        blogger_gender: Optional[BloggerGender] = None,
     ) -> BloggerProfile | None:
         """Update blogger profile. Returns profile or None if not found."""
 
@@ -209,6 +212,9 @@ class BloggerRegistrationService:
                 else profile.work_format,
                 wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
                 updated_at=datetime.now(timezone.utc),
+                blogger_gender=blogger_gender
+                if blogger_gender is not None
+                else profile.blogger_gender,
             )
             await self.blogger_repo.save(updated, session=session)
             return updated
@@ -242,6 +248,7 @@ class BloggerRegistrationService:
                 wanted_to_change_terms_count=profile.wanted_to_change_terms_count
                 + 1,
                 updated_at=datetime.now(timezone.utc),
+                blogger_gender=profile.blogger_gender,
             )
             await self.blogger_repo.save(updated, session=session)
 
