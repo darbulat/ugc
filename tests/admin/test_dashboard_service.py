@@ -429,6 +429,53 @@ async def test_get_dashboard_referrers_balance_and_sort_when_income_service_set(
 
 
 @pytest.mark.asyncio
+async def test_get_dashboard_filter_top_by_balance_enriches_all(
+    thresholds,
+) -> None:
+    """With referrers_filter=top_by_balance we enrich all then filter."""
+    ref_user_id = uuid4()
+    ref_row = SimpleNamespace(
+        user_id=ref_user_id,
+        username="ref1",
+        telegram="@ref1",
+        referral_code="r1",
+        total_referred=2,
+        referred_creators=1,
+        referred_advertisers=1,
+        new_in_period=0,
+    )
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[_order_cards_row()]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[ref_row]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+    ]
+    mock_income = AsyncMock()
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=SimpleNamespace(income_total=50.0, paid_total=10.0)
+    )
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(*results),
+        timezone_name="UTC",
+        thresholds=thresholds,
+        referral_income_service=mock_income,
+    )
+    data = await svc.get_dashboard("today", referrers_filter="top_by_balance")
+    referrers = data["referrals"]["referrers"]
+    assert len(referrers) == 1
+    assert referrers[0]["balance"] == 40.0
+    assert data["referrals"]["total_earned"] == 50.0
+    assert data["referrals"]["total_balance"] == 40.0
+
+
+@pytest.mark.asyncio
 async def test_get_dashboard_build_delta_previous_zero(service) -> None:
     """When previous count is 0, change_pct is None."""
     results = [

@@ -158,31 +158,58 @@ class AdminDashboardService:
                 session, window.current_start, window.current_end
             )
             timings["turnover"] = (time.perf_counter() - t0) * 1000
-        t0 = time.perf_counter()
-        referral_data = await self._enrich_referrers_with_balance(referrers)
-        timings["enrich_referrers"] = (time.perf_counter() - t0) * 1000
-        referral_data["referrers"] = self._apply_referrers_filter(
-            referral_data["referrers"],
-            referrers_filter,
-        )
-        referral_data["referrers"] = self._sort_referrers(
-            referral_data["referrers"],
-            referrers_sort
-            or self._referrers_filter_default_sort(referrers_filter),
-            referrers_order,
-        )
-        total_referrers = len(referral_data["referrers"])
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
-        total_pages = (
-            (total_referrers + per_page - 1) // per_page
-            if total_referrers
-            else 1
+        need_balance_for_filter = referrers_filter in (
+            "top_by_balance",
+            "top_by_earnings_period",
         )
-        start = (page - 1) * per_page
-        referral_data["referrers"] = referral_data["referrers"][
-            start : start + per_page
-        ]
+        t0 = time.perf_counter()
+        if need_balance_for_filter:
+            referral_data = await self._enrich_referrers_with_balance(
+                referrers, sort_by_balance=True
+            )
+            referral_data["referrers"] = self._apply_referrers_filter(
+                referral_data["referrers"],
+                referrers_filter,
+            )
+            referral_data["referrers"] = self._sort_referrers(
+                referral_data["referrers"],
+                referrers_sort
+                or self._referrers_filter_default_sort(referrers_filter),
+                referrers_order,
+            )
+            total_referrers = len(referral_data["referrers"])
+            total_pages = (
+                (total_referrers + per_page - 1) // per_page
+                if total_referrers
+                else 1
+            )
+            start = (page - 1) * per_page
+            referral_data["referrers"] = referral_data["referrers"][
+                start : start + per_page
+            ]
+        else:
+            filtered = self._apply_referrers_filter(referrers, referrers_filter)
+            default_sort = self._referrers_filter_default_sort(referrers_filter)
+            sorted_refs = self._sort_referrers(
+                filtered,
+                referrers_sort or default_sort or "total_referred",
+                referrers_order,
+            )
+            total_referrers = len(sorted_refs)
+            total_pages = (
+                (total_referrers + per_page - 1) // per_page
+                if total_referrers
+                else 1
+            )
+            start = (page - 1) * per_page
+            page_referrers = sorted_refs[start : start + per_page]
+            use_totals = total_referrers <= per_page
+            referral_data = await self._enrich_referrers_with_balance(
+                page_referrers, sort_by_balance=use_totals
+            )
+        timings["enrich_referrers"] = (time.perf_counter() - t0) * 1000
         referral_data["referrers_total"] = total_referrers
         referral_data["referrers_page"] = page
         referral_data["referrers_per_page"] = per_page
@@ -736,9 +763,11 @@ class AdminDashboardService:
         ]
 
     async def _enrich_referrers_with_balance(
-        self, referrers: list[dict]
+        self,
+        referrers: list[dict],
+        sort_by_balance: bool = True,
     ) -> dict:
-        """Add balance to referrers, sort by balance desc; return totals."""
+        """Add balance; optionally sort by balance and sum totals."""
         total_earned: float | None = None
         total_balance: float | None = None
         if not referrers:
@@ -751,9 +780,11 @@ class AdminDashboardService:
         if service is None:
             for r in referrers:
                 r["balance"] = None
-            referrers.sort(
-                key=lambda x: (x["total_referred"], x["user_id"]), reverse=True
-            )
+            if sort_by_balance:
+                referrers.sort(
+                    key=lambda x: (x["total_referred"], x["user_id"]),
+                    reverse=True,
+                )
             return {
                 "referrers": referrers,
                 "total_earned": total_earned,
@@ -770,13 +801,16 @@ class AdminDashboardService:
         for r, stats in zip(referrers, stats_list, strict=True):
             balance = round(stats.income_total - stats.paid_total, 2)
             r["balance"] = balance
-            sum_earned += stats.income_total
-            sum_balance += balance
-        total_earned = round(sum_earned, 2)
-        total_balance = round(sum_balance, 2)
-        referrers.sort(
-            key=lambda x: (x["balance"] or 0.0, x["user_id"]), reverse=True
-        )
+            if sort_by_balance:
+                sum_earned += stats.income_total
+                sum_balance += balance
+        if sort_by_balance:
+            total_earned = round(sum_earned, 2)
+            total_balance = round(sum_balance, 2)
+            referrers.sort(
+                key=lambda x: (x["balance"] or 0.0, x["user_id"]),
+                reverse=True,
+            )
         return {
             "referrers": referrers,
             "total_earned": total_earned,
