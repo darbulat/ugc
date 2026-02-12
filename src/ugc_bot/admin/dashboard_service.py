@@ -1,5 +1,6 @@
 """Admin dashboard aggregation service."""
 
+import asyncio
 import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -524,17 +525,34 @@ class AdminDashboardService:
     async def _get_order_cards(
         self, session: AsyncSession, window: PeriodWindow
     ) -> dict:
-        """Return order status cards for the dashboard."""
+        """Return order cards (active/completed/archived) in one query."""
         responses = self._order_responses_subquery()
         open_complaints = self._open_complaints_subquery()
+        resp = func.coalesce(responses.c.responses, 0)
+        open_c = func.coalesce(open_complaints.c.open_complaints, 0)
+        completed_expr = (OrderModel.status == OrderStatus.CLOSED) | (
+            resp >= OrderModel.bloggers_needed
+        )
+        cutoff = datetime.now(self._timezone) - timedelta(
+            days=self._thresholds.archive_days
+        )
+        archived_expr = and_(
+            completed_expr,
+            OrderModel.completed_at.isnot(None),
+            open_c == 0,
+            OrderModel.completed_at < cutoff,
+        )
+        active_expr = ~completed_expr
+        completed_only_expr = completed_expr & ~archived_expr
         query = (
             select(
-                OrderModel,
-                func.coalesce(responses.c.responses, 0).label("responses"),
-                func.coalesce(open_complaints.c.open_complaints, 0).label(
-                    "open_complaints"
+                func.sum(case((active_expr, 1), else_=0)).label("active"),
+                func.sum(case((completed_only_expr, 1), else_=0)).label(
+                    "completed"
                 ),
+                func.sum(case((archived_expr, 1), else_=0)).label("archived"),
             )
+            .select_from(OrderModel)
             .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
             .outerjoin(
                 open_complaints,
@@ -548,18 +566,12 @@ class AdminDashboardService:
             )
         )
         result = await session.execute(query)
-        rows = result.all()
-        counts = {"active": 0, "completed": 0, "archived": 0}
-        for order, responses_count, open_count in rows:
-            is_completed = self._is_completed(order, responses_count)
-            is_archived = self._is_archived(order, is_completed, open_count)
-            if is_archived:
-                counts["archived"] += 1
-            elif is_completed:
-                counts["completed"] += 1
-            else:
-                counts["active"] += 1
-        return counts
+        row = result.one()
+        return {
+            "active": int(row.active or 0),
+            "completed": int(row.completed or 0),
+            "archived": int(row.archived or 0),
+        }
 
     async def _count_open_complaints(self, session: AsyncSession) -> int:
         """Count open complaints across all orders."""
@@ -707,10 +719,15 @@ class AdminDashboardService:
                 "total_earned": total_earned,
                 "total_balance": total_balance,
             }
+        stats_list = await asyncio.gather(
+            *[
+                service.get_user_referral_stats(UUID(r["user_id"]))
+                for r in referrers
+            ]
+        )
         sum_earned = 0.0
         sum_balance = 0.0
-        for r in referrers:
-            stats = await service.get_user_referral_stats(UUID(r["user_id"]))
+        for r, stats in zip(referrers, stats_list, strict=True):
             balance = round(stats.income_total - stats.paid_total, 2)
             r["balance"] = balance
             sum_earned += stats.income_total

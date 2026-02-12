@@ -40,7 +40,7 @@ class _ChartRow:
 
 
 class _FakeResult:
-    """Fake SQLAlchemy result supporting scalar, all, one_or_none."""
+    """Fake SQLAlchemy result supporting scalar, all, one, one_or_none."""
 
     def __init__(
         self,
@@ -49,14 +49,19 @@ class _FakeResult:
         one_or_none_value=None,
     ) -> None:
         self._scalar = scalar_value
-        self._all = all_rows
+        self._all = all_rows if all_rows is not None else []
         self._one_or_none = one_or_none_value
 
     def scalar(self):
         return self._scalar
 
     def all(self):
-        return self._all if self._all is not None else []
+        return self._all
+
+    def one(self):
+        if len(self._all) != 1:
+            raise ValueError("one() requires exactly one row")
+        return self._all[0]
 
     def one_or_none(self):
         return self._one_or_none
@@ -128,6 +133,13 @@ def _make_user(user_id=None, status=UserStatus.ACTIVE) -> UserModel:
     )
 
 
+def _order_cards_row(active: int = 0, completed: int = 0, archived: int = 0):
+    """Single row for _get_order_cards aggregate query."""
+    return SimpleNamespace(
+        active=active, completed=completed, archived=archived
+    )
+
+
 @pytest.fixture
 def thresholds() -> DelayThresholds:
     """Default delay thresholds."""
@@ -161,7 +173,7 @@ async def test_get_dashboard_returns_structure(service) -> None:
         _FakeResult(scalar_value=1),
         _FakeResult(scalar_value=3),
         _FakeResult(scalar_value=1),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -211,7 +223,7 @@ async def test_get_dashboard_includes_referral_referrers(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -253,7 +265,7 @@ async def test_get_dashboard_includes_payout_requests(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -389,7 +401,7 @@ async def test_get_dashboard_referrers_balance_and_sort_when_income_service_set(
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -424,7 +436,7 @@ async def test_get_dashboard_build_delta_previous_zero(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=2),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -440,26 +452,15 @@ async def test_get_dashboard_build_delta_previous_zero(service) -> None:
 
 @pytest.mark.asyncio
 async def test_get_dashboard_order_cards_counts(service) -> None:
-    """Order cards aggregate active, completed, archived."""
-    order1 = _make_order(bloggers_needed=10, status=OrderStatus.ACTIVE)
-    order2 = _make_order(bloggers_needed=5, status=OrderStatus.CLOSED)
-    order3 = _make_order(
-        bloggers_needed=3,
-        status=OrderStatus.CLOSED,
-        completed_at=datetime.now(timezone.utc) - timedelta(days=14),
-    )
-    # responses: order1=2 (active), order2=5 (completed), order3=3 (archived)
-    rows = [
-        (order1, 2, 0),
-        (order2, 5, 0),
-        (order3, 3, 0),
-    ]
+    """Order cards: active/completed/archived from single aggregate row."""
+    # _get_order_cards now returns one row: (active, completed, archived)
+    order_cards_row = SimpleNamespace(active=1, completed=1, archived=1)
     results = [
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=rows),
+        _FakeResult(all_rows=[order_cards_row]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -482,7 +483,7 @@ async def test_build_period_window_today(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -503,7 +504,7 @@ async def test_build_period_window_yesterday(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -523,7 +524,7 @@ async def test_build_period_window_7d(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -544,7 +545,7 @@ async def test_build_period_window_30d(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -781,7 +782,7 @@ async def test_list_delayed_orders_includes_reasons(
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=rows),
@@ -810,7 +811,7 @@ async def test_count_open_complaints(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=3),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -889,7 +890,7 @@ async def test_build_delta_negative_change(service) -> None:
         _FakeResult(scalar_value=3),
         _FakeResult(scalar_value=2),
         _FakeResult(scalar_value=4),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -969,18 +970,12 @@ async def test_list_creators_only_with_complaints_filter(service) -> None:
 @pytest.mark.asyncio
 async def test_is_archived_false_when_open_complaints(service) -> None:
     """Order is not archived when it has open complaints."""
-    order = _make_order(
-        bloggers_needed=5,
-        status=OrderStatus.CLOSED,
-        completed_at=datetime.now(timezone.utc) - timedelta(days=14),
-    )
-    order_rows = [(order, 5, 1)]
     results = [
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=order_rows),
+        _FakeResult(all_rows=[_order_cards_row(0, 1, 0)]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=[]),
@@ -1025,7 +1020,7 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
-        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[_order_cards_row()]),
         _FakeResult(scalar_value=0),
         _FakeResult(all_rows=[]),
         _FakeResult(all_rows=rows),

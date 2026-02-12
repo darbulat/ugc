@@ -87,7 +87,10 @@ class UserModel(Base):
         Integer, nullable=False, server_default="0"
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        index=True,
     )
     role_chosen_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -202,7 +205,10 @@ class OrderModel(Base):
         _enum_column(OrderStatus), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        index=True,
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -375,7 +381,7 @@ class ComplaintModel(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     file_ids: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
     status: Mapped[ComplaintStatus] = mapped_column(
-        _enum_column(ComplaintStatus), nullable=False
+        _enum_column(ComplaintStatus), nullable=False, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
@@ -403,7 +409,7 @@ class PaymentModel(Base):
     )
     provider: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[PaymentStatus] = mapped_column(
-        _enum_column(PaymentStatus), nullable=False
+        _enum_column(PaymentStatus), nullable=False, index=True
     )
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
@@ -412,7 +418,7 @@ class PaymentModel(Base):
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     paid_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True), nullable=True, index=True
     )
 
 
