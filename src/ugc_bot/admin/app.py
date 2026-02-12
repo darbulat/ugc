@@ -54,6 +54,11 @@ from ugc_bot.infrastructure.db.models import (
     PayoutRequestModel,
     UserModel,
 )
+from ugc_bot.infrastructure.redis_cache import (
+    AdminCache,
+    deserialize_admin_payload,
+    serialize_admin_payload,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -150,13 +155,22 @@ def _build_templates(app: FastAPI) -> Jinja2Templates:
     return templates
 
 
+def _dashboard_cache_ttl(period: str) -> int:
+    """TTL in seconds for dashboard/charts by period."""
+    if period in ("today", "yesterday"):
+        return 90
+    return 300
+
+
 def _register_dashboard_routes(  # noqa: C901
     app: FastAPI,
     auth: AdminAuth,
     dashboard_service: AdminDashboardService,
     templates: Jinja2Templates,
+    cache: AdminCache | None = None,
 ) -> None:
     """Register dashboard and list routes on the admin app."""
+    _LIST_CACHE_TTL = 90
 
     async def _require_admin(request: Request) -> None:
         """Raise HTTP 401 when admin session is missing."""
@@ -181,15 +195,38 @@ def _register_dashboard_routes(  # noqa: C901
         include_timings = (
             timings.lower() in ("1", "true", "yes") if timings else False
         )
-        payload = await dashboard_service.get_dashboard(
-            period_key,
-            referrers_page=referrers_page,
-            referrers_per_page=referrers_per_page,
-            referrers_sort=referrers_sort or None,
-            referrers_order=referrers_order,
-            referrers_filter=referrers_filter or None,
-            include_timings=include_timings,
-        )
+        use_cache = cache and not include_timings
+        cache_key = None
+        if use_cache:
+            cache_key = (
+                f"dashboard:{period_key}:{referrers_filter or 'all'}:"
+                f"{referrers_page}:{referrers_per_page}:"
+                f"{referrers_sort or ''}:{referrers_order}"
+            )
+        payload = None
+        if cache and use_cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                payload = cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        if payload is None:
+            payload = await dashboard_service.get_dashboard(
+                period_key,
+                referrers_page=referrers_page,
+                referrers_per_page=referrers_per_page,
+                referrers_sort=referrers_sort or None,
+                referrers_order=referrers_order,
+                referrers_filter=referrers_filter or None,
+                include_timings=include_timings,
+            )
+            if cache and use_cache and cache_key:
+                await cache.set(
+                    cache_key,
+                    serialize_admin_payload(payload),
+                    _dashboard_cache_ttl(period_key),
+                )
         return templates.TemplateResponse(
             request,
             "dashboard.html",
@@ -224,15 +261,38 @@ def _register_dashboard_routes(  # noqa: C901
         include_timings = (
             timings.lower() in ("1", "true", "yes") if timings else False
         )
-        payload = await dashboard_service.get_dashboard(
-            period_key,
-            referrers_page=referrers_page,
-            referrers_per_page=referrers_per_page,
-            referrers_sort=referrers_sort or None,
-            referrers_order=referrers_order,
-            referrers_filter=referrers_filter or None,
-            include_timings=include_timings,
-        )
+        use_cache = cache and not include_timings
+        cache_key = None
+        if use_cache:
+            cache_key = (
+                f"dashboard:{period_key}:{referrers_filter or 'all'}:"
+                f"{referrers_page}:{referrers_per_page}:"
+                f"{referrers_sort or ''}:{referrers_order}"
+            )
+        payload = None
+        if cache and use_cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                payload = cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        if payload is None:
+            payload = await dashboard_service.get_dashboard(
+                period_key,
+                referrers_page=referrers_page,
+                referrers_per_page=referrers_per_page,
+                referrers_sort=referrers_sort or None,
+                referrers_order=referrers_order,
+                referrers_filter=referrers_filter or None,
+                include_timings=include_timings,
+            )
+            if cache and use_cache and cache_key:
+                await cache.set(
+                    cache_key,
+                    serialize_admin_payload(payload),
+                    _dashboard_cache_ttl(period_key),
+                )
         return templates.TemplateResponse(
             request,
             "referrers.html",
@@ -263,16 +323,37 @@ def _register_dashboard_routes(  # noqa: C901
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
         period_key = _normalize_period(period)
-        result = await dashboard_service.list_creators(
-            period=period_key,
-            only_new=only_new,
-            only_with_complaints=with_complaints,
-            page=page,
-            per_page=per_page,
-            q=q or None,
-            sort=sort,
-            order=order,
-        )
+        cache_key = None
+        if cache:
+            cache_key = (
+                f"creators:{period_key}:{only_new}:{with_complaints}:"
+                f"{page}:{per_page}:{q or ''}:{sort}:{order}"
+            )
+        result = None
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                result = cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        if result is None:
+            result = await dashboard_service.list_creators(
+                period=period_key,
+                only_new=only_new,
+                only_with_complaints=with_complaints,
+                page=page,
+                per_page=per_page,
+                q=q or None,
+                sort=sort,
+                order=order,
+            )
+            if cache and cache_key:
+                await cache.set(
+                    cache_key,
+                    serialize_admin_payload(result),
+                    _LIST_CACHE_TTL,
+                )
         return templates.TemplateResponse(
             request,
             "creators.html",
@@ -306,13 +387,33 @@ def _register_dashboard_routes(  # noqa: C901
         """Render advertiser list page."""
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
-        result = await dashboard_service.list_advertisers(
-            page=page,
-            per_page=per_page,
-            q=q or None,
-            sort=sort,
-            order=order,
+        cache_key = (
+            f"advertisers:{page}:{per_page}:{q or ''}:{sort}:{order}"
+            if cache
+            else None
         )
+        result = None
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                result = cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        if result is None:
+            result = await dashboard_service.list_advertisers(
+                page=page,
+                per_page=per_page,
+                q=q or None,
+                sort=sort,
+                order=order,
+            )
+            if cache and cache_key:
+                await cache.set(
+                    cache_key,
+                    serialize_admin_payload(result),
+                    _LIST_CACHE_TTL,
+                )
         return templates.TemplateResponse(
             request,
             "advertisers.html",
@@ -342,14 +443,35 @@ def _register_dashboard_routes(  # noqa: C901
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
         period_key = _normalize_period(period)
-        result = await dashboard_service.list_orders(
-            period=period_key,
-            status_filter=status,
-            page=page,
-            per_page=per_page,
-            sort=sort,
-            order=order,
-        )
+        cache_key = None
+        if cache:
+            cache_key = (
+                f"orders:{period_key}:{status or ''}:"
+                f"{page}:{per_page}:{sort}:{order}"
+            )
+        result = None
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                result = cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        if result is None:
+            result = await dashboard_service.list_orders(
+                period=period_key,
+                status_filter=status,
+                page=page,
+                per_page=per_page,
+                sort=sort,
+                order=order,
+            )
+            if cache and cache_key:
+                await cache.set(
+                    cache_key,
+                    serialize_admin_payload(result),
+                    _LIST_CACHE_TTL,
+                )
         return templates.TemplateResponse(
             request,
             "orders.html",
@@ -412,9 +534,24 @@ def _register_dashboard_routes(  # noqa: C901
         include_timings = (
             timings.lower() in ("1", "true", "yes") if timings else False
         )
-        return await dashboard_service.get_dashboard(
+        if cache and not include_timings:
+            cache_key = f"dashboard_api:{period_key}"
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                return cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        payload = await dashboard_service.get_dashboard(
             period_key, include_timings=include_timings
         )
+        if cache and not include_timings:
+            await cache.set(
+                cache_key,
+                serialize_admin_payload(payload),
+                _dashboard_cache_ttl(period_key),
+            )
+        return payload
 
     @app.get(
         "/admin/api/dashboard/charts", dependencies=[Depends(_require_admin)]
@@ -422,7 +559,22 @@ def _register_dashboard_routes(  # noqa: C901
     async def dashboard_charts_api(period: str = "7d") -> dict:
         """Return chart time-series data as JSON."""
         period_key = _normalize_period(period)
-        return await dashboard_service.get_dashboard_charts(period_key)
+        if cache:
+            cache_key = f"charts:{period_key}"
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                return cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        payload = await dashboard_service.get_dashboard_charts(period_key)
+        if cache:
+            await cache.set(
+                cache_key,
+                serialize_admin_payload(payload),
+                _dashboard_cache_ttl(period_key),
+            )
+        return payload
 
     @app.get(
         "/admin/api/users/creators", dependencies=[Depends(_require_admin)]
@@ -439,7 +591,20 @@ def _register_dashboard_routes(  # noqa: C901
     ) -> dict:
         """Return creator list as JSON with pagination."""
         period_key = _normalize_period(period)
-        return await dashboard_service.list_creators(
+        cache_key = (
+            f"creators:{period_key}:{only_new}:{with_complaints}:"
+            f"{page}:{per_page}:{q or ''}:{sort}:{order}"
+            if cache
+            else None
+        )
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                return cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        result = await dashboard_service.list_creators(
             period=period_key,
             only_new=only_new,
             only_with_complaints=with_complaints,
@@ -449,6 +614,13 @@ def _register_dashboard_routes(  # noqa: C901
             sort=sort,
             order=order,
         )
+        if cache and cache_key:
+            await cache.set(
+                cache_key,
+                serialize_admin_payload(result),
+                _LIST_CACHE_TTL,
+            )
+        return result
 
     @app.get(
         "/admin/api/users/advertisers", dependencies=[Depends(_require_admin)]
@@ -461,13 +633,32 @@ def _register_dashboard_routes(  # noqa: C901
         order: str = "desc",
     ) -> dict:
         """Return advertiser list as JSON with pagination."""
-        return await dashboard_service.list_advertisers(
+        cache_key = (
+            f"advertisers:{page}:{per_page}:{q or ''}:{sort}:{order}"
+            if cache
+            else None
+        )
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                return cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        result = await dashboard_service.list_advertisers(
             page=page,
             per_page=per_page,
             q=q or None,
             sort=sort,
             order=order,
         )
+        if cache and cache_key:
+            await cache.set(
+                cache_key,
+                serialize_admin_payload(result),
+                _LIST_CACHE_TTL,
+            )
+        return result
 
     @app.get("/admin/api/orders", dependencies=[Depends(_require_admin)])
     async def orders_api(
@@ -480,7 +671,20 @@ def _register_dashboard_routes(  # noqa: C901
     ) -> dict:
         """Return order list as JSON with pagination."""
         period_key = _normalize_period(period)
-        return await dashboard_service.list_orders(
+        cache_key = (
+            f"orders:{period_key}:{status or ''}:{page}:{per_page}:"
+            f"{sort}:{order}"
+            if cache
+            else None
+        )
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                return cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+        result = await dashboard_service.list_orders(
             period=period_key,
             status_filter=status,
             page=page,
@@ -488,6 +692,13 @@ def _register_dashboard_routes(  # noqa: C901
             sort=sort,
             order=order,
         )
+        if cache and cache_key:
+            await cache.set(
+                cache_key,
+                serialize_admin_payload(result),
+                _LIST_CACHE_TTL,
+            )
+        return result
 
     @app.get(
         "/admin/api/orders/{order_id}", dependencies=[Depends(_require_admin)]
@@ -507,7 +718,24 @@ def _register_dashboard_routes(  # noqa: C901
         """Search users by nickname or Telegram ID; render results page."""
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
-        users = await dashboard_service.search_users(q, limit=50)
+        cache_key = f"search:{q or ''}:50" if cache else None
+        users = None
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                data = cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
+                users = data.get("users", [])
+        if users is None:
+            users = await dashboard_service.search_users(q, limit=50)
+            if cache and cache_key:
+                await cache.set(
+                    cache_key,
+                    serialize_admin_payload({"query": q, "users": users}),
+                    _LIST_CACHE_TTL,
+                )
         return templates.TemplateResponse(
             request,
             "search.html",
@@ -517,8 +745,23 @@ def _register_dashboard_routes(  # noqa: C901
     @app.get("/admin/api/search", dependencies=[Depends(_require_admin)])
     async def search_api(q: str = "") -> dict:
         """Return search results as JSON."""
+        cache_key = f"search:{q or ''}:20" if cache else None
+        if cache and cache_key:
+            raw = await cache.get(cache_key)
+            if raw is not None:
+                return cast(
+                    dict[str, Any],
+                    deserialize_admin_payload(raw),
+                )
         users = await dashboard_service.search_users(q, limit=20)
-        return {"query": q, "users": users}
+        result = {"query": q, "users": users}
+        if cache and cache_key:
+            await cache.set(
+                cache_key,
+                serialize_admin_payload(result),
+                _LIST_CACHE_TTL,
+            )
+        return result
 
 
 async def _get_obj_by_pk(
@@ -1205,7 +1448,13 @@ def create_admin_app() -> FastAPI:  # noqa: C901
     )
     dashboard_service = _build_dashboard_service(config, container)
     templates = _build_templates(app)
-    _register_dashboard_routes(app, auth, dashboard_service, templates)
+    admin_cache = AdminCache(
+        redis_url=config.redis.redis_url,
+        enabled=config.redis.use_redis_storage,
+    )
+    _register_dashboard_routes(
+        app, auth, dashboard_service, templates, cache=admin_cache
+    )
     admin = EnumAwareAdmin(
         app, engine, authentication_backend=auth, base_url="/admin"
     )

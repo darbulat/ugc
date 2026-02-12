@@ -1,13 +1,17 @@
 """Tests for admin dashboard routes."""
 
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import AdminDashboardService
+from ugc_bot.infrastructure.redis_cache import (
+    serialize_admin_payload,
+)
 
 # Strong admin credentials for tests (not in config _WEAK_ADMIN_VALUES).
 _TEST_ADMIN_PASSWORD = "Str0ng-Test-P@ssw0rd"
@@ -327,6 +331,666 @@ def test_admin_api_returns_401_when_not_authenticated(monkeypatch) -> None:
 
     response = client.get("/admin/api/dashboard")
     assert response.status_code == 401
+
+
+def test_dashboard_api_returns_cached_response_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Second request returns cached response; get_dashboard called once."""
+    cached_payload = {"period": "today", "cached": True, "orders": {}}
+    serialized = serialize_admin_payload(cached_payload)
+
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+
+    get_dashboard_mock = AsyncMock(
+        return_value={"period": "today", "orders": {}}
+    )
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        get_dashboard_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+
+    r1 = client.get("/admin/api/dashboard?period=today")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/api/dashboard?period=today")
+    assert r2.status_code == 200
+    assert r2.json() == cached_payload
+    assert get_dashboard_mock.call_count == 1
+
+
+def test_dashboard_charts_api_returns_cached_response_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Charts API cache hit; get_dashboard_charts called once."""
+    cached_charts = {"series": [], "labels": []}
+    serialized = serialize_admin_payload(cached_charts)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    get_charts_mock = AsyncMock(return_value={"series": [], "labels": []})
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard_charts",
+        get_charts_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/api/dashboard/charts?period=7d")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/api/dashboard/charts?period=7d")
+    assert r2.status_code == 200
+    assert r2.json() == cached_charts
+    assert get_charts_mock.call_count == 1
+
+
+def test_creators_api_returns_cached_response_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Creators API cache hit on second request; list_creators called once."""
+    cached = _paginated([{"user_id": "u1", "nickname": "c1"}])
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    list_creators_mock = AsyncMock(return_value=_paginated([]))
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        list_creators_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/api/users/creators?period=today")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/api/users/creators?period=today")
+    assert r2.status_code == 200
+    assert r2.json() == cached
+    assert list_creators_mock.call_count == 1
+
+
+def test_search_api_returns_cached_response_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search API cache hit on second request; search_users called once."""
+    cached = {"query": "x", "users": []}
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    search_mock = AsyncMock(return_value=[])
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "search_users",
+        search_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/api/search?q=x")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/api/search?q=x")
+    assert r2.status_code == 200
+    assert r2.json() == cached
+    assert search_mock.call_count == 1
+
+
+def test_orders_api_returns_cached_response_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Orders API cache hit on second request; list_orders called once."""
+    cached = _paginated([{"order_id": "o1", "status_label": "active"}])
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    list_orders_mock = AsyncMock(return_value=_paginated([]))
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        list_orders_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/api/orders?period=today")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/api/orders?period=today")
+    assert r2.status_code == 200
+    assert r2.json() == cached
+    assert list_orders_mock.call_count == 1
+
+
+def test_dashboard_html_uses_cache_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dashboard HTML cache hit on second request; get_dashboard called once."""
+    payload = {
+        "period": "today",
+        "registrations": {
+            "creators": {"count": 0, "change_pct": 0.0},
+            "advertisers": {"count": 0, "change_pct": 0.0},
+        },
+        "orders": {"active": 0, "completed": 0, "archived": 0},
+        "problems": {"open_complaints": 0, "delays": 0},
+        "delayed_orders": [],
+        "open_complaints_list": [],
+        "turnover_period": 0,
+        "referrals": {
+            "referrers": [],
+            "total_earned": None,
+            "total_balance": None,
+        },
+        "payout_requests": [],
+    }
+    serialized = serialize_admin_payload(payload)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    get_dashboard_mock = AsyncMock(return_value=payload)
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        get_dashboard_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/dashboard?period=today")
+    assert r1.status_code == 200
+    assert "Дашборд" in r1.text
+    r2 = client.get("/admin/dashboard?period=today")
+    assert r2.status_code == 200
+    assert get_dashboard_mock.call_count == 1
+
+
+def test_referrers_html_uses_cache_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Referrers HTML cache hit on second request; get_dashboard called once."""
+    payload = {
+        "period": "today",
+        "registrations": {
+            "creators": {"count": 0, "change_pct": 0.0},
+            "advertisers": {"count": 0, "change_pct": 0.0},
+        },
+        "orders": {"active": 0, "completed": 0, "archived": 0},
+        "problems": {"open_complaints": 0, "delays": 0},
+        "delayed_orders": [],
+        "open_complaints_list": [],
+        "turnover_period": 0,
+        "referrals": {
+            "referrers": [],
+            "referrers_total": 0,
+            "referrers_page": 1,
+            "referrers_per_page": 25,
+            "referrers_total_pages": 1,
+            "total_earned": None,
+            "total_balance": None,
+        },
+        "payout_requests": [],
+    }
+    serialized = serialize_admin_payload(payload)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    get_dashboard_mock = AsyncMock(return_value=payload)
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        get_dashboard_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/referrers?period=today")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/referrers?period=today")
+    assert r2.status_code == 200
+    assert get_dashboard_mock.call_count == 1
+
+
+def test_advertisers_api_returns_cached_response_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Advertisers API cache hit on second request; list_advertisers once."""
+    cached = _paginated([{"user_id": "a1", "nickname": "adv1"}])
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    list_adv_mock = AsyncMock(return_value=_paginated([]))
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        list_adv_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/api/users/advertisers")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/api/users/advertisers")
+    assert r2.status_code == 200
+    assert r2.json() == cached
+    assert list_adv_mock.call_count == 1
+
+
+def test_admin_search_html_uses_cache_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search HTML cache hit on second request; search_users called once."""
+    cached = {"query": "q", "users": [{"user_id": "u1", "nickname": "u1"}]}
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    search_mock = AsyncMock(return_value=[])
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "search_users",
+        search_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/search?q=q")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/search?q=q")
+    assert r2.status_code == 200
+    assert search_mock.call_count == 1
+
+
+def test_admin_creators_html_uses_cache_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Creators list HTML cache hit on second request; list_creators once."""
+    cached = _paginated([{"user_id": "c1", "nickname": "creator1"}])
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    list_creators_mock = AsyncMock(return_value=_paginated([]))
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        list_creators_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/users/creators?period=today")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/users/creators?period=today")
+    assert r2.status_code == 200
+    assert list_creators_mock.call_count == 1
+
+
+def test_admin_orders_html_uses_cache_on_second_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Orders list HTML cache hit on second request; list_orders once."""
+    cached = _paginated([{"order_id": "o1", "status_label": "active"}])
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.set = AsyncMock()
+    list_orders_mock = AsyncMock(return_value=_paginated([]))
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        list_orders_mock,
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value={}),
+    )
+    with patch(
+        "ugc_bot.admin.app.AdminCache",
+        MagicMock(return_value=mock_cache),
+    ):
+        app = create_admin_app()
+    client = TestClient(app)
+    r1 = client.get("/admin/orders?period=today")
+    assert r1.status_code == 200
+    r2 = client.get("/admin/orders?period=today")
+    assert r2.status_code == 200
+    assert list_orders_mock.call_count == 1
 
 
 def test_admin_advertisers_redirect_when_not_authenticated(monkeypatch) -> None:
