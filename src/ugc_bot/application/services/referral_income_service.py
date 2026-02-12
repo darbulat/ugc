@@ -144,6 +144,108 @@ class ReferralIncomeService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def get_referral_balances_batch(
+        self,
+        user_ids: List[UUID],
+        now: Optional[datetime] = None,
+        session: object | None = None,
+    ) -> Dict[UUID, tuple[float, float]]:
+        """(income_total, paid_total) per user_id for dashboard sort/filter.
+
+        Uses batch DB when loader has combined_batch; else
+        get_user_referral_stats per user.
+        """
+        if not user_ids:
+            return {}
+        if now is None:
+            now = datetime.now(timezone.utc)
+
+        loader = self.referral_order_income_loader
+        has_batch = (
+            loader is not None
+            and hasattr(
+                loader, "load_referral_order_income_rows_combined_batch"
+            )
+            and callable(
+                getattr(
+                    loader,
+                    "load_referral_order_income_rows_combined_batch",
+                    None,
+                )
+            )
+        )
+
+        if has_batch and loader is not None:
+
+            async def _run_batch(
+                sess: object | None,
+            ) -> Dict[UUID, tuple[float, float]]:
+                users_map = await self.user_repo.get_by_ids(
+                    user_ids, session=sess
+                )
+                custom_rates: Dict[UUID, Optional[float]] = {}
+                for uid in user_ids:
+                    u = users_map.get(uid)
+                    custom_rates[uid] = (
+                        float(u.referral_payout_rate)
+                        if u is not None and u.referral_payout_rate is not None
+                        else None
+                    )
+                payout_requests = list(
+                    await self.payout_request_repo.list_by_user_ids(
+                        user_ids, session=sess
+                    )
+                )
+                paid_by_user: Dict[UUID, float] = {uid: 0.0 for uid in user_ids}
+                for req in payout_requests:
+                    if (
+                        req.status == PayoutRequestStatus.PAID
+                        and req.amount is not None
+                    ):
+                        paid_by_user[req.user_id] = paid_by_user.get(
+                            req.user_id, 0.0
+                        ) + float(req.amount)
+                rows_with_referrer = (
+                    await loader.load_referral_order_income_rows_combined_batch(
+                        referrer_user_ids=user_ids,
+                        limit=None,
+                        session=sess,
+                    )
+                )
+                income_by_user: Dict[UUID, float] = {
+                    uid: 0.0 for uid in user_ids
+                }
+                for referrer_uid, row in rows_with_referrer:
+                    rate = _effective_rate(
+                        row.creator_created_at,
+                        row.order_completed_at,
+                        custom_rates.get(referrer_uid),
+                    )
+                    platform_revenue = row.payment_amount / row.bloggers_needed
+                    commission = platform_revenue * rate
+                    income_by_user[referrer_uid] = (
+                        income_by_user.get(referrer_uid, 0.0) + commission
+                    )
+                return {
+                    uid: (
+                        round(income_by_user.get(uid, 0.0), 2),
+                        round(paid_by_user.get(uid, 0.0), 2),
+                    )
+                    for uid in user_ids
+                }
+
+            if session is not None:
+                return await _run_batch(session)
+            return await with_optional_tx(self.transaction_manager, _run_batch)
+
+        stats_list = await asyncio.gather(
+            *[self.get_user_referral_stats(uid, now=now) for uid in user_ids]
+        )
+        return {
+            uid: (s.income_total, s.paid_total)
+            for uid, s in zip(user_ids, stats_list, strict=True)
+        }
+
     async def _compute_income_from_loader(
         self,
         referrer_user_id: UUID,

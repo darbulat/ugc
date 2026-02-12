@@ -10,6 +10,7 @@ from typing import (
     List,
     Optional,
     Protocol,
+    Tuple,
 )
 from uuid import UUID
 
@@ -615,6 +616,17 @@ class PayoutRequestRepository(ABC):
     ) -> Iterable[PayoutRequest]:
         """List payout requests by user ID."""
 
+    async def list_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Iterable[PayoutRequest]:
+        """Payout requests for given user IDs. Default: N×list_by_user."""
+        result: List[PayoutRequest] = []
+        for uid in user_ids:
+            result.extend(await self.list_by_user(uid, session=session))
+        return result
+
 
 class ReferralOrderIncomeRowLoader(Protocol):
     """Load referral order income rows in one query (reduces N+1)."""
@@ -644,6 +656,15 @@ class ReferralOrderIncomeRowLoader(Protocol):
         session: object | None = None,
     ) -> list[ReferralOrderIncomeRow]:
         """Optional: blogger + advertiser rows in one query (UNION)."""
+        ...
+
+    async def load_referral_order_income_rows_combined_batch(
+        self,
+        referrer_user_ids: List[UUID],
+        limit: Optional[int] = None,
+        session: object | None = None,
+    ) -> List[Tuple[UUID, ReferralOrderIncomeRow]]:
+        """Income rows for multiple referrers in one query."""
         ...
 
 

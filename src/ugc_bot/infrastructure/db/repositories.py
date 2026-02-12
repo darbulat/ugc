@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Dict, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import and_, delete, func, or_, select, union_all, update
@@ -1656,6 +1656,24 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
             _to_payout_request_entity(m) for m in exec_result.scalars().all()
         ]
 
+    async def list_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Iterable[PayoutRequest]:
+        """List payout requests for given user IDs in one query."""
+        if not user_ids:
+            return []
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(PayoutRequestModel).where(
+                PayoutRequestModel.user_id.in_(user_ids)
+            )
+        )
+        return [
+            _to_payout_request_entity(m) for m in exec_result.scalars().all()
+        ]
+
 
 @dataclass(slots=True)
 class SqlReferralOrderIncomeLoader:
@@ -1864,6 +1882,113 @@ class SqlReferralOrderIncomeLoader:
                 payment_amount=float(row.payment_amount),
                 bloggers_needed=row.bloggers_needed,
                 order_id=row.order_id,
+            )
+            for row in rows
+        ]
+
+    async def load_referral_order_income_rows_combined_batch(
+        self,
+        referrer_user_ids: List[UUID],
+        limit: Optional[int] = None,
+        session: object | None = None,
+    ) -> List[Tuple[UUID, ReferralOrderIncomeRow]]:
+        """Load income rows for multiple referrers in one query (UNION)."""
+        if not referrer_user_ids:
+            return []
+        db_session = _get_async_session(session)
+        effective_limit = limit if limit is not None else 100_000
+        bloggers_query = (
+            select(
+                UserReferralBindingModel.referrer_user_id.label(
+                    "referrer_user_id"
+                ),
+                UserModel.created_at.label("creator_created_at"),
+                func.coalesce(
+                    OrderModel.completed_at, OrderModel.created_at
+                ).label("order_completed_at"),
+                PaymentModel.amount.label("payment_amount"),
+                OrderModel.bloggers_needed.label("bloggers_needed"),
+                OrderModel.order_id.label("order_id"),
+            )
+            .select_from(UserReferralBindingModel)
+            .join(
+                OrderResponseModel,
+                UserReferralBindingModel.referred_user_id
+                == OrderResponseModel.blogger_id,
+            )
+            .join(
+                OrderModel, OrderResponseModel.order_id == OrderModel.order_id
+            )
+            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+            .join(
+                InteractionModel,
+                and_(
+                    InteractionModel.order_id == OrderModel.order_id,
+                    InteractionModel.blogger_id
+                    == UserReferralBindingModel.referred_user_id,
+                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
+                ),
+            )
+            .join(
+                UserModel,
+                UserReferralBindingModel.referred_user_id == UserModel.user_id,
+            )
+            .where(
+                UserReferralBindingModel.referrer_user_id.in_(
+                    referrer_user_ids
+                ),
+                OrderModel.status == OrderStatus.CLOSED,
+                PaymentModel.status == PaymentStatus.PAID,
+                InteractionModel.status == InteractionStatus.OK,
+                OrderModel.bloggers_needed > 0,
+            )
+        )
+        advertisers_query = (
+            select(
+                UserReferralBindingModel.referrer_user_id.label(
+                    "referrer_user_id"
+                ),
+                UserModel.created_at.label("creator_created_at"),
+                func.coalesce(
+                    OrderModel.completed_at, OrderModel.created_at
+                ).label("order_completed_at"),
+                PaymentModel.amount.label("payment_amount"),
+                func.coalesce(1).label("bloggers_needed"),
+                OrderModel.order_id.label("order_id"),
+            )
+            .select_from(UserReferralBindingModel)
+            .join(
+                OrderModel,
+                OrderModel.advertiser_id
+                == UserReferralBindingModel.referred_user_id,
+            )
+            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+            .join(
+                UserModel,
+                UserReferralBindingModel.referred_user_id == UserModel.user_id,
+            )
+            .where(
+                UserReferralBindingModel.referrer_user_id.in_(
+                    referrer_user_ids
+                ),
+                OrderModel.status == OrderStatus.CLOSED,
+                PaymentModel.status == PaymentStatus.PAID,
+            )
+        )
+        combined = union_all(bloggers_query, advertisers_query).subquery()
+        stmt = select(combined).limit(effective_limit)
+        result = await db_session.execute(stmt)
+        rows = result.all()
+        return [
+            (
+                row.referrer_user_id,
+                ReferralOrderIncomeRow(
+                    creator_created_at=row.creator_created_at,
+                    order_completed_at=row.order_completed_at,
+                    payment_amount=float(row.payment_amount),
+                    bloggers_needed=row.bloggers_needed,
+                    order_id=row.order_id,
+                ),
             )
             for row in rows
         ]

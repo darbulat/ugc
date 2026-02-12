@@ -166,29 +166,20 @@ class AdminDashboardService:
         )
         t0 = time.perf_counter()
         if need_balance_for_filter:
-            referral_data = await self._enrich_referrers_with_balance(
-                referrers, sort_by_balance=True
+            referral_data = await self._referrers_balance_filter_sort_paginate(
+                referrers=referrers,
+                referrers_filter=referrers_filter,
+                referrers_sort=referrers_sort,
+                referrers_order=referrers_order,
+                page=page,
+                per_page=per_page,
             )
-            referral_data["referrers"] = self._apply_referrers_filter(
-                referral_data["referrers"],
-                referrers_filter,
-            )
-            referral_data["referrers"] = self._sort_referrers(
-                referral_data["referrers"],
-                referrers_sort
-                or self._referrers_filter_default_sort(referrers_filter),
-                referrers_order,
-            )
-            total_referrers = len(referral_data["referrers"])
+            total_referrers = referral_data["referrers_total"]
             total_pages = (
                 (total_referrers + per_page - 1) // per_page
                 if total_referrers
                 else 1
             )
-            start = (page - 1) * per_page
-            referral_data["referrers"] = referral_data["referrers"][
-                start : start + per_page
-            ]
         else:
             filtered = self._apply_referrers_filter(referrers, referrers_filter)
             default_sort = self._referrers_filter_default_sort(referrers_filter)
@@ -761,6 +752,70 @@ class AdminDashboardService:
             }
             for row in rows
         ]
+
+    async def _referrers_balance_filter_sort_paginate(
+        self,
+        referrers: list[dict],
+        referrers_filter: str | None,
+        referrers_sort: str | None,
+        referrers_order: str,
+        page: int,
+        per_page: int,
+    ) -> dict:
+        """Batch balances, then filter, sort and paginate referrers."""
+        total_earned: float | None = None
+        total_balance: float | None = None
+        if not referrers:
+            return {
+                "referrers": [],
+                "total_earned": total_earned,
+                "total_balance": total_balance,
+                "referrers_total": 0,
+            }
+        service = self._referral_income_service
+        if service is None:
+            for r in referrers:
+                r["balance"] = None
+            refs = self._apply_referrers_filter(referrers, referrers_filter)
+            refs = self._sort_referrers(
+                refs,
+                referrers_sort
+                or self._referrers_filter_default_sort(referrers_filter),
+                referrers_order,
+            )
+            total_referrers = len(refs)
+            start = (page - 1) * per_page
+            return {
+                "referrers": refs[start : start + per_page],
+                "total_earned": total_earned,
+                "total_balance": total_balance,
+                "referrers_total": total_referrers,
+            }
+        user_ids = [UUID(r["user_id"]) for r in referrers]
+        balances = await service.get_referral_balances_batch(user_ids)
+        for r in referrers:
+            inc, paid = balances.get(UUID(r["user_id"]), (0.0, 0.0))
+            r["balance"] = round(inc - paid, 2)
+        refs = self._apply_referrers_filter(referrers, referrers_filter)
+        refs = self._sort_referrers(
+            refs,
+            referrers_sort
+            or self._referrers_filter_default_sort(referrers_filter),
+            referrers_order,
+        )
+        total_referrers = len(refs)
+        total_earned = round(
+            sum(balances.get(UUID(r["user_id"]), (0.0, 0.0))[0] for r in refs),
+            2,
+        )
+        total_balance = round(sum(r.get("balance") or 0.0 for r in refs), 2)
+        start = (page - 1) * per_page
+        return {
+            "referrers": refs[start : start + per_page],
+            "total_earned": total_earned,
+            "total_balance": total_balance,
+            "referrers_total": total_referrers,
+        }
 
     async def _enrich_referrers_with_balance(
         self,

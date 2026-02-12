@@ -1,6 +1,7 @@
 """Tests for SQLAlchemy repositories with fake sessions."""
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from unittest.mock import patch
 from uuid import UUID
 
@@ -1953,6 +1954,37 @@ async def test_payout_request_repository_list_by_user() -> None:
 
 
 @pytest.mark.asyncio
+async def test_payout_request_repository_list_by_user_ids() -> None:
+    """PayoutRequest repo list_by_user_ids (batch) returns requests."""
+    user_id_1 = UUID("00000000-0000-0000-0000-000000000605")
+    user_id_2 = UUID("00000000-0000-0000-0000-000000000606")
+    now = datetime.now(timezone.utc)
+    model_1 = PayoutRequestModel(
+        request_id=UUID("00000000-0000-0000-0000-000000000607"),
+        user_id=user_id_1,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+    )
+    model_2 = PayoutRequestModel(
+        request_id=UUID("00000000-0000-0000-0000-000000000608"),
+        user_id=user_id_2,
+        requested_at=now,
+        status=PayoutRequestStatus.PAID,
+        amount=Decimal("50.00"),
+    )
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory([model_1, model_2])
+    )
+    requests = list(
+        await repo.list_by_user_ids(
+            [user_id_1, user_id_2], session=_repo_session(repo)
+        )
+    )
+    assert len(requests) == 2
+    assert {r.user_id for r in requests} == {user_id_1, user_id_2}
+
+
+@pytest.mark.asyncio
 async def test_payout_request_repository_get_by_id() -> None:
     """get_by_id returns payout request when found."""
     request_id = UUID("00000000-0000-0000-0000-000000000603")
@@ -2099,3 +2131,38 @@ async def test_sql_referral_order_income_loader_combined_returns_rows() -> None:
     assert isinstance(rows[0], ReferralOrderIncomeRow)
     assert rows[0].payment_amount == 50.0
     assert rows[0].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_sql_referral_order_income_loader_combined_batch() -> None:
+    """SqlReferralOrderIncomeLoader.load_referral_order_income_rows_combined_batch."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlReferralOrderIncomeLoader,
+    )
+
+    referrer_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+    row_data = SimpleNamespace(
+        referrer_user_id=referrer_id,
+        creator_created_at=now,
+        order_completed_at=now,
+        payment_amount=50.0,
+        bloggers_needed=1,
+        order_id=order_id,
+    )
+    session = FakeSession([row_data])
+    loader = SqlReferralOrderIncomeLoader()
+    rows = await loader.load_referral_order_income_rows_combined_batch(
+        [referrer_id], limit=None, session=session
+    )
+    assert len(rows) == 1
+    assert rows[0][0] == referrer_id
+    assert isinstance(rows[0][1], ReferralOrderIncomeRow)
+    assert rows[0][1].payment_amount == 50.0
+    assert rows[0][1].order_id == order_id

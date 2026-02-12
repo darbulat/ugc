@@ -458,8 +458,8 @@ async def test_get_dashboard_filter_top_by_balance_enriches_all(
         _FakeResult(scalar_value=0),
     ]
     mock_income = AsyncMock()
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=SimpleNamespace(income_total=50.0, paid_total=10.0)
+    mock_income.get_referral_balances_batch = AsyncMock(
+        return_value={ref_user_id: (50.0, 10.0)}
     )
     svc = AdminDashboardService(
         session_factory=_make_session_factory(*results),
@@ -473,6 +473,118 @@ async def test_get_dashboard_filter_top_by_balance_enriches_all(
     assert referrers[0]["balance"] == 40.0
     assert data["referrals"]["total_earned"] == 50.0
     assert data["referrals"]["total_balance"] == 40.0
+    mock_income.get_referral_balances_batch.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_filter_top_by_balance_no_service(
+    thresholds,
+) -> None:
+    """top_by_balance with no income service: balance None, filter yields 0."""
+    ref_user_id = uuid4()
+    ref_row = SimpleNamespace(
+        user_id=ref_user_id,
+        username="ref1",
+        telegram="@ref1",
+        referral_code="r1",
+        total_referred=1,
+        referred_creators=1,
+        referred_advertisers=0,
+        new_in_period=0,
+    )
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[_order_cards_row()]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[ref_row]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+    ]
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(*results),
+        timezone_name="UTC",
+        thresholds=thresholds,
+        referral_income_service=None,
+    )
+    data = await svc.get_dashboard("today", referrers_filter="top_by_balance")
+    referrers = data["referrals"]["referrers"]
+    assert data["referrals"]["referrers_total"] == 0
+    assert len(referrers) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_filter_top_by_balance_zero_referrers(
+    thresholds,
+) -> None:
+    """top_by_balance with 0 referrers from query hits early return."""
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[_order_cards_row()]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+    ]
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(*results),
+        timezone_name="UTC",
+        thresholds=thresholds,
+        referral_income_service=AsyncMock(),
+    )
+    data = await svc.get_dashboard("today", referrers_filter="top_by_balance")
+    assert data["referrals"]["referrers_total"] == 0
+    assert data["referrals"]["referrers"] == []
+
+
+@pytest.mark.asyncio
+async def test_is_archived_with_open_complaints_returns_false(
+    thresholds,
+) -> None:
+    """_is_archived returns False when open_complaints > 0."""
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(),
+        timezone_name="UTC",
+        thresholds=thresholds,
+    )
+    order = _make_order(
+        status=OrderStatus.CLOSED,
+        completed_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    assert (
+        svc._is_archived(order, is_completed=True, open_complaints=1) is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_include_timings(service) -> None:
+    """With include_timings=True, result includes _timings_ms."""
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[_order_cards_row()]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+    ]
+    svc = service(results)
+    data = await svc.get_dashboard("today", include_timings=True)
+    assert "_timings_ms" in data
+    assert "enrich_referrers" in data["_timings_ms"]
 
 
 @pytest.mark.asyncio

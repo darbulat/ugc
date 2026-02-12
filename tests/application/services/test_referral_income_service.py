@@ -17,6 +17,7 @@ from ugc_bot.domain.entities import (
     OrderResponse,
     Payment,
     PayoutRequest,
+    ReferralOrderIncomeRow,
     User,
     UserReferralBinding,
 )
@@ -752,6 +753,11 @@ async def test_stats_uses_combined_loader_when_available() -> None:
         ):
             return [row]
 
+        async def load_referral_order_income_rows_combined_batch(
+            self, referrer_user_ids, limit=None, session=None
+        ):
+            return []
+
     binding_repo = InMemoryUserReferralBindingRepository()
     referred_id = uuid4()
     await binding_repo.save(
@@ -1174,3 +1180,120 @@ async def test_advertiser_order_ignored_when_payment_not_paid() -> None:
     assert stats.creators_count == 1
     assert stats.orders_count == 0
     assert stats.income_total == 0.0
+
+
+@pytest.mark.asyncio
+async def test_get_referral_balances_batch_empty_returns_empty() -> None:
+    """get_referral_balances_batch with empty user_ids returns {}."""
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+    )
+    result = await service.get_referral_balances_batch([])
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_get_referral_balances_batch_uses_loader() -> None:
+    """get_referral_balances_batch uses batch loader, returns (income, paid)."""
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=user_id,
+            external_id="ext1",
+            telegram="u1",
+            username="u1",
+            status=UserStatus.ACTIVE,
+            messenger_type=MessengerType.TELEGRAM,
+            referral_code="r1",
+            issue_count=0,
+            created_at=now,
+        )
+    )
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=user_id,
+            requested_at=now,
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("10.00"),
+        )
+    )
+    row = ReferralOrderIncomeRow(
+        creator_created_at=now,
+        order_completed_at=now,
+        payment_amount=100.0,
+        bloggers_needed=1,
+        order_id=uuid4(),
+    )
+    mock_loader = MagicMock()
+    mock_loader.load_referral_order_income_rows_combined_batch = AsyncMock(
+        return_value=[(user_id, row)]
+    )
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=payout_repo,
+        transaction_manager=None,
+        referral_order_income_loader=mock_loader,
+    )
+    result = await service.get_referral_balances_batch([user_id])
+    assert result == {user_id: (10.0, 10.0)}
+    mock_loader.load_referral_order_income_rows_combined_batch.assert_called_once()
+    sess = MagicMock()
+    result2 = await service.get_referral_balances_batch([user_id], session=sess)
+    assert result2 == {user_id: (10.0, 10.0)}
+
+
+@pytest.mark.asyncio
+async def test_get_referral_balances_batch_fallback_when_no_batch_loader() -> (
+    None
+):
+    """No batch loader: falls back to get_user_referral_stats per user."""
+    user_id = uuid4()
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=user_id,
+            external_id="e1",
+            telegram="u1",
+            username="u1",
+            status=UserStatus.ACTIVE,
+            messenger_type=MessengerType.TELEGRAM,
+            referral_code="r1",
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    loader_no_batch = MagicMock(
+        spec=["load_referral_order_income_rows_combined"]
+    )
+    loader_no_batch.load_referral_order_income_rows_combined = AsyncMock(
+        return_value=[]
+    )
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        order_response_repo=InMemoryOrderResponseRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_order_income_loader=loader_no_batch,
+    )
+    result = await service.get_referral_balances_batch([user_id])
+    assert result == {user_id: (0.0, 0.0)}
