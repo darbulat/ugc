@@ -176,6 +176,15 @@ services:
     command: ["python", "-m", "ugc_bot.feedback_scheduler"]
     restart: unless-stopped
 
+  role_reminder_scheduler:
+    build: .
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "ugc_bot.role_reminder_scheduler"]
+    restart: unless-stopped
+
   outbox_processor:
     build: .
     env_file: .env

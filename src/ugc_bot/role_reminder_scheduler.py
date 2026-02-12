@@ -65,13 +65,20 @@ async def run_once(
     user_role_service: UserRoleService,
     reminder_cutoff: datetime,
 ) -> None:
-    """Send one reminder to each user due for a role-choice reminder."""
+    """Send one reminder to each user due for a role-choice reminder.
+
+    Updates last_role_reminder_at before sending to avoid race: if the process
+    crashes after send but before update, the user would get a duplicate
+    reminder next day. By updating first we "reserve" the slot; failed sends
+    are logged but the user will not be sent again until the next run.
+    """
 
     users = await user_role_service.list_pending_role_reminders(reminder_cutoff)
     for user in users:
         if user.messenger_type.value != "telegram":  # pragma: no cover
             continue
         try:
+            await user_role_service.update_last_role_reminder_at(user.user_id)
             chat_id = int(user.external_id)
             await send_with_retry(
                 messenger_client,
@@ -83,7 +90,6 @@ async def run_once(
                 logger=logger,
                 extra={"user_id": str(user.user_id)},
             )
-            await user_role_service.update_last_role_reminder_at(user.user_id)
         except Exception as exc:
             logger.warning(
                 "Role reminder send failed",
@@ -143,12 +149,16 @@ def main() -> None:  # pragma: no cover
     )
     bot = Bot(token=config.bot.bot_token)
     messenger_client = TelegramMessengerClient(bot)
-    try:
-        asyncio.run(run_loop(messenger_client, user_role_service, config))
-    finally:
-        session = getattr(bot, "session", None)
-        if session is not None:
-            asyncio.run(session.close())
+
+    async def _run_with_cleanup() -> None:
+        try:
+            await run_loop(messenger_client, user_role_service, config)
+        finally:
+            session = getattr(bot, "session", None)
+            if session is not None:
+                await session.close()
+
+    asyncio.run(_run_with_cleanup())
 
 
 if __name__ == "__main__":  # pragma: no cover

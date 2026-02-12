@@ -172,7 +172,7 @@ def test_main_exits_when_no_database_url() -> None:
 
 @pytest.mark.asyncio
 async def test_run_once_handles_send_failure(fake_tm) -> None:
-    """run_once logs warning and does not update when send_with_retry raises."""
+    """On send failure, timestamp already set so no duplicate tomorrow."""
 
     from ugc_bot.infrastructure.messenger.telegram.client import (
         TelegramMessengerClient,
@@ -206,7 +206,7 @@ async def test_run_once_handles_send_failure(fake_tm) -> None:
 
     updated = await service.get_user_by_id(user.user_id)
     assert updated is not None
-    assert updated.last_role_reminder_at is None
+    assert updated.last_role_reminder_at is not None
 
 
 @pytest.mark.asyncio
