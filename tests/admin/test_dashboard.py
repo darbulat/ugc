@@ -72,6 +72,11 @@ def _build_admin_client(
         "get_order_card",
         AsyncMock(return_value=order_card),
     )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_creators_by_city",
+        AsyncMock(return_value=[]),
+    )
     app = create_admin_app()
     return TestClient(app)
 
@@ -108,44 +113,35 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Дашборд" in response.text
 
 
-def test_admin_dashboard_creators_by_city_section(monkeypatch) -> None:
-    """Dashboard renders Креаторы по городам section with table."""
+def test_admin_creators_page_creators_by_city_section(monkeypatch) -> None:
+    """Creators page renders Креаторы по городам section below pagination."""
+    get_creators_by_city_mock = AsyncMock(
+        return_value=[
+            {"city": "Moscow", "count": 5},
+            {"city": "", "count": 2},
+        ]
+    )
     client = _build_admin_client(
         monkeypatch,
-        dashboard_payload={
-            "period": "today",
-            "registrations": {
-                "creators": {"count": 0, "change_pct": None},
-                "advertisers": {"count": 0, "change_pct": None},
-            },
-            "orders": {"active": 0, "completed": 0, "archived": 0},
-            "problems": {"open_complaints": 0, "delays": 0},
-            "delayed_orders": [],
-            "open_complaints_list": [],
-            "turnover_period": None,
-            "referrals": {
-                "referrers": [],
-                "total_earned": None,
-                "total_balance": None,
-            },
-            "payout_requests": [],
-            "creators_by_city": [
-                {"city": "Moscow", "count": 5},
-                {"city": "", "count": 2},
-            ],
-        },
+        dashboard_payload={},
         creators=[],
         advertisers=[],
         orders=[],
         order_card={"order_id": "x"},
     )
-    response = client.get("/admin/dashboard?period=today")
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_creators_by_city",
+        get_creators_by_city_mock,
+    )
+    response = client.get("/admin/users/creators?period=today")
     assert response.status_code == 200
     assert "Креаторы по городам" in response.text
     assert "Moscow" in response.text
     assert "Не указан" in response.text
     assert "5" in response.text
     assert "2" in response.text
+    get_creators_by_city_mock.assert_called_once()
 
 
 def test_admin_referrers_html(monkeypatch) -> None:
@@ -965,6 +961,11 @@ def test_admin_creators_html_uses_cache_on_second_request(
         AdminDashboardService,
         "get_order_card",
         AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_creators_by_city",
+        AsyncMock(return_value=[]),
     )
     with patch(
         "ugc_bot.admin.app.AdminCache",

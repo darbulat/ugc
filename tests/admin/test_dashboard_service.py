@@ -215,6 +215,25 @@ async def test_get_dashboard_returns_structure(service) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_creators_by_city_public_method(service) -> None:
+    """get_creators_by_city returns list from session."""
+    creators_by_city_rows = [("Moscow", 3), ("SPb", 1)]
+    results = [_FakeResult(all_rows=creators_by_city_rows)]
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(*results),
+        timezone_name="UTC",
+        thresholds=DelayThresholds(
+            active_days=7,
+            no_responses_hours=24,
+            low_picked_hours=48,
+            archive_days=7,
+        ),
+    )
+    out = await svc.get_creators_by_city()
+    assert out == [{"city": "Moscow", "count": 3}, {"city": "SPb", "count": 1}]
+
+
+@pytest.mark.asyncio
 async def test_get_creators_by_city_returns_sorted_and_handles_empty_city(
     service,
 ) -> None:
@@ -770,12 +789,13 @@ async def test_build_period_window_raises_for_invalid(service) -> None:
 
 @pytest.mark.asyncio
 async def test_list_creators(service) -> None:
-    """list_creators returns creator rows."""
+    """list_creators returns creator rows with city."""
     user = _make_user()
     rows = [
         (
             user,
             "https://instagram.com/u1",
+            "Moscow",
             5,
             1,
         ),
@@ -796,6 +816,7 @@ async def test_list_creators(service) -> None:
     assert len(creators) == 1
     assert creators[0]["username"] == "user1"
     assert creators[0]["instagram"] == "https://instagram.com/u1"
+    assert creators[0]["city"] == "Moscow"
     assert creators[0]["responses"] == 5
     assert creators[0]["complaints"] == 1
     assert creators[0]["status"] in ("active", "limited")
@@ -1030,7 +1051,7 @@ async def test_count_open_complaints(service) -> None:
 async def test_user_status_label_active(service) -> None:
     """_user_status_label returns active for ACTIVE status."""
     user = _make_user(status=UserStatus.ACTIVE)
-    rows = [(user, "url", 0, 0)]
+    rows = [(user, "url", "", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1044,7 +1065,7 @@ async def test_user_status_label_active(service) -> None:
 async def test_user_status_label_limited(service) -> None:
     """_user_status_label returns limited for non-ACTIVE status."""
     user = _make_user(status=UserStatus.BLOCKED)
-    rows = [(user, "url", 0, 0)]
+    rows = [(user, "url", "", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1140,7 +1161,7 @@ async def test_advertiser_fallback_to_username_when_no_brand(service) -> None:
 async def test_list_creators_only_new_filter(service) -> None:
     """list_creators with only_new=True applies date filter."""
     user = _make_user()
-    rows = [(user, "url", 0, 0)]
+    rows = [(user, "url", "", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1156,7 +1177,7 @@ async def test_list_creators_only_new_filter(service) -> None:
 async def test_list_creators_only_with_complaints_filter(service) -> None:
     """list_creators with only_with_complaints=True filters by complaints."""
     user = _make_user()
-    rows = [(user, "url", 0, 2)]
+    rows = [(user, "url", "", 0, 2)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1341,7 +1362,7 @@ async def test_search_users_by_digit_external_id(service) -> None:
 async def test_list_creators_with_sort_and_search(service) -> None:
     """list_creators with sort and search query uses correct params."""
     user = _make_user()
-    rows = [(user, "https://instagram.com/u", 2, 0)]
+    rows = [(user, "https://instagram.com/u", "", 2, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1487,7 +1508,7 @@ async def test_list_creators_with_digit_search_hits_user_search_condition(
 ) -> None:
     """list_creators with digit q uses _user_search_condition (external_id)."""
     user = _make_user()
-    rows = [(user, "https://instagram.com/u", 0, 0)]
+    rows = [(user, "https://instagram.com/u", "", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1583,7 +1604,7 @@ async def test_apply_referrers_filter_unknown_returns_unchanged(
 async def test_list_creators_sort_responses(service) -> None:
     """list_creators with sort=responses uses responses column."""
     user = _make_user()
-    rows = [(user, "https://instagram.com/u", 10, 0)]
+    rows = [(user, "https://instagram.com/u", "", 10, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1599,7 +1620,7 @@ async def test_list_creators_sort_responses(service) -> None:
 async def test_list_creators_sort_complaints(service) -> None:
     """list_creators with sort=complaints uses complaints column."""
     user = _make_user()
-    rows = [(user, "url", 0, 3)]
+    rows = [(user, "url", "", 0, 3)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1615,7 +1636,7 @@ async def test_list_creators_sort_complaints(service) -> None:
 async def test_list_creators_unknown_sort_uses_default(service) -> None:
     """list_creators with unknown sort uses default order (created_at desc)."""
     user = _make_user()
-    rows = [(user, "url", 0, 0)]
+    rows = [(user, "url", "", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),

@@ -584,6 +584,11 @@ class AdminDashboardService:
             ),
         }
 
+    async def get_creators_by_city(self) -> list[dict[str, Any]]:
+        """Return creators count grouped by city, sorted by count descending."""
+        async with self._session_factory() as session:
+            return await self._get_creators_by_city(session)
+
     async def _get_creators_by_city(
         self, session: AsyncSession
     ) -> list[dict[str, Any]]:
@@ -1265,6 +1270,7 @@ class AdminDashboardService:
             select(
                 UserModel,
                 BloggerProfileModel.instagram_url,
+                BloggerProfileModel.city,
                 func.coalesce(responses.c.responses, 0).label("responses"),
                 func.coalesce(complaints.c.complaints, 0).label("complaints"),
             )
@@ -1299,18 +1305,22 @@ class AdminDashboardService:
         query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
-        return [
-            {
-                "user_id": str(user.user_id),
-                "username": user.username,
-                "instagram": instagram_url,
-                "created_at": user.created_at,
-                "responses": int(responses_count),
-                "complaints": int(complaints_count),
-                "status": self._user_status_label(user.status),
-            }
-            for user, instagram_url, responses_count, complaints_count in rows
-        ]
+        items = []
+        for row in rows:
+            user, instagram_url, city, resp_count, compl_count = row
+            items.append(
+                {
+                    "user_id": str(user.user_id),
+                    "username": user.username,
+                    "instagram": instagram_url,
+                    "city": city or "",
+                    "created_at": user.created_at,
+                    "responses": int(resp_count),
+                    "complaints": int(compl_count),
+                    "status": self._user_status_label(user.status),
+                }
+            )
+        return items
 
     def _creators_sort_column(self, sort_by: str, responses, complaints):
         """Return sort column for creators list or None for default."""

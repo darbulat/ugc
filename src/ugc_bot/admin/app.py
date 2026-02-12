@@ -354,6 +354,7 @@ def _register_dashboard_routes(  # noqa: C901
                     serialize_admin_payload(result),
                     _LIST_CACHE_TTL,
                 )
+        creators_by_city = await dashboard_service.get_creators_by_city()
         return templates.TemplateResponse(
             request,
             "creators.html",
@@ -372,6 +373,7 @@ def _register_dashboard_routes(  # noqa: C901
                 "search_query": q,
                 "sort": sort,
                 "order": order,
+                "creators_by_city": creators_by_city,
             },
         )
 
