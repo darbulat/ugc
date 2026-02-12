@@ -206,6 +206,47 @@ def _register_dashboard_routes(  # noqa: C901
             },
         )
 
+    @app.get("/admin/referrers", response_class=HTMLResponse)
+    async def admin_referrers(
+        request: Request,
+        period: str = "today",
+        referrers_page: int = 1,
+        referrers_per_page: int = 25,
+        referrers_sort: str = "",
+        referrers_order: str = "desc",
+        referrers_filter: str = "all",
+        timings: str = "",
+    ):
+        """Render referrers (managers) page."""
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        period_key = _normalize_period(period)
+        include_timings = (
+            timings.lower() in ("1", "true", "yes") if timings else False
+        )
+        payload = await dashboard_service.get_dashboard(
+            period_key,
+            referrers_page=referrers_page,
+            referrers_per_page=referrers_per_page,
+            referrers_sort=referrers_sort or None,
+            referrers_order=referrers_order,
+            referrers_filter=referrers_filter or None,
+            include_timings=include_timings,
+        )
+        return templates.TemplateResponse(
+            request,
+            "referrers.html",
+            {
+                "payload": payload,
+                "period": period_key,
+                "periods": _DASHBOARD_PERIODS,
+                "period_labels": _PERIOD_LABELS,
+                "referrers_sort": referrers_sort,
+                "referrers_order": referrers_order,
+                "referrers_filter": referrers_filter,
+            },
+        )
+
     @app.get("/admin/users/creators", response_class=HTMLResponse)
     async def admin_creators(
         request: Request,

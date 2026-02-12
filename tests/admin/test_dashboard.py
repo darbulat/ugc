@@ -104,6 +104,52 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Дашборд" in response.text
 
 
+def test_admin_referrers_html(monkeypatch) -> None:
+    """Referrers page renders with mocked data."""
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={
+            "registrations": {},
+            "orders": {},
+            "problems": {},
+            "delayed_orders": [],
+            "open_complaints_list": [],
+            "turnover_period": None,
+            "referrals": {
+                "referrers": [
+                    {
+                        "user_id": "u1",
+                        "telegram": "@m",
+                        "referral_code": "r1",
+                        "balance": 10.0,
+                        "total_referred": 2,
+                        "referred_creators": 1,
+                        "referred_advertisers": 1,
+                        "new_in_period": 0,
+                    }
+                ],
+                "referrers_total": 1,
+                "referrers_page": 1,
+                "referrers_per_page": 25,
+                "referrers_total_pages": 1,
+                "referrers_sort": "balance",
+                "referrers_order": "desc",
+                "referrers_filter": "all",
+                "total_earned": 100.0,
+                "total_balance": 50.0,
+            },
+            "payout_requests": [],
+        },
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={},
+    )
+    response = client.get("/admin/referrers?period=today")
+    assert response.status_code == 200
+    assert "Рефералы" in response.text
+
+
 def test_admin_creators_html_with_filters(monkeypatch) -> None:
     """Creators page renders with only_new and with_complaints filters."""
     creators = [
