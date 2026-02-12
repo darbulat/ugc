@@ -35,3 +35,9 @@ scrape_configs:
           - app_2:9999
     metrics_path: /metrics
     scrape_interval: 15s
+
+  - job_name: postgres
+    static_configs:
+      - targets:
+          - postgres_exporter:9187
+    scrape_interval: 15s
