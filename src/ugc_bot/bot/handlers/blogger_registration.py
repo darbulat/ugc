@@ -51,7 +51,6 @@ from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import (
     AudienceGender,
     BloggerGender,
-    MessengerType,
     WorkFormat,
 )
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
@@ -668,7 +667,6 @@ async def handle_agreements(
     message: Message,
     state: FSMContext,
     blogger_registration_service: BloggerRegistrationService,
-    user_role_service: UserRoleService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -698,12 +696,6 @@ async def handle_agreements(
         return
     try:
         telegram_username = incoming.user.username
-        await user_role_service.set_user(
-            external_id=data["external_id"],
-            messenger_type=MessengerType.TELEGRAM,
-            username=data["nickname"],
-            telegram_username=telegram_username,
-        )
         await blogger_registration_service.register_blogger(
             user_id=user_id,
             instagram_url=data["instagram_url"],
@@ -717,6 +709,8 @@ async def handle_agreements(
             barter=data["barter"],
             work_format=data["work_format"],
             blogger_gender=data["blogger_gender"],
+            display_name=data.get("nickname"),
+            telegram_username=telegram_username,
         )
     except Exception as exc:
         error_str = str(exc)

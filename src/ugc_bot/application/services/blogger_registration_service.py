@@ -15,7 +15,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.application.services.referral_service import ReferralService
-from ugc_bot.domain.entities import BloggerProfile
+from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import AudienceGender, BloggerGender, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
@@ -88,8 +88,15 @@ class BloggerRegistrationService:
         barter: bool,
         work_format: WorkFormat,
         blogger_gender: BloggerGender,
+        display_name: Optional[str] = None,
+        telegram_username: Optional[str] = None,
     ) -> BloggerProfile:
-        """Create a blogger profile after validating input."""
+        """Create a blogger profile after validating input.
+
+        Updates user.role_chosen_at and optionally user.username (display_name)
+        and user.telegram (telegram_username) in the same transaction as
+        profile creation.
+        """
 
         async def _run(session: object | None) -> BloggerProfile:
             user = await self.user_repo.get_by_id(user_id, session=session)
@@ -135,6 +142,39 @@ class BloggerRegistrationService:
                 blogger_gender=blogger_gender,
             )
             await self.blogger_repo.save(profile, session=session)
+
+            now = datetime.now(timezone.utc)
+            role_chosen_at = (
+                now if user.role_chosen_at is None else user.role_chosen_at
+            )
+            username = (
+                display_name.strip()
+                if display_name and display_name.strip()
+                else user.username
+            )
+            telegram = (
+                telegram_username
+                if telegram_username is not None
+                else user.telegram
+            )
+            updated_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                role_chosen_at=role_chosen_at,
+                last_role_reminder_at=user.last_role_reminder_at,
+                telegram=telegram,
+                admin=user.admin,
+                referral_code=user.referral_code,
+                referral_payout_rate=getattr(
+                    user, "referral_payout_rate", None
+                ),
+            )
+            await self.user_repo.save(updated_user, session=session)
 
             if self.referral_service:
                 await self.referral_service.create_binding_from_pending(

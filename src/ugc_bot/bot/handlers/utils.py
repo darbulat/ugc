@@ -458,7 +458,7 @@ async def handle_role_choice(
         external_id=external_id,
         messenger_type=message.user.messenger_type,
         username=username,
-        role_chosen=True,
+        role_chosen=False,
         telegram_username=message.user.username,
     )
 

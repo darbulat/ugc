@@ -386,7 +386,6 @@ async def handle_agreements_confirm(
     message: Message,
     state: FSMContext,
     advertiser_registration_service: AdvertiserRegistrationService,
-    user_role_service: UserRoleService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -420,16 +419,6 @@ async def handle_agreements_confirm(
     city = data.get("city")
     company_activity = data.get("company_activity")
 
-    user = await user_role_service.get_user_by_id(user_id)
-    if user is not None:
-        await user_role_service.set_user(
-            external_id=user.external_id,
-            messenger_type=user.messenger_type,
-            username=name,
-            role_chosen=False,
-            telegram_username=None,
-        )
-
     await advertiser_registration_service.register_advertiser(
         user_id=user_id,
         phone=phone,
@@ -437,6 +426,7 @@ async def handle_agreements_confirm(
         site_link=site_link,
         city=city,
         company_activity=company_activity,
+        display_name=name,
     )
 
     await state_store.clear()

@@ -1,6 +1,7 @@
 """Service for advertiser registration."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
@@ -14,7 +15,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.application.services.referral_service import ReferralService
-from ugc_bot.domain.entities import AdvertiserProfile
+from ugc_bot.domain.entities import AdvertiserProfile, User
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -36,8 +37,13 @@ class AdvertiserRegistrationService:
         site_link: Optional[str] = None,
         city: Optional[str] = None,
         company_activity: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> AdvertiserProfile:
-        """Create an advertiser profile after validating input."""
+        """Create an advertiser profile after validating input.
+
+        Updates user.role_chosen_at and optionally user.username (display_name)
+        in the same transaction as profile creation.
+        """
 
         phone = phone.strip()
         brand = brand.strip()
@@ -65,6 +71,34 @@ class AdvertiserRegistrationService:
                 company_activity=company_activity,
             )
             await self.advertiser_repo.save(profile, session=session)
+
+            now = datetime.now(timezone.utc)
+            role_chosen_at = (
+                now if user.role_chosen_at is None else user.role_chosen_at
+            )
+            username = (
+                display_name.strip()
+                if display_name and display_name.strip()
+                else user.username
+            )
+            updated_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                role_chosen_at=role_chosen_at,
+                last_role_reminder_at=user.last_role_reminder_at,
+                telegram=user.telegram,
+                admin=user.admin,
+                referral_code=user.referral_code,
+                referral_payout_rate=getattr(
+                    user, "referral_payout_rate", None
+                ),
+            )
+            await self.user_repo.save(updated_user, session=session)
 
             if self.referral_service:
                 await self.referral_service.create_binding_from_pending(

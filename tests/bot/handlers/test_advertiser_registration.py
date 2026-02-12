@@ -561,9 +561,8 @@ async def test_handle_agreements_confirm_session_expired(
     adv_service = AdvertiserRegistrationService(
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
-    user_service = UserRoleService(user_repo=user_repo)
 
-    await handle_agreements_confirm(message, state, adv_service, user_service)
+    await handle_agreements_confirm(message, state, adv_service)
 
     assert state.cleared
     assert "Сессия истекла" in (
@@ -587,9 +586,8 @@ async def test_handle_agreements_confirm_wrong_button(
     adv_service = AdvertiserRegistrationService(
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
-    user_service = UserRoleService(user_repo=user_repo)
 
-    await handle_agreements_confirm(message, state, adv_service, user_service)
+    await handle_agreements_confirm(message, state, adv_service)
 
     assert message.answers
     ans = message.answers[0]
@@ -628,9 +626,8 @@ async def test_handle_agreements_confirm_success(
     adv_service = AdvertiserRegistrationService(
         user_repo=user_repo, advertiser_repo=advertiser_repo
     )
-    user_service = UserRoleService(user_repo=user_repo)
 
-    await handle_agreements_confirm(message, state, adv_service, user_service)
+    await handle_agreements_confirm(message, state, adv_service)
 
     assert state.cleared
     assert message.answers

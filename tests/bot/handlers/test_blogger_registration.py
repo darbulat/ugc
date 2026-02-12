@@ -336,12 +336,7 @@ async def test_handle_agreements_creates_profile(
         blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_agreements(
-        message,
-        state,
-        registration_service,
-        user_role_service,
-    )
+    await handle_agreements(message, state, registration_service)
 
     assert message.answers
     ans = message.answers[0]
@@ -355,7 +350,6 @@ async def test_handle_agreements_requires_consent(
 ) -> None:
     """Require explicit consent."""
 
-    user_role_service = UserRoleService(user_repo=user_repo)
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
@@ -363,12 +357,7 @@ async def test_handle_agreements_requires_consent(
     message = FakeMessage(text="нет", user=FakeUser(1, "bob", "Bob"))
     state = FakeFSMContext()
 
-    await handle_agreements(
-        message,
-        state,
-        registration_service,
-        user_role_service,
-    )
+    await handle_agreements(message, state, registration_service)
 
     assert message.answers
     first_answer = message.answers[0]
@@ -464,12 +453,7 @@ async def test_handle_agreements_shows_verification_button(
         blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_agreements(
-        message,
-        state,
-        registration_service,
-        user_role_service,
-    )
+    await handle_agreements(message, state, registration_service)
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
@@ -689,7 +673,6 @@ async def test_handle_agreements_session_expired(
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
-    user_service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(
         text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(1, "bob", "Bob")
     )
@@ -697,7 +680,7 @@ async def test_handle_agreements_session_expired(
     state.state = BloggerRegistrationStates.agreements
     await state.update_data(nickname="x", external_id="1")  # no user_id
 
-    await handle_agreements(message, state, registration_service, user_service)
+    await handle_agreements(message, state, registration_service)
 
     assert "Сессия истекла" in message.answers[0]
 
@@ -970,12 +953,7 @@ async def test_handle_agreements_from_user_none(
         blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_agreements(
-        message,
-        state,
-        registration_service,
-        user_role_service,
-    )
+    await handle_agreements(message, state, registration_service)
 
     assert message.answers
     ans = message.answers[0]
@@ -1023,12 +1001,7 @@ async def test_handle_agreements_unique_violation(
         new_callable=AsyncMock,
         side_effect=Exception("UniqueViolation: duplicate key instagram_url"),
     ):
-        await handle_agreements(
-            message,
-            state,
-            registration_service,
-            user_role_service,
-        )
+        await handle_agreements(message, state, registration_service)
 
     assert message.answers
     ans = message.answers[0]
