@@ -91,6 +91,8 @@ class Order:
     completed_at: Optional[datetime]
     content_usage: Optional[str] = None
     deadlines: Optional[str] = None
+    # Advertiser's answer: where creator may be (1–10 cities, regions, or "РФ").
+    # Used for barter orders and product delivery.
     geography: Optional[str] = None
     product_photo_file_id: Optional[str] = None
 

@@ -100,7 +100,6 @@ class OfferDispatchService:
                 if not blogger_matches_geography(
                     profile.city,
                     geography_spec,
-                    audience_geo=profile.audience_geo,
                 ):
                     continue
             users.append(user)

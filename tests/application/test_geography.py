@@ -88,6 +88,13 @@ class TestParseGeography:
         assert spec.type == "region"
         assert spec.values == ["татарстан"]
 
+    def test_multiple_regions_yield_cities_spec(self) -> None:
+        """Multiple regions (or mix) yield type cities with all tokens."""
+        spec = parse_geography("Татарстан, Бурятия")
+        assert spec is not None
+        assert spec.type == "cities"
+        assert set(spec.values) == {"татарстан", "бурятия"}
+
     def test_region_case_insensitive(self) -> None:
         """Region name is case-insensitive."""
         spec = parse_geography("ТАТАРСТАН")
@@ -129,16 +136,21 @@ class TestBloggerMatchesGeography:
         spec = GeographySpec(type="cities", values=["казань"])
         assert blogger_matches_geography("", spec) is False
 
-    def test_cities_audience_geo_match(self) -> None:
-        """Cities: match via audience_geo."""
+    def test_cities_multiple_blogger_cities_match_any(self) -> None:
+        """Cities: blogger city lists several; match if one matches order."""
         spec = GeographySpec(type="cities", values=["казань", "москва"])
         assert blogger_matches_geography("Владивосток", spec) is False
-        assert (
-            blogger_matches_geography(
-                "Владивосток", spec, audience_geo="Москва, Питер"
-            )
-            is True
-        )
+        assert blogger_matches_geography("Владивосток, Москва", spec) is True
+        assert blogger_matches_geography("Казань и СПб", spec) is True
+        assert blogger_matches_geography("СПб / Питер", spec) is False
+
+    def test_cities_list_may_include_regions(self) -> None:
+        """Order geography can list regions; match if blogger city in region."""
+        spec = GeographySpec(type="cities", values=["татарстан", "москва"])
+        assert blogger_matches_geography("Казань", spec) is True
+        assert blogger_matches_geography("Москва", spec) is True
+        assert blogger_matches_geography("Набережные Челны", spec) is True
+        assert blogger_matches_geography("Владивосток", spec) is False
 
     def test_region_match_by_city(self) -> None:
         """Region: match when blogger city is in region's city list."""
@@ -152,15 +164,11 @@ class TestBloggerMatchesGeography:
         spec = GeographySpec(type="region", values=["татарстан"])
         assert blogger_matches_geography("Татарстан", spec) is True
 
-    def test_region_audience_geo_match(self) -> None:
-        """Region: match via audience_geo city in region."""
+    def test_region_multiple_blogger_cities_match_any(self) -> None:
+        """Region: several cities in blogger city; match if any in region."""
         spec = GeographySpec(type="region", values=["татарстан"])
-        assert (
-            blogger_matches_geography(
-                "Москва", spec, audience_geo="Казань, Москва"
-            )
-            is True
-        )
+        assert blogger_matches_geography("Москва", spec) is False
+        assert blogger_matches_geography("Москва, Казань", spec) is True
 
     def test_region_empty_values_no_match(self) -> None:
         """Region with empty values does not match."""

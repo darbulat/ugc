@@ -1,4 +1,10 @@
-"""Geography parsing and matching for order-to-blogger filtering."""
+"""Geography parsing and matching for order-to-blogger filtering.
+
+Order.geography stores the advertiser's answer to:
+"В каких городах или регионах может находиться креатор? Можно указать
+от 1 до 10 городов, регионы или написать «РФ». Нужно для бартерных
+заказов и доставки продукта."
+"""
 
 import re
 from dataclasses import dataclass
@@ -35,7 +41,7 @@ def normalize_geo_token(value: str) -> str:
 
 def parse_geography(raw: str | None) -> "GeographySpec | None":
     """
-    Parse order geography string into a structured spec.
+    Parse Order.geography (advertiser: cities/regions/РФ) into a spec.
 
     Returns None for empty/whitespace input. Otherwise returns GeographySpec
     with type world | country | region | cities and normalized values.
@@ -74,70 +80,75 @@ class GeographySpec:
     values: list[str]
 
 
-def _audience_tokens(audience_geo: str | None) -> list[str]:
-    """Split audience_geo into normalized tokens."""
-    if not audience_geo:
+def _parse_city_tokens(city_raw: str | None) -> list[str]:
+    """
+    Split city string into normalized tokens.
+
+    Field city may contain several cities (e.g. comma or " и " separated).
+    Returns list of normalized tokens for matching against order geography.
+    """
+    text = (city_raw or "").strip()
+    if not text:
         return []
     return [
         _normalize_token(p)
-        for p in GEO_TOKEN_SPLIT_RE.split(audience_geo)
+        for p in GEO_TOKEN_SPLIT_RE.split(text)
         if _normalize_token(p)
     ]
 
 
-def _matches_cities(
-    city_norm: str,
-    values: list[str],
-    audience_geo: str | None,
-) -> bool:
-    """Return True if city or any audience token is in values."""
-    if city_norm and city_norm in values:
-        return True
-    return any(token in values for token in _audience_tokens(audience_geo))
+def _matches_cities(blogger_city_tokens: list[str], values: list[str]) -> bool:
+    """
+    Return True if any blogger city matches any value.
+
+    values may contain both city names and region names (from REGION_TO_CITIES).
+    For a region, match if blogger's city is in that region's city list.
+    """
+    for token in blogger_city_tokens:
+        for val in values:
+            if val in REGION_TO_CITIES:
+                if _matches_region([token], val):
+                    return True
+            elif token == val:
+                return True
+    return False
 
 
 def _matches_region(
-    city_norm: str,
+    blogger_city_tokens: list[str],
     region_key: str,
-    audience_geo: str | None,
 ) -> bool:
-    """Return True if city or audience matches region or its cities."""
+    """Return True if any blogger city matches region or its cities."""
     region_cities = REGION_TO_CITIES.get(region_key)
     if region_cities is None:
         return False
-    if city_norm == region_key or city_norm in region_cities:
-        return True
-    for token in _audience_tokens(audience_geo):
+    for token in blogger_city_tokens:
         if token == region_key or token in region_cities:
             return True
     return False
 
 
-def blogger_matches_geography(
-    blogger_city: str,
-    spec: GeographySpec,
-    *,
-    audience_geo: str | None = None,
-) -> bool:
+def blogger_matches_geography(blogger_city: str, spec: GeographySpec) -> bool:
     """
-    Check if blogger city (and optionally audience_geo) matches order geography.
+    Check if blogger city matches order geography.
 
-    Uses normalization (lower, ё→е) and exact match. For region type uses
-    REGION_TO_CITIES; matches if city is in region's city list or equals region.
+    blogger_city may contain several cities (comma or " и " separated).
+    If any of them matches Order.geography, returns True.
+    Uses normalization (lower, ё→е). For region type uses REGION_TO_CITIES.
     """
     if spec.type == "world" or spec.type == "country":
         return True
 
-    city_norm = _normalize_token(blogger_city or "")
+    city_tokens = _parse_city_tokens(blogger_city)
+    if not city_tokens:
+        return False
 
     if spec.type == "cities":
-        if not city_norm and not _audience_tokens(audience_geo):
-            return False
-        return _matches_cities(city_norm, spec.values, audience_geo)
+        return _matches_cities(city_tokens, spec.values)
 
     if spec.type == "region":
         if not spec.values:
             return False
-        return _matches_region(city_norm, spec.values[0], audience_geo)
+        return _matches_region(city_tokens, spec.values[0])
 
     return False
