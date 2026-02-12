@@ -134,7 +134,7 @@ groups:
   - name: replication
     rules:
       - alert: ReplicationSlotInactive
-        expr: (count(pg_replication_slots{slot_type="logical"}) - count(pg_replication_slots{slot_type="logical", active=~"1|t"})) > 0
+        expr: (count(pg_replication_slots_active) - sum(pg_replication_slots_active)) > 0
         for: 5m
         labels:
           severity: warning
