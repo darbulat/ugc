@@ -2,6 +2,8 @@
 
 import asyncio
 import contextlib
+import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
@@ -48,6 +50,8 @@ _OPEN_COMPLAINT_STATUSES = (
     ComplaintStatus.PENDING,
     ComplaintStatus.REVIEWED,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -121,21 +125,42 @@ class AdminDashboardService:
         referrers_sort: str | None = None,
         referrers_order: str = "desc",
         referrers_filter: str | None = None,
+        include_timings: bool = False,
     ) -> dict:
         """Return dashboard cards and delayed orders list."""
+        total_start = time.perf_counter()
+        timings: dict[str, float] = {}
         window = self._build_period_window(period)
         async with self._session_factory() as session:
+            t0 = time.perf_counter()
             registrations = await self._get_registration_cards(session, window)
+            timings["registrations"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
             orders = await self._get_order_cards(session, window)
+            timings["orders"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
             open_complaints = await self._count_open_complaints(session)
+            timings["open_complaints"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
             open_complaints_list = await self._list_open_complaints(session)
+            timings["open_complaints_list"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
             delayed_orders = await self._list_delayed_orders(session)
+            timings["delayed_orders"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
             referrers = await self._get_referral_referrers(session, window)
+            timings["referrers"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
             payout_requests = await self._list_payout_requests(session)
+            timings["payout_requests"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
             turnover_period = await self._turnover_in_period(
                 session, window.current_start, window.current_end
             )
+            timings["turnover"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
         referral_data = await self._enrich_referrers_with_balance(referrers)
+        timings["enrich_referrers"] = (time.perf_counter() - t0) * 1000
         referral_data["referrers"] = self._apply_referrers_filter(
             referral_data["referrers"],
             referrers_filter,
@@ -171,6 +196,18 @@ class AdminDashboardService:
             "asc" if referrers_order == "asc" else "desc"
         )
         referral_data["referrers_filter"] = referrers_filter or "all"
+        total_ms = (time.perf_counter() - total_start) * 1000
+        timings["_total"] = total_ms
+        logger.info(
+            "dashboard timings period=%s total=%.0fms %s",
+            period,
+            total_ms,
+            " ".join(
+                f"{k}={v:.0f}ms"
+                for k, v in sorted(timings.items())
+                if not k.startswith("_")
+            ),
+        )
         creators_count = registrations["creators"]["count"]
         advertisers_count = registrations["advertisers"]["count"]
         ratio = (
@@ -178,7 +215,7 @@ class AdminDashboardService:
             if advertisers_count
             else (float(creators_count) if creators_count else 0.0)
         )
-        return {
+        result = {
             "period": period,
             "registrations": registrations,
             "imbalance": {
@@ -205,6 +242,9 @@ class AdminDashboardService:
             "payout_requests": payout_requests,
             "turnover_period": turnover_period,
         }
+        if include_timings:
+            result["_timings_ms"] = timings
+        return result
 
     async def get_dashboard_charts(self, period: PeriodKey) -> dict:
         """Return time-series data for dashboard charts (by day)."""

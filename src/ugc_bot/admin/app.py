@@ -172,11 +172,15 @@ def _register_dashboard_routes(  # noqa: C901
         referrers_sort: str = "",
         referrers_order: str = "desc",
         referrers_filter: str = "all",
+        timings: str = "",
     ):
         """Render dashboard page with KPI cards."""
         if not await auth.authenticate(request):
             return RedirectResponse(url="/admin/login")
         period_key = _normalize_period(period)
+        include_timings = (
+            timings.lower() in ("1", "true", "yes") if timings else False
+        )
         payload = await dashboard_service.get_dashboard(
             period_key,
             referrers_page=referrers_page,
@@ -184,6 +188,7 @@ def _register_dashboard_routes(  # noqa: C901
             referrers_sort=referrers_sort or None,
             referrers_order=referrers_order,
             referrers_filter=referrers_filter or None,
+            include_timings=include_timings,
         )
         return templates.TemplateResponse(
             request,
@@ -360,10 +365,15 @@ def _register_dashboard_routes(  # noqa: C901
         )
 
     @app.get("/admin/api/dashboard", dependencies=[Depends(_require_admin)])
-    async def dashboard_api(period: str = "today") -> dict:
+    async def dashboard_api(period: str = "today", timings: str = "") -> dict:
         """Return dashboard data as JSON."""
         period_key = _normalize_period(period)
-        return await dashboard_service.get_dashboard(period_key)
+        include_timings = (
+            timings.lower() in ("1", "true", "yes") if timings else False
+        )
+        return await dashboard_service.get_dashboard(
+            period_key, include_timings=include_timings
+        )
 
     @app.get(
         "/admin/api/dashboard/charts", dependencies=[Depends(_require_admin)]
