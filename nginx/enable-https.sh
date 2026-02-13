@@ -2,10 +2,11 @@
 
 # Script to enable HTTPS after SSL certificate is obtained
 # Run this after init-letsencrypt.sh completes successfully
+# DOMAIN is taken from environment (e.g. .env); default: bot.usemycontent.ru
 
 set -e
 
-DOMAIN="bot.usemycontent.ru"
+DOMAIN="${DOMAIN:-bot.usemycontent.ru}"
 
 if [ ! -f "nginx/nginx.conf" ]; then
     echo "Error: nginx/nginx.conf not found"
@@ -17,24 +18,18 @@ if [ ! -f "nginx/nginx-https.conf" ]; then
     exit 1
 fi
 
-echo "=== Enabling HTTPS ==="
+echo "=== Enabling HTTPS (DOMAIN=${DOMAIN}) ==="
 echo ""
 
 # Check if certificate exists
 if ! docker compose exec nginx test -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" 2>/dev/null; then
     echo "⚠️  Warning: SSL certificate not found at /etc/letsencrypt/live/$DOMAIN/fullchain.pem"
-    echo "   Make sure init-letsencrypt.sh completed successfully"
+    echo "   Make sure init-letsencrypt.sh completed successfully for this domain"
     read -p "Continue anyway? (y/N) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
-fi
-
-# Update domain in HTTPS config if needed
-if [ "$DOMAIN" != "bot.usemycontent.ru" ]; then
-    echo "Updating domain in nginx-https.conf..."
-    sed -i "s|bot.usemycontent.ru|$DOMAIN|g" nginx/nginx-https.conf
 fi
 
 # Backup original config

@@ -2,15 +2,25 @@
 
 Эта конфигурация настраивает Nginx как reverse proxy с SSL сертификатами от Let's Encrypt для Instagram webhook.
 
-## Dev-контур (dev.usemycontent.ru)
+## Домен не захардкожен
 
-На dev используется тот же HTTPS, но сертификаты для домена **dev.usemycontent.ru** (файл `nginx/ssl_cert_dev.conf`). Запуск:
+Конфигурация не привязана к конкретному домену. На любом сервере достаточно задать переменную **DOMAIN** (и **WEBHOOK_BASE_URL** с тем же доменом) в `.env` — nginx подставит домен в пути к SSL-сертификатам при старте контейнера. Prometheus и Grafana также используют DOMAIN для своих URL.
+
+В `config/env.example` задайте:
+- `DOMAIN=ваш-домен.example.com`
+- `WEBHOOK_BASE_URL=https://ваш-домен.example.com`
+
+После получения сертификата для этого домена (см. ниже) развёртывание будет работать без правок конфигов nginx.
+
+## Dev-контур
+
+Для dev задайте домен через переменную (по умолчанию в override — dev.usemycontent.ru):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+DOMAIN=dev.usemycontent.ru docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
-На dev-сервере должны быть получены сертификаты для `dev.usemycontent.ru` (например, через `init-letsencrypt.sh` с этим доменом). Сервисы доступны по `https://dev.usemycontent.ru/...`.
+Либо укажите DOMAIN в `.env`. Сертификаты должны быть получены для этого домена (например, через `init-letsencrypt.sh` с `domains=(dev.usemycontent.ru)`).
 
 Если на окружении нет SSL вообще (нет домена и сертификатов), используйте `nginx/nginx-http-only.conf` и монтируйте его вместо `nginx.conf` (только HTTP, порт 80).
 
@@ -24,9 +34,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 ### 1. Обновите конфигурацию
 
-Отредактируйте файлы:
-- `nginx/nginx.conf` - замените `YOUR_DOMAIN` на ваш домен
-- `nginx/init-letsencrypt.sh` - замените `YOUR_DOMAIN` и `YOUR_EMAIL` на ваши значения
+- В **.env** задайте `DOMAIN=ваш-домен.example.com` и `WEBHOOK_BASE_URL=https://ваш-домен.example.com` (скопируйте из `config/env.example` при необходимости).
+- В **nginx/init-letsencrypt.sh** задайте `domains=(ваш-домен.example.com)` и `email="ваш@email"`.
 
 ### 2. Запустите инициализацию SSL
 

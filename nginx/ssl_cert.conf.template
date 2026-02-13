@@ -1,0 +1,4 @@
+# SSL certificate paths — substituted at container start from DOMAIN env
+# e.g. DOMAIN=bot.example.com -> /etc/letsencrypt/live/bot.example.com/...
+ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
