@@ -173,6 +173,7 @@ class BloggerRegistrationService:
                 referral_payout_rate=getattr(
                     user, "referral_payout_rate", None
                 ),
+                agreement_confirmed_at=now,
             )
             await self.user_repo.save(updated_user, session=session)
 
@@ -190,6 +191,162 @@ class BloggerRegistrationService:
             return profile
 
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def save_blogger_before_agreement(
+        self,
+        user_id: UUID,
+        instagram_url: str,
+        city: str,
+        topics: dict[str, Any],
+        audience_gender: AudienceGender,
+        audience_age_min: int,
+        audience_age_max: int,
+        audience_geo: str,
+        price: float,
+        barter: bool,
+        work_format: WorkFormat,
+        blogger_gender: BloggerGender,
+        display_name: Optional[str] = None,
+        telegram_username: Optional[str] = None,
+    ) -> BloggerProfile:
+        """Save blogger profile and update user before consent confirmation.
+
+        Does not set agreement_confirmed_at and does not run referral/metrics.
+        """
+
+        async def _run(session: object | None) -> BloggerProfile:
+            user = await self.user_repo.get_by_id(user_id, session=session)
+            if user is None:
+                raise UserNotFoundError(
+                    "User not found for blogger registration."
+                )
+
+            instagram_url_clean, city_clean, audience_geo_clean = (
+                _validate_blogger_input(
+                    instagram_url,
+                    city,
+                    audience_geo,
+                    audience_age_min,
+                    audience_age_max,
+                    price,
+                )
+            )
+
+            existing_profile = await self.blogger_repo.get_by_instagram_url(
+                instagram_url_clean, session=session
+            )
+            if existing_profile is not None:
+                raise BloggerRegistrationError(
+                    "Этот Instagram аккаунт уже зарегистрирован. "
+                    "Пожалуйста, используйте другой аккаунт."
+                )
+
+            profile = BloggerProfile(
+                user_id=user.user_id,
+                instagram_url=instagram_url_clean,
+                confirmed=False,
+                city=city_clean,
+                topics=topics,
+                audience_gender=audience_gender,
+                audience_age_min=audience_age_min,
+                audience_age_max=audience_age_max,
+                audience_geo=audience_geo_clean,
+                price=price,
+                barter=barter,
+                work_format=work_format,
+                updated_at=datetime.now(timezone.utc),
+                blogger_gender=blogger_gender,
+            )
+            await self.blogger_repo.save(profile, session=session)
+
+            now = datetime.now(timezone.utc)
+            role_chosen_at = (
+                now if user.role_chosen_at is None else user.role_chosen_at
+            )
+            username = (
+                display_name.strip()
+                if display_name and display_name.strip()
+                else user.username
+            )
+            telegram = (
+                telegram_username
+                if telegram_username is not None
+                else user.telegram
+            )
+            updated_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                role_chosen_at=role_chosen_at,
+                last_role_reminder_at=user.last_role_reminder_at,
+                telegram=telegram,
+                admin=user.admin,
+                referral_code=user.referral_code,
+                referral_payout_rate=getattr(
+                    user, "referral_payout_rate", None
+                ),
+                agreement_confirmed_at=None,
+            )
+            await self.user_repo.save(updated_user, session=session)
+            return profile
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def confirm_blogger_agreement(
+        self,
+        user_id: UUID,
+        telegram_username: Optional[str] = None,
+    ) -> None:
+        """Set agreement_confirmed_at and run referral/metrics for blogger."""
+
+        async def _run(session: object | None) -> None:
+            user = await self.user_repo.get_by_id(user_id, session=session)
+            if user is None:
+                raise UserNotFoundError(
+                    "User not found for agreement confirmation."
+                )
+            now = datetime.now(timezone.utc)
+            telegram = (
+                telegram_username
+                if telegram_username is not None
+                else user.telegram
+            )
+            updated_user = User(
+                user_id=user.user_id,
+                external_id=user.external_id,
+                messenger_type=user.messenger_type,
+                username=user.username,
+                status=user.status,
+                issue_count=user.issue_count,
+                created_at=user.created_at,
+                role_chosen_at=user.role_chosen_at,
+                last_role_reminder_at=user.last_role_reminder_at,
+                telegram=telegram,
+                admin=user.admin,
+                referral_code=user.referral_code,
+                referral_payout_rate=getattr(
+                    user, "referral_payout_rate", None
+                ),
+                agreement_confirmed_at=now,
+            )
+            await self.user_repo.save(updated_user, session=session)
+
+            if self.referral_service:
+                await self.referral_service.create_binding_from_pending(
+                    creator_user_id=user_id,
+                    session=session,
+                )
+
+            if self.metrics_collector:
+                self.metrics_collector.record_blogger_registration(
+                    str(user.user_id)
+                )
+
+        await with_optional_tx(self.transaction_manager, _run)
 
     async def update_blogger_profile(
         self,
