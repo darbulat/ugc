@@ -1,4 +1,4 @@
-.PHONY: install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker e2e-telegram-docker-auth test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3
+.PHONY: install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker e2e-telegram-docker-auth test-docker test-all-docker format migrate docker-up docker-down dev-up dev-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3
 
 export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
@@ -75,6 +75,13 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+# Dev contour: docker-compose.yml + docker-compose.dev.yml (no backup by default)
+dev-up:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+dev-down:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 
 admin:
 	uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001 --log-config config/uvicorn_log_config.json
