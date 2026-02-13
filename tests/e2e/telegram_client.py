@@ -9,6 +9,15 @@ import pytest
 import pytest_asyncio
 
 
+# Session-scoped loop so Telethon client (session-scoped) and all tests share one.
+# Telethon requires "event loop must not change after connection".
+@pytest_asyncio.fixture(scope="session")
+def event_loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
+
+
 def _get_e2e_config() -> dict[str, str]:
     """Read Telegram E2E config from env."""
     return {
