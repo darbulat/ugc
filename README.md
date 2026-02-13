@@ -22,6 +22,12 @@ skeleton, configuration templates, and a working bot powered by `aiogram`.
 Set `DATABASE_URL` in `.env`, then run:
 - `alembic upgrade head`
 
+## E2E tests
+
+- **Local** (admin started automatically on port 8001): `make e2e`
+- **Against deployed dev**: set `E2E_BASE_URL` (and optionally `E2E_ADMIN_USERNAME` / `E2E_ADMIN_PASSWORD`) in `.env` or the environment, then run `make e2e-dev`
+- **Docker** (Postgres + admin in containers): `make e2e-docker`
+
 ## Project structure
 
 The codebase is layered: domain → application (ports, services) → infrastructure;

@@ -1,4 +1,4 @@
-.PHONY: install-dev lint typecheck test coverage e2e e2e-docker e2e-telegram e2e-telegram-docker test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3
+.PHONY: install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3
 
 export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
@@ -25,6 +25,14 @@ coverage:
 	uv run pytest -m "not e2e" --cov=ugc_bot --cov-fail-under=98 --cov-report=term-missing --cov-report=xml
 
 e2e:
+	uv run python -m playwright install chromium
+	uv run pytest tests/e2e -v -m e2e --timeout=90
+
+e2e-dev:
+	@if [ -z "$${E2E_BASE_URL}" ]; then \
+		echo "Error: E2E_BASE_URL is required. Example: E2E_BASE_URL=https://dev.usemycontent.ru make e2e-dev"; \
+		exit 1; \
+	fi
 	uv run python -m playwright install chromium
 	uv run pytest tests/e2e -v -m e2e --timeout=90
 

@@ -13,13 +13,26 @@ requires_postgres = pytest.mark.skipif(
 def _login(
     page,
     base_url: str,
-    username: str = "test_admin",
-    password: str = "test_pass",
+    username: str | None = None,
+    password: str | None = None,
 ) -> None:
-    """Perform admin login via form."""
+    """Perform admin login via form.
+
+    Uses E2E_ADMIN_USERNAME / E2E_ADMIN_PASSWORD from env when not passed.
+    """
+    user = (
+        username
+        if username is not None
+        else os.environ.get("E2E_ADMIN_USERNAME", "test_admin")
+    )
+    pwd = (
+        password
+        if password is not None
+        else os.environ.get("E2E_ADMIN_PASSWORD", "test_pass")
+    )
     page.goto(f"{base_url}/admin/login")
-    page.locator('input[name="username"]').fill(username)
-    page.locator('input[name="password"]').fill(password)
+    page.locator('input[name="username"]').fill(user)
+    page.locator('input[name="password"]').fill(pwd)
     page.get_by_role("button", name="Login").click()
 
 
