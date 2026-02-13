@@ -41,6 +41,7 @@ e2e-telegram:
 	uv run pytest tests/e2e -m e2e_telegram -v --timeout=90
 
 e2e-telegram-docker:
+	docker compose -f docker-compose.test.yml build e2e-telegram
 	docker compose -f docker-compose.test.yml run --rm e2e-telegram
 
 e2e-docker:

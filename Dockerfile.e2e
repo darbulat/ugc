@@ -1,4 +1,5 @@
-# E2E test image: dev deps + Playwright
+# E2E test image: dev deps + Playwright.
+# Order: deps layer first, then app code, then tests last so test-only changes skip reinstall.
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -11,18 +12,18 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends postgresql-client gzip && \
     rm -rf /var/lib/apt/lists/*
 
+# Deps: only these files affect the install layer.
 COPY requirements.txt pyproject.toml /app/
 COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
 COPY alembic.ini /app/
-COPY tests /app/tests
 
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install -r requirements.txt && \
     pip install -e ".[dev,telegram-e2e]" && \
-    pip install pytest pytest-cov pytest-asyncio pytest-timeout
+    pip install pytest pytest-cov pytest-asyncio pytest-timeout && \
+    python -m playwright install --with-deps chromium
 
-RUN python -m playwright install --with-deps chromium
-
-WORKDIR /app
+# Tests last: changes here do not invalidate the dependency layer.
+COPY tests /app/tests
