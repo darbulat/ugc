@@ -130,7 +130,35 @@ docker compose cp db_backup:/backups/ugc_backup_20240206_020000.sql.gz ./backups
    ```
 4. Перезапустите сервис: `docker compose up -d db_backup`.
 
-### Восстановление из бэкапа, скачанного из S3
+### Восстановление из S3
+
+Скрипт `restore_db.py` может восстанавливать базу напрямую из S3, без предварительной выгрузки файла на диск.
+
+Переменные окружения (те же, что для выгрузки): `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
+
+**Список бэкапов в S3:**
+
+```bash
+docker compose run --rm -e S3_ACCESS_KEY_ID=... -e S3_SECRET_ACCESS_KEY=... \
+    db_backup python scripts/restore_db.py --list-s3
+```
+
+**Восстановление из S3 по ключу объекта:**
+
+```bash
+docker compose run --rm db_backup python scripts/restore_db.py \
+    --host db --port 5432 --database ugc --user ugc --password <password> \
+    --from-s3 --confirm backups/ugc_backup_20240206_020000.sql.gz
+```
+
+Можно указать только имя файла (префикс `backups/` подставится автоматически):
+
+```bash
+docker compose run --rm db_backup python scripts/restore_db.py \
+    --from-s3 --confirm ugc_backup_20240206_020000.sql.gz
+```
+
+### Восстановление из бэкапа, скачанного из S3 вручную
 
 1. Скачайте файл из S3 (через панель Beget, AWS CLI или другой клиент), например в `./backups/ugc_backup_20240206_020000.sql.gz`.
 2. Скопируйте в контейнер или смонтируйте каталог и выполните восстановление:
