@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
@@ -50,6 +50,8 @@ _OPEN_COMPLAINT_STATUSES = (
     ComplaintStatus.PENDING,
     ComplaintStatus.REVIEWED,
 )
+
+PICKED_CREATORS_TARGET = 1000
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +163,9 @@ class AdminDashboardService:
             t0 = time.perf_counter()
             creators_by_city = await self._get_creators_by_city(session)
             timings["creators_by_city"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
+            picked_creators_count = await self._count_picked_creators(session)
+            timings["picked_creators"] = (time.perf_counter() - t0) * 1000
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
         need_balance_for_filter = referrers_filter in (
@@ -263,6 +268,8 @@ class AdminDashboardService:
             "payout_requests": payout_requests,
             "turnover_period": turnover_period,
             "creators_by_city": creators_by_city,
+            "picked_creators_count": picked_creators_count,
+            "picked_creators_target": PICKED_CREATORS_TARGET,
         }
         if include_timings:
             result["_timings_ms"] = timings
@@ -661,6 +668,14 @@ class AdminDashboardService:
         query = select(func.count(ComplaintModel.complaint_id)).where(
             ComplaintModel.status.in_(_OPEN_COMPLAINT_STATUSES)
         )
+        result = await session.execute(query)
+        return int(result.scalar() or 0)
+
+    async def _count_picked_creators(self, session: AsyncSession) -> int:
+        """Count unique creators with at least one order response."""
+        query = select(
+            func.count(distinct(OrderResponseModel.blogger_id))
+        ).select_from(OrderResponseModel)
         result = await session.execute(query)
         return int(result.scalar() or 0)
 

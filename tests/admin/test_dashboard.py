@@ -102,6 +102,9 @@ def test_admin_dashboard_html(monkeypatch) -> None:
                 "total_balance": None,
             },
             "payout_requests": [],
+            "creators_by_city": [],
+            "picked_creators_count": 100,
+            "picked_creators_target": 1000,
         },
         creators=[],
         advertisers=[],
@@ -113,6 +116,9 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Дашборд" in response.text
     assert "Админка" in response.text
     assert 'href="/admin/"' in response.text
+    assert "Подобранных креаторов" in response.text
+    assert "100 / 1000" in response.text
+    assert "progress-bar" in response.text
 
 
 def test_admin_dashboard_mvp_redirects_to_dashboard(monkeypatch) -> None:

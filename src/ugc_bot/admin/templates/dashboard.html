@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Дашборд{% endblock %}
 {% block content %}
+  {% set picked_count = payload.get("picked_creators_count", 0) %}
+  {% set picked_target = payload.get("picked_creators_target", 1000) %}
+  {% set picked_pct = ([((picked_count / picked_target * 100)|round(1)), 100]|min) if picked_target > 0 else 0 %}
+  <div class="progress-bar">
+    <span class="progress-bar__label">Подобранных креаторов: {{ picked_count }} / {{ picked_target }}</span>
+    <div class="progress-bar__track">
+      <div class="progress-bar__fill" style="width: {{ picked_pct }}%;"></div>
+    </div>
+  </div>
+
   <section class="section">
     <h1>Дашборд</h1>
     <div class="periods">
