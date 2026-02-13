@@ -39,6 +39,7 @@ class User:
     admin: bool = False
     referral_code: Optional[str] = None
     referral_payout_rate: Optional[Decimal] = None
+    agreement_confirmed_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

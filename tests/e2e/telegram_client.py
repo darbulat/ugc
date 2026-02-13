@@ -65,7 +65,7 @@ def telegram_e2e_config() -> dict[str, str]:
     return _get_e2e_config()
 
 
-# Function scope: client must run in the same event loop as the test (Telethon requirement).
+# Function scope: client must run in same event loop as test (Telethon).
 @pytest_asyncio.fixture
 async def telegram_user_client(telegram_e2e_config):
     """Create Telethon client for E2E tests.

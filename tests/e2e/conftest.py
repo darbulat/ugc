@@ -1,8 +1,5 @@
 """E2E test fixtures: test database, admin server, Playwright, Telegram."""
 
-# Register Telegram E2E fixtures from telegram_client so e2e_telegram tests see them
-pytest_plugins = ["tests.e2e.telegram_client"]
-
 import os
 import subprocess
 import sys

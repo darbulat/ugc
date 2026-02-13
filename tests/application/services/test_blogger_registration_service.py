@@ -340,6 +340,47 @@ async def test_register_blogger_records_metrics_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_register_blogger_calls_referral_and_metrics_when_both_set() -> (
+    None
+):
+    """register_blogger calls both referral and metrics when both are set."""
+
+    from unittest.mock import AsyncMock, Mock
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    mock_referral = Mock()
+    mock_referral.create_binding_from_pending = AsyncMock(return_value=None)
+    metrics = Mock()
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        referral_service=mock_referral,
+        metrics_collector=metrics,
+    )
+
+    await service.register_blogger(
+        user_id=user_id,
+        instagram_url="https://instagram.com/both_services",
+        city="Moscow",
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
+    )
+
+    mock_referral.create_binding_from_pending.assert_called_once()
+    metrics.record_blogger_registration.assert_called_once_with(str(user_id))
+
+
+@pytest.mark.asyncio
 async def test_register_blogger_records_metrics_with_transaction_manager(
     fake_tm: object,
 ) -> None:
@@ -950,3 +991,87 @@ async def test_register_blogger_duplicate_instagram_with_transaction_manager(
             blogger_gender=BloggerGender.MALE,
         )
     assert "уже зарегистрирован" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_save_blogger_before_agreement_user_not_found() -> None:
+    """save_blogger_before_agreement raises when user does not exist."""
+
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+    )
+
+    with pytest.raises(UserNotFoundError):
+        await service.save_blogger_before_agreement(
+            user_id=UUID("00000000-0000-0000-0000-000000000999"),
+            instagram_url="https://instagram.com/test",
+            city="Moscow",
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            blogger_gender=BloggerGender.MALE,
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_blogger_agreement_user_not_found() -> None:
+    """confirm_blogger_agreement raises when user does not exist."""
+
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+    )
+
+    with pytest.raises(UserNotFoundError):
+        await service.confirm_blogger_agreement(
+            user_id=UUID("00000000-0000-0000-0000-000000000999")
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_blogger_agreement_calls_referral_and_metrics() -> None:
+    """confirm_blogger_agreement calls referral and metrics when set."""
+
+    from unittest.mock import AsyncMock, Mock
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service_save = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    await service_save.save_blogger_before_agreement(
+        user_id=user_id,
+        instagram_url="https://instagram.com/confirm_test",
+        city="Moscow",
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
+    )
+    mock_referral = Mock()
+    mock_referral.create_binding_from_pending = AsyncMock(return_value=None)
+    metrics = Mock()
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        referral_service=mock_referral,
+        metrics_collector=metrics,
+    )
+
+    await service.confirm_blogger_agreement(user_id)
+
+    mock_referral.create_binding_from_pending.assert_called_once()
+    metrics.record_blogger_registration.assert_called_once_with(str(user_id))

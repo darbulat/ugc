@@ -349,3 +349,135 @@ async def test_update_advertiser_profile_with_transaction_manager(
 
     assert updated is not None
     assert updated.brand == "Updated Brand"
+
+
+@pytest.mark.asyncio
+async def test_save_advertiser_before_agreement_empty_phone() -> None:
+    """save_advertiser_before_agreement raises when phone is empty."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    with pytest.raises(AdvertiserRegistrationError):
+        await service.save_advertiser_before_agreement(
+            user_id=user_id,
+            phone="  ",
+            brand="B",
+            site_link=None,
+            city=None,
+            company_activity=None,
+            display_name=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_save_advertiser_before_agreement_empty_brand() -> None:
+    """save_advertiser_before_agreement raises when brand is empty."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    with pytest.raises(AdvertiserRegistrationError):
+        await service.save_advertiser_before_agreement(
+            user_id=user_id,
+            phone="@contact",
+            brand="  ",
+            site_link=None,
+            city=None,
+            company_activity=None,
+            display_name=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_save_advertiser_before_agreement_user_not_found() -> None:
+    """save_advertiser_before_agreement raises when user does not exist."""
+
+    service = AdvertiserRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+    )
+
+    with pytest.raises(UserNotFoundError):
+        await service.save_advertiser_before_agreement(
+            user_id=UUID("00000000-0000-0000-0000-000000000121"),
+            phone="@contact",
+            brand="B",
+            site_link=None,
+            city=None,
+            company_activity=None,
+            display_name=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_advertiser_agreement_user_not_found() -> None:
+    """confirm_advertiser_agreement raises when user does not exist."""
+
+    service = AdvertiserRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+    )
+
+    with pytest.raises(UserNotFoundError):
+        await service.confirm_advertiser_agreement(
+            user_id=UUID("00000000-0000-0000-0000-000000000121")
+        )
+
+
+async def _save_advertiser_before_agreement(
+    user_repo: InMemoryUserRepository,
+    advertiser_repo: InMemoryAdvertiserProfileRepository,
+    user_id: UUID,
+) -> None:
+    """Helper: save advertiser profile before agreement (no confirm)."""
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    await service.save_advertiser_before_agreement(
+        user_id=user_id,
+        phone="@contact",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+        display_name=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_confirm_advertiser_agreement_calls_referral_and_metrics() -> (
+    None
+):
+    """confirm_advertiser_agreement calls referral and metrics when set."""
+
+    from unittest.mock import AsyncMock, Mock
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+    await _save_advertiser_before_agreement(user_repo, advertiser_repo, user_id)
+    mock_referral = Mock()
+    mock_referral.create_binding_from_pending = AsyncMock(return_value=None)
+    metrics = Mock()
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        referral_service=mock_referral,
+        metrics_collector=metrics,
+    )
+
+    await service.confirm_advertiser_agreement(user_id)
+
+    mock_referral.create_binding_from_pending.assert_called_once()
+    metrics.record_advertiser_registration.assert_called_once_with(str(user_id))

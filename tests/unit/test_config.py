@@ -127,3 +127,19 @@ def test_admin_config_rejects_weak_secret() -> None:
     for weak in ("admin", "change_me", "changeme", "password", "secret"):
         with pytest.raises(ValueError, match="ADMIN_SECRET"):
             AppConfig.model_validate({**base, "ADMIN_SECRET": weak})
+
+
+def test_order_config_rejects_non_integer_allowed_blogger_counts() -> None:
+    """OrderConfig.parse_allowed_counts raises when value is not an integer."""
+    from ugc_bot.config import OrderConfig
+
+    with pytest.raises(ValueError, match="ALLOWED_BLOGGER_COUNTS must be"):
+        OrderConfig.model_validate({"ALLOWED_BLOGGER_COUNTS": "1,abc"})
+
+
+def test_order_config_rejects_non_positive_allowed_blogger_counts() -> None:
+    """OrderConfig.parse_allowed_counts raises when value is not positive."""
+    from ugc_bot.config import OrderConfig
+
+    with pytest.raises(ValueError, match="must be positive"):
+        OrderConfig.model_validate({"ALLOWED_BLOGGER_COUNTS": "1,0"})

@@ -25,6 +25,7 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
+    CONFIRM_AGREEMENT_BUTTON_TEXT,
     EDIT_PROFILE_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
@@ -35,6 +36,7 @@ from ugc_bot.bot.handlers.keyboards import (
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
     parse_user_id_from_state,
     resolve_messenger_dependencies,
 )
@@ -51,6 +53,7 @@ from ugc_bot.bot.validators import (
     validate_site_link,
     validate_topics,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -61,6 +64,10 @@ from ugc_bot.domain.enums import (
 )
 
 router = Router()
+
+# FSM state ids for agreement step (must match blogger/advertiser registration).
+_BLOGGER_AGREEMENTS_STATE = "BloggerRegistrationStates:agreements"
+_ADVERTISER_AGREEMENTS_STATE = "AdvertiserRegistrationStates:agreements"
 
 _USER_STATUS_LABELS: dict[UserStatus, str] = {
     UserStatus.NEW: "Новый",
@@ -307,6 +314,7 @@ async def _update_advertiser_field(
     profile_service: ProfileService,
     advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
+    config: AppConfig,
 ) -> bool:
     """Validate and update advertiser field. Returns True on success."""
     if field_key == "name":
@@ -324,7 +332,7 @@ async def _update_advertiser_field(
             "Профиль обновлён.",
             reply_markup=advertiser_menu_keyboard(),
         )
-        await show_profile(message, profile_service, state)
+        await show_profile(message, profile_service, state, config)
         return True
 
     updaters = {
@@ -351,7 +359,7 @@ async def _update_advertiser_field(
         "Профиль обновлён.",
         reply_markup=advertiser_menu_keyboard(),
     )
-    await show_profile(message, profile_service, state)
+    await show_profile(message, profile_service, state, config)
     return True
 
 
@@ -568,6 +576,7 @@ async def _update_blogger_field(
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     max_order_price: float,
+    config: AppConfig,
 ) -> bool:
     """Validate and update blogger field. Returns True on success."""
     if field_key == "nickname":
@@ -585,7 +594,7 @@ async def _update_blogger_field(
             "Имя обновлено.",
             reply_markup=blogger_profile_view_keyboard(blogger.confirmed),
         )
-        await show_profile(message, profile_service, state)
+        await show_profile(message, profile_service, state, config)
         return True
 
     updaters = {
@@ -619,7 +628,7 @@ async def _update_blogger_field(
         "Профиль обновлён.",
         reply_markup=blogger_profile_view_keyboard(updated_blogger.confirmed),
     )
-    await show_profile(message, profile_service, state)
+    await show_profile(message, profile_service, state, config)
     return True
 
 
@@ -637,10 +646,11 @@ async def show_profile(
     message: Message,
     profile_service: ProfileService,
     state: FSMContext,
+    config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Show current user's profile."""
+    """Show current user's profile or ask to confirm agreement if not yet."""
     if isinstance(message, MessageContext):
         message_ctx = message
     else:
@@ -666,6 +676,28 @@ async def show_profile(
 
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    if (
+        blogger is not None or advertiser is not None
+    ) and agreement_confirmed_at is None:
+        agreements_text = format_agreements_message(
+            config,
+            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+        )
+        await message_ctx.answer(
+            agreements_text,
+            reply_markup=flow_keyboard(
+                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(user_id=user.user_id)
+        if blogger is not None:
+            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+        else:
+            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
+        return
+
     text = _format_profile_text(user, blogger, advertiser)
 
     reply_markup = None
@@ -784,6 +816,7 @@ async def edit_profile_choose_type(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
+    config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -800,6 +833,7 @@ async def edit_profile_choose_type(
             message=message_ctx,
             profile_service=profile_service,
             state=state,
+            config=config,
             messenger_client=messenger_client,
             event_adapter=event_adapter,
         )
@@ -831,6 +865,7 @@ async def edit_profile_choose_field(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
+    config: AppConfig,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     messenger_client: MessengerClient | None = None,
@@ -849,6 +884,7 @@ async def edit_profile_choose_field(
             message=message_ctx,
             profile_service=profile_service,
             state=state,
+            config=config,
             messenger_client=messenger_client,
             event_adapter=event_adapter,
         )
@@ -957,6 +993,7 @@ async def edit_profile_enter_value(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
+    config: AppConfig,
     blogger_registration_service: BloggerRegistrationService,
     advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
@@ -1001,6 +1038,7 @@ async def edit_profile_enter_value(
             profile_service,
             advertiser_registration_service,
             user_role_service,
+            config,
         )
         return
 
@@ -1021,4 +1059,5 @@ async def edit_profile_enter_value(
         blogger_registration_service,
         user_role_service,
         max_order_price,
+        config,
     )

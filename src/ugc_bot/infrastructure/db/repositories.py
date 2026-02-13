@@ -869,6 +869,7 @@ def _to_user_entity(model: UserModel) -> User:
         admin=getattr(model, "admin", False),
         referral_code=getattr(model, "referral_code", None),
         referral_payout_rate=getattr(model, "referral_payout_rate", None),
+        agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
     )
 
 
@@ -889,6 +890,7 @@ def _to_user_model(user: User) -> UserModel:
         admin=getattr(user, "admin", False),
         referral_code=getattr(user, "referral_code", None),
         referral_payout_rate=getattr(user, "referral_payout_rate", None),
+        agreement_confirmed_at=getattr(user, "agreement_confirmed_at", None),
     )
 
 

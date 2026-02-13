@@ -677,3 +677,33 @@ async def test_remove_moderation_keyboard_no_message_object(
 
     # Should not raise exception
     await _remove_moderation_keyboard(callback)
+
+
+@pytest.mark.asyncio
+async def test_remove_moderation_keyboard_returns_early_when_no_message_id(
+    user_repo: InMemoryUserRepository,
+    order_repo: InMemoryOrderRepository,
+    outbox_repo: InMemoryOutboxRepository,
+    outbox_publisher: OutboxPublisher,
+    fake_tm: object,
+) -> None:
+    """_remove_moderation_keyboard returns early when message_id is falsy."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
+    from ugc_bot.bot.handlers.admin_moderation import (
+        _remove_moderation_keyboard,
+    )
+    from ugc_bot.domain.enums import MessengerType
+
+    incoming = IncomingCallback(
+        callback_id="cb-early",
+        chat_id="123",
+        user=IncomingUser(
+            external_id="777", messenger_type=MessengerType.TELEGRAM
+        ),
+        data=None,
+        message_id=None,
+    )
+    client = FakeMessengerClient()
+    await _remove_moderation_keyboard(incoming, messenger_client=client)
+    assert len(client.edited_reply_markups) == 0

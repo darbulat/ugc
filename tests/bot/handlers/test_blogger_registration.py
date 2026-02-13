@@ -1,6 +1,5 @@
 """Tests for blogger registration handlers."""
 
-from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
@@ -302,7 +301,7 @@ async def test_geo_empty_and_price_negative() -> None:
 async def test_handle_agreements_creates_profile(
     user_repo, blogger_repo
 ) -> None:
-    """Agreement step persists blogger profile."""
+    """Agreement step confirms consent; profile is saved in work_format step."""
 
     user_role_service = UserRoleService(user_repo=user_repo)
     registration_service = BloggerRegistrationService(
@@ -315,14 +314,8 @@ async def test_handle_agreements_creates_profile(
         username="bob",
     )
 
-    message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(42, "bob", "Bob")
-    )
-    state = FakeFSMContext()
-    await state.update_data(
+    await registration_service.save_blogger_before_agreement(
         user_id=user.user_id,
-        external_id="42",
-        nickname="bob",
         instagram_url="https://instagram.com/test_user",
         city="Moscow",
         topics={"selected": ["fitness"]},
@@ -334,7 +327,15 @@ async def test_handle_agreements_creates_profile(
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        display_name="bob",
+        telegram_username="bob",
     )
+
+    message = FakeMessage(
+        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(42, "bob", "Bob")
+    )
+    state = FakeFSMContext()
+    await state.update_data(user_id=user.user_id)
 
     await handle_agreements(message, state, registration_service)
 
@@ -362,9 +363,7 @@ async def test_handle_agreements_requires_consent(
     assert message.answers
     first_answer = message.answers[0]
     text = first_answer[0] if isinstance(first_answer, tuple) else first_answer
-    assert "Подтвердить согласие" in text
-    # Keyboard with the button is re-sent so user can press it
-    assert isinstance(first_answer, tuple) and len(first_answer) == 2
+    assert "Регистрация прервана" in text or "Мой профиль" in text
 
 
 @pytest.mark.asyncio
@@ -432,14 +431,8 @@ async def test_handle_agreements_shows_verification_button(
         username="alice",
     )
 
-    message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(43, "alice", "Alice")
-    )
-    state = FakeFSMContext()
-    await state.update_data(
+    await registration_service.save_blogger_before_agreement(
         user_id=user.user_id,
-        external_id="43",
-        nickname="alice",
         instagram_url="https://instagram.com/test_user",
         city="Moscow",
         topics={"selected": ["fitness"]},
@@ -451,7 +444,15 @@ async def test_handle_agreements_shows_verification_button(
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        display_name="alice",
+        telegram_username="alice",
     )
+
+    message = FakeMessage(
+        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(43, "alice", "Alice")
+    )
+    state = FakeFSMContext()
+    await state.update_data(user_id=user.user_id)
 
     await handle_agreements(message, state, registration_service)
 
@@ -619,8 +620,17 @@ def _blogger_test_config() -> AppConfig:
 
 
 @pytest.mark.asyncio
-async def test_handle_work_format_valid_ads(user_repo) -> None:
-    """handle_work_format accepts ADS_IN_ACCOUNT."""
+async def test_handle_work_format_valid_ads(user_repo, blogger_repo) -> None:
+    """handle_work_format accepts ADS_IN_ACCOUNT and saves profile."""
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000099"),
+        external_id="1",
+        username="u",
+    )
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(
         text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(1, "u", "U")
     )
@@ -638,10 +648,11 @@ async def test_handle_work_format_valid_ads(user_repo) -> None:
         audience_geo="M",
         price=1000.0,
         barter=False,
+        blogger_gender=BloggerGender.MALE,
     )
     config = _blogger_test_config()
 
-    await handle_work_format(message, state, config)
+    await handle_work_format(message, state, config, registration_service)
 
     assert state._data["work_format"] == WorkFormat.ADS_IN_ACCOUNT
     assert state.state == BloggerRegistrationStates.agreements
@@ -653,13 +664,18 @@ async def test_handle_work_format_valid_ads(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_work_format_invalid_rejects(user_repo) -> None:
+async def test_handle_work_format_invalid_rejects(
+    user_repo, blogger_repo
+) -> None:
     """handle_work_format rejects invalid choice."""
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="Other", user=FakeUser(1, "u", "U"))
     state = FakeFSMContext()
     config = _blogger_test_config()
 
-    await handle_work_format(message, state, config)
+    await handle_work_format(message, state, config, registration_service)
 
     assert message.answers
     assert "Выберите одну из кнопок" in message.answers[0]
@@ -821,8 +837,19 @@ async def test_handle_gender_female_and_male() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_work_format_with_all_docs(user_repo) -> None:
+async def test_handle_work_format_with_all_docs(
+    user_repo, blogger_repo
+) -> None:
     """handle_work_format shows all doc links when config has them."""
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000099"),
+        external_id="1",
+        username="u",
+    )
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "t",
@@ -856,9 +883,10 @@ async def test_handle_work_format_with_all_docs(user_repo) -> None:
         audience_geo="M",
         price=1000.0,
         barter=False,
+        blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_work_format(message, state, config)
+    await handle_work_format(message, state, config, registration_service)
 
     text = (
         message.answers[0]
@@ -870,8 +898,17 @@ async def test_handle_work_format_with_all_docs(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_work_format_no_docs(user_repo) -> None:
+async def test_handle_work_format_no_docs(user_repo, blogger_repo) -> None:
     """handle_work_format shows fallback when no doc URLs configured."""
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000099"),
+        external_id="1",
+        username="u",
+    )
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "t",
@@ -905,9 +942,10 @@ async def test_handle_work_format_no_docs(user_repo) -> None:
         audience_geo="M",
         price=1000.0,
         barter=False,
+        blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_work_format(message, state, config)
+    await handle_work_format(message, state, config, registration_service)
 
     text = (
         message.answers[0]
@@ -964,23 +1002,35 @@ async def test_handle_agreements_from_user_none(
 async def test_handle_agreements_unique_violation(
     user_repo, blogger_repo
 ) -> None:
-    """handle_agreements handles UniqueViolation on instagram_url gracefully."""
-    user_role_service = UserRoleService(user_repo=user_repo)
+    """handle_work_format handles duplicate instagram_url gracefully."""
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000053"),
+        external_id="53",
+        username="bob",
+    )
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000100"),
+        external_id="100",
+        username="other",
+    )
+    await create_test_blogger_profile(
+        blogger_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000100"),
+        instagram_url="https://instagram.com/duplicate",
+    )
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
-    user = await user_role_service.set_user(
-        external_id="53",
-        messenger_type=MessengerType.TELEGRAM,
-        username="bob",
-    )
+    config = _blogger_test_config()
     message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(53, "bob", "Bob")
+        text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT, user=FakeUser(53, "bob", "Bob")
     )
     state = FakeFSMContext()
+    state.state = BloggerRegistrationStates.work_format
     await state.update_data(
-        user_id=user.user_id,
-        external_id="53",
+        user_id=UUID("00000000-0000-0000-0000-000000000053"),
         nickname="bob",
         instagram_url="https://instagram.com/duplicate",
         city="Moscow",
@@ -991,17 +1041,10 @@ async def test_handle_agreements_unique_violation(
         audience_geo="Moscow",
         price=1500.0,
         barter=False,
-        work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
     )
 
-    with patch.object(
-        BloggerRegistrationService,
-        "register_blogger",
-        new_callable=AsyncMock,
-        side_effect=Exception("UniqueViolation: duplicate key instagram_url"),
-    ):
-        await handle_agreements(message, state, registration_service)
+    await handle_work_format(message, state, config, registration_service)
 
     assert message.answers
     ans = message.answers[0]

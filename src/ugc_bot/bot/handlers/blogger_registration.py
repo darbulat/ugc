@@ -621,10 +621,11 @@ async def handle_work_format(
     message: Message,
     state: FSMContext,
     config: AppConfig,
+    blogger_registration_service: BloggerRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Store work format and show agreements step."""
+    """Store work format, save profile, and show agreements step."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -646,6 +647,56 @@ async def handle_work_format(
         return
 
     await state_store.update_data(work_format=work_format)
+    data = await state_store.get_data()
+    user_id = parse_user_id_from_state(data, key="user_id")
+    if user_id is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Начните заново.",
+        )
+        await state_store.clear()
+        return
+
+    try:
+        telegram_username = getattr(incoming.user, "username", None)
+        await blogger_registration_service.save_blogger_before_agreement(
+            user_id=user_id,
+            instagram_url=data["instagram_url"],
+            city=data["city"],
+            topics=data["topics"],
+            audience_gender=data["audience_gender"],
+            audience_age_min=data["audience_age_min"],
+            audience_age_max=data["audience_age_max"],
+            audience_geo=data["audience_geo"],
+            price=data["price"],
+            barter=data["barter"],
+            work_format=work_format,
+            blogger_gender=data["blogger_gender"],
+            display_name=data.get("nickname"),
+            telegram_username=telegram_username,
+        )
+    except Exception as exc:
+        error_str = str(exc)
+        is_duplicate = (
+            "UniqueViolation" in error_str and "instagram_url" in error_str
+        ) or "уже зарегистрирован" in error_str
+        if is_duplicate:
+            logger.warning(
+                "Instagram URL already exists",
+                extra={
+                    "user_id": str(user_id),
+                    "instagram_url": data.get("instagram_url"),
+                },
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=(
+                    "Этот Instagram уже зарегистрирован. "
+                    "Используйте другой или обратитесь в поддержку."
+                ),
+            )
+            return
+        raise
 
     agreements_text = format_agreements_message(
         config,
@@ -677,12 +728,14 @@ async def handle_agreements(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     if (incoming.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
+        await state_store.clear()
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Нажмите кнопку «Подтвердить согласие».",
-            keyboard=flow_keyboard(
-                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            text=(
+                "Регистрация прервана. Чтобы завершить, откройте «Мой профиль» "
+                "и подтвердите согласие."
             ),
+            keyboard=flow_keyboard_remove(),
         )
         return
 
@@ -693,43 +746,15 @@ async def handle_agreements(
             chat_id=incoming.chat_id,
             text="Сессия истекла. Начните заново.",
         )
+        await state_store.clear()
         return
     try:
-        telegram_username = incoming.user.username
-        await blogger_registration_service.register_blogger(
+        telegram_username = getattr(incoming.user, "username", None)
+        await blogger_registration_service.confirm_blogger_agreement(
             user_id=user_id,
-            instagram_url=data["instagram_url"],
-            city=data["city"],
-            topics=data["topics"],
-            audience_gender=data["audience_gender"],
-            audience_age_min=data["audience_age_min"],
-            audience_age_max=data["audience_age_max"],
-            audience_geo=data["audience_geo"],
-            price=data["price"],
-            barter=data["barter"],
-            work_format=data["work_format"],
-            blogger_gender=data["blogger_gender"],
-            display_name=data.get("nickname"),
             telegram_username=telegram_username,
         )
-    except Exception as exc:
-        error_str = str(exc)
-        if "UniqueViolation" in error_str and "instagram_url" in error_str:
-            logger.warning(
-                "Instagram URL already exists",
-                extra={
-                    "user_id": data.get("user_id"),
-                    "instagram_url": data.get("instagram_url"),
-                },
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text=(
-                    "Этот Instagram уже зарегистрирован. "
-                    "Используйте другой или обратитесь в поддержку."
-                ),
-            )
-            return
+    except Exception:
         raise
 
     await state_store.clear()

@@ -25,6 +25,7 @@ from ugc_bot.bot.handlers.profile import (
     edit_profile_start,
     show_profile,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -32,6 +33,27 @@ from ugc_bot.domain.enums import (
     MessengerType,
     WorkFormat,
 )
+
+
+def _profile_test_config() -> AppConfig:
+    """Minimal config for profile handler tests."""
+    return AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///",
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+            "KAFKA_ENABLED": "false",
+            "FEEDBACK_ENABLED": "false",
+            "ROLE_REMINDER_ENABLED": "false",
+            "REDIS_URL": "redis://",
+            "USE_REDIS_STORAGE": "false",
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+        }
+    )
 
 
 class FakeProfileService:
@@ -185,7 +207,9 @@ async def test_show_profile_from_user_none() -> None:
     """Show profile does nothing when from_user is None."""
     message = FakeMessage(user=None)
     service = _FakeProfileServiceUserMissing()
-    await show_profile(message, service, FakeFSMContext())
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
     assert not message.answers
 
 
@@ -198,13 +222,16 @@ async def test_show_profile_both_roles(user_repo) -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000810"),
         external_id="1",
         username="user",
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(1))
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=True
     )
 
-    await show_profile(message, service, FakeFSMContext())
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
 
     assert message.answers
     answer_text = (
@@ -224,7 +251,12 @@ async def test_show_profile_missing_user() -> None:
             return None
 
     message = FakeMessage(user=FakeUser(1))
-    await show_profile(message, MissingProfileService(), FakeFSMContext())
+    await show_profile(
+        message,
+        MissingProfileService(),
+        FakeFSMContext(),
+        _profile_test_config(),
+    )
 
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
@@ -252,7 +284,12 @@ async def test_show_profile_missing_profiles(user_repo) -> None:
             return None
 
     message = FakeMessage(user=FakeUser(2))
-    await show_profile(message, PartialProfileService(), FakeFSMContext())
+    await show_profile(
+        message,
+        PartialProfileService(),
+        FakeFSMContext(),
+        _profile_test_config(),
+    )
 
     assert message.answers
     assert "Профиль блогера" in message.answers[0]
@@ -268,6 +305,7 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000812"),
         external_id="3",
         username="blogger",
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(3))
     service = FakeProfileService(
@@ -277,7 +315,9 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
         blogger_confirmed=False,
     )
 
-    await show_profile(message, service, FakeFSMContext())
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
@@ -298,6 +338,7 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000813"),
         external_id="4",
         username="blogger",
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(4))
     service = FakeProfileService(
@@ -307,7 +348,9 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
         blogger_confirmed=True,
     )
 
-    await show_profile(message, service, FakeFSMContext())
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
@@ -327,13 +370,16 @@ async def test_show_profile_advertiser_keyboard(user_repo) -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000814"),
         external_id="5",
         username="advertiser",
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(5))
     service = FakeProfileService(
         user=user, has_blogger=False, has_advertiser=True
     )
 
-    await show_profile(message, service, FakeFSMContext())
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
@@ -405,6 +451,7 @@ async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000817"),
         external_id="8",
         username="user",
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(text=MY_PROFILE_BUTTON_TEXT, user=FakeUser(8))
     state = FakeFSMContext()
@@ -414,7 +461,12 @@ async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_choose_field(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        role_service,
     )
     assert state.cleared is True
     assert message.answers
@@ -442,7 +494,12 @@ async def test_edit_profile_choose_field_invalid(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_choose_field(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        role_service,
     )
     assert message.answers
     assert "Выберите один из разделов" in message.answers[0]
@@ -465,7 +522,12 @@ async def test_edit_profile_choose_field_nickname(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_choose_field(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        role_service,
     )
     assert message.answers
     assert "новое имя" in message.answers[0][0].lower()
@@ -489,7 +551,12 @@ async def test_edit_profile_choose_field_city(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_choose_field(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        role_service,
     )
     assert message.answers
     assert "город" in message.answers[0][0].lower()
@@ -513,7 +580,12 @@ async def test_edit_profile_choose_field_blogger_gender(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_choose_field(
-        message, state, profile_service, reg_service, role_service
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        role_service,
     )
     assert message.answers
     assert "пол" in message.answers[0][0].lower()
@@ -547,6 +619,7 @@ async def test_edit_profile_enter_value_missing_state(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -581,6 +654,7 @@ async def test_edit_profile_enter_value_blogger_missing(user_repo) -> None:
         message,
         state,
         service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -616,6 +690,7 @@ async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -653,6 +728,7 @@ async def test_edit_profile_enter_value_city_success(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -692,6 +768,7 @@ async def test_edit_profile_enter_value_nickname_success(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -743,6 +820,7 @@ async def test_edit_profile_enter_value_instagram_duplicate(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -780,6 +858,7 @@ async def test_edit_profile_enter_value_instagram_success(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -823,6 +902,7 @@ async def test_edit_profile_enter_value_instagram_normalized_with_query(
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -863,6 +943,7 @@ async def test_edit_profile_enter_value_audience_gender_success(
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -902,6 +983,7 @@ async def test_edit_profile_enter_value_blogger_gender_success(
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -940,6 +1022,7 @@ async def test_edit_profile_enter_value_blogger_gender_invalid(
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -978,6 +1061,7 @@ async def test_edit_profile_enter_value_audience_age_success(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1013,6 +1097,7 @@ async def test_edit_profile_enter_value_barter_success(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1047,6 +1132,7 @@ async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1083,6 +1169,7 @@ async def test_edit_profile_enter_value_nickname_empty(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1119,6 +1206,7 @@ async def test_edit_profile_enter_value_instagram_bad_format(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1153,6 +1241,7 @@ async def test_edit_profile_enter_value_instagram_regex_fail(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1187,6 +1276,7 @@ async def test_edit_profile_enter_value_topics_empty(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1223,6 +1313,7 @@ async def test_edit_profile_enter_value_topics_too_many(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
@@ -1262,6 +1353,7 @@ async def test_edit_profile_enter_value_audience_gender_invalid(
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1296,6 +1388,7 @@ async def test_edit_profile_enter_value_audience_age_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1330,6 +1423,7 @@ async def test_edit_profile_enter_value_audience_geo_empty(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1368,6 +1462,7 @@ async def test_edit_profile_enter_value_audience_geo_too_many(
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1404,6 +1499,7 @@ async def test_edit_profile_enter_value_price_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1438,6 +1534,7 @@ async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1474,6 +1571,7 @@ async def test_edit_profile_enter_value_price_exceeds_max(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
@@ -1511,6 +1609,7 @@ async def test_edit_profile_enter_value_barter_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1545,6 +1644,7 @@ async def test_edit_profile_enter_value_work_format_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1580,6 +1680,7 @@ async def test_edit_profile_enter_value_topics_success(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1615,6 +1716,7 @@ async def test_edit_profile_enter_value_unknown_field(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1650,6 +1752,7 @@ async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         role_service,
@@ -1669,6 +1772,7 @@ async def test_show_profile_advertiser_with_optional_fields(user_repo) -> None:
         user_id=UUID("00000000-0000-0000-0000-000000000836"),
         external_id="38",
         username="adv",
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(38))
     service = FakeProfileService(
@@ -1679,7 +1783,9 @@ async def test_show_profile_advertiser_with_optional_fields(user_repo) -> None:
         advertiser_company_activity="Retail",
         advertiser_site_link="https://brand.com",
     )
-    await show_profile(message, service, FakeFSMContext())
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
     ans = (
         message.answers[0]
         if isinstance(message.answers[0], str)
@@ -1767,7 +1873,9 @@ async def test_edit_profile_choose_type_blogger(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=True
     )
-    await edit_profile_choose_type(message, state, service)
+    await edit_profile_choose_type(
+        message, state, service, _profile_test_config()
+    )
     assert state._data.get("edit_profile_type") == "blogger"
     assert "Выберите раздел" in message.answers[0][0]
 
@@ -1790,7 +1898,9 @@ async def test_edit_profile_choose_type_advertiser(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=True
     )
-    await edit_profile_choose_type(message, state, service)
+    await edit_profile_choose_type(
+        message, state, service, _profile_test_config()
+    )
     assert state._data.get("edit_profile_type") == "advertiser"
     assert "Выберите раздел" in message.answers[0][0]
 
@@ -1811,7 +1921,9 @@ async def test_edit_profile_choose_type_invalid(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=True
     )
-    await edit_profile_choose_type(message, state, service)
+    await edit_profile_choose_type(
+        message, state, service, _profile_test_config()
+    )
     ans = message.answers[0]
     assert "Выберите один из вариантов" in (
         ans if isinstance(ans, str) else ans[0]
@@ -1826,6 +1938,7 @@ async def test_edit_profile_choose_type_my_profile_returns(user_repo) -> None:
         user_id=UUID("00000000-0000-0000-0000-00000000083d"),
         external_id="45",
         username="u",
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(text=MY_PROFILE_BUTTON_TEXT, user=FakeUser(45))
     state = FakeFSMContext()
@@ -1834,7 +1947,9 @@ async def test_edit_profile_choose_type_my_profile_returns(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=True
     )
-    await edit_profile_choose_type(message, state, service)
+    await edit_profile_choose_type(
+        message, state, service, _profile_test_config()
+    )
     assert state.cleared
     assert "👤 Ваш профиль" in (
         message.answers[0]
@@ -1864,7 +1979,12 @@ async def test_edit_profile_choose_field_advertiser_phone(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_choose_field(
-        message, state, service, reg_service, role_service
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        reg_service,
+        role_service,
     )
     assert "телефона" in message.answers[0][0].lower()
     assert state._data.get("editing_field") == "phone"
@@ -1891,7 +2011,12 @@ async def test_edit_profile_choose_field_advertiser_brand(user_repo) -> None:
     reg_service = FakeBloggerRegistrationService()
     role_service = FakeUserRoleService()
     await edit_profile_choose_field(
-        message, state, service, reg_service, role_service
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        reg_service,
+        role_service,
     )
     assert "бренда" in message.answers[0][0].lower()
     assert state._data.get("editing_field") == "brand"
@@ -1926,6 +2051,7 @@ async def test_edit_profile_enter_value_advertiser_name_success(
         message,
         state,
         service,
+        _profile_test_config(),
         reg_service,
         adv_service,
         role_service,
@@ -1967,6 +2093,7 @@ async def test_edit_profile_enter_value_advertiser_name_empty(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
@@ -2009,6 +2136,7 @@ async def test_edit_profile_enter_value_advertiser_phone_success(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
@@ -2043,6 +2171,7 @@ async def test_edit_profile_enter_value_advertiser_phone_empty(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
@@ -2080,6 +2209,7 @@ async def test_edit_profile_enter_value_advertiser_brand_empty(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
@@ -2123,6 +2253,7 @@ async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
@@ -2158,6 +2289,7 @@ async def test_edit_profile_enter_value_advertiser_phone_invalid(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
@@ -2197,6 +2329,7 @@ async def test_edit_profile_enter_value_advertiser_site_link_invalid(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
@@ -2233,6 +2366,7 @@ async def test_edit_profile_enter_value_advertiser_missing(user_repo) -> None:
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
@@ -2268,6 +2402,7 @@ async def test_edit_profile_enter_value_advertiser_update_none(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),
@@ -2301,6 +2436,7 @@ async def test_edit_profile_enter_value_barter_no(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
@@ -2336,6 +2472,7 @@ async def test_edit_profile_enter_value_work_format_ugc_only(user_repo) -> None:
         message,
         state,
         profile_service,
+        _profile_test_config(),
         reg_service,
         FakeAdvertiserRegistrationService(),
         FakeUserRoleService(),
@@ -2373,6 +2510,7 @@ async def test_edit_profile_enter_value_advertiser_unknown_field(
         message,
         state,
         service,
+        _profile_test_config(),
         FakeBloggerRegistrationService(),
         adv_service,
         FakeUserRoleService(),

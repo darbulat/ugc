@@ -932,6 +932,39 @@ async def test_send_order_invoice_bot_none_returns_early(
 
 
 @pytest.mark.asyncio
+async def test_send_order_invoice_no_chat_id_returns_early(
+    messenger_client,
+) -> None:
+    """send_order_invoice returns without sending when chat_id is falsy."""
+    from ugc_bot.application.messenger.dto import IncomingMessage, IncomingUser
+    from ugc_bot.domain.enums import MessengerType
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    incoming = IncomingMessage(
+        chat_id="",
+        user=IncomingUser(
+            external_id="1", messenger_type=MessengerType.TELEGRAM
+        ),
+        text=None,
+    )
+    await send_order_invoice(
+        incoming,
+        messenger_client,
+        UUID("00000000-0000-0000-0000-000000000531"),
+        "Offer",
+        1000.0,
+        config,
+    )
+    assert len(messenger_client.sent_text) == 0
+
+
+@pytest.mark.asyncio
 async def test_send_order_invoice_price_too_large(
     messenger_client, event_adapter
 ) -> None:

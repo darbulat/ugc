@@ -482,7 +482,9 @@ def _test_config_no_docs() -> AppConfig:
 
 
 @pytest.mark.asyncio
-async def test_handle_site_link_no_docs_shows_fallback(user_repo) -> None:
+async def test_handle_site_link_no_docs_shows_fallback(
+    user_repo, advertiser_repo
+) -> None:
     """handle_site_link with no doc URLs shows fallback text."""
     user_service = UserRoleService(user_repo=user_repo)
     user = await user_service.set_user(
@@ -502,8 +504,11 @@ async def test_handle_site_link_no_docs_shows_fallback(user_repo) -> None:
         company_activity="Activity",
     )
     config = _test_config_no_docs()
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
 
-    await handle_site_link(message, state, config)
+    await handle_site_link(message, state, config, adv_service)
 
     assert "Подтвердите согласие с документами" in (
         message.answers[0]
@@ -513,7 +518,9 @@ async def test_handle_site_link_no_docs_shows_fallback(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_site_link_shows_agreements(user_repo) -> None:
+async def test_handle_site_link_shows_agreements(
+    user_repo, advertiser_repo
+) -> None:
     """handle_site_link shows agreements message with doc links."""
     user_service = UserRoleService(user_repo=user_repo)
     user = await user_service.set_user(
@@ -535,8 +542,11 @@ async def test_handle_site_link_shows_agreements(user_repo) -> None:
         company_activity="Activity",
     )
     config = _test_config()
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
 
-    await handle_site_link(message, state, config)
+    await handle_site_link(message, state, config, adv_service)
 
     assert "Оферта" in (
         message.answers[0]
@@ -589,16 +599,18 @@ async def test_handle_agreements_confirm_wrong_button(
 
     await handle_agreements_confirm(message, state, adv_service)
 
+    assert state.cleared
     assert message.answers
     ans = message.answers[0]
-    assert "Подтвердить согласие" in (ans if isinstance(ans, str) else ans[0])
+    text = ans if isinstance(ans, str) else ans[0]
+    assert "Регистрация прервана" in text or "Мой профиль" in text
 
 
 @pytest.mark.asyncio
 async def test_handle_agreements_confirm_success(
     user_repo, advertiser_repo
 ) -> None:
-    """handle_agreements_confirm creates profile on confirm."""
+    """Confirm consent; profile is saved in site_link step."""
     from tests.helpers.factories import create_test_user
 
     user_id = UUID("00000000-0000-0000-0000-000000000055")
@@ -609,23 +621,24 @@ async def test_handle_agreements_confirm_success(
         username="adv55",
         status=UserStatus.ACTIVE,
     )
-    message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(55, "adv55", "Adv")
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
     )
-    state = FakeFSMContext()
-    state.state = AdvertiserRegistrationStates.agreements
-    await state.update_data(
+    await adv_service.save_advertiser_before_agreement(
         user_id=user_id,
-        name="Test Name",
         phone="+79001234567",
         brand="My Brand",
         site_link="https://site.com",
         city="City",
         company_activity="Activity",
+        display_name="Test Name",
     )
-    adv_service = AdvertiserRegistrationService(
-        user_repo=user_repo, advertiser_repo=advertiser_repo
+    message = FakeMessage(
+        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(55, "adv55", "Adv")
     )
+    state = FakeFSMContext()
+    state.state = AdvertiserRegistrationStates.agreements
+    await state.update_data(user_id=user_id)
 
     await handle_agreements_confirm(message, state, adv_service)
 

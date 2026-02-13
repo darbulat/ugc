@@ -110,6 +110,9 @@ class UserModel(Base):
     referral_payout_rate: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(5, 4), nullable=True
     )
+    agreement_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class BloggerProfileModel(Base):

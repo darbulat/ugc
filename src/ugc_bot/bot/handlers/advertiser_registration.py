@@ -349,10 +349,11 @@ async def handle_site_link(
     message: Message,
     state: FSMContext,
     config: AppConfig,
+    advertiser_registration_service: AdvertiserRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Store site_link and show agreements step."""
+    """Store site_link, save profile, and show agreements step."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -370,6 +371,29 @@ async def handle_site_link(
     await state_store.update_data(
         site_link=normalize_url(site_link) if site_link else None
     )
+
+    data = await state_store.get_data()
+    user_id = parse_user_id_from_state(data, key="user_id")
+    if user_id is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Начните заново.",
+        )
+        await state_store.clear()
+        return
+
+    try:
+        await advertiser_registration_service.save_advertiser_before_agreement(
+            user_id=user_id,
+            phone=data["phone"],
+            brand=data["brand"],
+            site_link=data.get("site_link"),
+            city=data.get("city"),
+            company_activity=data.get("company_activity"),
+            display_name=data.get("name"),
+        )
+    except Exception:
+        raise
 
     text = format_agreements_message(config)
     await messenger_client.send_text(
@@ -389,17 +413,21 @@ async def handle_agreements_confirm(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """On 'Confirm agreement' create profile and show success."""
+    """On 'Confirm agreement' confirm consent and show success."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     if (incoming.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
+        await state_store.clear()
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Нажмите «Подтвердить согласие» для завершения регистрации.",
-            keyboard=_agreements_keyboard(),
+            text=(
+                "Регистрация прервана. Чтобы завершить, откройте «Мой профиль» "
+                "и подтвердите согласие."
+            ),
+            keyboard=flow_keyboard_remove(),
         )
         return
 
@@ -412,21 +440,9 @@ async def handle_agreements_confirm(
         )
         await state_store.clear()
         return
-    name = data["name"]
-    phone = data["phone"]
-    brand = data["brand"]
-    site_link = data.get("site_link")
-    city = data.get("city")
-    company_activity = data.get("company_activity")
 
-    await advertiser_registration_service.register_advertiser(
+    await advertiser_registration_service.confirm_advertiser_agreement(
         user_id=user_id,
-        phone=phone,
-        brand=brand,
-        site_link=site_link,
-        city=city,
-        company_activity=company_activity,
-        display_name=name,
     )
 
     await state_store.clear()
