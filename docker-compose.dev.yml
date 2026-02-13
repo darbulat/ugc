@@ -1,8 +1,13 @@
-# Override for dev environment: HTTPS with dev domain certificates.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# no backup service by default.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
 # Ensure certbot has been run for your DOMAIN so certs exist in certbot_data.
+# To start backup in dev: docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile backup up -d
 
 services:
-  nginx:
-    environment:
-      DOMAIN: ${DOMAIN:-dev.usemycontent.ru}
+  # Exclude from default run in dev; start with: --profile backup
+  db_backup:
+    profiles:
+      - backup
