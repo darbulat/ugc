@@ -140,6 +140,21 @@ def test_health_metrics_filter_blocks_metrics_access_logs() -> None:
     assert flt.filter(record) is False
 
 
+def test_health_metrics_filter_blocks_telegram_webhook_access_logs() -> None:
+    """HealthMetricsFilter blocks uvicorn.access for POST /webhook/telegram."""
+    flt = HealthMetricsFilter()
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='127.0.0.1 - "POST /webhook/telegram HTTP/1.1" 200',
+        args=(),
+        exc_info=None,
+    )
+    assert flt.filter(record) is False
+
+
 def test_health_metrics_filter_allows_other_access_logs() -> None:
     """HealthMetricsFilter allows uvicorn.access logs for other paths."""
     flt = HealthMetricsFilter()
@@ -148,7 +163,7 @@ def test_health_metrics_filter_allows_other_access_logs() -> None:
         level=logging.INFO,
         pathname=__file__,
         lineno=1,
-        msg='127.0.0.1 - "POST /webhook/telegram HTTP/1.1" 200',
+        msg='127.0.0.1 - "GET /api/orders HTTP/1.1" 200',
         args=(),
         exc_info=None,
     )

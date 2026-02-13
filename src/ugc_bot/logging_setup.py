@@ -60,16 +60,18 @@ class GroupCoordinatorErrorToWarningFilter(logging.Filter):
 
 
 class HealthMetricsFilter(logging.Filter):
-    """Filter out access logs for /health and /metrics endpoints.
+    """Filter out access logs for /health, /metrics and POST /webhook/telegram.
 
-    Reduces log noise from health checks and Prometheus scraping.
+    Reduces log noise from health checks, Prometheus and Telegram webhook.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """Return False for uvicorn.access logs of /health and /metrics."""
+        """Return False for /health, /metrics, POST /webhook/telegram."""
         if record.name != "uvicorn.access":
             return True
         msg = record.getMessage()
+        if "POST /webhook/telegram HTTP/1.1" in msg:
+            return False
         return (
             " /health" not in msg
             and " /metrics" not in msg
