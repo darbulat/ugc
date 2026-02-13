@@ -5,9 +5,15 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install PostgreSQL client tools for backups
+# Install PostgreSQL 16 client for backups (match postgres:16-alpine server version;
+# distro's postgresql-client can be PG17 and emit SET transaction_timeout, breaking restore on PG16)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client gzip && \
+    apt-get install -y --no-install-recommends ca-certificates curl gzip && \
+    install -d /usr/share/keyrings && \
+    curl -sSL -o /usr/share/keyrings/pgdg.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc && \
+    (. /etc/os-release && echo "deb [signed-by=/usr/share/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list) && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends postgresql-client-16 && \
     rm -rf /var/lib/apt/lists/*
 
 # 1. Слой зависимостей — кэшируется при изменении только кода

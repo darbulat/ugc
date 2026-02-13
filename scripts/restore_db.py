@@ -5,10 +5,38 @@ import argparse
 import gzip
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+# SET parameters emitted by pg_dump from PostgreSQL 17+ but unknown in PG 16 and older
+_UNSUPPORTED_SET_PARAMS = ("transaction_timeout",)
+
+
+def _strip_unsupported_set_commands(sql: str) -> str:
+    """
+    Remove SET commands for parameters not supported by older PostgreSQL.
+
+    Allows restoring dumps created with pg_dump from PostgreSQL 17+ into PG 16.
+    """
+    if not _UNSUPPORTED_SET_PARAMS:
+        return sql
+    # Match whole line: SET param_name = value (semicolon and newline optional)
+    pattern = "|".join(re.escape(p) for p in _UNSUPPORTED_SET_PARAMS)
+    regex = re.compile(
+        r"^SET\s+(" + pattern + r")\s*=.*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    filtered = regex.sub("", sql)
+    if filtered != sql:
+        logger.info(
+            "Stripped SET commands for unsupported params: %s",
+            ", ".join(_UNSUPPORTED_SET_PARAMS),
+        )
+    return filtered
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -203,6 +231,7 @@ def restore_backup(
             with gzip.open(backup_path, "rt", encoding="utf-8") as f:
                 sql_content = f.read()
             logger.info("Decompressed backup: %d characters of SQL", len(sql_content))
+            sql_content = _strip_unsupported_set_commands(sql_content)
             result = subprocess.run(
                 psql_cmd,
                 input=sql_content.encode("utf-8"),
@@ -214,6 +243,7 @@ def restore_backup(
             # Restore directly; read into memory so psql gets text, not raw fd
             with open(backup_path, "r", encoding="utf-8") as f:
                 sql_content = f.read()
+            sql_content = _strip_unsupported_set_commands(sql_content)
             result = subprocess.run(
                 psql_cmd,
                 input=sql_content.encode("utf-8"),

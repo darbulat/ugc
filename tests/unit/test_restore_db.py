@@ -6,9 +6,30 @@ import pytest
 
 from scripts.restore_db import (
     _get_s3_config_restore,
+    _strip_unsupported_set_commands,
     download_backup_from_s3,
     list_s3_backups,
 )
+
+
+def test_strip_unsupported_set_commands_removes_transaction_timeout() -> None:
+    """_strip_unsupported_set_commands removes SET transaction_timeout for PG16."""
+    sql = """-- header
+SET transaction_timeout = '0';
+SELECT 1;
+SET transaction_timeout = 0;
+"""
+    out = _strip_unsupported_set_commands(sql)
+    assert "transaction_timeout" not in out
+    assert "SELECT 1;" in out
+
+
+def test_strip_unsupported_set_commands_leaves_other_set_unchanged() -> None:
+    """_strip_unsupported_set_commands does not remove other SET commands."""
+    sql = "SET client_encoding = 'UTF8';\nSET transaction_timeout = '0';\n"
+    out = _strip_unsupported_set_commands(sql)
+    assert "client_encoding" in out
+    assert "transaction_timeout" not in out
 
 
 def test_get_s3_config_restore_returns_none_when_keys_missing(
