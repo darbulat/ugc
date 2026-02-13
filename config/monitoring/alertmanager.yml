@@ -26,33 +26,35 @@ inhibit_rules:
       - alertname
       - instance
 
+# Escape HTML specials so Telegram parse_mode=HTML does not break on labels/annotations.
+# Order matters: escape & first to avoid double-escaping &lt; etc.
 receivers:
   - name: telegram
     telegram_configs:
       - bot_token: ${TELEGRAM_BOT_TOKEN}
         chat_id: ${TELEGRAM_CHAT_ID}
-        parse_mode: Markdown
+        parse_mode: HTML
         send_resolved: true
         message: |-
-          *Status:* {{ .Status }}
-          *Alert:* {{ .CommonLabels.alertname }}
+          <b>Status:</b> {{ .Status }}
+          <b>Alert:</b> {{ .CommonLabels.alertname | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
           {{ range .Alerts -}}
-          *Instance:* {{ .Labels.instance }}
-          *Summary:* {{ .Annotations.summary }}
-          *Description:* {{ .Annotations.description }}
+          <b>Instance:</b> {{ .Labels.instance | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
+          <b>Summary:</b> {{ .Annotations.summary | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
+          <b>Description:</b> {{ .Annotations.description | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
           {{ end }}
   - name: telegram_critical
     telegram_configs:
       - bot_token: ${TELEGRAM_BOT_TOKEN}
         chat_id: ${TELEGRAM_CRITICAL_CHAT_ID}
-        parse_mode: Markdown
+        parse_mode: HTML
         send_resolved: true
         message: |-
-          *Status:* {{ .Status }}
-          *Severity:* *CRITICAL*
-          *Alert:* {{ .CommonLabels.alertname }}
+          <b>Status:</b> {{ .Status }}
+          <b>Severity:</b> CRITICAL
+          <b>Alert:</b> {{ .CommonLabels.alertname | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
           {{ range .Alerts -}}
-          *Instance:* {{ .Labels.instance }}
-          *Summary:* {{ .Annotations.summary }}
-          *Description:* {{ .Annotations.description }}
+          <b>Instance:</b> {{ .Labels.instance | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
+          <b>Summary:</b> {{ .Annotations.summary | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
+          <b>Description:</b> {{ .Annotations.description | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
           {{ end }}
