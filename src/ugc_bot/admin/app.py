@@ -1273,38 +1273,8 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     }
 
 
-def _dashboard_open_in_new_tab_html() -> str:
-    """HTML: open /admin/dashboard in new tab and redirect current to /admin/.
-
-    Uses a hidden link with target='_blank' and programmatic click so the new
-    tab is opened as a result of user navigation; then redirects current tab.
-    """
-    return (
-        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<title>Дашборд</title>"
-        "<script>"
-        "(function(){"
-        "var a = document.createElement('a');"
-        "a.href = '/admin/dashboard';"
-        "a.target = '_blank';"
-        "a.rel = 'noopener noreferrer';"
-        "document.body.appendChild(a);"
-        "a.click();"
-        "document.body.removeChild(a);"
-        "window.location.href = '/admin/';"
-        "})();"
-        "</script></head><body>"
-        "<p>Открытие дашборда…</p>"
-        "<p><a href='/admin/dashboard' target='_blank' "
-        "rel='noopener noreferrer'>Открыть дашборд</a>, "
-        "если вкладка не открылась.</p>"
-        "<p><a href='/admin/'>Вернуться в админку</a></p>"
-        "</body></html>"
-    )
-
-
 class DashboardLinkView(BaseView):
-    """Sidebar link: open dashboard in new tab, current tab stays in admin."""
+    """Sidebar link: redirect to dashboard (no intermediate page)."""
 
     name = "Дашборд"
     icon = "fa-solid fa-chart-line"
@@ -1312,8 +1282,8 @@ class DashboardLinkView(BaseView):
     @expose("/dashboard-mvp", methods=["GET"])
     @login_required
     async def dashboard_redirect(self, request: Request):
-        """Open dashboard in new tab and return current tab to admin."""
-        return HTMLResponse(_dashboard_open_in_new_tab_html())
+        """Redirect to dashboard page."""
+        return RedirectResponse(url="/admin/dashboard")
 
 
 class EnumAwareAdmin(Admin):

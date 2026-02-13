@@ -14,7 +14,6 @@ from ugc_bot.admin.app import (
     InteractionAdmin,
     OrderAdmin,
     UserAdmin,
-    _dashboard_open_in_new_tab_html,
     _get_order_moderation_deps,
     _get_services,
     create_admin_app,
@@ -98,16 +97,6 @@ def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] in ("ok", "degraded")
-
-
-def test_dashboard_open_in_new_tab_html() -> None:
-    """Dashboard link page offers clickable link with target=_blank."""
-    html = _dashboard_open_in_new_tab_html()
-    assert "_blank" in html
-    assert "/admin/dashboard" in html
-    assert "Открыть дашборд" in html
-    assert "Вернуться в админку" in html
-    assert "noopener noreferrer" in html
 
 
 def test_enum_aware_admin_edit_form_data_converts_enum_to_value() -> None:

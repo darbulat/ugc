@@ -111,6 +111,33 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     response = client.get("/admin/dashboard?period=today")
     assert response.status_code == 200
     assert "Дашборд" in response.text
+    assert "Админка" in response.text
+    assert 'href="/admin/"' in response.text
+
+
+def test_admin_dashboard_mvp_redirects_to_dashboard(monkeypatch) -> None:
+    """dashboard-mvp redirects to /admin/dashboard without intermediate page."""
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={
+            "period": "today",
+            "registrations": {"creators": {}, "advertisers": {}},
+            "orders": {},
+            "problems": {},
+            "delayed_orders": [],
+            "open_complaints_list": [],
+            "turnover_period": 0,
+            "referrals": {},
+            "payout_requests": [],
+        },
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={},
+    )
+    response = client.get("/admin/dashboard-mvp", follow_redirects=False)
+    assert response.status_code in (302, 307)
+    assert response.headers.get("location") == "/admin/dashboard"
 
 
 def test_admin_creators_page_creators_by_city_section(monkeypatch) -> None:
