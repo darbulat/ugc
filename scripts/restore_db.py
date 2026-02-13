@@ -198,25 +198,29 @@ def restore_backup(
 
     try:
         if backup_path.suffix == ".gz" or backup_path.name.endswith(".sql.gz"):
-            # Decompress and restore; capture stderr to show NOTICEs and errors
-            with gzip.open(backup_path, "rt") as f:
-                result = subprocess.run(
-                    psql_cmd,
-                    stdin=f,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=env,
-                )
+            # Decompress first, then pass to psql via input= (passing file object
+            # would give psql the raw fd and gzip bytes; psql expects plain SQL)
+            with gzip.open(backup_path, "rt", encoding="utf-8") as f:
+                sql_content = f.read()
+            logger.info("Decompressed backup: %d characters of SQL", len(sql_content))
+            result = subprocess.run(
+                psql_cmd,
+                input=sql_content.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
         else:
-            # Restore directly
-            with open(backup_path, "r") as f:
-                result = subprocess.run(
-                    psql_cmd,
-                    stdin=f,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=env,
-                )
+            # Restore directly; read into memory so psql gets text, not raw fd
+            with open(backup_path, "r", encoding="utf-8") as f:
+                sql_content = f.read()
+            result = subprocess.run(
+                psql_cmd,
+                input=sql_content.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
 
         if result.stderr:
             stderr_text = result.stderr.decode()
