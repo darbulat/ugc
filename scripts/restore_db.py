@@ -3,11 +3,19 @@
 
 import argparse
 import gzip
+import logging
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 def _get_s3_config_restore() -> dict | None:
@@ -109,12 +117,22 @@ def download_backup_from_s3(s3_config: dict, key: str) -> Path:
             ) from e
         raise
     body = response["Body"].read()
+    size_bytes = len(body)
+    logger.info(
+        "Downloaded from S3 s3://%s/%s: %d bytes (%.2f MiB)",
+        s3_config["bucket"],
+        key,
+        size_bytes,
+        size_bytes / (1024 * 1024),
+    )
     suffix = ".sql.gz" if key.endswith(".sql.gz") else ".sql"
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(body)
-        return Path(path)
+        local_path = Path(path)
+        logger.info("Saved to temporary file: %s", local_path)
+        return local_path
     except Exception:
         os.unlink(path)
         raise
@@ -146,6 +164,19 @@ def restore_backup(
     if not backup_path.exists():
         raise FileNotFoundError(f"Backup file not found: {backup_path}")
 
+    file_size = backup_path.stat().st_size
+    logger.info(
+        "Restoring to %s:%s database=%s (backup file: %s, %d bytes, %.2f MiB)",
+        host,
+        port,
+        database,
+        backup_path,
+        file_size,
+        file_size / (1024 * 1024),
+    )
+    if file_size == 0:
+        logger.warning("Backup file is empty; restore may not change the database.")
+
     # Set PGPASSWORD environment variable for psql
     env = os.environ.copy()
     env["PGPASSWORD"] = password
@@ -160,18 +191,21 @@ def restore_backup(
         user,
         "-d",
         database,
+        "-v",
+        "ON_ERROR_STOP=1",
     ]
+    logger.info("Running: psql -h %s -p %s -U %s -d %s ...", host, port, user, database)
 
     try:
         if backup_path.suffix == ".gz" or backup_path.name.endswith(".sql.gz"):
-            # Decompress and restore
+            # Decompress and restore; capture stderr to show NOTICEs and errors
             with gzip.open(backup_path, "rt") as f:
                 result = subprocess.run(
                     psql_cmd,
                     stdin=f,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     env=env,
-                    check=True,
                 )
         else:
             # Restore directly
@@ -179,16 +213,32 @@ def restore_backup(
                 result = subprocess.run(
                     psql_cmd,
                     stdin=f,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     env=env,
-                    check=True,
                 )
 
+        if result.stderr:
+            stderr_text = result.stderr.decode()
+            logger.info("psql stderr output:\n%s", stderr_text.rstrip())
+            print(stderr_text, file=sys.stderr, end="")
+
+        if result.returncode != 0:
+            error_msg = result.stderr.decode() if result.stderr else f"exit code {result.returncode}"
+            logger.error("psql failed (exit %s): %s", result.returncode, error_msg)
+            print(f"Error restoring backup: {error_msg}", file=sys.stderr)
+            raise subprocess.CalledProcessError(
+                result.returncode, psql_cmd, stderr=result.stderr
+            )
+
+        logger.info("Database restored successfully from: %s", backup_path)
         print(f"Database restored successfully from: {backup_path}")
 
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode() if e.stderr else str(e)
-        print(f"Error restoring backup: {error_msg}", file=sys.stderr)
+        if e.stderr:
+            error_msg = e.stderr.decode()
+            logger.error("psql failed: %s", error_msg)
+            print(f"Error restoring backup: {error_msg}", file=sys.stderr)
         raise
 
 
@@ -311,6 +361,12 @@ def main() -> None:
             sys.exit(0)
 
     try:
+        logger.info(
+            "Starting restore: host=%s port=%s database=%s",
+            args.host,
+            args.port,
+            args.database,
+        )
         restore_backup(
             host=args.host,
             port=args.port,
