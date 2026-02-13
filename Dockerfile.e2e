@@ -13,7 +13,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Deps: only these files affect the install layer.
-COPY requirements.txt pyproject.toml /app/
+COPY requirements.txt pyproject.toml conftest.py /app/
 COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
