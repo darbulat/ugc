@@ -45,6 +45,20 @@ async def get_last_bot_message(
     return None
 
 
+async def get_bot_message_containing(
+    client, entity, substring: str, timeout: float = 30.0
+) -> str | None:
+    """Wait for a bot message that contains the given substring."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        messages = await client.get_messages(entity, limit=10)
+        for msg in messages:
+            if not msg.out and msg.text and substring in msg.text:
+                return msg.text
+        await asyncio.sleep(1)
+    return None
+
+
 @pytest.fixture(scope="session")
 def telegram_e2e_config() -> dict[str, str]:
     """E2E config from env (read-only)."""
