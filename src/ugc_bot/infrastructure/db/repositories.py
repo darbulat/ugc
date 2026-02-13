@@ -5,7 +5,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import and_, delete, func, or_, select, union_all, update
+from sqlalchemy import (
+    String,
+    and_,
+    bindparam,
+    cast,
+    delete,
+    func,
+    or_,
+    select,
+    union_all,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -739,10 +750,18 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
         """List interactions due for feedback."""
 
         db_session = _get_async_session(session)
+        status_param = cast(
+            bindparam(
+                "status_1",
+                value=InteractionStatus.PENDING.value,
+                type_=String(),
+            ),
+            InteractionModel.status.type,
+        )
         exec_result = await db_session.execute(
             select(InteractionModel).where(
                 InteractionModel.next_check_at <= cutoff,
-                InteractionModel.status == InteractionStatus.PENDING,
+                InteractionModel.status == status_param,
             )
         )
         results = exec_result.scalars()
@@ -754,8 +773,18 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
         """List interactions by status."""
 
         db_session = _get_async_session(session)
+        status_param = cast(
+            bindparam(
+                "status_1",
+                value=status.value,
+                type_=String(),
+            ),
+            InteractionModel.status.type,
+        )
         exec_result = await db_session.execute(
-            select(InteractionModel).where(InteractionModel.status == status)
+            select(InteractionModel).where(
+                InteractionModel.status == status_param
+            )
         )
         results = exec_result.scalars()
         return [_to_interaction_entity(item) for item in results]

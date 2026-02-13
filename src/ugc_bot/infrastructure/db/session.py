@@ -21,6 +21,7 @@ def create_db_engine(
     pool_size: int = 5,
     max_overflow: int = 10,
     pool_timeout: int = 30,
+    pool_recycle: int = 3600,
 ) -> Engine:
     """Create a SQLAlchemy engine."""
 
@@ -33,6 +34,7 @@ def create_db_engine(
         pool_size=pool_size,
         max_overflow=max_overflow,
         pool_timeout=pool_timeout,
+        pool_recycle=pool_recycle,
     )
 
 
@@ -54,6 +56,7 @@ def create_async_db_engine(
     pool_size: int = 5,
     max_overflow: int = 10,
     pool_timeout: int = 30,
+    pool_recycle: int = 3600,
 ) -> AsyncEngine:
     """Create a configured session factory."""
 
@@ -66,6 +69,7 @@ def create_async_db_engine(
         pool_size=pool_size,
         max_overflow=max_overflow,
         pool_timeout=pool_timeout,
+        pool_recycle=pool_recycle,
     )
 
 
@@ -75,6 +79,7 @@ def create_session_factory(
     pool_size: int = 5,
     max_overflow: int = 10,
     pool_timeout: int = 30,
+    pool_recycle: int = 3600,
 ) -> async_sessionmaker[AsyncSession]:
     """Create a configured async session factory."""
 
@@ -83,6 +88,7 @@ def create_session_factory(
         pool_size=pool_size,
         max_overflow=max_overflow,
         pool_timeout=pool_timeout,
+        pool_recycle=pool_recycle,
     )
     return async_sessionmaker(bind=engine, expire_on_commit=False)
 
