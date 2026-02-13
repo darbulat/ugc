@@ -50,6 +50,15 @@ e2e-telegram-docker-auth:
 	docker compose -f docker-compose.test.yml run --rm -it e2e-telegram \
 		python scripts/telegram_e2e_auth.py
 
+# Clean E2E DB users (so each test run starts with no users). Requires E2E_DATABASE_URL.
+e2e-telegram-clean:
+	@if [ -z "$${E2E_DATABASE_URL}" ]; then \
+		echo "Error: E2E_DATABASE_URL is required. Set to the same DB the bot uses for E2E."; \
+		exit 1; \
+	fi
+	docker compose -f docker-compose.test.yml run --rm e2e-telegram \
+		python scripts/clean_e2e_users.py
+
 e2e-docker:
 	docker compose -f docker-compose.test.yml run --rm e2e
 

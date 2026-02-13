@@ -27,6 +27,7 @@ Set `DATABASE_URL` in `.env`, then run:
 - **Local** (admin started automatically on port 8001): `make e2e`
 - **Against deployed dev**: set `E2E_BASE_URL` (and optionally `E2E_ADMIN_USERNAME` / `E2E_ADMIN_PASSWORD`) in `.env` or the environment, then run `make e2e-dev`
 - **Docker** (Postgres + admin in containers): `make e2e-docker`
+- **Telegram bot E2E** (Docker): set `TELEGRAM_E2E_*` and once `make e2e-telegram-docker-auth`; then `make e2e-telegram-docker`. To start with a clean DB on each run, set `E2E_DATABASE_URL` to the same DB as the bot — pytest will clean users before tests; or run `make e2e-telegram-clean` manually.
 
 ## Project structure
 

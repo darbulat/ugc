@@ -86,6 +86,7 @@ services:
       TELEGRAM_E2E_API_ID: ${TELEGRAM_E2E_API_ID:-}
       TELEGRAM_E2E_API_HASH: ${TELEGRAM_E2E_API_HASH:-}
       TELEGRAM_E2E_PHONE: ${TELEGRAM_E2E_PHONE:-}
+      E2E_DATABASE_URL: ${E2E_DATABASE_URL:-}
     volumes:
       - e2e_telethon_session:/app/tests/e2e/.telethon_session
     command: ["python", "-m", "pytest", "tests/e2e", "-m", "e2e_telegram", "-v", "--timeout=90"]

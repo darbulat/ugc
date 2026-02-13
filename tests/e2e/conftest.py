@@ -14,6 +14,33 @@ from sqlalchemy import create_engine
 
 from ugc_bot.infrastructure.db.base import Base
 
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Clean DB users before E2E Telegram tests when E2E_DATABASE_URL is set."""
+    if not os.environ.get("E2E_DATABASE_URL"):
+        return
+    try:
+        items = session.items
+    except Exception:
+        items = []
+    has_telegram = any(
+        item.get_closest_marker("e2e_telegram") is not None for item in items
+    )
+    if not has_telegram:
+        return
+    root = Path(__file__).resolve().parent.parent.parent
+    script = root / "scripts" / "clean_e2e_users.py"
+    if not script.exists():
+        return
+    subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(root),
+        env=os.environ.copy(),
+        check=False,
+        capture_output=True,
+    )
+
+
 E2E_PORT = 8001
 BASE_URL = f"http://127.0.0.1:{E2E_PORT}"
 TABLES_TO_EXCLUDE = {"outbox_events", "blogger_profiles"}
