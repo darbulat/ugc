@@ -13,7 +13,6 @@ from scripts.restore_db import (
 
 
 def test_strip_unsupported_set_commands_removes_transaction_timeout() -> None:
-    """_strip_unsupported_set_commands removes SET transaction_timeout for PG16."""
     sql = """-- header
 SET transaction_timeout = '0';
 SELECT 1;
