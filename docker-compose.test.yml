@@ -75,7 +75,7 @@ services:
     restart: "no"
 
   # E2E with real Telegram: requires TELEGRAM_E2E_* in .env or environment
-  # Bot must be running with webhook. Use: make e2e-telegram-docker
+  # First run: make e2e-telegram-docker-auth (enter code), then make e2e-telegram-docker
   e2e-telegram:
     build:
       context: .
@@ -86,5 +86,10 @@ services:
       TELEGRAM_E2E_API_ID: ${TELEGRAM_E2E_API_ID:-}
       TELEGRAM_E2E_API_HASH: ${TELEGRAM_E2E_API_HASH:-}
       TELEGRAM_E2E_PHONE: ${TELEGRAM_E2E_PHONE:-}
+    volumes:
+      - e2e_telethon_session:/app/tests/e2e/.telethon_session
     command: ["python", "-m", "pytest", "tests/e2e", "-m", "e2e_telegram", "-v", "--timeout=90"]
     restart: "no"
+
+volumes:
+  e2e_telethon_session:

@@ -1,4 +1,4 @@
-.PHONY: install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3
+.PHONY: install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker e2e-telegram-docker-auth test-docker test-all-docker format migrate docker-up docker-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3
 
 export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
@@ -43,6 +43,12 @@ e2e-telegram:
 e2e-telegram-docker:
 	docker compose -f docker-compose.test.yml build e2e-telegram
 	docker compose -f docker-compose.test.yml run --rm e2e-telegram
+
+# One-time auth: run with -it, enter code from Telegram; session saved in volume
+e2e-telegram-docker-auth:
+	docker compose -f docker-compose.test.yml build e2e-telegram
+	docker compose -f docker-compose.test.yml run --rm -it e2e-telegram \
+		python scripts/telegram_e2e_auth.py
 
 e2e-docker:
 	docker compose -f docker-compose.test.yml run --rm e2e
