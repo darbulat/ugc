@@ -84,15 +84,6 @@ groups:
           summary: High payment failure rate
           description: Payment failure rate is {{ $value | humanizePercentage }} for 15 minutes.
 
-      - alert: RegistrationDrop
-        expr: '(rate(ugc_blogger_registrations_total[1h]) + rate(ugc_advertiser_registrations_total[1h])) < (rate(ugc_blogger_registrations_total[1h] offset 24h) + rate(ugc_advertiser_registrations_total[1h] offset 24h)) / 2'
-        for: 1h
-        labels:
-          severity: warning
-        annotations:
-          summary: Significant drop in registrations
-          description: Registration rate dropped by more than 50% compared to yesterday.
-
       - alert: HighComplaintRate
         expr: 'rate(ugc_complaints_created_total[1h]) > 2 * rate(ugc_complaints_created_total[1h] offset 24h)'
         for: 1h
