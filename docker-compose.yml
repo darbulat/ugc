@@ -86,8 +86,8 @@ services:
         "--forwarded-allow-ips",
         "127.0.0.1,172.16.0.0/12,10.0.0.0/8",
       ]
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)\" || exit 1"]
       interval: 30s
@@ -234,8 +234,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Port 6379 not published: only app/admin containers use redis:6379 (no external access)
     volumes:
       - redis_data:/data
     healthcheck:
@@ -250,8 +249,8 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
+    expose:
+      - "2181"
     restart: unless-stopped
 
   kafka:
@@ -268,9 +267,9 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-    ports:
-      - "9092:9092"
-      - "19093:9093"
+    expose:
+      - "9092"
+      - "9093"
     healthcheck:
       test:
         [
@@ -295,8 +294,8 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.external-url=${PROMETHEUS_EXTERNAL_URL:-https://${DOMAIN:-bot.usemycontent.ru}/prometheus/}"
       - "--web.route-prefix=/"
-    ports:
-      - "9090:9090"
+    expose:
+      - "9090"
     depends_on:
       - node_exporter
       - cadvisor
@@ -337,8 +336,8 @@ services:
     depends_on:
       alertmanager_renderer:
         condition: service_completed_successfully
-    ports:
-      - "9093:9093"
+    expose:
+      - "9093"
     restart: unless-stopped
     networks:
       - default
@@ -355,8 +354,8 @@ services:
       - ./config/monitoring/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
       - ./config/monitoring/grafana-dashboard.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
       - ./config/monitoring/dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - prometheus
     restart: unless-stopped
@@ -415,8 +414,8 @@ services:
       - ./config/monitoring/loki.yml:/etc/loki/loki.yml:ro
       - ./config/monitoring/loki-alerts:/loki/rules:ro
       - loki_data:/loki
-    ports:
-      - "3100:3100"
+    expose:
+      - "3100"
     restart: unless-stopped
     networks:
       - default
