@@ -2,10 +2,12 @@ services:
   app:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     expose:
       - "9999"
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -31,10 +33,12 @@ services:
   app_2:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     expose:
       - "9999"
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -60,6 +64,8 @@ services:
   migrate:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@db:5432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
@@ -69,8 +75,10 @@ services:
   admin:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
     command:
       [
@@ -101,8 +109,10 @@ services:
   instagram_webhook:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
     command:
       [
@@ -167,8 +177,10 @@ services:
   kafka_consumer:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -178,8 +190,10 @@ services:
   feedback_scheduler:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
     command: ["python", "-m", "ugc_bot.feedback_scheduler"]
     restart: unless-stopped
@@ -187,8 +201,10 @@ services:
   role_reminder_scheduler:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
     command: ["python", "-m", "ugc_bot.role_reminder_scheduler"]
     restart: unless-stopped
@@ -196,8 +212,10 @@ services:
   outbox_processor:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -229,6 +247,26 @@ services:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-ugc}\" -d \"$${POSTGRES_DB:-ugc}\""]
       interval: 5s
       timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@db:5432/${POSTGRES_DB:-ugc}
+      LISTEN_PORT: "6432"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+    expose:
+      - "6432"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6432 || exit 1"]
+      interval: 5s
+      timeout: 3s
       retries: 5
     restart: unless-stopped
 
@@ -446,7 +484,7 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@db:5432/${POSTGRES_DB:-ugc}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-ugc}
