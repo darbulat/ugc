@@ -1,4 +1,26 @@
-.PHONY: install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker e2e-telegram-docker-auth test-docker test-all-docker format migrate docker-up docker-down dev-up dev-down admin subscribe-instagram-webhook list-instagram-subscriptions export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3
+# Compose file sets (override in env if needed)
+COMPOSE_TEST = docker compose -f docker-compose.test.yml
+COMPOSE_DEV = docker compose -f docker-compose.yml -f docker-compose.dev.yml
+
+# Paths and coverage threshold (override for CI or different layout)
+SRC_DIR ?= src
+TEST_DIR ?= tests
+COV_FAIL ?= 98
+E2E_TIMEOUT ?= 90
+
+# DB-changing targets must not run in parallel with make -j
+.NOTPARALLEL: migrate restore-db restore-db-s3
+
+.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker format format-check migrate docker-up docker-down dev-up dev-down admin export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 all
+
+help:
+	@echo "Usage: make [target]"
+	@echo ""
+	@echo "Development:  install-dev, format, format-check, lint, typecheck, test, coverage"
+	@echo "E2E:          e2e, e2e-dev, e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
+	@echo "Infra:        docker-up, docker-down, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
+	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
+	@echo "Export:       export-requirements"
 
 export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
@@ -7,26 +29,26 @@ install-dev:
 	uv run pip install -e ".[dev]"
 
 lint:
-	uv run ruff check src tests
+	uv run ruff check $(SRC_DIR) $(TEST_DIR)
 
 format:
-	uv run ruff format src tests
+	uv run ruff format $(SRC_DIR) $(TEST_DIR)
 
 format-check:
-	uv run ruff format --check src tests
+	uv run ruff format --check $(SRC_DIR) $(TEST_DIR)
 
 typecheck:
-	uv run mypy src
+	uv run mypy $(SRC_DIR)
 
 test:
 	uv run pytest -m "not e2e"
 
 coverage:
-	uv run pytest -m "not e2e" --cov=ugc_bot --cov-fail-under=98 --cov-report=term-missing --cov-report=xml
+	uv run pytest -m "not e2e" --cov=ugc_bot --cov-fail-under=$(COV_FAIL) --cov-report=term-missing --cov-report=xml
 
 e2e:
 	uv run python -m playwright install chromium
-	uv run pytest tests/e2e -v -m e2e --timeout=90
+	uv run pytest $(TEST_DIR)/e2e -v -m e2e --timeout=$(E2E_TIMEOUT)
 
 e2e-dev:
 	@if [ -z "$${E2E_BASE_URL}" ]; then \
@@ -34,20 +56,20 @@ e2e-dev:
 		exit 1; \
 	fi
 	uv run python -m playwright install chromium
-	uv run pytest tests/e2e -v -m e2e --timeout=90
+	uv run pytest $(TEST_DIR)/e2e -v -m e2e --timeout=$(E2E_TIMEOUT)
 
 e2e-telegram:
 	uv sync --extra dev --extra telegram-e2e
-	uv run pytest tests/e2e -m e2e_telegram -v --timeout=90
+	uv run pytest $(TEST_DIR)/e2e -m e2e_telegram -v --timeout=$(E2E_TIMEOUT)
 
 e2e-telegram-docker:
-	docker compose -f docker-compose.test.yml build e2e-telegram
-	docker compose -f docker-compose.test.yml run --rm e2e-telegram
+	$(COMPOSE_TEST) build e2e-telegram
+	$(COMPOSE_TEST) run --rm e2e-telegram
 
 # One-time auth: run with -it, enter code from Telegram; session saved in volume
 e2e-telegram-docker-auth:
-	docker compose -f docker-compose.test.yml build e2e-telegram
-	docker compose -f docker-compose.test.yml run --rm -it e2e-telegram \
+	$(COMPOSE_TEST) build e2e-telegram
+	$(COMPOSE_TEST) run --rm -it e2e-telegram \
 		python scripts/telegram_e2e_auth.py
 
 # Clean E2E DB users (so each test run starts with no users). Requires E2E_DATABASE_URL.
@@ -56,19 +78,19 @@ e2e-telegram-clean:
 		echo "Error: E2E_DATABASE_URL is required. Set to the same DB the bot uses for E2E."; \
 		exit 1; \
 	fi
-	docker compose -f docker-compose.test.yml run --rm e2e-telegram \
+	$(COMPOSE_TEST) run --rm e2e-telegram \
 		python scripts/clean_e2e_users.py
 
 e2e-docker:
-	docker compose -f docker-compose.test.yml run --rm e2e
+	$(COMPOSE_TEST) run --rm e2e
 
 test-docker:
-	docker compose -f docker-compose.test.yml run --rm test
+	$(COMPOSE_TEST) run --rm test
 
 test-all-docker: test-docker e2e-docker
 
 migrate:
-	alembic upgrade head
+	uv run alembic upgrade head
 
 docker-up:
 	docker compose up -d --build
@@ -78,18 +100,19 @@ docker-down:
 
 # Dev contour: docker-compose.yml + docker-compose.dev.yml (no backup by default)
 dev-up:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+	$(COMPOSE_DEV) up -d --build
 
 dev-down:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+	$(COMPOSE_DEV) down
 
 admin:
-	uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001 --log-config config/uvicorn_log_config.json
+	uv run uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001 --log-config config/uvicorn_log_config.json
 
 # Database backup commands (DB params from DATABASE_URL or POSTGRES_* in .env)
 backup-db:
 	docker compose run --rm db_backup python scripts/backup_db.py --output-dir /backups
 
+# BACKUP_FILE = path inside the db_backup container (e.g. /backups/ugc_backup_YYYYMMDD_HHMMSS.sql.gz from mounted volume)
 restore-db:
 	@if [ -z "$(BACKUP_FILE)" ]; then \
 		echo "Error: BACKUP_FILE is required. Usage: make restore-db BACKUP_FILE=/backups/ugc_backup_YYYYMMDD_HHMMSS.sql.gz"; \
@@ -104,7 +127,8 @@ restore-db:
 		--confirm \
 		$(BACKUP_FILE)
 
-# Restore from S3. BACKUP_S3_KEY = object key, e.g. backups/ugc_backup_20240206_020000.sql.gz or ugc_backup_20240206_020000.sql.gz
+# Restore from S3. BACKUP_S3_KEY = object key in bucket, e.g. backups/ugc_backup_20240206_020000.sql.gz
+# Path is resolved inside the db_backup container (S3 credentials from .env).
 # Requires S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (and optionally S3_ENDPOINT_URL, S3_BUCKET) in .env
 restore-db-s3:
 	@if [ -z "$(BACKUP_S3_KEY)" ]; then \
@@ -129,4 +153,5 @@ list-backups-s3:
 list-backups:
 	docker compose run --rm db_backup ls -lh /backups/
 
+# Full pre-commit/CI check: format first, then lint/typecheck/coverage. Do not reorder (lint expects formatted code).
 all: format lint typecheck coverage
