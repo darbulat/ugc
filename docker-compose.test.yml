@@ -56,7 +56,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # Telegram bot (webhook app) for e2e_telegram tests. Requires WEBHOOK_BASE_URL, WEBHOOK_SECRET, TELEGRAM_E2E_BOT_TOKEN in .env.
+  # Telegram bot (webhook app) for e2e_telegram tests. Nginx proxies /webhook/telegram to app.
+  # In .env set WEBHOOK_BASE_URL to the public URL that reaches nginx (e.g. https://xxx.ngrok.io), WEBHOOK_SECRET, TELEGRAM_E2E_BOT_TOKEN.
   app:
     build: *app-build
     env_file: .env
@@ -88,6 +89,25 @@ services:
       start_period: 15s
     restart: "no"
 
+  # Override main compose nginx: HTTPS for Telegram webhook (self-signed cert), depend only on app.
+  # Use with: docker compose -f docker-compose.yml -f docker-compose.test.yml (see Makefile e2e-telegram-docker, test-all-docker).
+  # WEBHOOK_BASE_URL must be https (e.g. https://host:443 or https://tunnel that forwards to host:443).
+  nginx:
+    volumes:
+      - ./nginx/nginx-test.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/nginx/ssl &&
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout /etc/nginx/ssl/cert.key -out /etc/nginx/ssl/cert.crt \
+          -subj /CN=localhost &&
+        exec nginx -g "daemon off;"
+
   e2e:
     build:
       context: .
@@ -118,8 +138,8 @@ services:
     depends_on:
       admin_test:
         condition: service_healthy
-      app:
-        condition: service_healthy
+      nginx:
+        condition: service_started
     command:
       - sh
       - -c
@@ -152,8 +172,8 @@ services:
     volumes:
       - e2e_telethon_session:/app/tests/e2e/.telethon_session
     depends_on:
-      app:
-        condition: service_healthy
+      nginx:
+        condition: service_started
     command: ["python", "-m", "pytest", "tests/e2e", "-m", "e2e_telegram", "-v", "--timeout=90"]
     restart: "no"
 

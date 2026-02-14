@@ -1,5 +1,7 @@
 # Compose file sets (override in env if needed)
 COMPOSE_TEST = docker compose -f docker-compose.test.yml
+# Main + test: nginx from main compose (with test overlay) for e2e_telegram webhook
+COMPOSE_TEST_WITH_MAIN = docker compose -f docker-compose.yml -f docker-compose.test.yml
 COMPOSE_DEV = docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 # Paths and coverage threshold (override for CI or different layout)
@@ -63,15 +65,15 @@ e2e-telegram:
 	uv sync --extra dev --extra telegram-e2e
 	uv run pytest $(TEST_DIR)/e2e -m e2e_telegram -v --timeout=$(E2E_TIMEOUT)
 
-# Starts app (webhook bot) then runs e2e_telegram tests. Requires in .env: TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET.
+# Starts app + nginx (from main compose with test overlay), then runs e2e_telegram. WEBHOOK_BASE_URL must point at nginx (e.g. ngrok to host:80). Requires in .env: TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET.
 e2e-telegram-docker:
-	$(COMPOSE_TEST) build e2e-telegram
-	$(COMPOSE_TEST) run --rm e2e-telegram
+	$(COMPOSE_TEST_WITH_MAIN) build e2e-telegram
+	$(COMPOSE_TEST_WITH_MAIN) run --rm e2e-telegram
 
 # One-time auth: run with -it, enter code from Telegram; session saved in volume
 e2e-telegram-docker-auth:
-	$(COMPOSE_TEST) build e2e-telegram
-	$(COMPOSE_TEST) run --rm -it e2e-telegram \
+	$(COMPOSE_TEST_WITH_MAIN) build e2e-telegram
+	$(COMPOSE_TEST_WITH_MAIN) run --rm -it e2e-telegram \
 		python scripts/telegram_e2e_auth.py
 
 # Clean E2E DB users (so each test run starts with no users). Requires E2E_DATABASE_URL.
@@ -80,7 +82,7 @@ e2e-telegram-clean:
 		echo "Error: E2E_DATABASE_URL is required. Set to the same DB the bot uses for E2E."; \
 		exit 1; \
 	fi
-	$(COMPOSE_TEST) run --rm e2e-telegram \
+	$(COMPOSE_TEST_WITH_MAIN) run --rm e2e-telegram \
 		python scripts/clean_e2e_users.py
 
 e2e-docker:
@@ -89,9 +91,9 @@ e2e-docker:
 test-docker:
 	$(COMPOSE_TEST) run --rm test
 
-# One command: unit + integration + e2e + e2e_telegram. Starts app for Telegram e2e; requires TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET in .env.
+# One command: unit + integration + e2e + e2e_telegram. Uses nginx from main compose (test overlay); WEBHOOK_BASE_URL must point at nginx (e.g. ngrok to host:80). Requires TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET in .env.
 test-all-docker:
-	$(COMPOSE_TEST) run --rm test-all
+	$(COMPOSE_TEST_WITH_MAIN) run --rm test-all
 
 migrate:
 	uv run alembic upgrade head
