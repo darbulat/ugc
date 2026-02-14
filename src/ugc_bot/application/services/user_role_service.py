@@ -155,6 +155,19 @@ class UserRoleService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def get_user_by_telegram(self, telegram: str) -> User | None:
+        """Fetch a user by Telegram username (case-insensitive, @ stripped)."""
+        normalized = (telegram or "").strip().lstrip("@").lower()
+        if not normalized:
+            return None
+
+        async def _run(session: object | None) -> User | None:
+            return await self.user_repo.get_by_telegram(
+                normalized, session=session
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def update_status(self, user_id: UUID, status: UserStatus) -> User:
         """Update user status."""
 

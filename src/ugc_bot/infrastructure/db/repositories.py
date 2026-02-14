@@ -180,6 +180,22 @@ class SqlAlchemyUserRepository(UserRepository):
         result = exec_result.scalar_one_or_none()
         return _to_user_entity(result) if result else None
 
+    async def get_by_telegram(
+        self, telegram: str, session: object | None = None
+    ) -> Optional[User]:
+        """Fetch a user by Telegram username (case-insensitive, @ stripped)."""
+        normalized = (telegram or "").strip().lstrip("@").lower()
+        if not normalized:
+            return None
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(UserModel).where(
+                func.lower(UserModel.telegram) == normalized,
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_user_entity(result) if result else None
+
     async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user."""
 

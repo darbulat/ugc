@@ -33,7 +33,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import PayoutRequest
+from ugc_bot.domain.entities import PayoutRequest, User
 from ugc_bot.domain.enums import PayoutRequestStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
@@ -45,6 +45,46 @@ REFERRAL_LIST_CALLBACK_PREFIX = "referral_list:"
 PAYOUT_BUTTON_TEXT = "Выплатить"
 REFERRAL_LIST_PAGE_SIZE = 10
 REFERRAL_LIST_PENDING_LIMIT = 50
+USER_NOT_FOUND_MSG = "Пользователь не найден."
+
+
+def _parse_telegram_arg_from_command(
+    text: str | None, command: str
+) -> str | None:
+    """First arg after /command, normalized (strip, strip @). None if empty."""
+    if not text:
+        return None
+    parts = (text or "").strip().split()
+    if len(parts) < 2:
+        return None
+    arg = parts[1].strip().lstrip("@")
+    return arg if arg else None
+
+
+async def _resolve_referral_target_user(
+    current_user: User,
+    telegram_arg: str | None,
+    user_role_service: UserRoleService,
+    messenger_client: MessengerClient,
+    chat_id: str,
+) -> User | None:
+    """Resolve target user for referral commands.
+
+    Returns None only if admin passed @username and that user was not found
+    (error message already sent).
+    """
+    if not current_user.admin:
+        return current_user
+    if not telegram_arg:
+        return current_user
+    target = await user_role_service.get_user_by_telegram(telegram_arg)
+    if target is None:
+        await messenger_client.send_text(
+            chat_id=chat_id,
+            text=USER_NOT_FOUND_MSG,
+        )
+        return None
+    return target
 
 
 def _referral_stats_text(
@@ -97,7 +137,7 @@ async def referral_command(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle /referral — show current user referral stats (all users)."""
+    """Handle /referral — stats; admin may pass @username to view another."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -113,8 +153,19 @@ async def referral_command(
     if user is None:
         return
 
+    telegram_arg = _parse_telegram_arg_from_command(incoming.text, "referral")
+    target = await _resolve_referral_target_user(
+        user,
+        telegram_arg,
+        user_role_service,
+        messenger_client,
+        incoming.chat_id,
+    )
+    if target is None:
+        return
+
     stats = await referral_income_service.get_user_referral_stats(
-        user.user_id, stats_limit=config.referral.referral_stats_limit
+        target.user_id, stats_limit=config.referral.referral_stats_limit
     )
     balance = stats.income_total - stats.paid_total
     text = _referral_stats_text(
@@ -125,16 +176,22 @@ async def referral_command(
         paid_total=stats.paid_total,
         balance=balance,
     )
+    is_own_view = target.user_id == user.user_id
     bot_username = (config.referral.referral_bot_username or "").strip()
-    if bot_username and user.referral_code:
-        link = f"https://t.me/{bot_username}?start=ref_{user.referral_code}"
+    if is_own_view and bot_username and target.referral_code:
+        link = f"https://t.me/{bot_username}?start=ref_{target.referral_code}"
         text = f"Ваша реферальная ссылка:\n{link}\n\n{text}"
+    keyboard = (
+        _referral_keyboard(
+            balance, stats.has_pending_payout, stats.has_request_today
+        )
+        if is_own_view
+        else None
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
-        keyboard=_referral_keyboard(
-            balance, stats.has_pending_payout, stats.has_request_today
-        ),
+        keyboard=keyboard,
     )
 
 
@@ -267,7 +324,7 @@ async def referral_list_command(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle /referral_list — list referrals and pending (no profile) users."""
+    """Handle /referral_list — list; admin may pass @username for another."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -283,12 +340,25 @@ async def referral_list_command(
     if user is None:
         return
 
+    telegram_arg = _parse_telegram_arg_from_command(
+        incoming.text, "referral_list"
+    )
+    target = await _resolve_referral_target_user(
+        user,
+        telegram_arg,
+        user_role_service,
+        messenger_client,
+        incoming.chat_id,
+    )
+    if target is None:
+        return
+
     async with transaction_manager.transaction() as session:
         total_bindings = await user_referral_binding_repo.count_by_referrer(
-            user.user_id, session=session
+            target.user_id, session=session
         )
         total_pending = await user_referral_pending_repo.count_by_referrer(
-            user.user_id, session=session
+            target.user_id, session=session
         )
     if total_bindings == 0 and total_pending == 0:
         await messenger_client.send_text(
@@ -297,14 +367,18 @@ async def referral_list_command(
         )
         return
 
+    referrer_user_id_for_callback = (
+        target.user_id if target.user_id != user.user_id else None
+    )
     text, keyboard = await _render_referral_list_page(
-        referrer_user_id=user.user_id,
+        referrer_user_id=target.user_id,
         page=1,
         user_referral_binding_repo=user_referral_binding_repo,
         user_referral_pending_repo=user_referral_pending_repo,
         user_repo=user_repo,
         referral_income_service=referral_income_service,
         transaction_manager=transaction_manager,
+        referrer_user_id_for_callback=referrer_user_id_for_callback,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -343,20 +417,48 @@ async def referral_list_pagination_callback(
     if user is None:
         return
 
-    raw = (incoming.data or "").replace(REFERRAL_LIST_CALLBACK_PREFIX, "")
+    raw = (
+        (incoming.data or "")
+        .replace(REFERRAL_LIST_CALLBACK_PREFIX, "", 1)
+        .strip()
+    )
+    parts = raw.split(":", 1)
+    page_str = (parts[0] or "").strip()
+    user_id_str = (parts[1] or "").strip() if len(parts) > 1 else ""
     try:
-        page = int(raw)
+        page = int(page_str or "1")
     except ValueError:
         page = 1
 
+    referrer_user_id: UUID
+    if user_id_str:
+        try:
+            referrer_user_id = UUID(user_id_str)
+        except ValueError:
+            referrer_user_id = user.user_id
+        else:
+            if not user.admin:
+                await messenger_client.answer_callback(
+                    callback_id=incoming.callback_id,
+                    text="Доступ запрещён.",
+                    show_alert=True,
+                )
+                return
+    else:
+        referrer_user_id = user.user_id
+
+    referrer_user_id_for_callback = (
+        referrer_user_id if referrer_user_id != user.user_id else None
+    )
     text, keyboard = await _render_referral_list_page(
-        referrer_user_id=user.user_id,
+        referrer_user_id=referrer_user_id,
         page=page,
         user_referral_binding_repo=user_referral_binding_repo,
         user_referral_pending_repo=user_referral_pending_repo,
         user_repo=user_repo,
         referral_income_service=referral_income_service,
         transaction_manager=transaction_manager,
+        referrer_user_id_for_callback=referrer_user_id_for_callback,
     )
     if incoming.message_id:
         await messenger_client.edit_text(
@@ -468,23 +570,30 @@ def _referral_list_pagination_keyboard(
     page: int,
     total_pages: int,
     total_bindings: int,
+    referrer_user_id_for_callback: UUID | None = None,
 ) -> Keyboard:
     """Pagination keyboard for referral list when bindings exist."""
     if total_bindings == 0:
         return Keyboard(kind=KeyboardKind.INLINE, rows=[])
+    suffix = (
+        f":{referrer_user_id_for_callback}"
+        if referrer_user_id_for_callback
+        else ""
+    )
     nav_buttons: list[Button] = []
+    prefix = REFERRAL_LIST_CALLBACK_PREFIX
     if page > 1:
         nav_buttons.append(
             Button(
                 text="Назад",
-                callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page - 1}",
+                callback_data=f"{prefix}{page - 1}{suffix}",
             )
         )
     if page < total_pages:
         nav_buttons.append(
             Button(
                 text="Вперёд",
-                callback_data=f"{REFERRAL_LIST_CALLBACK_PREFIX}{page + 1}",
+                callback_data=f"{prefix}{page + 1}{suffix}",
             )
         )
     rows = [nav_buttons] if nav_buttons else []
@@ -500,6 +609,7 @@ async def _render_referral_list_page(
     user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
     transaction_manager: TransactionManager,
+    referrer_user_id_for_callback: UUID | None = None,
 ) -> tuple[str, Keyboard]:
     """Build referral list: block 1 (bindings), block 2 (pending)."""
     async with transaction_manager.transaction() as session:
@@ -524,6 +634,9 @@ async def _render_referral_list_page(
         )
     text = "\n".join(block1_lines) + "\n\n" + "\n".join(block2_lines)
     keyboard = _referral_list_pagination_keyboard(
-        current_page, total_pages, total_bindings
+        current_page,
+        total_pages,
+        total_bindings,
+        referrer_user_id_for_callback=referrer_user_id_for_callback,
     )
     return text, keyboard

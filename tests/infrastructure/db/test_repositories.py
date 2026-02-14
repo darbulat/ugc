@@ -1839,6 +1839,28 @@ async def test_user_repository_get_by_referral_code() -> None:
 
 
 @pytest.mark.asyncio
+async def test_user_repository_get_by_telegram() -> None:
+    """get_by_telegram returns user (case-insensitive, @ stripped)."""
+    model = UserModel(
+        user_id=UUID("00000000-0000-0000-0000-000000000302"),
+        external_id="ext2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u2",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        telegram="john_doe",
+    )
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
+    user = await repo.get_by_telegram("john_doe", session=_repo_session(repo))
+    assert user is not None
+    assert user.telegram == "john_doe"
+    user2 = await repo.get_by_telegram("@John_Doe", session=_repo_session(repo))
+    assert user2 is not None
+    assert user2.user_id == user.user_id
+
+
+@pytest.mark.asyncio
 async def test_user_referral_binding_repository_save() -> None:
     """UserReferralBinding repo save merges model."""
     ref_id = UUID("00000000-0000-0000-0000-000000000400")

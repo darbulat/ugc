@@ -167,6 +167,27 @@ async def test_get_user_and_get_by_id_with_transaction_manager(
 
 
 @pytest.mark.asyncio
+async def test_get_user_by_telegram() -> None:
+    """get_user_by_telegram finds user by telegram (normalizes @ and case)."""
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+
+    created = await service.set_user(
+        external_id="tg-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+        telegram_username="AliceBot",
+    )
+
+    found = await service.get_user_by_telegram("AliceBot")
+    assert found is not None and found.user_id == created.user_id
+    found2 = await service.get_user_by_telegram("@alicebot")
+    assert found2 is not None and found2.user_id == created.user_id
+    assert await service.get_user_by_telegram("") is None
+    assert await service.get_user_by_telegram("nonexistent") is None
+
+
+@pytest.mark.asyncio
 async def test_update_status_with_transaction_manager(fake_tm: object) -> None:
     """Cover transaction_manager path for update_status."""
 

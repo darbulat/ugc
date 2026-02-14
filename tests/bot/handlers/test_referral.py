@@ -746,6 +746,160 @@ async def test_referral_command_user_not_found_sends_message(
 
 
 @pytest.mark.asyncio
+async def test_referral_command_admin_sees_another_user_stats(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Admin /referral @username sees that user's stats, no payout button."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    other_user = __user(
+        external_id="2",
+        username="john",
+        telegram="john",
+        referral_code="ref_john",
+    )
+    await user_repo.save(admin_user)
+    await user_repo.save(other_user)
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=1,
+            orders_count=2,
+            income_current_month=10.0,
+            income_total=50.0,
+            paid_total=0.0,
+            has_pending_payout=False,
+            has_request_today=False,
+        )
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="/referral @john", user=FakeUser(1, "admin", "admin")
+    )
+
+    await referral_command(
+        message,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(
+                referral_stats_limit=10_000,
+                referral_bot_username="Bot",
+            ),
+        ),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    text = client.sent_text[0]["text"]
+    assert "Реферальная статистика" in text
+    assert "Приведено креаторов: 1" in text
+    assert "Накоплено (всего): 50.00" in text
+    mock_income.get_user_referral_stats.assert_called_once_with(
+        other_user.user_id, stats_limit=10_000
+    )
+    assert client.sent_text[0]["keyboard"] is None
+
+
+@pytest.mark.asyncio
+async def test_referral_command_admin_nonexistent_telegram_sends_user_not_found(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Admin /referral @nonexistent sends 'Пользователь не найден'."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="/referral @nonexistent", user=FakeUser(1, "admin", "admin")
+    )
+
+    await referral_command(
+        message,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_stats_limit=10_000),
+        ),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    assert "Пользователь не найден" in client.sent_text[0]["text"]
+    mock_income.get_user_referral_stats.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_referral_command_non_admin_with_arg_ignores_arg(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Non-admin /referral @someone shows own stats (arg ignored)."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    alice = __user(external_id="111", username="alice", telegram="alice")
+    await user_repo.save(alice)
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_user_referral_stats = AsyncMock(
+        return_value=UserReferralStats(
+            creators_count=0,
+            orders_count=0,
+            income_current_month=0.0,
+            income_total=0.0,
+            paid_total=0.0,
+            has_pending_payout=False,
+            has_request_today=False,
+        )
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="/referral @someone_else", user=FakeUser(111, "u", "alice")
+    )
+
+    await referral_command(
+        message,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(referral_stats_limit=10_000),
+        ),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    mock_income.get_user_referral_stats.assert_called_once_with(
+        alice.user_id, stats_limit=10_000
+    )
+    assert "Реферальная статистика" in client.sent_text[0]["text"]
+
+
+@pytest.mark.asyncio
 async def test_referral_list_command_empty_sends_no_referrals_message(
     user_repo: InMemoryUserRepository,
 ) -> None:
@@ -930,6 +1084,128 @@ async def test_referral_list_pagination_callback_edits_message(
     assert "страница 2/2" in client.edited_text[0]["text"]
     assert client.edited_text[0]["keyboard"] is not None
     assert len(client.answered_callbacks) == 1
+
+
+@pytest.mark.asyncio
+async def test_referral_list_pagination_callback_with_uuid_admin_ok(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Admin callback with referral_list:page:user_id shows that user's page."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.domain.entities import User, UserReferralBinding
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    referrer = __user(external_id="2", username="john", telegram="john")
+    await user_repo.save(admin_user)
+    await user_repo.save(referrer)
+    binding_repo = InMemoryUserReferralBindingRepository()
+    for i in range(11):
+        referred = User(
+            user_id=uuid4(),
+            external_id=f"r{i}",
+            messenger_type=MessengerType.TELEGRAM,
+            username=f"u{i}",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        await user_repo.save(referred)
+        await binding_repo.save(
+            UserReferralBinding(
+                referrer_user_id=referrer.user_id,
+                referred_user_id=referred.user_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+    pending_repo = InMemoryUserReferralPendingRepository()
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.count_completed_orders_by_user_ids = AsyncMock(
+        side_effect=lambda user_ids, **kw: {uid: 0 for uid in user_ids}
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{REFERRAL_LIST_CALLBACK_PREFIX}2:{referrer.user_id}",
+        user=FakeUser(1, "admin", "admin"),
+        callback_id="cb",
+        message=FakeMessage(
+            text="", user=FakeUser(1, "admin", "admin"), message_id=1
+        ),
+    )
+
+    await referral_list_pagination_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=mock_income,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.edited_text) == 1
+    assert "страница 2/2" in client.edited_text[0]["text"]
+    assert len(client.answered_callbacks) == 1
+
+
+@pytest.mark.asyncio
+async def test_referral_list_pagination_callback_with_uuid_non_admin_denied(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Non-admin callback with referral_list:page:user_id gets access denied."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    regular = __user(external_id="99", username="regular", telegram="regular")
+    other = __user(external_id="88", username="other", telegram="other")
+    await user_repo.save(regular)
+    await user_repo.save(other)
+    binding_repo = InMemoryUserReferralBindingRepository()
+    pending_repo = InMemoryUserReferralPendingRepository()
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{REFERRAL_LIST_CALLBACK_PREFIX}1:{other.user_id}",
+        user=FakeUser(99, "u", "regular"),
+        callback_id="cb",
+        message=FakeMessage(
+            text="", user=FakeUser(99, "u", "regular"), message_id=1
+        ),
+    )
+
+    await referral_list_pagination_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=mock_income,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.edited_text) == 0
+    assert len(client.answered_callbacks) == 1
+    assert "Доступ запрещён" in client.answered_callbacks[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -1130,6 +1406,85 @@ async def test_referral_list_command_user_not_found_sends_message(
 
 
 @pytest.mark.asyncio
+async def test_referral_list_command_admin_sees_another_user_list(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Admin /referral_list @username sees that user list; callback has uuid."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.domain.entities import User, UserReferralBinding
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    john = __user(external_id="2", username="john", telegram="john")
+    await user_repo.save(admin_user)
+    await user_repo.save(john)
+    binding_repo = InMemoryUserReferralBindingRepository()
+    for i in range(11):
+        referred = User(
+            user_id=uuid4(),
+            external_id=f"refd{i}",
+            messenger_type=MessengerType.TELEGRAM,
+            username=f"referred_{i}",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        await user_repo.save(referred)
+        await binding_repo.save(
+            UserReferralBinding(
+                referrer_user_id=john.user_id,
+                referred_user_id=referred.user_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+    pending_repo = InMemoryUserReferralPendingRepository()
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.count_completed_orders_by_user_ids = AsyncMock(
+        side_effect=lambda user_ids, **kw: {uid: 0 for uid in user_ids}
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="/referral_list @john", user=FakeUser(1, "admin", "admin")
+    )
+
+    await referral_list_command(
+        message,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        user_referral_binding_repo=binding_repo,
+        user_referral_pending_repo=pending_repo,
+        user_repo=user_repo,
+        referral_income_service=mock_income,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) == 1
+    text = client.sent_text[0]["text"]
+    assert "рефералы" in text and "страница" in text
+    keyboard = client.sent_text[0].get("keyboard")
+    assert keyboard is not None
+    callback_datas = []
+    for row in getattr(keyboard, "rows", []) or []:
+        for btn in row:
+            cd = getattr(btn, "callback_data", None)
+            if cd:
+                callback_datas.append(cd)
+    assert any(str(john.user_id) in cd for cd in callback_datas), callback_datas
+
+
+@pytest.mark.asyncio
 async def test_referral_list_pagination_callback_invalid_page_uses_one(
     user_repo: InMemoryUserRepository,
 ) -> None:
@@ -1282,6 +1637,8 @@ def __user(
     external_id: str,
     username: str,
     referral_code: str | None = None,
+    admin: bool = False,
+    telegram: str | None = None,
 ):
     """Build minimal User for tests."""
     from datetime import datetime, timezone
@@ -1299,4 +1656,6 @@ def __user(
         issue_count=0,
         created_at=datetime.now(timezone.utc),
         referral_code=referral_code,
+        admin=admin,
+        telegram=telegram,
     )

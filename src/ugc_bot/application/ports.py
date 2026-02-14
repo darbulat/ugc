@@ -75,6 +75,12 @@ class UserRepository(ABC):
         """Fetch a user by referral code."""
 
     @abstractmethod
+    async def get_by_telegram(
+        self, telegram: str, session: object | None = None
+    ) -> Optional[User]:
+        """Fetch a user by Telegram username (case-insensitive, @ stripped)."""
+
+    @abstractmethod
     async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user."""
 

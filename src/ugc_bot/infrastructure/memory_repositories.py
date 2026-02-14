@@ -87,6 +87,19 @@ class InMemoryUserRepository(UserRepository):
                 return u
         return None
 
+    async def get_by_telegram(
+        self, telegram: str, session: object | None = None
+    ) -> Optional[User]:
+        """Fetch a user by Telegram username (case-insensitive, @ stripped)."""
+        normalized = (telegram or "").strip().lstrip("@").lower()
+        if not normalized:
+            return None
+        for u in self.users.values():
+            t = getattr(u, "telegram", None)
+            if t and t.strip().lstrip("@").lower() == normalized:
+                return u
+        return None
+
     async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user in memory."""
 
