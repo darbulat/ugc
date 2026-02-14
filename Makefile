@@ -20,6 +20,7 @@ help:
 	@echo "E2E:          e2e, e2e-dev, e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
 	@echo "Infra:        docker-up, docker-down, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
 	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
+	@echo "Tests (Docker): test-docker, e2e-docker, test-all-docker (unit + integration + e2e in one run)"
 	@echo "Export:       export-requirements"
 
 export-requirements:
@@ -87,7 +88,9 @@ e2e-docker:
 test-docker:
 	$(COMPOSE_TEST) run --rm test
 
-test-all-docker: test-docker e2e-docker
+# One command: unit + integration + e2e (single docker compose run)
+test-all-docker:
+	$(COMPOSE_TEST) run --rm test-all
 
 migrate:
 	uv run alembic upgrade head

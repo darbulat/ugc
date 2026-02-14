@@ -19,10 +19,10 @@ COPY config /app/config
 COPY scripts /app/scripts
 COPY alembic.ini /app/
 
+# pytest, pytest-cov, pytest-asyncio, pytest-timeout come from [dev] in pyproject.toml
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install -r requirements.txt && \
     pip install -e ".[dev,telegram-e2e]" && \
-    pip install pytest pytest-cov pytest-asyncio pytest-timeout && \
     python -m playwright install --with-deps chromium
 
 # Tests last: changes here do not invalidate the dependency layer.
