@@ -92,6 +92,13 @@ async def start_verification(
         )
         return
 
+    if blogger_profile.confirmed:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Ваш Instagram‑аккаунт уже подтвержден",
+        )
+        return
+
     verification = await instagram_verification_service.generate_code(
         user.user_id
     )

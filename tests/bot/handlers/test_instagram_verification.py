@@ -241,3 +241,64 @@ async def test_start_verification_via_button(
     # Second message: code only
     assert len(message.answers) >= 2
     assert len(message.answers[1]) <= 10  # code is short
+
+
+@pytest.mark.asyncio
+async def test_start_verification_skipped_when_already_confirmed(
+    user_repo, blogger_repo, instagram_verification_repo
+) -> None:
+    """If Instagram already confirmed, skip code step and show message."""
+    from datetime import datetime, timezone
+    from uuid import UUID
+
+    from ugc_bot.bot.handlers.keyboards import CONFIRM_INSTAGRAM_BUTTON_TEXT
+    from ugc_bot.domain.entities import BloggerProfile
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000733"),
+        external_id="7",
+        username="confirmed_blogger",
+    )
+    blogger_profile = BloggerProfile(
+        user_id=user.user_id,
+        instagram_url="https://instagram.com/confirmed",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    await blogger_repo.save(blogger_profile)
+
+    user_service = UserRoleService(user_repo=user_repo)
+    verification_service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=instagram_verification_repo,
+    )
+    profile_service = build_profile_service(user_repo, blogger_repo)
+    message = FakeMessage(
+        text=CONFIRM_INSTAGRAM_BUTTON_TEXT,
+        user=FakeUser(7, "confirmed_blogger", "Confirmed"),
+    )
+    state = FakeFSMContext()
+
+    await start_verification(
+        message,
+        state,
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
+    )
+
+    assert len(message.answers) == 1
+    assert "Ваш Instagram‑аккаунт уже подтвержден" in message.answers[0]
