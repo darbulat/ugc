@@ -65,6 +65,7 @@ class FakeProfileService:
         has_blogger: bool,
         has_advertiser: bool,
         blogger_confirmed: bool = True,
+        blogger_gender: BloggerGender | None = None,
         advertiser_city: str | None = None,
         advertiser_company_activity: str | None = None,
         advertiser_site_link: str | None = None,
@@ -73,6 +74,7 @@ class FakeProfileService:
         self._has_blogger = has_blogger
         self._has_advertiser = has_advertiser
         self._blogger_confirmed = blogger_confirmed
+        self._blogger_gender = blogger_gender
         self._advertiser_city = advertiser_city
         self._advertiser_company_activity = advertiser_company_activity
         self._advertiser_site_link = advertiser_site_link
@@ -97,7 +99,7 @@ class FakeProfileService:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
-            blogger_gender=None,
+            blogger_gender=self._blogger_gender,
         )
 
     async def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
@@ -2518,3 +2520,324 @@ async def test_edit_profile_enter_value_advertiser_unknown_field(
     )
     assert state.cleared
     assert "Неизвестное поле" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_show_profile_blogger_with_gender_display(user_repo) -> None:
+    """Show profile displays blogger gender when set."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084c"),
+        external_id="62",
+        username="blogger",
+        agreement_confirmed_at=datetime.now(timezone.utc),
+    )
+    message = FakeMessage(user=FakeUser(62))
+    service = FakeProfileService(
+        user=user,
+        has_blogger=True,
+        has_advertiser=False,
+        blogger_gender=BloggerGender.MALE,
+    )
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
+    ans = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "Пол: Мужской" in ans
+
+
+@pytest.mark.asyncio
+async def test_show_profile_from_user_id_falsy_returns_early(user_repo) -> None:
+    """show_profile returns early when from_user.id is empty (no answer)."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.application.messenger.context import MessageContext
+    from ugc_bot.application.messenger.dto import IncomingMessage, IncomingUser
+
+    incoming = IncomingMessage(
+        chat_id="1",
+        user=IncomingUser(
+            external_id="",
+            messenger_type=MessengerType.TELEGRAM,
+            username=None,
+        ),
+        text=None,
+    )
+    client = FakeMessengerClient()
+    message_ctx = MessageContext(incoming, client)
+    service = _FakeProfileServiceUserMissing()
+    await show_profile(
+        message_ctx, service, FakeFSMContext(), _profile_test_config()
+    )
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_audience_gender(user_repo) -> None:
+    """Choosing Пол аудитории shows audience gender keyboard."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084e"),
+        external_id="63",
+        username="u",
+    )
+    message = FakeMessage(text="Пол аудитории", user=FakeUser(63))
+    state = FakeFSMContext()
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "63"}
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    await edit_profile_choose_field(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert state._data.get("editing_field") == "audience_gender"
+    assert message.reply_markups
+    rows = (
+        message.reply_markups[0].rows
+        if hasattr(message.reply_markups[0], "rows")
+        else message.reply_markups[0].keyboard
+    )
+    assert any("женщины" in (b.text or "") for row in rows for b in row)
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_audience_age(user_repo) -> None:
+    """Choosing Возраст аудитории shows age keyboard."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084f"),
+        external_id="64",
+        username="u",
+    )
+    message = FakeMessage(text="Возраст аудитории", user=FakeUser(64))
+    state = FakeFSMContext()
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "64"}
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    await edit_profile_choose_field(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert state._data.get("editing_field") == "audience_age"
+    kbd = message.reply_markups[0]
+    rows = kbd.rows if hasattr(kbd, "rows") else getattr(kbd, "keyboard", [])
+    assert any("18" in (b.text or "") for row in rows for b in row)
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_barter(user_repo) -> None:
+    """Choosing Бартер shows Да/Нет keyboard."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000850"),
+        external_id="65",
+        username="u",
+    )
+    message = FakeMessage(text="Бартер", user=FakeUser(65))
+    state = FakeFSMContext()
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "65"}
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    await edit_profile_choose_field(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert state._data.get("editing_field") == "barter"
+    assert message.reply_markups
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_work_format(user_repo) -> None:
+    """Choosing Формат работы shows work format keyboard."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000851"),
+        external_id="66",
+        username="u",
+    )
+    message = FakeMessage(text="Формат работы", user=FakeUser(66))
+    state = FakeFSMContext()
+    state._data = {"edit_user_id": user.user_id, "edit_external_id": "66"}
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    await edit_profile_choose_field(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert state._data.get("editing_field") == "work_format"
+    kbd = message.reply_markups[0]
+    rows = kbd.rows if hasattr(kbd, "rows") else getattr(kbd, "keyboard", [])
+    assert any(
+        WORK_FORMAT_ADS_BUTTON_TEXT in (b.text or "")
+        for row in rows
+        for b in row
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_advertiser_city(user_repo) -> None:
+    """Choosing Город for advertiser shows default prompt."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000852"),
+        external_id="67",
+        username="u",
+    )
+    message = FakeMessage(text="Город", user=FakeUser(67))
+    state = FakeFSMContext()
+    state._data = {
+        "edit_user_id": user.user_id,
+        "edit_external_id": "67",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    await edit_profile_choose_field(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert state._data.get("editing_field") == "city"
+    assert message.answers
+    assert (
+        "новое значение" in message.answers[0][0].lower()
+        or "город" in message.answers[0][0].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_choose_field_advertiser_company_activity(
+    user_repo,
+) -> None:
+    """Choosing Деятельность компании for advertiser shows prompt."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000853"),
+        external_id="68",
+        username="u",
+    )
+    message = FakeMessage(text="Деятельность компании", user=FakeUser(68))
+    state = FakeFSMContext()
+    state._data = {
+        "edit_user_id": user.user_id,
+        "edit_external_id": "68",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    await edit_profile_choose_field(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        FakeUserRoleService(),
+    )
+    assert state._data.get("editing_field") == "company_activity"
+    assert message.answers
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_city_validation_error(
+    user_repo,
+) -> None:
+    """Edit advertiser city with invalid value gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000854"),
+        external_id="69",
+        username="u",
+    )
+    message = FakeMessage(text="X" * 201, user=FakeUser(69))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "69",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    assert not adv_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_site_link_empty_clears(
+    user_repo,
+) -> None:
+    """Edit advertiser site_link with empty string clears link."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000855"),
+        external_id="70",
+        username="u",
+    )
+    message = FakeMessage(text="", user=FakeUser(70))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "site_link",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "70",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService(
+        update_returns=AdvertiserProfile(
+            user_id=user.user_id, phone="+7", brand="B", site_link=None
+        )
+    )
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert adv_service.update_calls
+    assert adv_service.update_calls[0][1].get("site_link") is None

@@ -11,7 +11,12 @@ from tests.helpers.factories import (
     create_test_order,
     create_test_user,
 )
-from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeCallback,
+    FakeFSMContext,
+    FakeMessage,
+    FakeUser,
+)
 from tests.helpers.services import build_order_service, build_profile_service
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
@@ -26,8 +31,20 @@ from ugc_bot.bot.handlers.my_orders import (
     paginate_orders,
     show_my_orders,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order, OrderResponse
 from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType
+
+
+def _my_orders_config() -> AppConfig:
+    """Minimal config for my_orders handler tests."""
+    return AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -56,10 +73,12 @@ async def test_show_my_orders_returns_early_when_no_from_user(
     message = FakeMessage(text="/my_orders", user=None)
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
     assert not message.answers
 
@@ -90,10 +109,12 @@ async def test_show_my_orders_user_not_found(
     message = FakeMessage(text="/my_orders", user=FakeUser(1))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
@@ -132,15 +153,122 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
     assert "Заполните профиль" in message.answers[0]
     assert "register" in message.answers[0] or "профиль" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_show_my_orders_shows_agreement_when_not_confirmed(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """When user has profile but agreement not confirmed, show agreement."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="99",
+        username="user",
+        agreement_confirmed_at=None,
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+
+    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(99, "user"))
+    await show_my_orders(
+        message,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        _my_orders_config(),
+    )
+
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "согласи" in text.lower()
+    assert "согласи" in text.lower()
+    assert "пока нет заказов" not in text
+    assert "№ " not in text or "согласи" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_show_my_orders_shows_agreement_when_blogger_not_confirmed(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    order_response_repo,
+) -> None:
+    """When user has only blogger profile and no agreement, show agreement."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="98",
+        username="blogger_user",
+        agreement_confirmed_at=None,
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+
+    message = FakeMessage(
+        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(98, "blogger_user")
+    )
+    await show_my_orders(
+        message,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        _my_orders_config(),
+    )
+
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "согласи" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -177,10 +305,12 @@ async def test_my_orders_blogger_no_responses(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(5))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -245,10 +375,12 @@ async def test_my_orders_blogger_with_responses(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(6))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -285,9 +417,10 @@ async def test_my_orders_empty(
         transaction_manager=fake_tm,
     )
 
-    user = await user_service.set_user(
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000900"),
         external_id="1",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
@@ -295,10 +428,12 @@ async def test_my_orders_empty(
     message = FakeMessage(text="/my_orders", user=FakeUser(1))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -350,10 +485,12 @@ async def test_my_orders_list(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -435,10 +572,12 @@ async def test_my_orders_both_profiles_with_orders(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(10))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert len(message.answers) == 2
@@ -494,10 +633,12 @@ async def test_my_orders_both_profiles_both_empty(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(11))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert len(message.answers) == 2
@@ -559,10 +700,12 @@ async def test_my_orders_both_profiles_advertiser_only(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(12))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert len(message.answers) == 2
@@ -640,10 +783,12 @@ async def test_my_orders_both_profiles_blogger_only(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(13))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert len(message.answers) == 2
@@ -1082,10 +1227,12 @@ async def test_my_orders_with_complaint_button(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -1358,10 +1505,12 @@ async def test_my_orders_shows_active_status_and_matched_count(
     )
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -1437,10 +1586,12 @@ async def test_my_orders_shows_completed_status_and_completion_date(
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_done"))
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -1500,10 +1651,12 @@ async def test_my_orders_advertiser_shows_barter(
     )
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers
@@ -1578,10 +1731,12 @@ async def test_my_orders_blogger_shows_barter(
     )
     await show_my_orders(
         message,
+        FakeFSMContext(),
         user_service,
         profile_service,
         order_service,
         offer_response_service,
+        _my_orders_config(),
     )
 
     assert message.answers

@@ -76,6 +76,7 @@ class UserRoleService:
                     telegram=telegram,
                     admin=existing.admin,
                     referral_code=existing.referral_code,
+                    agreement_confirmed_at=existing.agreement_confirmed_at,
                 )
                 await self.user_repo.save(updated, session=session)
                 return updated

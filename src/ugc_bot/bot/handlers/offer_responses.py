@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from aiogram import Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
 from ugc_bot.application.errors import OrderCreationError
@@ -25,16 +26,23 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.handlers.keyboards import (
+    CONFIRM_AGREEMENT_BUTTON_TEXT,
+    flow_keyboard,
+)
+from ugc_bot.bot.handlers.profile import _BLOGGER_AGREEMENTS_STATE
 from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_CONTACTS_WARNING,
     ADVERTISER_NEW_RESPONSE_WHAT_NEXT,
     BLOGGER_AFTER_RESPONSE_WHAT_NEXT,
 )
 from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
     send_with_retry,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order
 
 router = Router()
@@ -105,11 +113,13 @@ async def handle_offer_skip(
 )
 async def handle_offer_response(
     callback: CallbackQuery,
+    state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     offer_response_service: OfferResponseService,
     interaction_service: InteractionService,
     offer_response_rate_limiter: Any,
+    config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -141,6 +151,27 @@ async def handle_offer_response(
             callback_id=incoming.callback_id,
             text="Подтвердите Instagram перед откликом.",
         )
+        return
+
+    if getattr(user, "agreement_confirmed_at", None) is None:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Сначала подтвердите согласие.",
+        )
+        agreements_text = format_agreements_message(
+            config,
+            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=agreements_text,
+            keyboard=flow_keyboard(
+                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(user_id=user.user_id)
+        await state.set_state(_BLOGGER_AGREEMENTS_STATE)
         return
 
     if not await offer_response_rate_limiter.allow_async(user.external_id):

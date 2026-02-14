@@ -10,7 +10,12 @@ from tests.helpers.factories import (
     create_test_order,
     create_test_user,
 )
-from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeCallback,
+    FakeFSMContext,
+    FakeMessage,
+    FakeUser,
+)
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import (
@@ -25,6 +30,7 @@ from ugc_bot.bot.handlers.offer_responses import (
 )
 from ugc_bot.bot.handlers.utils import RateLimiter
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order, OrderResponse, User
 from ugc_bot.domain.enums import (
     MessengerType,
@@ -40,6 +46,17 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.metrics.collector import MetricsCollector
+
+
+def _offer_responses_config() -> AppConfig:
+    """Minimal config for offer_responses handler tests."""
+    return AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
 
 
 @pytest.fixture
@@ -260,11 +277,13 @@ async def test_offer_response_handler_success(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -314,11 +333,13 @@ async def test_offer_response_handler_blocked_user(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
@@ -354,6 +375,7 @@ async def test_offer_response_handler_order_not_active(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(
@@ -424,6 +446,7 @@ async def test_offer_response_handler_order_not_found(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -481,6 +504,7 @@ async def test_offer_response_handler_already_responded(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(
@@ -563,6 +587,7 @@ async def test_offer_response_handler_limit_reached(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(
@@ -605,11 +630,13 @@ async def test_offer_response_handler_limit_reached(
     await _call_handler_with_middleware(
         handle_offer_response,
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
@@ -646,11 +673,13 @@ async def test_offer_response_handler_no_from_user(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert not callback.answers
@@ -682,11 +711,13 @@ async def test_offer_response_handler_user_not_found(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
@@ -729,11 +760,13 @@ async def test_offer_response_handler_paused_user(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
@@ -765,6 +798,7 @@ async def test_offer_response_handler_no_blogger_profile(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -776,11 +810,13 @@ async def test_offer_response_handler_no_blogger_profile(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
@@ -812,6 +848,7 @@ async def test_offer_response_handler_unconfirmed_profile(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -826,15 +863,88 @@ async def test_offer_response_handler_unconfirmed_profile(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
     assert "Подтвердите Instagram" in callback.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_offer_response_handler_shows_agreement_when_not_confirmed(
+    fake_tm: object,
+    user_repo,
+    blogger_repo,
+    order_repo,
+    order_response_repo,
+    interaction_repo,
+    messenger_client,
+    event_adapter,
+    offer_response_rate_limiter,
+) -> None:
+    """Blogger with confirmed profile but no agreement sees agreement screen."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    response_service = OfferResponseService(
+        order_repo=order_repo,
+        response_repo=order_response_repo,
+        transaction_manager=fake_tm,
+    )
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000888"),
+        external_id="88",
+        username="blogger",
+        agreement_confirmed_at=None,
+    )
+    await user_service.set_user(
+        external_id="88",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+    )
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
+
+    order = await create_test_order(
+        order_repo,
+        UUID("00000000-0000-0000-0000-000000000889"),
+        order_id=UUID("00000000-0000-0000-0000-000000000890"),
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+    )
+
+    message = FakeMessage(user=FakeUser(88))
+    callback = FakeCallback(
+        data=f"offer:{order.order_id}", user=FakeUser(88), message=message
+    )
+
+    await handle_offer_response(
+        callback,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        response_service,
+        interaction_service,
+        offer_response_rate_limiter,
+        _offer_responses_config(),
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    assert callback.answers
+    assert "согласи" in callback.answers[0].lower()
+    responses = await order_response_repo.list_by_order(order.order_id)
+    assert not list(responses)
 
 
 @pytest.mark.asyncio
@@ -862,6 +972,7 @@ async def test_offer_response_handler_invalid_uuid(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -876,11 +987,13 @@ async def test_offer_response_handler_invalid_uuid(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
@@ -916,6 +1029,7 @@ async def test_offer_response_handler_exception(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
+        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(
@@ -959,11 +1073,13 @@ async def test_offer_response_handler_exception(
     await _call_handler_with_middleware(
         handle_offer_response,
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
     )
 
     assert callback.answers
@@ -1218,11 +1334,13 @@ async def test_offer_response_handler_rate_limited(
         callback.data = f"offer:{orders[i].order_id}"
         await handle_offer_response(
             callback,
+            FakeFSMContext(),
             user_service,
             profile_service,
             response_service,
             interaction_service,
             strict_rate_limiter,
+            _offer_responses_config(),
         )
 
     assert any("Слишком много запросов" in ans for ans in callback.answers)
@@ -1282,11 +1400,13 @@ async def test_offer_response_sends_product_link_and_what_next(
 
     await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        _offer_responses_config(),
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

@@ -6,6 +6,7 @@ from typing import Optional
 
 from aiogram import Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.messenger.dto import (
@@ -23,12 +24,22 @@ from ugc_bot.application.services.offer_response_service import (
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import MY_ORDERS_BUTTON_TEXT
+from ugc_bot.bot.handlers.keyboards import (
+    CONFIRM_AGREEMENT_BUTTON_TEXT,
+    MY_ORDERS_BUTTON_TEXT,
+    flow_keyboard,
+)
+from ugc_bot.bot.handlers.profile import (
+    _ADVERTISER_AGREEMENTS_STATE,
+    _BLOGGER_AGREEMENTS_STATE,
+)
 from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order, OrderResponse
 from ugc_bot.domain.enums import OrderStatus, OrderType
 
@@ -77,12 +88,14 @@ _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
 
 @router.message(Command("my_orders"))
 @router.message(lambda msg: (msg.text or "").strip() == MY_ORDERS_BUTTON_TEXT)
-async def show_my_orders(
+async def show_my_orders(  # noqa: C901, PLR0912
     message: Message,
+    state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
+    config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -113,6 +126,27 @@ async def show_my_orders(
                 "чтобы видеть заказы."
             ),
         )
+        return
+
+    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    if agreement_confirmed_at is None:
+        agreements_text = format_agreements_message(
+            config,
+            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=agreements_text,
+            keyboard=flow_keyboard(
+                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(user_id=user.user_id)
+        if blogger is not None:
+            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+        else:
+            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
 
     if advertiser is not None:

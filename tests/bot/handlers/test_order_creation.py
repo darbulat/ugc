@@ -4,7 +4,10 @@ from uuid import UUID
 
 import pytest
 
-from tests.helpers.factories import create_test_advertiser_profile
+from tests.helpers.factories import (
+    create_test_advertiser_profile,
+    create_test_user,
+)
 from tests.helpers.fakes import (
     FakeBot,
     FakeFSMContext,
@@ -53,6 +56,17 @@ TEST_ALLOWED_BLOGGER_COUNTS = frozenset({1, 3, 5, 10})
 TEST_MAX_ORDER_PRICE = 10_000.0
 
 
+def _order_creation_config() -> AppConfig:
+    """Minimal config for order creation handler tests."""
+    return AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+
 @pytest.mark.asyncio
 async def test_start_order_creation_requires_role(
     user_repo, advertiser_repo, order_repo
@@ -73,6 +87,7 @@ async def test_start_order_creation_requires_role(
         user_service,
         profile_service,
         order_service,
+        _order_creation_config(),
     )
     assert "Пользователь не найден" in message.answers[0]
 
@@ -88,9 +103,9 @@ async def test_order_creation_flow_new_advertiser(
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
-    user = await user_service.set_user(
+    user = await create_test_user(
+        user_repo,
         external_id="5",
-        messenger_type=MessengerType.TELEGRAM,
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
@@ -106,6 +121,7 @@ async def test_order_creation_flow_new_advertiser(
         user_service,
         profile_service,
         order_service,
+        _order_creation_config(),
     )
     assert "Что вам нужно?" in message.answers[0]
 
@@ -207,6 +223,7 @@ async def test_order_creation_flow_with_barter(
         user_service,
         profile_service,
         order_service,
+        _order_creation_config(),
     )
 
     await handle_order_type(
@@ -292,12 +309,56 @@ async def test_start_order_creation_no_advertiser_profile(
         user_service,
         profile_service,
         order_service,
+        _order_creation_config(),
     )
 
     assert message.answers
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
     assert "Профиль рекламодателя" in text or "register_advertiser" in text
+
+
+@pytest.mark.asyncio
+async def test_start_order_creation_shows_agreement_when_not_confirmed(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Advertiser with profile but agreement not confirmed sees agreement."""
+
+    from tests.helpers.factories import (
+        create_test_advertiser_profile,
+        create_test_user,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    order_service = build_order_service(user_repo, advertiser_repo, order_repo)
+    user = await create_test_user(
+        user_repo,
+        external_id="9",
+        username="adv_no_agreement",
+        agreement_confirmed_at=None,
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+
+    message = FakeMessage(text=None, user=FakeUser(9, "adv_no_agreement"))
+    state = FakeFSMContext()
+
+    await start_order_creation(
+        message,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        _order_creation_config(),
+    )
+
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "согласи" in text.lower()
+    assert "Что вам нужно?" not in text
 
 
 @pytest.mark.asyncio
@@ -330,6 +391,7 @@ async def test_start_order_creation_blocked_user(
         user_service,
         profile_service,
         order_service,
+        _order_creation_config(),
     )
 
     assert "Заблокированные" in message.answers[0]
@@ -450,6 +512,7 @@ async def test_order_creation_flow_coop_both(
         user_service,
         profile_service,
         order_service,
+        _order_creation_config(),
     )
 
     await handle_order_type(
@@ -757,6 +820,7 @@ async def test_order_creation_flow_ugc_plus_placement(
         user_service,
         profile_service,
         order_service,
+        _order_creation_config(),
     )
     await handle_order_type(
         FakeMessage(text=ORDER_TYPE_UGC_PLUS_PLACEMENT, user=None), state

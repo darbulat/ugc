@@ -1656,6 +1656,48 @@ async def test_outbox_repository_get_pending_events() -> None:
 
 
 @pytest.mark.asyncio
+async def test_outbox_repository_claim_pending_events() -> None:
+    """claim_pending_events returns pending events and marks them PROCESSING."""
+    model_1 = OutboxEventModel(
+        event_id=UUID("00000000-0000-0000-0000-000000000244"),
+        event_type="order.activated",
+        aggregate_id=UUID("00000000-0000-0000-0000-000000000245"),
+        aggregate_type="order",
+        payload={},
+        status=OutboxEventStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    model_2 = OutboxEventModel(
+        event_id=UUID("00000000-0000-0000-0000-000000000246"),
+        event_type="order.activated",
+        aggregate_id=UUID("00000000-0000-0000-0000-000000000247"),
+        aggregate_type="order",
+        payload={},
+        status=OutboxEventStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyOutboxRepository(
+        session_factory=_session_factory([model_1, model_2])
+    )
+    session = _repo_session(repo)
+    events = await repo.claim_pending_events(limit=10, session=session)
+    assert len(events) == 2
+    assert events[0].event_id == model_1.event_id
+    assert events[1].event_id == model_2.event_id
+
+
+@pytest.mark.asyncio
+async def test_outbox_repository_mark_for_retry() -> None:
+    """mark_for_retry updates event status to PENDING for retry."""
+    event_id = UUID("00000000-0000-0000-0000-000000000248")
+    session = FakeSession(None)
+    repo = SqlAlchemyOutboxRepository(session_factory=_session_factory(None))
+    await repo.mark_for_retry(
+        event_id, error="temp failure", retry_count=1, session=session
+    )
+
+
+@pytest.mark.asyncio
 async def test_complaint_repository_save() -> None:
     """save persists complaint via merge."""
     session = FakeSession(None)
@@ -1914,6 +1956,43 @@ async def test_user_referral_pending_repository_delete_by_user() -> None:
 
 
 @pytest.mark.asyncio
+async def test_user_referral_pending_repository_list_by_referrer() -> None:
+    """UserReferralPending repo list_by_referrer returns pending by referrer."""
+    referrer_id = UUID("00000000-0000-0000-0000-000000000504")
+    user_id = UUID("00000000-0000-0000-0000-000000000505")
+    now = datetime.now(timezone.utc)
+    model = UserReferralPendingModel(
+        user_id=user_id,
+        referrer_user_id=referrer_id,
+        created_at=now,
+    )
+    repo = SqlAlchemyUserReferralPendingRepository(
+        session_factory=_session_factory([model])
+    )
+    items = list(
+        await repo.list_by_referrer(
+            referrer_id, offset=0, limit=100, session=_repo_session(repo)
+        )
+    )
+    assert len(items) == 1
+    assert items[0].referrer_user_id == referrer_id
+    assert items[0].user_id == user_id
+
+
+@pytest.mark.asyncio
+async def test_user_referral_pending_repository_count_by_referrer() -> None:
+    """UserReferralPending repo count_by_referrer returns count."""
+    referrer_id = UUID("00000000-0000-0000-0000-000000000506")
+    repo = SqlAlchemyUserReferralPendingRepository(
+        session_factory=_session_factory(3)
+    )
+    count = await repo.count_by_referrer(
+        referrer_id, session=_repo_session(repo)
+    )
+    assert count == 3
+
+
+@pytest.mark.asyncio
 async def test_payout_request_repository_save() -> None:
     """PayoutRequest repo save adds model."""
     request_id = UUID("00000000-0000-0000-0000-000000000600")
@@ -1982,6 +2061,18 @@ async def test_payout_request_repository_list_by_user_ids() -> None:
     )
     assert len(requests) == 2
     assert {r.user_id for r in requests} == {user_id_1, user_id_2}
+
+
+@pytest.mark.asyncio
+async def test_payout_request_repository_list_by_user_ids_empty() -> None:
+    """list_by_user_ids with empty list returns [] without query."""
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory(None)
+    )
+    requests = list(
+        await repo.list_by_user_ids([], session=_repo_session(repo))
+    )
+    assert requests == []
 
 
 @pytest.mark.asyncio
@@ -2166,3 +2257,17 @@ async def test_sql_referral_order_income_loader_combined_batch() -> None:
     assert isinstance(rows[0][1], ReferralOrderIncomeRow)
     assert rows[0][1].payment_amount == 50.0
     assert rows[0][1].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_sql_referral_order_income_loader_combined_batch_empty() -> None:
+    """combined_batch with empty referrer_user_ids returns []."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlReferralOrderIncomeLoader,
+    )
+
+    loader = SqlReferralOrderIncomeLoader()
+    rows = await loader.load_referral_order_income_rows_combined_batch(
+        [], limit=None, session=FakeSession(None)
+    )
+    assert rows == []

@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from ugc_bot.application.messenger.dto import Button
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -18,6 +19,7 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
+    CONFIRM_AGREEMENT_BUTTON_TEXT,
     CREATE_ORDER_BUTTON_TEXT,
     flow_keyboard,
     flow_keyboard_remove,
@@ -47,8 +49,10 @@ from ugc_bot.bot.handlers.order_creation_states import (
     order_type_keyboard,
 )
 from ugc_bot.bot.handlers.payments import send_order_invoice
+from ugc_bot.bot.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
 from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
 from ugc_bot.bot.handlers.utils import (
+    format_agreements_message,
     get_user_and_ensure_allowed,
     parse_user_id_from_state,
     resolve_messenger_dependencies,
@@ -79,6 +83,7 @@ async def start_order_creation(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     order_service: OrderService,
+    config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -105,6 +110,24 @@ async def start_order_creation(
             chat_id=incoming.chat_id,
             text="Профиль рекламодателя не заполнен. Команда: /advertiser",
         )
+        return
+
+    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    if agreement_confirmed_at is None:
+        agreements_text = format_agreements_message(
+            config,
+            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=agreements_text,
+            keyboard=flow_keyboard(
+                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            ),
+            parse_mode="HTML",
+        )
+        await state_store.update_data(user_id=user.user_id)
+        await state_store.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
 
     await state_store.update_data(user_id=user.user_id)
