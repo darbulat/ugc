@@ -56,6 +56,38 @@ services:
       timeout: 5s
       retries: 10
 
+  # Telegram bot (webhook app) for e2e_telegram tests. Requires WEBHOOK_BASE_URL, WEBHOOK_SECRET, TELEGRAM_E2E_BOT_TOKEN in .env.
+  app:
+    build: *app-build
+    env_file: .env
+    environment:
+      BOT_TOKEN: ${TELEGRAM_E2E_BOT_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+      KAFKA_ENABLED: "false"
+      FEEDBACK_ENABLED: "false"
+      USE_REDIS_STORAGE: "false"
+    expose:
+      - "9999"
+    depends_on:
+      migrate_test:
+        condition: service_completed_successfully
+    command:
+      - uvicorn
+      - ugc_bot.telegram_webhook_app:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "9999"
+      - --log-config
+      - config/uvicorn_log_config.json
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9999/health', timeout=5)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: "no"
+
   e2e:
     build:
       context: .
@@ -86,6 +118,8 @@ services:
     depends_on:
       admin_test:
         condition: service_healthy
+      app:
+        condition: service_healthy
     command:
       - sh
       - -c
@@ -102,7 +136,7 @@ services:
     command: ["python", "-m", "pytest", "-m", "not e2e", "--cov=ugc_bot", "--cov-report=term-missing"]
     restart: "no"
 
-  # E2E with real Telegram: requires TELEGRAM_E2E_* in .env or environment
+  # E2E with real Telegram: bot (app) must be running. Requires TELEGRAM_E2E_*, WEBHOOK_BASE_URL, WEBHOOK_SECRET in .env.
   # First run: make e2e-telegram-docker-auth (enter code), then make e2e-telegram-docker
   e2e-telegram:
     build:
@@ -117,6 +151,9 @@ services:
       E2E_DATABASE_URL: ${E2E_DATABASE_URL:-}
     volumes:
       - e2e_telethon_session:/app/tests/e2e/.telethon_session
+    depends_on:
+      app:
+        condition: service_healthy
     command: ["python", "-m", "pytest", "tests/e2e", "-m", "e2e_telegram", "-v", "--timeout=90"]
     restart: "no"
 

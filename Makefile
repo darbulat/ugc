@@ -63,6 +63,7 @@ e2e-telegram:
 	uv sync --extra dev --extra telegram-e2e
 	uv run pytest $(TEST_DIR)/e2e -m e2e_telegram -v --timeout=$(E2E_TIMEOUT)
 
+# Starts app (webhook bot) then runs e2e_telegram tests. Requires in .env: TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET.
 e2e-telegram-docker:
 	$(COMPOSE_TEST) build e2e-telegram
 	$(COMPOSE_TEST) run --rm e2e-telegram
@@ -88,7 +89,7 @@ e2e-docker:
 test-docker:
 	$(COMPOSE_TEST) run --rm test
 
-# One command: unit + integration + e2e (single docker compose run)
+# One command: unit + integration + e2e + e2e_telegram. Starts app for Telegram e2e; requires TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET in .env.
 test-all-docker:
 	$(COMPOSE_TEST) run --rm test-all
 
