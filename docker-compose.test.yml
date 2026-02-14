@@ -8,7 +8,7 @@ x-app-build: &app-build
   dockerfile: Dockerfile
 
 services:
-  db_test:
+  db:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ugc_test
@@ -23,9 +23,9 @@ services:
   migrate_test:
     build: *app-build
     environment:
-      DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+      DATABASE_URL: postgresql+psycopg://ugc:ugc@db:5432/ugc_test
     depends_on:
-      db_test:
+      db:
         condition: service_healthy
     command: ["alembic", "upgrade", "head"]
     restart: "no"
@@ -34,7 +34,7 @@ services:
     build: *app-build
     environment:
       BOT_TOKEN: test-token
-      DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+      DATABASE_URL: postgresql+psycopg://ugc:ugc@db:5432/ugc_test
       ADMIN_USERNAME: test_admin
       ADMIN_PASSWORD: test_pass
       ADMIN_SECRET: test_secret
@@ -63,7 +63,7 @@ services:
     env_file: .env
     environment:
       BOT_TOKEN: ${TELEGRAM_E2E_BOT_TOKEN:-}
-      DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+      DATABASE_URL: postgresql+psycopg://ugc:ugc@db:5432/ugc_test
       KAFKA_ENABLED: "false"
       FEEDBACK_ENABLED: "false"
       USE_REDIS_STORAGE: "false"
