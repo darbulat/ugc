@@ -49,6 +49,7 @@ from ugc_bot.infrastructure.db.models import (
     ContactPricingModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    NpsResponseModel,
     OrderModel,
     OrderResponseModel,
     PayoutRequestModel,
@@ -1242,6 +1243,30 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     ]
 
 
+class NpsResponseAdmin(ModelView, model=NpsResponseModel):
+    """Admin view for NPS responses (read-only)."""
+
+    name = "NPS ответ"
+    name_plural = "NPS ответы"
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        NpsResponseModel.id,
+        NpsResponseModel.user_id,
+        NpsResponseModel.score,
+        NpsResponseModel.comment,
+        NpsResponseModel.created_at,
+    ]
+    column_labels = {
+        NpsResponseModel.id: "ID",
+        NpsResponseModel.user_id: "ID пользователя",
+        NpsResponseModel.score: "Оценка",
+        NpsResponseModel.comment: "Комментарий",
+        NpsResponseModel.created_at: "Дата",
+    }
+
+
 class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     """Admin view for payout requests (referral).
 
@@ -1445,6 +1470,7 @@ def create_admin_app() -> FastAPI:  # noqa: C901
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)
     admin.add_view(ContactPricingAdmin)
+    admin.add_view(NpsResponseAdmin)
     admin.add_view(PayoutRequestAdmin)
 
     return app
