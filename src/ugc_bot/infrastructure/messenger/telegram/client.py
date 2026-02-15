@@ -212,7 +212,13 @@ def _build_markup(keyboard: Keyboard | None):
         return InlineKeyboardMarkup(inline_keyboard=inline_rows)
     if keyboard.kind == KeyboardKind.REPLY:
         reply_rows = [
-            [KeyboardButton(text=btn.text) for btn in row]
+            [
+                KeyboardButton(
+                    text=btn.text,
+                    request_contact=btn.request_contact,
+                )
+                for btn in row
+            ]
             for row in keyboard.rows
         ]
         return ReplyKeyboardMarkup(

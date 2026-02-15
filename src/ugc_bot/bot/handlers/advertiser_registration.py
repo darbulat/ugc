@@ -29,6 +29,7 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_start_keyboard,
     confirm_agreement_inline_keyboard,
     flow_keyboard_remove,
+    phone_request_keyboard,
 )
 from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
 from ugc_bot.bot.handlers.utils import (
@@ -157,9 +158,10 @@ async def _advertiser_start_impl(
             chat_id=chat_id,
             text=(
                 "Укажите номер телефона для связи по заказу.\n"
-                "Пример: 89001110777"
+                "Нажмите кнопку ниже или введите номер вручную "
+                "(пример: 89001110777)."
             ),
-            keyboard=flow_keyboard_remove(),
+            keyboard=phone_request_keyboard(),
         )
         await state_store.set_state(AdvertiserRegistrationStates.phone.state)
     else:
@@ -257,9 +259,11 @@ async def handle_name(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=(
-            "Укажите номер телефона для связи по заказу.\nПример: 89001110777"
+            "Укажите номер телефона для связи по заказу.\n"
+            "Нажмите кнопку ниже или введите номер вручную "
+            "(пример: 89001110777)."
         ),
-        keyboard=flow_keyboard_remove(),
+        keyboard=phone_request_keyboard(),
     )
     await state_store.set_state(AdvertiserRegistrationStates.phone.state)
 
@@ -277,13 +281,13 @@ async def handle_phone(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    phone = (incoming.text or "").strip()
+    phone = (incoming.contact_phone or incoming.text or "").strip()
     err = validate_phone(phone)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=err,
-            keyboard=flow_keyboard_remove(),
+            keyboard=phone_request_keyboard(),
         )
         return
 

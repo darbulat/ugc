@@ -10,6 +10,7 @@ from tests.helpers.factories import (
 )
 from tests.helpers.fakes import (
     FakeCallback,
+    FakeContact,
     FakeFSMContext,
     FakeMessage,
     FakeMessengerClient,
@@ -38,6 +39,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_ADV_AGREE,
     CALLBACK_ADV_START,
     CONFIRM_AGREEMENT_BUTTON_TEXT,
+    PHONE_REQUEST_BUTTON_TEXT,
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import AdvertiserProfile
@@ -140,6 +142,46 @@ async def test_start_advertiser_registration_skips_name_when_username_set(
     assert "телефона" in (
         first_ans if isinstance(first_ans, str) else first_ans[0]
     )
+
+
+@pytest.mark.asyncio
+async def test_phone_step_sends_phone_request_keyboard(
+    user_repo, advertiser_repo
+) -> None:
+    """When asking for phone, reply keyboard with request_contact is sent."""
+
+    service = UserRoleService(user_repo=user_repo)
+    await service.set_user(
+        external_id="10",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    message = FakeMessage(text=None, user=FakeUser(10, "adv", "Adv"))
+
+    await handle_advertiser_start(
+        message,
+        state,
+        service,
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) >= 1
+    phone_msg = next(
+        (s for s in client.sent_text if "телефона" in s["text"]), None
+    )
+    assert phone_msg is not None
+    keyboard = phone_msg.get("keyboard")
+    assert keyboard is not None
+    assert keyboard.rows[0][0].text == PHONE_REQUEST_BUTTON_TEXT
+    assert keyboard.rows[0][0].request_contact is True
 
 
 @pytest.mark.asyncio
@@ -565,6 +607,32 @@ async def test_handle_phone_requires_value(user_repo) -> None:
     assert "Номер телефона не может быть пустым" in (
         ans if isinstance(ans, str) else ans[0]
     )
+
+
+@pytest.mark.asyncio
+async def test_handle_phone_with_contact_success_asks_city(user_repo) -> None:
+    """Phone from shared contact is stored; then city prompt is sent."""
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "adv", "Adv"),
+        contact=FakeContact(phone_number="+79001234567"),
+    )
+    state = FakeFSMContext()
+    state.state = "AdvertiserRegistrationStates:phone"
+    await state.update_data(name="Test")
+
+    await handle_phone(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state._data.get("phone") == "+79001234567"
+    assert any("города" in s["text"] for s in client.sent_text)
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ EDIT_PROFILE_BUTTON_TEXT = "Редактировать профиль"
 MY_PROFILE_BUTTON_TEXT = "👤 Мой профиль"
 WORK_FORMAT_ADS_BUTTON_TEXT = "📢 Размещать рекламу у себя в аккаунте"
 WORK_FORMAT_UGC_ONLY_BUTTON_TEXT = "❌ Только UGC (без размещения)"
+PHONE_REQUEST_BUTTON_TEXT = "📱 Поделиться номером телефона"
 
 # Inline callback_data (Telegram limit 64 bytes)
 CALLBACK_CREATOR_CREATE = "creator:create"
@@ -107,6 +108,17 @@ def flow_keyboard_remove() -> Keyboard:
     """Remove keyboard during flow (no support button)."""
 
     return Keyboard(kind=KeyboardKind.REMOVE)
+
+
+def phone_request_keyboard() -> Keyboard:
+    """Reply keyboard: one button to share phone (request_contact)."""
+
+    return Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=[[Button(text=PHONE_REQUEST_BUTTON_TEXT, request_contact=True)]],
+        resize=True,
+        one_time=True,
+    )
 
 
 def flow_inline_keyboard(rows: list[list[Button]]) -> Keyboard:

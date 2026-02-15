@@ -194,6 +194,25 @@ def test_build_keyboard_markup_reply() -> None:
     assert hasattr(result, "keyboard")
 
 
+def test_build_keyboard_markup_reply_request_contact() -> None:
+    """request_contact=True produces KeyboardButton.request_contact."""
+
+    keyboard = Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=[[Button(text="Share phone", request_contact=True)]],
+        resize=True,
+        one_time=True,
+    )
+    result = build_keyboard_markup(keyboard)
+
+    assert result is not None
+    assert len(result.keyboard) == 1
+    assert len(result.keyboard[0]) == 1
+    btn = result.keyboard[0][0]
+    assert btn.text == "Share phone"
+    assert btn.request_contact is True
+
+
 def test_build_keyboard_markup_remove() -> None:
     """build_keyboard_markup returns ReplyKeyboardRemove for REMOVE kind."""
 

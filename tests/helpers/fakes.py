@@ -216,6 +216,13 @@ class FakePhotoSize:
         self.file_id = file_id
 
 
+class FakeContact:
+    """Minimal contact stub (e.g. shared phone via Telegram request_contact)."""
+
+    def __init__(self, phone_number: str) -> None:
+        self.phone_number = phone_number
+
+
 class FakeMessage:
     """Minimal message stub for handler tests."""
 
@@ -227,6 +234,7 @@ class FakeMessage:
         photo: list | None = None,
         caption: str | None = None,
         message_id: int = 1,
+        contact: FakeContact | None = None,
     ) -> None:
         """Initialize fake message.
 
@@ -236,6 +244,7 @@ class FakeMessage:
             bot: Optional bot instance
             photo: Optional list of FakePhotoSize for photo messages
             caption: Optional caption for photo messages
+            contact: Optional contact (e.g. shared phone via request_contact)
         """
         self.text = text
         self.caption = caption
@@ -243,6 +252,7 @@ class FakeMessage:
         self.bot = bot
         self.photo = photo or []
         self.message_id = message_id
+        self.contact = contact
         self.answers: list[str | tuple[str, object | None]] = []
         self.reply_markups: list = []
         self.reply_markup = None

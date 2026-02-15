@@ -34,6 +34,10 @@ class TelegramEventAdapter:
                 total_amount=message.successful_payment.total_amount,
                 currency=message.successful_payment.currency,
             )
+        contact_phone = None
+        contact = getattr(message, "contact", None)
+        if contact is not None:
+            contact_phone = getattr(contact, "phone_number", None)
         return IncomingMessage(
             chat_id=chat_id,
             user=IncomingUser(
@@ -45,6 +49,7 @@ class TelegramEventAdapter:
             message_id=str(message.message_id),
             photo_file_ids=photo_file_ids,
             successful_payment=successful_payment,
+            contact_phone=contact_phone,
             raw=_safe_raw(message),
         )
 
