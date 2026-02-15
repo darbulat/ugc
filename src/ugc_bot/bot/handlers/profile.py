@@ -8,10 +8,10 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.messenger.context import MessageContext
-from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.application.messenger.dto import IncomingMessage
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -25,14 +25,40 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
-    CONFIRM_AGREEMENT_BUTTON_TEXT,
+    CALLBACK_PROFILE_AGE_0_17,
+    CALLBACK_PROFILE_AGE_18_24,
+    CALLBACK_PROFILE_AGE_25_34,
+    CALLBACK_PROFILE_AGE_35_44,
+    CALLBACK_PROFILE_AGE_45_99,
+    CALLBACK_PROFILE_AGREE,
+    CALLBACK_PROFILE_AUDIENCE_A,
+    CALLBACK_PROFILE_AUDIENCE_F,
+    CALLBACK_PROFILE_AUDIENCE_M,
+    CALLBACK_PROFILE_BARTER_N,
+    CALLBACK_PROFILE_BARTER_Y,
+    CALLBACK_PROFILE_BLOGGER_GENDER_F,
+    CALLBACK_PROFILE_BLOGGER_GENDER_M,
+    CALLBACK_PROFILE_EDIT,
+    CALLBACK_PROFILE_EDIT_FIELD_PREFIX,
+    CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
+    CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
+    CALLBACK_PROFILE_MY_PROFILE,
+    CALLBACK_PROFILE_WORK_ADS,
+    CALLBACK_PROFILE_WORK_UGC,
     EDIT_PROFILE_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
-    advertiser_menu_keyboard,
-    blogger_profile_view_keyboard,
-    flow_keyboard,
+    advertiser_menu_inline_keyboard,
+    blogger_profile_view_inline_keyboard,
+    confirm_agreement_inline_keyboard,
+    edit_audience_age_inline_keyboard,
+    edit_audience_gender_inline_keyboard,
+    edit_barter_inline_keyboard,
+    edit_blogger_gender_inline_keyboard,
+    edit_field_inline_keyboard,
+    edit_profile_type_inline_keyboard,
+    edit_work_format_inline_keyboard,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.utils import (
@@ -330,7 +356,7 @@ async def _update_advertiser_field(
         await state.clear()
         await message.answer(
             "Профиль обновлён.",
-            reply_markup=advertiser_menu_keyboard(),
+            reply_markup=advertiser_menu_inline_keyboard(),
         )
         await show_profile(message, profile_service, state, config)
         return True
@@ -357,7 +383,7 @@ async def _update_advertiser_field(
     await state.clear()
     await message.answer(
         "Профиль обновлён.",
-        reply_markup=advertiser_menu_keyboard(),
+        reply_markup=advertiser_menu_inline_keyboard(),
     )
     await show_profile(message, profile_service, state, config)
     return True
@@ -592,7 +618,9 @@ async def _update_blogger_field(
         await state.clear()
         await message.answer(
             "Имя обновлено.",
-            reply_markup=blogger_profile_view_keyboard(blogger.confirmed),
+            reply_markup=blogger_profile_view_inline_keyboard(
+                blogger.confirmed
+            ),
         )
         await show_profile(message, profile_service, state, config)
         return True
@@ -626,7 +654,9 @@ async def _update_blogger_field(
     await state.clear()
     await message.answer(
         "Профиль обновлён.",
-        reply_markup=blogger_profile_view_keyboard(updated_blogger.confirmed),
+        reply_markup=blogger_profile_view_inline_keyboard(
+            updated_blogger.confirmed
+        ),
     )
     await show_profile(message, profile_service, state, config)
     return True
@@ -686,8 +716,8 @@ async def show_profile(
         )
         await message_ctx.answer(
             agreements_text,
-            reply_markup=flow_keyboard(
-                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            reply_markup=confirm_agreement_inline_keyboard(
+                CALLBACK_PROFILE_AGREE
             ),
             parse_mode="HTML",
         )
@@ -702,50 +732,465 @@ async def show_profile(
 
     reply_markup = None
     if blogger is not None:
-        reply_markup = blogger_profile_view_keyboard(
+        reply_markup = blogger_profile_view_inline_keyboard(
             confirmed=blogger.confirmed
         )
     elif advertiser is not None:
-        reply_markup = advertiser_menu_keyboard()
+        reply_markup = advertiser_menu_inline_keyboard()
 
     await message_ctx.answer(text, reply_markup=reply_markup)
 
 
-def _edit_field_keyboard(profile_type: str = "blogger") -> Keyboard:
-    """Keyboard with profile fields for editing (two per row)."""
+@router.callback_query(lambda c: c.data == CALLBACK_PROFILE_AGREE)
+async def handle_profile_agree_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    profile_service: ProfileService,
+    user_role_service: UserRoleService,
+    blogger_registration_service: BloggerRegistrationService,
+    advertiser_registration_service: AdvertiserRegistrationService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Confirm agreement from profile view (inline) and show profile."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    current = await state.get_state()
+    if current not in (_BLOGGER_AGREEMENTS_STATE, _ADVERTISER_AGREEMENTS_STATE):
+        await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        return
+    data = await state.get_data()
+    user_id = parse_user_id_from_state(data, key="user_id")
+    if user_id is None:
+        await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Откройте «Мой профиль» снова.",
+        )
+        await state.clear()
+        return
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    if current == _BLOGGER_AGREEMENTS_STATE:
+        telegram_username = getattr(incoming.user, "username", None)
+        await blogger_registration_service.confirm_blogger_agreement(
+            user_id=user_id,
+            telegram_username=telegram_username,
+        )
+    else:
+        await advertiser_registration_service.confirm_advertiser_agreement(
+            user_id=user_id,
+        )
+    await state.clear()
+    user = await user_role_service.get_user_by_id(user_id)
+    if user is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль не найден.",
+        )
+        return
+    blogger = await profile_service.get_blogger_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    text = _format_profile_text(user, blogger, advertiser)
+    reply_markup = None
+    if blogger is not None:
+        reply_markup = blogger_profile_view_inline_keyboard(
+            confirmed=blogger.confirmed
+        )
+    elif advertiser is not None:
+        reply_markup = advertiser_menu_inline_keyboard()
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=text,
+        keyboard=reply_markup,
+    )
 
-    labels = (
-        EDIT_FIELD_LABELS_ADVERTISER
+
+@router.callback_query(lambda c: c.data == CALLBACK_PROFILE_EDIT)
+async def handle_profile_edit_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    profile_service: ProfileService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Start edit profile flow from inline button."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    if incoming.user is None or not incoming.user.external_id:
+        return
+    user = await profile_service.get_user_by_external(
+        external_id=incoming.user.external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль не найден. Выберите роль через /role.",
+        )
+        return
+    blogger = await profile_service.get_blogger_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    if blogger is None and advertiser is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль не заполнен.",
+        )
+        return
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id=str(incoming.user.external_id),
+    )
+    if blogger is not None and advertiser is not None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите профиль для редактирования:",
+            keyboard=edit_profile_type_inline_keyboard(),
+        )
+        await state.set_state(EditProfileStates.choosing_profile_type)
+        return
+    if blogger is not None:
+        await state.update_data(edit_profile_type="blogger")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите раздел для редактирования:",
+            keyboard=edit_field_inline_keyboard(_edit_field_rows("blogger")),
+        )
+        await state.set_state(EditProfileStates.choosing_field)
+        return
+    await state.update_data(edit_profile_type="advertiser")
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Выберите раздел для редактирования:",
+        keyboard=edit_field_inline_keyboard(_edit_field_rows("advertiser")),
+    )
+    await state.set_state(EditProfileStates.choosing_field)
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_PROFILE_MY_PROFILE)
+async def handle_profile_my_profile_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    profile_service: ProfileService,
+    config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Show profile from inline button."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await state.clear()
+    if incoming.user is None or not incoming.user.external_id:
+        return
+    external_id = incoming.user.external_id
+    user = await profile_service.get_user_by_external(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль не найден. Выберите роль через /role.",
+        )
+        return
+    blogger = await profile_service.get_blogger_profile(user.user_id)
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    if (
+        blogger is not None or advertiser is not None
+    ) and agreement_confirmed_at is None:
+        agreements_text = format_agreements_message(
+            config,
+            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=agreements_text,
+            keyboard=confirm_agreement_inline_keyboard(CALLBACK_PROFILE_AGREE),
+            parse_mode="HTML",
+        )
+        await state.update_data(user_id=user.user_id)
+        if blogger is not None:
+            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+        else:
+            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
+        return
+    text = _format_profile_text(user, blogger, advertiser)
+    reply_markup = None
+    if blogger is not None:
+        reply_markup = blogger_profile_view_inline_keyboard(
+            confirmed=blogger.confirmed
+        )
+    elif advertiser is not None:
+        reply_markup = advertiser_menu_inline_keyboard()
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=text,
+        keyboard=reply_markup,
+    )
+
+
+@router.callback_query(
+    lambda c: c.data
+    in (
+        CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
+        CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
+    )
+)
+async def handle_profile_edit_type_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    config: AppConfig,
+    profile_service: ProfileService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle choice of blogger or advertiser profile to edit (inline)."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    if incoming.data == CALLBACK_PROFILE_EDIT_TYPE_BLOGGER:
+        await state.update_data(edit_profile_type="blogger")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите раздел для редактирования:",
+            keyboard=edit_field_inline_keyboard(_edit_field_rows("blogger")),
+        )
+    else:
+        await state.update_data(edit_profile_type="advertiser")
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите раздел для редактирования:",
+            keyboard=edit_field_inline_keyboard(_edit_field_rows("advertiser")),
+        )
+    await state.set_state(EditProfileStates.choosing_field)
+
+
+@router.callback_query(
+    lambda c: c.data
+    and c.data.startswith(CALLBACK_PROFILE_EDIT_FIELD_PREFIX)
+    and len(c.data or "") > len(CALLBACK_PROFILE_EDIT_FIELD_PREFIX)
+)
+async def handle_profile_edit_field_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    profile_service: ProfileService,
+    config: AppConfig,
+    blogger_registration_service: BloggerRegistrationService,
+    user_role_service: UserRoleService,
+    max_order_price: float,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle field choice from inline and ask for new value."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    data = await state.get_data()
+    profile_type = data.get("edit_profile_type", "blogger")
+    field_key = (incoming.data or "").replace(
+        CALLBACK_PROFILE_EDIT_FIELD_PREFIX, ""
+    )
+    if not field_key:
+        return
+    field_keys_set = (
+        set(EDIT_FIELD_KEYS_ADVERTISER.values())
         if profile_type == "advertiser"
-        else EDIT_FIELD_LABELS
+        else set(EDIT_FIELD_KEYS.values())
     )
-    rows: list[list[Button]] = []
-    for i in range(0, len(labels), 2):
-        row = [Button(text=labels[i])]
-        if i + 1 < len(labels):
-            row.append(Button(text=labels[i + 1]))
+    if field_key not in field_keys_set:
+        return
+    await state.update_data(editing_field=field_key)
+    fake_message = IncomingMessage(
+        chat_id=incoming.chat_id,
+        user=incoming.user,
+        text=None,
+        message_id=incoming.message_id,
+    )
+    message_ctx = MessageContext(fake_message, messenger_client)
+    prompts_blogger = {
+        "nickname": "Введите новое имя:",
+        "instagram_url": "Прикрепите ссылку instagram.com/name:",
+        "city": "Из какого вы города?",
+        "blogger_gender": "Укажите ваш пол:",
+        "topics": "Напишите 1–3 тематики через запятую:",
+        "audience_gender": "Кто в основном смотрит ваш контент?",
+        "audience_age": "Основной возраст вашей аудитории?",
+        "audience_geo": "Укажите до 3 городов через запятую:",
+        "price": "Укажите цену за 1 UGC‑видео в рублях:",
+        "barter": "Готовы работать по бартеру?",
+        "work_format": "Как готовы работать с брендами?",
+    }
+    prompts_advertiser = {
+        "name": "Введите имя:",
+        "phone": "Укажите номер телефона для связи. Пример: 89001110777",
+        "brand": "Название вашего бренда / компании / бизнеса:",
+        "site_link": "Ссылка на сайт, продукт или соцсети бренда:",
+    }
+    prompts = (
+        prompts_advertiser if profile_type == "advertiser" else prompts_blogger
+    )
+    prompt = prompts.get(field_key, "Введите новое значение:")
+    if field_key == "audience_gender":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=edit_audience_gender_inline_keyboard(),
+        )
+    elif field_key == "blogger_gender":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=edit_blogger_gender_inline_keyboard(),
+        )
+    elif field_key == "audience_age":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=edit_audience_age_inline_keyboard(),
+        )
+    elif field_key == "barter":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=edit_barter_inline_keyboard(),
+        )
+    elif field_key == "work_format":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=edit_work_format_inline_keyboard(),
+        )
+    else:
+        await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
+    await state.set_state(EditProfileStates.entering_value)
+
+
+_PROFILE_CHOICE_CALLBACKS = frozenset(
+    {
+        CALLBACK_PROFILE_AUDIENCE_F,
+        CALLBACK_PROFILE_AUDIENCE_M,
+        CALLBACK_PROFILE_AUDIENCE_A,
+        CALLBACK_PROFILE_BLOGGER_GENDER_M,
+        CALLBACK_PROFILE_BLOGGER_GENDER_F,
+        CALLBACK_PROFILE_AGE_0_17,
+        CALLBACK_PROFILE_AGE_18_24,
+        CALLBACK_PROFILE_AGE_25_34,
+        CALLBACK_PROFILE_AGE_35_44,
+        CALLBACK_PROFILE_AGE_45_99,
+        CALLBACK_PROFILE_BARTER_Y,
+        CALLBACK_PROFILE_BARTER_N,
+        CALLBACK_PROFILE_WORK_ADS,
+        CALLBACK_PROFILE_WORK_UGC,
+    }
+)
+
+_CALLBACK_TO_CHOICE_TEXT: dict[str, str] = {
+    CALLBACK_PROFILE_AUDIENCE_F: "👩 В основном женщины",
+    CALLBACK_PROFILE_AUDIENCE_M: "👨 В основном мужчины",
+    CALLBACK_PROFILE_AUDIENCE_A: "👥 Примерно поровну",
+    CALLBACK_PROFILE_BLOGGER_GENDER_M: "Мужской",
+    CALLBACK_PROFILE_BLOGGER_GENDER_F: "Женский",
+    CALLBACK_PROFILE_AGE_0_17: "до 18",
+    CALLBACK_PROFILE_AGE_18_24: "18–24",
+    CALLBACK_PROFILE_AGE_25_34: "25–34",
+    CALLBACK_PROFILE_AGE_35_44: "35–44",
+    CALLBACK_PROFILE_AGE_45_99: "45+",
+    CALLBACK_PROFILE_BARTER_Y: "Да",
+    CALLBACK_PROFILE_BARTER_N: "Нет",
+    CALLBACK_PROFILE_WORK_ADS: WORK_FORMAT_ADS_BUTTON_TEXT,
+    CALLBACK_PROFILE_WORK_UGC: WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
+}
+
+
+@router.callback_query(lambda c: c.data in _PROFILE_CHOICE_CALLBACKS)
+async def handle_profile_edit_choice_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    profile_service: ProfileService,
+    config: AppConfig,
+    blogger_registration_service: BloggerRegistrationService,
+    user_role_service: UserRoleService,
+    max_order_price: float,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle choice field value from inline (audience_gender, barter, etc.)."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    data = await state.get_data()
+    field_key = data.get("editing_field")
+    user_id = parse_user_id_from_state(data, key="edit_user_id")
+    external_id_raw = data.get("edit_external_id")
+    profile_type = data.get("edit_profile_type", "blogger")
+    if (
+        not field_key
+        or user_id is None
+        or not external_id_raw
+        or profile_type != "blogger"
+    ):
+        return
+    choice_text = _CALLBACK_TO_CHOICE_TEXT.get(incoming.data or "")
+    if not choice_text:
+        return
+    fake_message = IncomingMessage(
+        chat_id=incoming.chat_id,
+        user=incoming.user,
+        text=None,
+        message_id=incoming.message_id,
+    )
+    message_ctx = MessageContext(fake_message, messenger_client)
+    blogger = await profile_service.get_blogger_profile(user_id)
+    if blogger is None:
+        await state.clear()
+        return
+    await _update_blogger_field(
+        message_ctx,
+        state,
+        field_key,
+        choice_text,
+        user_id,
+        str(external_id_raw),
+        blogger,
+        profile_service,
+        blogger_registration_service,
+        user_role_service,
+        max_order_price,
+        config,
+    )
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+
+
+def _edit_field_rows(
+    profile_type: str = "blogger",
+) -> list[list[tuple[str, str]]]:
+    """Rows (label, key) for edit field inline keyboard, two per row."""
+    fields = (
+        _EDIT_FIELDS_ADVERTISER
+        if profile_type == "advertiser"
+        else _EDIT_FIELDS
+    )
+    rows: list[list[tuple[str, str]]] = []
+    for i in range(0, len(fields), 2):
+        row = [fields[i]]
+        if i + 1 < len(fields):
+            row.append(fields[i + 1])
         rows.append(row)
-    rows.append([Button(text=MY_PROFILE_BUTTON_TEXT)])
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=rows,
-        resize=True,
-        one_time=False,
-    )
-
-
-def _edit_profile_type_keyboard() -> Keyboard:
-    """Keyboard to choose blogger or advertiser profile to edit."""
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text="Редактировать профиль блогера")],
-            [Button(text="Редактировать профиль рекламодателя")],
-            [Button(text=MY_PROFILE_BUTTON_TEXT)],
-        ],
-        resize=True,
-        one_time=False,
-    )
+    return rows
 
 
 @router.message(
@@ -791,7 +1236,7 @@ async def edit_profile_start(
     if blogger is not None and advertiser is not None:
         await message_ctx.answer(
             "Выберите профиль для редактирования:",
-            reply_markup=_edit_profile_type_keyboard(),
+            reply_markup=edit_profile_type_inline_keyboard(),
         )
         await state.set_state(EditProfileStates.choosing_profile_type)
         return
@@ -799,14 +1244,16 @@ async def edit_profile_start(
         await state.update_data(edit_profile_type="blogger")
         await message_ctx.answer(
             "Выберите раздел для редактирования:",
-            reply_markup=_edit_field_keyboard("blogger"),
+            reply_markup=edit_field_inline_keyboard(
+                _edit_field_rows("blogger")
+            ),
         )
         await state.set_state(EditProfileStates.choosing_field)
         return
     await state.update_data(edit_profile_type="advertiser")
     await message_ctx.answer(
         "Выберите раздел для редактирования:",
-        reply_markup=_edit_field_keyboard("advertiser"),
+        reply_markup=edit_field_inline_keyboard(_edit_field_rows("advertiser")),
     )
     await state.set_state(EditProfileStates.choosing_field)
 
@@ -842,7 +1289,9 @@ async def edit_profile_choose_type(
         await state.update_data(edit_profile_type="blogger")
         await message_ctx.answer(
             "Выберите раздел для редактирования:",
-            reply_markup=_edit_field_keyboard("blogger"),
+            reply_markup=edit_field_inline_keyboard(
+                _edit_field_rows("blogger")
+            ),
         )
         await state.set_state(EditProfileStates.choosing_field)
         return
@@ -850,13 +1299,15 @@ async def edit_profile_choose_type(
         await state.update_data(edit_profile_type="advertiser")
         await message_ctx.answer(
             "Выберите раздел для редактирования:",
-            reply_markup=_edit_field_keyboard("advertiser"),
+            reply_markup=edit_field_inline_keyboard(
+                _edit_field_rows("advertiser")
+            ),
         )
         await state.set_state(EditProfileStates.choosing_field)
         return
     await message_ctx.answer(
         "Выберите один из вариантов на клавиатуре.",
-        reply_markup=_edit_profile_type_keyboard(),
+        reply_markup=edit_profile_type_inline_keyboard(),
     )
 
 
@@ -898,7 +1349,12 @@ async def edit_profile_choose_field(
         else EDIT_FIELD_KEYS
     )
     if text not in field_keys:
-        await message_ctx.answer("Выберите один из разделов на клавиатуре.")
+        await message_ctx.answer(
+            "Выберите один из разделов на клавиатуре.",
+            reply_markup=edit_field_inline_keyboard(
+                _edit_field_rows(profile_type)
+            ),
+        )
         return
 
     field_key = field_keys[text]
@@ -931,56 +1387,27 @@ async def edit_profile_choose_field(
     if field_key == "audience_gender":
         await message_ctx.answer(
             prompt,
-            reply_markup=flow_keyboard(
-                keyboard=[
-                    [Button(text="👩 В основном женщины")],
-                    [Button(text="👨 В основном мужчины")],
-                    [Button(text="👥 Примерно поровну")],
-                ],
-            ),
+            reply_markup=edit_audience_gender_inline_keyboard(),
         )
     elif field_key == "blogger_gender":
         await message_ctx.answer(
             prompt,
-            reply_markup=flow_keyboard(
-                keyboard=[
-                    [Button(text="Мужской")],
-                    [Button(text="Женский")],
-                ],
-            ),
+            reply_markup=edit_blogger_gender_inline_keyboard(),
         )
     elif field_key == "audience_age":
         await message_ctx.answer(
             prompt,
-            reply_markup=flow_keyboard(
-                keyboard=[
-                    [Button(text="до 18")],
-                    [Button(text="18–24")],
-                    [Button(text="25–34")],
-                    [Button(text="35–44")],
-                    [Button(text="45+")],
-                ],
-            ),
+            reply_markup=edit_audience_age_inline_keyboard(),
         )
     elif field_key == "barter":
         await message_ctx.answer(
             prompt,
-            reply_markup=flow_keyboard(
-                keyboard=[
-                    [Button(text="Да")],
-                    [Button(text="Нет")],
-                ],
-            ),
+            reply_markup=edit_barter_inline_keyboard(),
         )
     elif field_key == "work_format":
         await message_ctx.answer(
             prompt,
-            reply_markup=flow_keyboard(
-                keyboard=[
-                    [Button(text=WORK_FORMAT_ADS_BUTTON_TEXT)],
-                    [Button(text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT)],
-                ],
-            ),
+            reply_markup=edit_work_format_inline_keyboard(),
         )
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())

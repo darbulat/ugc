@@ -4,10 +4,15 @@ from uuid import UUID
 
 import pytest
 
-from tests.helpers.factories import create_test_user
+from tests.helpers.factories import (
+    create_test_advertiser_profile,
+    create_test_user,
+)
 from tests.helpers.fakes import (
+    FakeCallback,
     FakeFSMContext,
     FakeMessage,
+    FakeMessengerClient,
     FakeUser,
 )
 from tests.helpers.services import build_profile_service
@@ -17,7 +22,10 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.advertiser_registration import (
     AdvertiserRegistrationStates,
+    _advertiser_start_impl,
+    handle_advertiser_agreements_callback,
     handle_advertiser_start,
+    handle_advertiser_start_callback,
     handle_agreements_confirm,
     handle_brand,
     handle_city,
@@ -26,10 +34,18 @@ from ugc_bot.bot.handlers.advertiser_registration import (
     handle_phone,
     handle_site_link,
 )
-from ugc_bot.bot.handlers.keyboards import CONFIRM_AGREEMENT_BUTTON_TEXT
+from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_ADV_AGREE,
+    CALLBACK_ADV_START,
+    CONFIRM_AGREEMENT_BUTTON_TEXT,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.domain.enums import MessengerType, UserStatus
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
+)
+from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 
 @pytest.mark.asyncio
@@ -124,6 +140,158 @@ async def test_start_advertiser_registration_skips_name_when_username_set(
     assert "телефона" in (
         first_ans if isinstance(first_ans, str) else first_ans[0]
     )
+
+
+@pytest.mark.asyncio
+async def test_advertiser_start_callback_starts_flow(
+    user_repo, advertiser_repo
+) -> None:
+    """handle_advertiser_start_callback starts registration via inline."""
+    service = UserRoleService(user_repo=user_repo)
+    await service.set_user(
+        external_id="12",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv_cb",
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    user = FakeUser(12, "adv_cb", "Adv")
+    callback = FakeCallback(
+        data=CALLBACK_ADV_START,
+        user=user,
+        message=FakeMessage(user=user),
+    )
+
+    await handle_advertiser_start_callback(
+        callback,
+        state,
+        user_role_service=service,
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state._data.get("user_id") is not None
+    assert state.state is not None
+    assert len(client.sent_text) >= 1
+    assert any(
+        "Как вас зовут" in s["text"] or "телефона" in s["text"]
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_advertiser_agreements_callback_confirms_and_clears(
+    user_repo, advertiser_repo
+) -> None:
+    """handle_advertiser_agreements_callback confirms and shows menu."""
+    user = await create_test_user(
+        user_repo,
+        external_id="13",
+        username="adv_agree_cb",
+        agreement_confirmed_at=None,
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.agreements.state)
+    await state.update_data(user_id=user.user_id)
+    callback = FakeCallback(
+        data=CALLBACK_ADV_AGREE,
+        user=FakeUser(13, "adv_agree_cb", "User"),
+        message=FakeMessage(user=FakeUser(13, "adv_agree_cb", "User")),
+    )
+
+    await handle_advertiser_agreements_callback(
+        callback,
+        state,
+        advertiser_registration_service=adv_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.cleared or state.state is None
+    assert len(client.sent_text) >= 1
+    assert any(
+        "разместить заказ" in s["text"] or "Создать заказ" in s["text"]
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_advertiser_agreements_callback_wrong_state_only_answers(
+    user_repo, advertiser_repo
+) -> None:
+    """When state is not agreements, callback only answers."""
+    user = await create_test_user(
+        user_repo, external_id="14", username="adv_wrong"
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.name.state)
+    await state.update_data(user_id=user.user_id)
+    callback = FakeCallback(
+        data=CALLBACK_ADV_AGREE,
+        user=FakeUser(14, "adv_wrong", "User"),
+        message=FakeMessage(user=FakeUser(14, "adv_wrong", "User")),
+    )
+
+    await handle_advertiser_agreements_callback(
+        callback,
+        state,
+        advertiser_registration_service=adv_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_advertiser_agreements_callback_session_expired(
+    user_repo, advertiser_repo
+) -> None:
+    """Agreements callback with no user_id sends session expired."""
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.agreements.state)
+    await state.update_data(name="X", phone="+7")
+    callback = FakeCallback(
+        data=CALLBACK_ADV_AGREE,
+        user=FakeUser(60, "adv", "User"),
+        message=FakeMessage(user=FakeUser(60, "adv", "User")),
+    )
+
+    await handle_advertiser_agreements_callback(
+        callback,
+        state,
+        advertiser_registration_service=adv_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    assert state.cleared or state._data.get("user_id") is None
 
 
 @pytest.mark.asyncio
@@ -262,6 +430,56 @@ async def test_handle_advertiser_start_user_not_found(
 
 
 @pytest.mark.asyncio
+async def test_advertiser_start_impl_returns_early_when_user_id_not_uuid(
+    user_repo, advertiser_repo
+) -> None:
+    """_advertiser_start_impl returns early when user_id is not UUID."""
+    client = FakeMessengerClient()
+    state = FakeFSMContext()
+    state_store = AiogramStateStore(state)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    user = FakeUser(1, "u", "U")
+
+    await _advertiser_start_impl(
+        chat_id="1",
+        state_store=state_store,
+        user=user,
+        messenger_client=client,
+        profile_service=profile_service,
+    )
+
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_advertiser_start_user_not_found_with_client(
+    user_repo, advertiser_repo
+) -> None:
+    """User not in repo with client/adapter: message sent via client."""
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(text="Начать", user=FakeUser(999, "x", "X"))
+    state = FakeFSMContext()
+
+    await handle_advertiser_start(
+        message,
+        state,
+        user_service,
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Пользователь не найден" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
 async def test_handle_advertiser_start_shows_menu_when_profile_exists(
     user_repo, advertiser_repo
 ) -> None:
@@ -369,6 +587,26 @@ async def test_handle_city_success_asks_brand(user_repo) -> None:
 
 
 @pytest.mark.asyncio
+async def test_handle_city_invalid_sends_error(user_repo) -> None:
+    """handle_city with too long city sends validation error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.city.state)
+    await state.update_data(name="Test", phone="+79001234567")
+    message = FakeMessage(text="A" * 101, user=FakeUser(1, "adv", "Adv"))
+
+    await handle_city(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Максимум" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
 async def test_handle_company_activity_success_asks_site_link(
     user_repo,
 ) -> None:
@@ -402,6 +640,38 @@ async def test_handle_company_activity_success_asks_site_link(
 
 
 @pytest.mark.asyncio
+async def test_handle_company_activity_invalid_sends_error(user_repo) -> None:
+    """handle_company_activity with too long text sends error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = await user_service.set_user(
+        external_id="42",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.company_activity.state)
+    await state.update_data(
+        user_id=user.user_id,
+        name="N",
+        phone="+79001234567",
+        city="City",
+        brand="Brand",
+    )
+    message = FakeMessage(text="A" * 501, user=FakeUser(42, "adv", "Adv"))
+
+    await handle_company_activity(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Максимум" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
 async def test_handle_brand_requires_value(user_repo) -> None:
     """Require non-empty brand."""
 
@@ -423,6 +693,34 @@ async def test_handle_brand_requires_value(user_repo) -> None:
     assert message.answers
     ans = message.answers[0]
     assert "символ" in (ans if isinstance(ans, str) else ans[0]).lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_brand_invalid_sends_error(user_repo) -> None:
+    """handle_brand with too short brand sends validation error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = await user_service.set_user(
+        external_id="41",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.brand.state)
+    await state.update_data(
+        user_id=user.user_id, name="N", phone="+79001234567", city="City"
+    )
+    message = FakeMessage(text="x", user=FakeUser(41, "adv", "Adv"))
+
+    await handle_brand(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("символ" in s["text"].lower() for s in client.sent_text)
 
 
 @pytest.mark.asyncio
@@ -479,6 +777,87 @@ def _test_config_no_docs() -> AppConfig:
             "DOCS_CONSENT_URL": "",
         }
     )
+
+
+@pytest.mark.asyncio
+async def test_handle_site_link_invalid_url_sends_error(
+    user_repo, advertiser_repo
+) -> None:
+    """handle_site_link with invalid URL sends validation error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    user_service = UserRoleService(user_repo=user_repo)
+    user = await user_service.set_user(
+        external_id="58",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.site_link.state)
+    await state.update_data(
+        user_id=user.user_id,
+        name="Test",
+        phone="+79001234567",
+        city="City",
+        brand="Brand",
+        company_activity="Activity",
+    )
+    message = FakeMessage(text="not-a-url", user=FakeUser(58, "adv", "Adv"))
+    config = _test_config()
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    await handle_site_link(
+        message,
+        state,
+        config,
+        adv_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "ссылк" in s["text"].lower() or "формат" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_site_link_session_expired_sends_message(
+    user_repo, advertiser_repo
+) -> None:
+    """handle_site_link when user_id missing sends session expired."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(AdvertiserRegistrationStates.site_link.state)
+    await state.update_data(
+        name="Test",
+        phone="+79001234567",
+        city="City",
+        brand="Brand",
+        company_activity="Activity",
+    )
+    message = FakeMessage(
+        text="https://example.com", user=FakeUser(59, "adv", "Adv")
+    )
+    config = _test_config()
+    adv_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    await handle_site_link(
+        message,
+        state,
+        config,
+        adv_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    assert state.cleared or state._data.get("user_id") is None
 
 
 @pytest.mark.asyncio

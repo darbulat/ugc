@@ -5,7 +5,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.helpers.factories import create_test_user
-from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeCallback,
+    FakeFSMContext,
+    FakeMessage,
+    FakeUser,
+)
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
@@ -14,7 +19,9 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.instagram_verification import (
     _verification_instruction_text,
     start_verification,
+    start_verification_from_profile_callback,
 )
+from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_CONFIRM_INSTAGRAM
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
@@ -302,3 +309,70 @@ async def test_start_verification_skipped_when_already_confirmed(
 
     assert len(message.answers) == 1
     assert "Ваш Instagram‑аккаунт уже подтвержден" in message.answers[0]
+
+
+@pytest.mark.asyncio
+async def test_start_verification_from_profile_callback_sends_instruction(
+    user_repo,
+    blogger_repo,
+    instagram_verification_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Profile inline 'Confirm Instagram' runs verification flow."""
+    from datetime import datetime, timezone
+    from uuid import UUID
+
+    from ugc_bot.domain.entities import BloggerProfile
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000734"),
+        external_id="34",
+        username="blogger_ig",
+    )
+    profile = BloggerProfile(
+        user_id=user.user_id,
+        instagram_url="https://instagram.com/blogger_ig",
+        confirmed=False,
+        city="Moscow",
+        topics={"selected": ["lifestyle"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    await blogger_repo.save(profile)
+    user_service = UserRoleService(user_repo=user_repo)
+    verification_service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=instagram_verification_repo,
+    )
+    profile_service = build_profile_service(user_repo, blogger_repo)
+    msg = FakeMessage(user=FakeUser(34, "blogger_ig"))
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
+        user=FakeUser(34, "blogger_ig"),
+        message=msg,
+    )
+    await start_verification_from_profile_callback(
+        callback,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        verification_service,
+        _fake_config(),
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert messenger_client.sent_text
+    assert any(
+        "Чтобы подтвердить Instagram" in s["text"]
+        for s in messenger_client.sent_text
+    )

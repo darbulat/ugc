@@ -1,15 +1,15 @@
 """Advertiser registration flow handlers."""
 
 import logging
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 # Application errors are handled by ErrorHandlerMiddleware
-from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -21,15 +21,19 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
+    CALLBACK_ADV_AGREE,
+    CALLBACK_ADV_START,
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     advertiser_menu_keyboard,
     advertiser_start_keyboard,
+    confirm_agreement_inline_keyboard,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
+    get_user_and_ensure_allowed_callback,
     handle_role_choice,
     parse_user_id_from_state,
     resolve_messenger_dependencies,
@@ -98,20 +102,54 @@ class AdvertiserRegistrationStates(StatesGroup):
     agreements = State()
 
 
-async def _ask_name(
-    message: Message,
+async def _ask_name_for_chat(
+    chat_id: str,
     messenger_client: MessengerClient,
     state_store: AiogramStateStore,
-    event_adapter: MessengerEventAdapter,
 ) -> None:
     """Send name prompt and set state to name."""
-    incoming = event_adapter.from_message(message)
     await messenger_client.send_text(
-        chat_id=incoming.chat_id,
+        chat_id=chat_id,
         text="Как вас зовут?",
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(AdvertiserRegistrationStates.name.state)
+
+
+async def _advertiser_start_impl(
+    chat_id: str,
+    state_store: AiogramStateStore,
+    user: object,
+    messenger_client: MessengerClient,
+    profile_service: ProfileService,
+) -> None:
+    """Run advertiser start logic: show menu or start registration."""
+    user_id = getattr(user, "user_id", None)
+    if not isinstance(user_id, UUID):
+        return
+    username = getattr(user, "username", None) or ""
+    advertiser = await profile_service.get_advertiser_profile(user_id)
+    if advertiser is not None:
+        await messenger_client.send_text(
+            chat_id=chat_id,
+            text="Выберите действие:",
+            keyboard=advertiser_menu_keyboard(),
+        )
+        return
+    await state_store.update_data(user_id=user_id)
+    if username and len(username.strip()) >= 2:
+        await state_store.update_data(name=username)
+        await messenger_client.send_text(
+            chat_id=chat_id,
+            text=(
+                "Укажите номер телефона для связи по заказу.\n"
+                "Пример: 89001110777"
+            ),
+            keyboard=flow_keyboard_remove(),
+        )
+        await state_store.set_state(AdvertiserRegistrationStates.phone.state)
+    else:
+        await _ask_name_for_chat(chat_id, messenger_client, state_store)
 
 
 @router.message(
@@ -125,7 +163,7 @@ async def handle_advertiser_start(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle 'Начать' after advertiser role: menu or start registration."""
+    """Handle 'Начать' after advertiser role (message, e.g. from tests)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -141,35 +179,40 @@ async def handle_advertiser_start(
     )
     if user is None:
         return
+    await _advertiser_start_impl(
+        incoming.chat_id, state_store, user, messenger_client, profile_service
+    )
 
-    advertiser = await profile_service.get_advertiser_profile(user.user_id)
-    if advertiser is not None:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text="Выберите действие:",
-            keyboard=advertiser_menu_keyboard(),
-        )
+
+@router.callback_query(lambda c: c.data == CALLBACK_ADV_START)
+async def handle_advertiser_start_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle 'Начать' after advertiser role via inline button."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Начните с /start.",
+        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
+        pause_msg="Пользователи на паузе не могут регистрироваться.",
+    )
+    if user is None:
         return
-
-    await state_store.update_data(user_id=user.user_id)
-    if user.username and len(user.username.strip()) >= 2:
-        await state_store.update_data(name=user.username)
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=(
-                "Укажите номер телефона для связи по заказу.\n"
-                "Пример: 89001110777"
-            ),
-            keyboard=flow_keyboard_remove(),
-        )
-        await state_store.set_state(AdvertiserRegistrationStates.phone.state)
-    else:
-        await _ask_name(
-            message,
-            messenger_client,
-            state_store,
-            event_adapter,
-        )
+    state_store = AiogramStateStore(state)
+    await _advertiser_start_impl(
+        incoming.chat_id, state_store, user, messenger_client, profile_service
+    )
 
 
 @router.message(AdvertiserRegistrationStates.name)
@@ -334,16 +377,6 @@ async def handle_company_activity(
     await state_store.set_state(AdvertiserRegistrationStates.site_link.state)
 
 
-def _agreements_keyboard() -> Keyboard:
-    """Keyboard with single 'Confirm agreement' button."""
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
-        resize=True,
-        one_time=True,
-    )
-
-
 @router.message(AdvertiserRegistrationStates.site_link)
 async def handle_site_link(
     message: Message,
@@ -399,7 +432,7 @@ async def handle_site_link(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
-        keyboard=_agreements_keyboard(),
+        keyboard=confirm_agreement_inline_keyboard(CALLBACK_ADV_AGREE),
         parse_mode="HTML",
     )
     await state_store.set_state(AdvertiserRegistrationStates.agreements.state)
@@ -413,7 +446,7 @@ async def handle_agreements_confirm(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """On 'Confirm agreement' confirm consent and show success."""
+    """On message 'Confirm agreement' confirm consent (e.g. from tests)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -430,7 +463,6 @@ async def handle_agreements_confirm(
             keyboard=flow_keyboard_remove(),
         )
         return
-
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
@@ -440,7 +472,48 @@ async def handle_agreements_confirm(
         )
         await state_store.clear()
         return
+    await advertiser_registration_service.confirm_advertiser_agreement(
+        user_id=user_id,
+    )
+    await state_store.clear()
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Теперь вы можете разместить заказ и найти UGC-креаторов.",
+        keyboard=advertiser_menu_keyboard(),
+    )
 
+
+@router.callback_query(lambda c: c.data == CALLBACK_ADV_AGREE)
+async def handle_advertiser_agreements_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    advertiser_registration_service: AdvertiserRegistrationService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """On inline 'Confirm agreement' confirm consent and show success."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    state_store = AiogramStateStore(state)
+    current = await state.get_state()
+    if current != AdvertiserRegistrationStates.agreements.state:
+        await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        return
+
+    data = await state_store.get_data()
+    user_id = parse_user_id_from_state(data, key="user_id")
+    if user_id is None:
+        await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Сессия истекла. Начните заново.",
+        )
+        await state_store.clear()
+        return
+
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await advertiser_registration_service.confirm_advertiser_agreement(
         user_id=user_id,
     )

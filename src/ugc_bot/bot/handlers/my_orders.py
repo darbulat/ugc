@@ -25,6 +25,7 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_PROFILE_MENU_MY_ORDERS,
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     MY_ORDERS_BUTTON_TEXT,
     flow_keyboard,
@@ -168,6 +169,106 @@ async def show_my_orders(  # noqa: C901, PLR0912
                 text="У вас пока нет заказов. /create_order",
             )
 
+    if blogger is not None:
+        responses = await offer_response_service.list_by_blogger(user.user_id)
+        order_responses = []
+        for resp in sorted(
+            responses, key=lambda r: r.responded_at, reverse=True
+        ):
+            order = await order_service.get_order(resp.order_id)
+            if order is not None:
+                order_responses.append((order, resp))
+        if order_responses:
+            text, keyboard = _render_blogger_orders_page(
+                order_responses, page=1
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id, text=text, keyboard=keyboard
+            )
+        else:
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text="Вы пока не откликались. Предложения приходят в бот.",
+            )
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_PROFILE_MENU_MY_ORDERS)
+async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    order_service: OrderService,
+    offer_response_service: OfferResponseService,
+    config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Show my orders from profile inline menu."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
+        blocked_msg="Заблокированные не могут просматривать заказы.",
+        pause_msg="На паузе не могут просматривать заказы.",
+    )
+    if user is None:
+        return
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    blogger = await profile_service.get_blogger_profile(user.user_id)
+    if advertiser is None and blogger is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=(
+                "Заполните профиль (/advertiser или /creator), "
+                "чтобы видеть заказы."
+            ),
+        )
+        return
+    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    if agreement_confirmed_at is None:
+        agreements_text = format_agreements_message(
+            config,
+            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=agreements_text,
+            keyboard=flow_keyboard(
+                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(user_id=user.user_id)
+        if blogger is not None:
+            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+        else:
+            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
+        return
+    if advertiser is not None:
+        orders = sorted(
+            await order_service.list_by_advertiser(user.user_id),
+            key=lambda item: item.created_at,
+            reverse=True,
+        )
+        if orders:
+            text, keyboard = await _render_page(
+                orders, page=1, offer_response_service=offer_response_service
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id, text=text, keyboard=keyboard
+            )
+        else:
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text="У вас пока нет заказов. /create_order",
+            )
     if blogger is not None:
         responses = await offer_response_service.list_by_blogger(user.user_id)
         order_responses = []

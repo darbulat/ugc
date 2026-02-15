@@ -9,8 +9,10 @@ from tests.helpers.factories import (
     create_test_user,
 )
 from tests.helpers.fakes import (
+    FakeCallback,
     FakeFSMContext,
     FakeMessage,
+    FakeMessengerClient,
     FakeUser,
 )
 from tests.helpers.services import build_profile_service
@@ -24,8 +26,13 @@ from ugc_bot.bot.handlers.blogger_registration import (
     choose_creator_role,
     handle_age,
     handle_agreements,
+    handle_agreements_callback,
+    handle_audience_age_callback,
+    handle_audience_gender_callback,
     handle_barter,
+    handle_barter_callback,
     handle_blogger_gender,
+    handle_blogger_gender_callback,
     handle_city,
     handle_gender,
     handle_geo,
@@ -34,9 +41,19 @@ from ugc_bot.bot.handlers.blogger_registration import (
     handle_price,
     handle_topics,
     handle_work_format,
+    handle_work_format_callback,
     start_registration_button,
+    start_registration_inline,
 )
 from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_BLOGGER_AGE_18_24,
+    CALLBACK_BLOGGER_AGREE,
+    CALLBACK_BLOGGER_AUDIENCE_M,
+    CALLBACK_BLOGGER_BARTER_N,
+    CALLBACK_BLOGGER_BARTER_Y,
+    CALLBACK_BLOGGER_GENDER_M,
+    CALLBACK_BLOGGER_WORK_ADS,
+    CALLBACK_CREATOR_CREATE,
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     CREATE_PROFILE_BUTTON_TEXT,
@@ -51,6 +68,9 @@ from ugc_bot.domain.enums import (
     MessengerType,
     UserStatus,
     WorkFormat,
+)
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
 )
 
 
@@ -295,6 +315,156 @@ async def test_geo_empty_and_price_negative() -> None:
     await handle_price(price_message, state, max_order_price=10_000.0)
     ans_p = price_message.answers[0]
     assert "Цена должна" in (ans_p if isinstance(ans_p, str) else ans_p[0])
+
+
+@pytest.mark.asyncio
+async def test_handle_geo_invalid_sends_error_via_client() -> None:
+    """handle_geo with empty text sends validation error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    state.state = BloggerRegistrationStates.audience_geo
+    message = FakeMessage(text="   ", user=FakeUser(1, "u", "U"))
+
+    await handle_geo(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("город" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_price_invalid_number_sends_error_via_client() -> None:
+    """handle_price with non-numeric text sends error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    state.state = BloggerRegistrationStates.price
+    message = FakeMessage(text="abc", user=FakeUser(1, "u", "U"))
+
+    await handle_price(
+        message,
+        state,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("число" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_barter_invalid_sends_error_via_client() -> None:
+    """handle_barter with invalid text sends error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.barter.state)
+    message = FakeMessage(text="maybe", user=FakeUser(1, "u", "U"))
+
+    await handle_barter(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Да или Нет" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_blogger_gender_invalid_sends_error_via_client() -> None:
+    """handle_blogger_gender with invalid text sends error via client."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.blogger_gender.state)
+    message = FakeMessage(text="Другое", user=FakeUser(1, "u", "U"))
+
+    await handle_blogger_gender(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "кнопок" in s["text"] or "Мужской" in s["text"]
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_work_format_invalid_sends_error_via_client(
+    user_repo, blogger_repo
+) -> None:
+    """handle_work_format with invalid text sends error via client."""
+    config = _blogger_test_config()
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    message = FakeMessage(text="Other", user=FakeUser(1, "u", "U"))
+
+    await handle_work_format(
+        message,
+        state,
+        config,
+        reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Выберите одну из кнопок" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_work_format_session_expired_sends_message(
+    user_repo, blogger_repo
+) -> None:
+    """handle_work_format when user_id missing sends session expired."""
+    config = _blogger_test_config()
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    await state.update_data(
+        nickname="x",
+        instagram_url="https://instagram.com/x",
+        city="M",
+        topics={"selected": ["a"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="M",
+        price=1000.0,
+        barter=False,
+        blogger_gender=BloggerGender.MALE,
+    )
+    message = FakeMessage(
+        text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(1, "u", "U")
+    )
+
+    await handle_work_format(
+        message,
+        state,
+        config,
+        reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    assert state.cleared or state._data.get("user_id") is None
 
 
 @pytest.mark.asyncio
@@ -598,6 +768,44 @@ async def test_handle_barter_invalid_rejects(user_repo) -> None:
     assert "Да или Нет" in message.answers[0]
 
 
+@pytest.mark.asyncio
+async def test_handle_barter_da_sends_work_format() -> None:
+    """handle_barter with 'да' stores barter and sends work format keyboard."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    state.state = BloggerRegistrationStates.barter
+    message = FakeMessage(text="да", user=FakeUser(1, "u", "U"))
+    await handle_barter(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state._data.get("barter") is True
+    assert state.state == BloggerRegistrationStates.work_format.state
+    assert any("брендами" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_barter_net_sends_work_format() -> None:
+    """handle_barter with 'нет' stores barter and sends work format keyboard."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    state.state = BloggerRegistrationStates.barter
+    message = FakeMessage(text="нет", user=FakeUser(1, "u", "U"))
+    await handle_barter(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state._data.get("barter") is False
+    assert state.state == BloggerRegistrationStates.work_format.state
+    assert any("брендами" in s["text"] for s in client.sent_text)
+
+
 def _blogger_test_config() -> AppConfig:
     """Test config for blogger handlers."""
     return AppConfig.model_validate(
@@ -765,6 +973,754 @@ async def test_start_registration_button(user_repo) -> None:
     ans = message.answers[0]
     text = (ans[0] if isinstance(ans, tuple) else ans).lower()
     assert "инстаграмм" in text or "имя" in text
+
+
+@pytest.mark.asyncio
+async def test_start_registration_inline_sets_state(user_repo) -> None:
+    """start_registration_inline (callback) starts flow and sends first step."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    await user_service.set_user(
+        external_id="52",
+        messenger_type=MessengerType.TELEGRAM,
+        username="bob",
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    user = FakeUser(52, "bob", "Bob")
+    callback = FakeCallback(
+        data=CALLBACK_CREATOR_CREATE,
+        user=user,
+        message=FakeMessage(user=user),
+    )
+
+    await start_registration_inline(
+        callback,
+        state,
+        user_role_service=user_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.state is not None
+    assert len(client.sent_text) >= 1
+    assert len(client.answered_callbacks) >= 1
+
+
+@pytest.mark.asyncio
+async def test_start_registration_inline_user_not_found_returns_early(
+    user_repo,
+) -> None:
+    """When user not in DB, start_registration_inline answers and returns."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    callback = FakeCallback(
+        data=CALLBACK_CREATOR_CREATE,
+        user=FakeUser(99999, "nonexistent", "User"),
+        message=FakeMessage(user=FakeUser(99999, "nonexistent", "User")),
+    )
+
+    await start_registration_inline(
+        callback,
+        state,
+        user_role_service=user_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) >= 1
+    assert any(
+        "Пользователь не найден" in (a.get("text") or "")
+        for a in client.answered_callbacks
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_registration_inline_blocked_user(user_repo) -> None:
+    """When user is blocked, start_registration_inline answers and returns."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000711"),
+        external_id="8",
+        username="blocked_cb",
+        status=UserStatus.BLOCKED,
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    callback = FakeCallback(
+        data=CALLBACK_CREATOR_CREATE,
+        user=FakeUser(8, "blocked_cb", "User"),
+        message=FakeMessage(user=FakeUser(8, "blocked_cb", "User")),
+    )
+
+    await start_registration_inline(
+        callback,
+        state,
+        user_role_service=user_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "Заблокирован" in (a.get("text") or "")
+        for a in client.answered_callbacks
+    )
+
+
+@pytest.mark.asyncio
+async def test_work_format_callback_saves_and_shows_agreements(
+    user_repo, blogger_repo
+) -> None:
+    """work_format_callback saves profile and shows agreements (full state)."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    user = await create_test_user(
+        user_repo, external_id="62", username="work_cb"
+    )
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///",
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+            "KAFKA_ENABLED": "false",
+            "FEEDBACK_ENABLED": "false",
+            "ROLE_REMINDER_ENABLED": "false",
+            "REDIS_URL": "redis://",
+            "USE_REDIS_STORAGE": "false",
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+        }
+    )
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    await state.update_data(
+        user_id=user.user_id,
+        instagram_url="https://instagram.com/work_cb",
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.MALE.value,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        blogger_gender=BloggerGender.MALE.value,
+        nickname="work_cb",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_WORK_ADS,
+        user=FakeUser(62, "work_cb", "User"),
+        message=FakeMessage(user=FakeUser(62, "work_cb", "User")),
+    )
+
+    await handle_work_format_callback(
+        callback,
+        state,
+        config=config,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.state == BloggerRegistrationStates.agreements.state
+    assert any(
+        "согласи" in s["text"].lower() or "документ" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_work_format_callback_duplicate_instagram_sends_message(
+    user_repo, blogger_repo
+) -> None:
+    """When Instagram already registered, work_format_callback sends message."""
+    from unittest.mock import AsyncMock, patch
+
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    user = await create_test_user(
+        user_repo, external_id="63", username="dup_cb"
+    )
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, instagram_url="https://instagram.com/dup"
+    )
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///",
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+            "KAFKA_ENABLED": "false",
+            "FEEDBACK_ENABLED": "false",
+            "ROLE_REMINDER_ENABLED": "false",
+            "REDIS_URL": "redis://",
+            "USE_REDIS_STORAGE": "false",
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+        }
+    )
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    await state.update_data(
+        user_id=user.user_id,
+        instagram_url="https://instagram.com/dup",
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender="m",
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        blogger_gender="m",
+        nickname="dup_cb",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_WORK_ADS,
+        user=FakeUser(63, "dup_cb", "User"),
+        message=FakeMessage(user=FakeUser(63, "dup_cb", "User")),
+    )
+
+    with patch(
+        "ugc_bot.bot.handlers.blogger_registration.BloggerRegistrationService"
+        ".save_blogger_before_agreement",
+        new_callable=AsyncMock,
+        side_effect=Exception("UniqueViolation instagram_url duplicate"),
+    ):
+        await handle_work_format_callback(
+            callback,
+            state,
+            config=config,
+            blogger_registration_service=reg_service,
+            messenger_client=client,
+            event_adapter=adapter,
+        )
+
+    assert any(
+        "уже зарегистрирован" in s["text"] or "Instagram" in s["text"]
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_blogger_gender_callback_sets_state_and_asks_topics() -> None:
+    """handle_blogger_gender_callback stores gender and sends topics step."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.blogger_gender.state)
+    user = FakeUser(53, "u", "U")
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_GENDER_M,
+        user=user,
+        message=FakeMessage(user=user),
+    )
+
+    await handle_blogger_gender_callback(
+        callback,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.state == BloggerRegistrationStates.topics.state
+    assert state._data.get("blogger_gender") == "m"
+    assert len(client.sent_text) >= 1
+    assert any("тематики" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_blogger_gender_callback_wrong_state_only_answers() -> None:
+    """When state is not blogger_gender, callback only answers."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.name.state)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_GENDER_M,
+        user=FakeUser(58, "u", "U"),
+        message=FakeMessage(user=FakeUser(58, "u", "U")),
+    )
+
+    await handle_blogger_gender_callback(
+        callback, state, messenger_client=client, event_adapter=adapter
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_blogger_gender_callback_unknown_data_only_answers() -> None:
+    """When callback data is not M/F, only answer (no state change)."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.blogger_gender.state)
+    callback = FakeCallback(
+        data="blogger:gender:unknown",
+        user=FakeUser(58, "u", "U"),
+        message=FakeMessage(user=FakeUser(58, "u", "U")),
+    )
+
+    await handle_blogger_gender_callback(
+        callback, state, messenger_client=client, event_adapter=adapter
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_audience_gender_callback_sets_state_and_asks_age() -> None:
+    """handle_audience_gender_callback stores audience gender and asks age."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.audience_gender.state)
+    user = FakeUser(54, "u", "U")
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AUDIENCE_M,
+        user=user,
+        message=FakeMessage(user=user),
+    )
+
+    await handle_audience_gender_callback(
+        callback,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.state == BloggerRegistrationStates.audience_age.state
+    assert state._data.get("audience_gender") is not None
+    assert any("возраст" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_audience_gender_callback_wrong_state_only_answers() -> None:
+    """When state is not audience_gender, callback only answers."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.audience_geo.state)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AUDIENCE_M,
+        user=FakeUser(59, "u", "U"),
+        message=FakeMessage(user=FakeUser(59, "u", "U")),
+    )
+    await handle_audience_gender_callback(
+        callback,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_audience_gender_callback_unknown_data_only_answers() -> None:
+    """When callback data not in audience map, only answer."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.audience_gender.state)
+    callback = FakeCallback(
+        data="blogger:aud:unknown",
+        user=FakeUser(59, "u", "U"),
+        message=FakeMessage(user=FakeUser(59, "u", "U")),
+    )
+    await handle_audience_gender_callback(
+        callback,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_audience_age_callback_sets_state_and_asks_geo() -> None:
+    """handle_audience_age_callback stores age range and asks geography."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.audience_age.state)
+    user = FakeUser(57, "u", "U")
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AGE_18_24,
+        user=user,
+        message=FakeMessage(user=user),
+    )
+
+    await handle_audience_age_callback(
+        callback,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.state == BloggerRegistrationStates.audience_geo.state
+    assert state._data.get("audience_age_min") is not None
+    assert any("аудитори" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_audience_age_callback_wrong_state_only_answers() -> None:
+    """When state is not audience_age, callback only answers."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.audience_geo.state)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AGE_18_24,
+        user=FakeUser(59, "u", "U"),
+        message=FakeMessage(user=FakeUser(59, "u", "U")),
+    )
+
+    await handle_audience_age_callback(
+        callback, state, messenger_client=client, event_adapter=adapter
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_audience_age_callback_invalid_data_only_answers() -> None:
+    """When callback data not in age map, only answer."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.audience_age.state)
+    callback = FakeCallback(
+        data="blogger:age:99",
+        user=FakeUser(59, "u", "U"),
+        message=FakeMessage(user=FakeUser(59, "u", "U")),
+    )
+
+    await handle_audience_age_callback(
+        callback, state, messenger_client=client, event_adapter=adapter
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_barter_callback_wrong_state_only_answers() -> None:
+    """When state is not barter, callback only answers."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_BARTER_N,
+        user=FakeUser(55, "u", "U"),
+        message=FakeMessage(user=FakeUser(55, "u", "U")),
+    )
+
+    await handle_barter_callback(
+        callback, state, messenger_client=client, event_adapter=adapter
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_barter_callback_sets_state_and_asks_work_format() -> None:
+    """handle_barter_callback stores barter and asks work format."""
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.barter.state)
+    user = FakeUser(55, "u", "U")
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_BARTER_Y,
+        user=user,
+        message=FakeMessage(user=user),
+    )
+
+    await handle_barter_callback(
+        callback,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.state == BloggerRegistrationStates.work_format.state
+    assert state._data.get("barter") is True
+    assert any(
+        "UGC" in s["text"] or "брендами" in s["text"] for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_agreements_callback_confirms_and_shows_success(
+    user_repo, blogger_repo
+) -> None:
+    """handle_agreements_callback confirms blogger and shows profile created."""
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    user = await create_test_user(
+        user_repo, external_id="56", username="agree_cb"
+    )
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=False
+    )
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.agreements.state)
+    await state.update_data(user_id=user.user_id)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AGREE,
+        user=FakeUser(56, "agree_cb", "User"),
+        message=FakeMessage(user=FakeUser(56, "agree_cb", "User")),
+    )
+
+    await handle_agreements_callback(
+        callback,
+        state,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state.cleared
+    assert len(client.sent_text) >= 1
+    assert any(
+        "Профиль создан" in s["text"] or "Instagram" in s["text"]
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_agreements_callback_wrong_state_only_answers(
+    user_repo, blogger_repo
+) -> None:
+    """When state is not agreements, callback only answers."""
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AGREE,
+        user=FakeUser(60, "u", "U"),
+        message=FakeMessage(user=FakeUser(60, "u", "U")),
+    )
+
+    await handle_agreements_callback(
+        callback,
+        state,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_agreements_callback_session_expired(
+    user_repo, blogger_repo
+) -> None:
+    """handle_agreements_callback with no user_id sends session expired."""
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.agreements.state)
+    await state.update_data(nickname="x", external_id="1")
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AGREE,
+        user=FakeUser(62, "u", "U"),
+        message=FakeMessage(user=FakeUser(62, "u", "U")),
+    )
+
+    await handle_agreements_callback(
+        callback,
+        state,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    assert state.cleared or state._data.get("user_id") is None
+
+
+@pytest.mark.asyncio
+async def test_work_format_callback_wrong_state_only_answers(
+    user_repo, blogger_repo
+) -> None:
+    """When state is not work_format, callback only answers."""
+    config = _blogger_test_config()
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.barter.state)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_WORK_ADS,
+        user=FakeUser(61, "u", "U"),
+        message=FakeMessage(user=FakeUser(61, "u", "U")),
+    )
+
+    await handle_work_format_callback(
+        callback,
+        state,
+        config=config,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_work_format_callback_unknown_data_only_answers(
+    user_repo, blogger_repo
+) -> None:
+    """When callback data is not work format, only answer."""
+    config = _blogger_test_config()
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    callback = FakeCallback(
+        data="blogger:work:unknown",
+        user=FakeUser(61, "u", "U"),
+        message=FakeMessage(user=FakeUser(61, "u", "U")),
+    )
+
+    await handle_work_format_callback(
+        callback,
+        state,
+        config=config,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_work_format_callback_no_user_id_sends_session_expired(
+    user_repo, blogger_repo
+) -> None:
+    """When user_id missing in state, work_format callback sends expired."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///",
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+            "KAFKA_ENABLED": "false",
+            "FEEDBACK_ENABLED": "false",
+            "ROLE_REMINDER_ENABLED": "false",
+            "REDIS_URL": "redis://",
+            "USE_REDIS_STORAGE": "false",
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+        }
+    )
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_WORK_ADS,
+        user=FakeUser(61, "u", "U"),
+        message=FakeMessage(user=FakeUser(61, "u", "U")),
+    )
+
+    await handle_work_format_callback(
+        callback,
+        state,
+        config=config,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
 
 
 @pytest.mark.asyncio

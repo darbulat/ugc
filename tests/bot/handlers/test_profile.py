@@ -5,24 +5,53 @@ from uuid import UUID
 
 import pytest
 
-from tests.helpers.factories import create_test_user
+from tests.helpers.factories import (
+    create_test_advertiser_profile,
+    create_test_blogger_profile,
+    create_test_user,
+)
 from tests.helpers.fakes import (
+    FakeCallback,
     FakeFSMContext,
     FakeMessage,
+    FakeMessengerClient,
     FakeUser,
 )
+from tests.helpers.services import build_profile_service
+from ugc_bot.application.services.advertiser_registration_service import (
+    AdvertiserRegistrationService,
+)
+from ugc_bot.application.services.blogger_registration_service import (
+    BloggerRegistrationService,
+)
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_PROFILE_AGREE,
+    CALLBACK_PROFILE_AUDIENCE_F,
+    CALLBACK_PROFILE_EDIT,
+    CALLBACK_PROFILE_EDIT_FIELD_PREFIX,
+    CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
+    CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
+    CALLBACK_PROFILE_MY_PROFILE,
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
 )
 from ugc_bot.bot.handlers.profile import (
+    _ADVERTISER_AGREEMENTS_STATE,
+    _BLOGGER_AGREEMENTS_STATE,
     EditProfileStates,
     edit_profile_choose_field,
     edit_profile_choose_type,
     edit_profile_enter_value,
     edit_profile_start,
+    handle_profile_agree_callback,
+    handle_profile_edit_callback,
+    handle_profile_edit_choice_callback,
+    handle_profile_edit_field_callback,
+    handle_profile_edit_type_callback,
+    handle_profile_my_profile_callback,
     show_profile,
 )
 from ugc_bot.config import AppConfig
@@ -32,6 +61,9 @@ from ugc_bot.domain.enums import (
     BloggerGender,
     MessengerType,
     WorkFormat,
+)
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
 )
 
 
@@ -265,6 +297,34 @@ async def test_show_profile_missing_user() -> None:
 
 
 @pytest.mark.asyncio
+async def test_show_profile_shows_agreement_when_not_confirmed(
+    user_repo,
+) -> None:
+    """When user has profile but no agreement, show agreement and set state."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000809"),
+        external_id="9",
+        username="u",
+        agreement_confirmed_at=None,
+    )
+    message = FakeMessage(user=FakeUser(9))
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    state = FakeFSMContext()
+    await show_profile(message, service, state, _profile_test_config())
+    assert message.answers
+    first = (
+        message.answers[0][0]
+        if isinstance(message.answers[0], tuple)
+        else message.answers[0]
+    )
+    assert "согласи" in first.lower()
+    assert state.state == _BLOGGER_AGREEMENTS_STATE
+
+
+@pytest.mark.asyncio
 async def test_show_profile_missing_profiles(user_repo) -> None:
     """Show hints when role profiles are missing."""
 
@@ -323,7 +383,11 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    rows = (
+        getattr(keyboard, "inline_keyboard", None)
+        or getattr(keyboard, "rows", None)
+        or getattr(keyboard, "keyboard", None)
+    )
     assert rows is not None
     # blogger_profile_view_keyboard: Edit profile, Confirm Instagram, My profile
     assert len(rows) == 3
@@ -356,7 +420,11 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    rows = (
+        getattr(keyboard, "inline_keyboard", None)
+        or getattr(keyboard, "rows", None)
+        or getattr(keyboard, "keyboard", None)
+    )
     assert rows is not None
     # blogger_profile_view_keyboard when confirmed: Edit profile, My profile
     assert len(rows) == 2
@@ -385,10 +453,517 @@ async def test_show_profile_advertiser_keyboard(user_repo) -> None:
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    rows = (
+        getattr(keyboard, "inline_keyboard", None)
+        or getattr(keyboard, "rows", None)
+        or getattr(keyboard, "keyboard", None)
+    )
     assert rows is not None
     assert any(
         btn.text == MY_PROFILE_BUTTON_TEXT for row in rows for btn in row
+    )
+
+
+@pytest.mark.asyncio
+async def test_profile_agree_callback_blogger_confirms_and_shows_profile(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Profile agree callback confirms blogger agreement and shows profile."""
+    user = await create_test_user(
+        user_repo,
+        external_id="60",
+        username="blogger_cb",
+        agreement_confirmed_at=None,
+    )
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=False
+    )
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    blogger_reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    adv_reg_service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+    await state.update_data(user_id=user.user_id)
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AGREE,
+        user=FakeUser(60, "blogger_cb", "User"),
+        message=FakeMessage(user=FakeUser(60, "blogger_cb", "User")),
+    )
+
+    await handle_profile_agree_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        user_role_service=user_role_service,
+        blogger_registration_service=blogger_reg_service,
+        advertiser_registration_service=adv_reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) >= 1
+    assert any(
+        "instagram" in s["text"].lower() or "профиль" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_profile_agree_callback_wrong_state_only_answers(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """When state is not agreements, callback only answers."""
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    adv_reg = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.choosing_field.state)
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AGREE,
+        user=FakeUser(61, "u", "U"),
+        message=FakeMessage(user=FakeUser(61, "u", "U")),
+    )
+
+    await handle_profile_agree_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        user_role_service=user_role_service,
+        blogger_registration_service=blogger_reg,
+        advertiser_registration_service=adv_reg,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_profile_agree_callback_no_user_id_sends_expired(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """When user_id missing in state, send session expired and clear."""
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    adv_reg = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AGREE,
+        user=FakeUser(62, "u", "U"),
+        message=FakeMessage(user=FakeUser(62, "u", "U")),
+    )
+
+    await handle_profile_agree_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        user_role_service=user_role_service,
+        blogger_registration_service=blogger_reg,
+        advertiser_registration_service=adv_reg,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    assert state.cleared
+
+
+@pytest.mark.asyncio
+async def test_profile_agree_callback_advertiser_confirms_and_shows_profile(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Profile agree callback for advertiser confirms and shows profile."""
+    from tests.helpers.factories import create_test_advertiser_profile
+
+    user = await create_test_user(
+        user_repo,
+        external_id="63",
+        username="adv_cb",
+        agreement_confirmed_at=None,
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    adv_reg = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
+    await state.update_data(user_id=user.user_id)
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AGREE,
+        user=FakeUser(63, "adv_cb", "User"),
+        message=FakeMessage(user=FakeUser(63, "adv_cb", "User")),
+    )
+
+    await handle_profile_agree_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        user_role_service=user_role_service,
+        blogger_registration_service=blogger_reg,
+        advertiser_registration_service=adv_reg,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.sent_text) >= 1
+    assert any(
+        "Создать заказ" in s["text"] or "профиль" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_callback_user_not_found(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit callback when user not in DB sends 'Профиль не найден'."""
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT,
+        user=FakeUser(999),
+        message=FakeMessage(user=FakeUser(999)),
+    )
+    await handle_profile_edit_callback(
+        callback,
+        FakeFSMContext(),
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("Профиль не найден" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_callback_no_profiles(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit callback when user has no blogger/advertiser profile."""
+    await create_test_user(user_repo, external_id="70", username="noprofile")
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT,
+        user=FakeUser(70),
+        message=FakeMessage(user=FakeUser(70)),
+    )
+    await handle_profile_edit_callback(
+        callback,
+        FakeFSMContext(),
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("Профиль не заполнен" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_callback_both_profiles(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit callback when user has both profiles shows type choice."""
+    user = await create_test_user(user_repo, external_id="71", username="both")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT,
+        user=FakeUser(71),
+        message=FakeMessage(user=FakeUser(71)),
+    )
+    state = FakeFSMContext()
+    await handle_profile_edit_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "Выберите профиль для редактирования" in s["text"]
+        for s in client.sent_text
+    )
+    assert state.state == EditProfileStates.choosing_profile_type.state
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_callback_blogger_only(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit callback with only blogger profile shows field list."""
+    user = await create_test_user(user_repo, external_id="72", username="blog")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT,
+        user=FakeUser(72),
+        message=FakeMessage(user=FakeUser(72)),
+    )
+    state = FakeFSMContext()
+    await handle_profile_edit_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "Выберите раздел для редактирования" in s["text"]
+        for s in client.sent_text
+    )
+    assert state._data.get("edit_profile_type") == "blogger"
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_my_profile_callback_shows_agreement(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """My profile callback when agreement not confirmed sends agreement."""
+    user = await create_test_user(
+        user_repo,
+        external_id="73",
+        username="mp",
+        agreement_confirmed_at=None,
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MY_PROFILE,
+        user=FakeUser(73),
+        message=FakeMessage(user=FakeUser(73)),
+    )
+    state = FakeFSMContext()
+    await handle_profile_my_profile_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("согласи" in s["text"].lower() for s in client.sent_text)
+    assert state.state == _BLOGGER_AGREEMENTS_STATE
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_type_callback_blogger(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit type callback blogger shows blogger field list."""
+    user = await create_test_user(user_repo, external_id="74", username="et")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="74",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
+        user=FakeUser(74),
+        message=FakeMessage(user=FakeUser(74)),
+    )
+    await handle_profile_edit_type_callback(
+        callback,
+        state,
+        config=_profile_test_config(),
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "Выберите раздел для редактирования" in s["text"]
+        for s in client.sent_text
+    )
+    assert state._data.get("edit_profile_type") == "blogger"
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_type_callback_advertiser(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit type callback advertiser shows advertiser field list."""
+    user = await create_test_user(
+        user_repo, external_id="75", username="et_adv"
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="75",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
+        user=FakeUser(75),
+        message=FakeMessage(user=FakeUser(75)),
+    )
+    await handle_profile_edit_type_callback(
+        callback,
+        state,
+        config=_profile_test_config(),
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "Выберите раздел для редактирования" in s["text"]
+        for s in client.sent_text
+    )
+    assert state._data.get("edit_profile_type") == "advertiser"
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_nickname(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback for nickname sends name prompt."""
+    user = await create_test_user(user_repo, external_id="76", username="ef")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="76",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}nickname",
+        user=FakeUser(76),
+        message=FakeMessage(user=FakeUser(76)),
+    )
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("новое имя" in s["text"].lower() for s in client.sent_text)
+    assert state._data.get("editing_field") == "nickname"
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_choice_callback_audience_gender(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit choice callback for audience_gender updates and shows profile."""
+    user = await create_test_user(
+        user_repo, external_id="77", username="choice"
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="77",
+        edit_profile_type="blogger",
+        editing_field="audience_gender",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AUDIENCE_F,
+        user=FakeUser(77),
+        message=FakeMessage(user=FakeUser(77)),
+    )
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "обновлён" in s["text"] or "профиль" in s["text"].lower()
+        for s in client.sent_text
     )
 
 
@@ -504,7 +1079,12 @@ async def test_edit_profile_choose_field_invalid(user_repo) -> None:
         role_service,
     )
     assert message.answers
-    assert "Выберите один из разделов" in message.answers[0]
+    first = (
+        message.answers[0][0]
+        if isinstance(message.answers[0], tuple)
+        else message.answers[0]
+    )
+    assert "Выберите один из разделов" in first
 
 
 @pytest.mark.asyncio
@@ -594,7 +1174,11 @@ async def test_edit_profile_choose_field_blogger_gender(user_repo) -> None:
     assert state._data.get("editing_field") == "blogger_gender"
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    rows = (
+        getattr(keyboard, "inline_keyboard", None)
+        or getattr(keyboard, "rows", None)
+        or getattr(keyboard, "keyboard", None)
+    )
     assert rows is not None
     assert any(b.text == "Мужской" for row in rows for b in row)
     assert any(b.text == "Женский" for row in rows for b in row)
@@ -2600,10 +3184,11 @@ async def test_edit_profile_choose_field_audience_gender(user_repo) -> None:
     )
     assert state._data.get("editing_field") == "audience_gender"
     assert message.reply_markups
+    kbd = message.reply_markups[0]
     rows = (
-        message.reply_markups[0].rows
-        if hasattr(message.reply_markups[0], "rows")
-        else message.reply_markups[0].keyboard
+        getattr(kbd, "inline_keyboard", None)
+        or getattr(kbd, "rows", None)
+        or getattr(kbd, "keyboard", None)
     )
     assert any("женщины" in (b.text or "") for row in rows for b in row)
 
@@ -2633,7 +3218,11 @@ async def test_edit_profile_choose_field_audience_age(user_repo) -> None:
     )
     assert state._data.get("editing_field") == "audience_age"
     kbd = message.reply_markups[0]
-    rows = kbd.rows if hasattr(kbd, "rows") else getattr(kbd, "keyboard", [])
+    rows = (
+        getattr(kbd, "inline_keyboard", None)
+        or getattr(kbd, "rows", None)
+        or getattr(kbd, "keyboard", [])
+    )
     assert any("18" in (b.text or "") for row in rows for b in row)
 
 
@@ -2689,7 +3278,11 @@ async def test_edit_profile_choose_field_work_format(user_repo) -> None:
     )
     assert state._data.get("editing_field") == "work_format"
     kbd = message.reply_markups[0]
-    rows = kbd.rows if hasattr(kbd, "rows") else getattr(kbd, "keyboard", [])
+    rows = (
+        getattr(kbd, "inline_keyboard", None)
+        or getattr(kbd, "rows", None)
+        or getattr(kbd, "keyboard", [])
+    )
     assert any(
         WORK_FORMAT_ADS_BUTTON_TEXT in (b.text or "")
         for row in rows
