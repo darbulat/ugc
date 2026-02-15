@@ -148,13 +148,19 @@ class TelegramMessengerClient(MessengerClient):
         keyboard: Keyboard | None = None,
     ) -> None:
         """Edit message keyboard (or remove)."""
-        await self._with_retry(
-            lambda: self._bot.edit_message_reply_markup(
-                chat_id=int(chat_id),
-                message_id=int(message_id),
-                reply_markup=_build_markup(keyboard),
+        try:
+            await self._with_retry(
+                lambda: self._bot.edit_message_reply_markup(
+                    chat_id=int(chat_id),
+                    message_id=int(message_id),
+                    reply_markup=_build_markup(keyboard),
+                )
             )
-        )
+        except TelegramBadRequest as exc:
+            msg = (getattr(exc, "message", None) or str(exc)).lower()
+            if "message is not modified" not in msg:
+                raise
+            # Keyboard already removed or unchanged — treat as success
 
     async def answer_callback(
         self,

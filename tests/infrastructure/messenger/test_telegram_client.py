@@ -8,7 +8,7 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
     TelegramNetworkError,
 )
-from aiogram.methods import SendMessage
+from aiogram.methods import EditMessageReplyMarkup, SendMessage
 
 from ugc_bot.application.messenger.dto import (
     Button,
@@ -116,6 +116,27 @@ async def test_edit_reply_markup(fake_bot: MagicMock) -> None:
     fake_bot.edit_message_reply_markup.assert_called_once()
     call_kwargs = fake_bot.edit_message_reply_markup.call_args[1]
     assert call_kwargs["reply_markup"] is not None
+
+
+@pytest.mark.asyncio
+async def test_edit_reply_markup_ignores_not_modified_when_removing_keyboard(
+    fake_bot: MagicMock,
+) -> None:
+    """Removing keyboard doesn't raise on Telegram 'message is not modified'."""
+    fake_bot.edit_message_reply_markup.side_effect = TelegramBadRequest(
+        message=(
+            "message is not modified: specified new message content and reply "
+            "markup are exactly the same as a current content and reply markup"
+        ),
+        method=EditMessageReplyMarkup(chat_id=0, message_id=0),
+    )
+    client = TelegramMessengerClient(bot=fake_bot)
+    await client.edit_reply_markup(
+        chat_id="123",
+        message_id="42",
+        keyboard=None,
+    )
+    fake_bot.edit_message_reply_markup.assert_called_once()
 
 
 @pytest.mark.asyncio
