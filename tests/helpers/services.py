@@ -104,6 +104,7 @@ def build_payment_service(
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     order_repo: InMemoryOrderRepository,
     payment_repo: InMemoryPaymentRepository,
+    pricing_repo: InMemoryContactPricingRepository,
     transaction_manager: object,
 ) -> PaymentService:
     """Build payment service for tests.
@@ -113,6 +114,7 @@ def build_payment_service(
         advertiser_repo: Advertiser profile repository
         order_repo: Order repository
         payment_repo: Payment repository
+        pricing_repo: Contact pricing repository (for amount validation)
         transaction_manager: Transaction manager (required)
 
     Returns:
@@ -123,6 +125,7 @@ def build_payment_service(
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
+        pricing_repo=pricing_repo,
         transaction_manager=transaction_manager,
     )
 

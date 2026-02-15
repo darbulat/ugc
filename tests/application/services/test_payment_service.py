@@ -7,11 +7,21 @@ from uuid import UUID
 
 import pytest
 
-from tests.helpers.factories import create_test_advertiser, create_test_order
+from tests.helpers.factories import (
+    create_test_advertiser,
+    create_test_contact_pricing,
+    create_test_order,
+)
 from tests.helpers.services import build_payment_service
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.services.payment_service import PaymentService
-from ugc_bot.domain.entities import AdvertiserProfile, Order, Payment, User
+from ugc_bot.domain.entities import (
+    AdvertiserProfile,
+    ContactPricing,
+    Order,
+    Payment,
+    User,
+)
 from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
@@ -28,10 +38,14 @@ async def test_confirm_payment_success(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """Confirm payment activates order and stores payment."""
 
+    await create_test_contact_pricing(
+        pricing_repo, bloggers_count=3, price=1000.0
+    )
     user_id = await create_test_advertiser(user_repo, advertiser_repo)
     order = await create_test_order(order_repo, user_id)
     order_id = order.order_id
@@ -41,6 +55,7 @@ async def test_confirm_payment_success(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     payment = await service.confirm_telegram_payment(
@@ -67,10 +82,14 @@ async def test_confirm_payment_idempotent(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """Return existing payment if already paid."""
 
+    await create_test_contact_pricing(
+        pricing_repo, bloggers_count=3, price=1000.0
+    )
     user_id = await create_test_advertiser(user_repo, advertiser_repo)
     order = await create_test_order(order_repo, user_id)
     order_id = order.order_id
@@ -93,6 +112,7 @@ async def test_confirm_payment_idempotent(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     payment = await service.confirm_telegram_payment(
@@ -107,7 +127,7 @@ async def test_confirm_payment_idempotent(
 
 @pytest.mark.asyncio
 async def test_confirm_payment_requires_transaction_manager(
-    user_repo, advertiser_repo, order_repo, payment_repo
+    user_repo, advertiser_repo, order_repo, payment_repo, pricing_repo
 ) -> None:
     """Raise when transaction_manager is None."""
     user_id = await create_test_advertiser(user_repo, advertiser_repo)
@@ -118,6 +138,7 @@ async def test_confirm_payment_requires_transaction_manager(
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
+        pricing_repo=pricing_repo,
         transaction_manager=None,
     )
     with pytest.raises(ValueError, match="transaction_manager"):
@@ -137,6 +158,7 @@ async def test_confirm_payment_invalid_user(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """Fail when user missing."""
@@ -146,6 +168,7 @@ async def test_confirm_payment_invalid_user(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
 
@@ -166,6 +189,7 @@ async def test_confirm_payment_missing_profile(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """Fail when advertiser profile missing."""
@@ -183,6 +207,7 @@ async def test_confirm_payment_missing_profile(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     with pytest.raises(OrderCreationError):
@@ -240,6 +265,15 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
     order_repo.get_by_id = AsyncMock(return_value=order)
     order_repo.save = AsyncMock()
 
+    pricing_repo = Mock()
+    pricing_repo.get_by_bloggers_count = AsyncMock(
+        return_value=ContactPricing(
+            bloggers_count=3,
+            price=1000.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
     session_marker = object()
 
     @asynccontextmanager
@@ -254,6 +288,7 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
+        pricing_repo=pricing_repo,
         transaction_manager=transaction_manager,
     )
 
@@ -282,6 +317,7 @@ async def test_confirm_payment_order_not_found(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """Fail when order does not exist."""
@@ -292,6 +328,7 @@ async def test_confirm_payment_order_not_found(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     with pytest.raises(OrderCreationError):
@@ -311,6 +348,7 @@ async def test_confirm_payment_wrong_owner(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """Fail when order belongs to another advertiser."""
@@ -334,6 +372,7 @@ async def test_confirm_payment_wrong_owner(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     with pytest.raises(OrderCreationError):
@@ -353,6 +392,7 @@ async def test_get_order_with_transaction_manager(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """get_order uses transaction_manager when provided."""
@@ -364,6 +404,7 @@ async def test_get_order_with_transaction_manager(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     found = await service.get_order(order.order_id)
@@ -373,7 +414,7 @@ async def test_get_order_with_transaction_manager(
 
 @pytest.mark.asyncio
 async def test_get_order_without_transaction_manager(
-    user_repo, advertiser_repo, order_repo, payment_repo
+    user_repo, advertiser_repo, order_repo, payment_repo, pricing_repo
 ) -> None:
     """get_order uses order_repo directly when transaction_manager is None."""
 
@@ -384,6 +425,7 @@ async def test_get_order_without_transaction_manager(
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
+        pricing_repo=pricing_repo,
         transaction_manager=None,
     )
     found = await service.get_order(order.order_id)
@@ -398,10 +440,14 @@ async def test_confirm_payment_order_not_new(
     advertiser_repo,
     order_repo,
     payment_repo,
+    pricing_repo,
     outbox_repo,
 ) -> None:
     """Fail when order is not NEW."""
 
+    await create_test_contact_pricing(
+        pricing_repo, bloggers_count=3, price=1000.0
+    )
     user_id = await create_test_advertiser(user_repo, advertiser_repo)
     order = await create_test_order(order_repo, user_id)
     order_id = order.order_id
@@ -416,6 +462,7 @@ async def test_confirm_payment_order_not_new(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     with pytest.raises(OrderCreationError):
@@ -425,4 +472,75 @@ async def test_confirm_payment_order_not_new(
             "charge",
             1000,
             "RUB",
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_payment_amount_mismatch(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    pricing_repo,
+    outbox_repo,
+) -> None:
+    """Fail when total_amount does not match expected price for bloggers."""
+
+    await create_test_contact_pricing(
+        pricing_repo, bloggers_count=3, price=1000.0
+    )
+    user_id = await create_test_advertiser(user_repo, advertiser_repo)
+    order = await create_test_order(order_repo, user_id, bloggers_needed=3)
+    service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    with pytest.raises(
+        OrderCreationError, match="Payment amount does not match"
+    ):
+        await service.confirm_telegram_payment(
+            user_id,
+            order.order_id,
+            "charge_1",
+            total_amount=50000,
+            currency="RUB",
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_payment_pricing_not_configured(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    pricing_repo,
+    outbox_repo,
+) -> None:
+    """Fail when contact pricing is not configured for order bloggers_needed."""
+
+    user_id = await create_test_advertiser(user_repo, advertiser_repo)
+    order = await create_test_order(order_repo, user_id, bloggers_needed=99)
+    service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    with pytest.raises(
+        OrderCreationError, match="Contact pricing not configured"
+    ):
+        await service.confirm_telegram_payment(
+            user_id,
+            order.order_id,
+            "charge_1",
+            total_amount=100000,
+            currency="RUB",
         )

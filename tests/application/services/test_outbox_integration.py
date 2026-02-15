@@ -17,6 +17,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
+    InMemoryContactPricingRepository,
     InMemoryOrderRepository,
     InMemoryOutboxRepository,
     InMemoryPaymentRepository,
@@ -52,6 +53,7 @@ class TestOutboxIntegration:
         advertiser_repo = InMemoryAdvertiserProfileRepository()
         order_repo = InMemoryOrderRepository()
         payment_repo = InMemoryPaymentRepository()
+        pricing_repo = InMemoryContactPricingRepository()
         outbox_repo = InMemoryOutboxRepository()
 
         user = User(
@@ -87,11 +89,17 @@ class TestOutboxIntegration:
         )
         await order_repo.save(order)
 
+        from tests.helpers.factories import create_test_contact_pricing
+
+        await create_test_contact_pricing(
+            pricing_repo, bloggers_count=3, price=1000.0
+        )
         payment_service = PaymentService(
             user_repo=user_repo,
             advertiser_repo=advertiser_repo,
             order_repo=order_repo,
             payment_repo=payment_repo,
+            pricing_repo=pricing_repo,
             transaction_manager=fake_tm,
         )
 

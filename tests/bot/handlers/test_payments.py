@@ -6,6 +6,7 @@ import pytest
 
 from tests.helpers.factories import (
     create_test_advertiser_profile,
+    create_test_contact_pricing,
     create_test_order,
     create_test_user,
 )
@@ -78,6 +79,7 @@ async def test_pay_order_success(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -159,6 +161,7 @@ async def test_pay_order_missing_provider_token(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -239,6 +242,7 @@ async def test_pay_order_invalid_args(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -294,6 +298,7 @@ async def test_pay_order_invalid_uuid(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -349,6 +354,7 @@ async def test_pay_order_order_not_found(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -406,6 +412,7 @@ async def test_pay_order_wrong_owner(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -478,6 +485,7 @@ async def test_pay_order_not_new_status(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -543,6 +551,7 @@ async def test_pay_order_blocked_user(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -603,6 +612,7 @@ async def test_pay_order_paused_user(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -663,6 +673,7 @@ async def test_pay_order_missing_profile(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(
@@ -750,12 +761,16 @@ async def test_successful_payment_handler(
 ) -> None:
     """Confirm payment on successful payment message."""
 
+    await create_test_contact_pricing(
+        pricing_repo, bloggers_count=3, price=1000.0
+    )
     user_service = UserRoleService(user_repo=user_repo)
     payment_service = build_payment_service(
         user_repo,
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
 
@@ -827,6 +842,7 @@ async def test_successful_payment_invalid_payload(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     user = await create_test_user(
@@ -878,6 +894,7 @@ async def test_successful_payment_user_not_found(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
 
@@ -1008,6 +1025,7 @@ async def test_successful_payment_handler_no_payment_returns(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     await create_test_user(
@@ -1139,6 +1157,7 @@ async def test_pay_order_contact_price_not_configured(
         advertiser_repo,
         order_repo,
         payment_repo,
+        pricing_repo,
         fake_tm,
     )
     profile_service = build_profile_service(

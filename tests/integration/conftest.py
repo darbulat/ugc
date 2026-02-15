@@ -284,6 +284,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         advertiser_repo=advertiser_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
+        pricing_repo=pricing_repo,
         transaction_manager=transaction_manager,
     )
     dispatcher["contact_pricing_service"] = ContactPricingService(

@@ -66,9 +66,10 @@ class AdminAuth(AuthenticationBackend):
         return True
 
     async def authenticate(self, request: Request) -> bool:
-        """Check current session."""
+        """Check current session (constant-time to prevent timing attacks)."""
 
-        return request.session.get("admin_token") == self._token
+        token = request.session.get("admin_token") or ""
+        return hmac.compare_digest(token, self._token)
 
 
 def _verify_credentials(

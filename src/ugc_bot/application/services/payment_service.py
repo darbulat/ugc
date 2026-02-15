@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
+    ContactPricingRepository,
     OrderRepository,
     PaymentRepository,
     TransactionManager,
@@ -29,6 +30,7 @@ class PaymentService:
     advertiser_repo: AdvertiserProfileRepository
     order_repo: OrderRepository
     payment_repo: PaymentRepository
+    pricing_repo: ContactPricingRepository
     provider: str = "yookassa_telegram"
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
@@ -101,6 +103,19 @@ class PaymentService:
             )
             if existing and existing.status == PaymentStatus.PAID:
                 return existing
+
+            pricing = await self.pricing_repo.get_by_bloggers_count(
+                order.bloggers_needed, session=session
+            )
+            if pricing is None:
+                raise OrderCreationError(
+                    "Contact pricing not configured for this bloggers count."
+                )
+            expected_amount_minor = round(pricing.price * 100)
+            if total_amount != expected_amount_minor:
+                raise OrderCreationError(
+                    "Payment amount does not match order price."
+                )
 
             now = datetime.now(timezone.utc)
             payment = Payment(

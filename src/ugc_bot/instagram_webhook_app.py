@@ -102,7 +102,9 @@ async def verify_webhook(request: Request) -> Response:
         logger.warning("Invalid hub.mode in verification request")
         raise HTTPException(status_code=400, detail="Invalid mode")
 
-    if hub_verify_token != config.instagram.instagram_webhook_verify_token:
+    expected_token = config.instagram.instagram_webhook_verify_token or ""
+    received_token = hub_verify_token or ""
+    if not hmac.compare_digest(received_token, expected_token):
         logger.warning("Invalid verify token in verification request")
         raise HTTPException(status_code=403, detail="Invalid verify token")
 
