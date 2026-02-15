@@ -154,7 +154,11 @@ async def _send_via_messenger_client(
             )
             return True
     except Exception:
-        pass
+        logger.warning(
+            "Failed to send error message to user",
+            exc_info=True,
+            extra={"event_type": type(event).__name__},
+        )
     return False
 
 

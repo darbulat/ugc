@@ -144,7 +144,7 @@ class ReferralIncomeService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def get_referral_balances_batch(
+    async def get_referral_balances_batch(  # noqa: C901
         self,
         user_ids: List[UUID],
         now: Optional[datetime] = None,
@@ -216,6 +216,8 @@ class ReferralIncomeService:
                     uid: 0.0 for uid in user_ids
                 }
                 for referrer_uid, row in rows_with_referrer:
+                    if not row.bloggers_needed:
+                        continue
                     rate = _effective_rate(
                         row.creator_created_at,
                         row.order_completed_at,
@@ -279,6 +281,8 @@ class ReferralIncomeService:
         income_total = 0.0
         seen_orders: set[UUID] = set()
         for row in rows:
+            if not row.bloggers_needed:
+                continue
             platform_revenue = row.payment_amount / row.bloggers_needed
             rate = _effective_rate(
                 row.creator_created_at, row.order_completed_at, custom_rate

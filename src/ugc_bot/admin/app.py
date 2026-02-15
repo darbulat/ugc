@@ -854,8 +854,10 @@ class UserAdmin(ModelView, model=UserModel):
                             },
                         )
             except Exception:
-                # If logging fails, don't break the update
-                pass
+                logger.exception(
+                    "Failed to log user blocked via admin",
+                    extra={"pk": pk},
+                )
 
         return result
 
@@ -1110,8 +1112,13 @@ class InteractionAdmin(ModelView, model=InteractionModel):
                         UUID(pk), new_status
                     )
             except Exception:
-                # If service call fails, the status change is already saved
-                pass
+                logger.exception(
+                    "manually_resolve_issue failed after admin status change",
+                    extra={
+                        "interaction_id": pk,
+                        "new_status": str(new_status),
+                    },
+                )
 
         return result
 
@@ -1204,8 +1211,13 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
                         reported_id, UserStatus.BLOCKED
                     )
             except Exception:
-                # If service call fails, the status change is already saved
-                pass
+                logger.exception(
+                    "resolve complaint and block user failed (ACTION_TAKEN)",
+                    extra={
+                        "complaint_id": pk,
+                        "reported_id": str(reported_id),
+                    },
+                )
         elif (
             old_status != new_status and new_status == ComplaintStatus.DISMISSED
         ):
@@ -1216,8 +1228,10 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
                     # Update complaint status via service (sets reviewed_at)
                     await complaint_service.dismiss_complaint(UUID(pk))
             except Exception:
-                # If service call fails, the status change is already saved
-                pass
+                logger.exception(
+                    "Failed to run dismiss_complaint after admin set DISMISSED",
+                    extra={"complaint_id": pk},
+                )
 
         return result
 

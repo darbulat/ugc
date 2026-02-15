@@ -1110,6 +1110,7 @@ async def _handle_feedback_status_flow(
             messenger_client,
         )
     except Exception:
+        logger.exception("Error in feedback handler")
         await callback.answer("Произошла ошибка. Попробуйте позже.")
         return
 
