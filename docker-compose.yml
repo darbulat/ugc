@@ -249,6 +249,7 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_LOG4J_ROOT_LOGLEVEL: WARN
     expose:
       - "2181"
     healthcheck:
@@ -418,6 +419,7 @@ services:
     image: grafana/loki:latest
     command:
       - "-config.file=/etc/loki/loki.yml"
+      - "-log.level=warn"
     volumes:
       - ./config/monitoring/loki.yml:/etc/loki/loki.yml:ro
       - ./config/monitoring/loki-alerts:/loki/rules:ro
