@@ -10,6 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 # Application errors are handled by ErrorHandlerMiddleware
+from ugc_bot.application.messenger.dto import IncomingCallback
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -52,6 +53,19 @@ from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+async def _remove_inline_keyboard_from_callback(
+    incoming: IncomingCallback,
+    messenger_client: MessengerClient,
+) -> None:
+    """Remove inline keyboard from the message that triggered the callback."""
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
 
 
 ADVERTISER_FLOW_TYPE = "advertiser_registration"
@@ -199,6 +213,7 @@ async def handle_advertiser_start_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
@@ -500,12 +515,14 @@ async def handle_advertiser_agreements_callback(
     current = await state.get_state()
     if current != AdvertiserRegistrationStates.agreements.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
 
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Сессия истекла. Начните заново.",
@@ -514,6 +531,7 @@ async def handle_advertiser_agreements_callback(
         return
 
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await advertiser_registration_service.confirm_advertiser_agreement(
         user_id=user_id,
     )

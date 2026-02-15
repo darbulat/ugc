@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from ugc_bot.application.messenger.dto import IncomingCallback
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -88,6 +89,19 @@ from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+async def _remove_inline_keyboard_from_callback(
+    incoming: IncomingCallback,
+    messenger_client: MessengerClient,
+) -> None:
+    """Remove inline keyboard from the message that triggered the callback."""
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
 
 
 @router.message(Command("create_order"))
@@ -173,6 +187,7 @@ async def start_order_creation_from_profile_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     state_store = AiogramStateStore(state)
     user = await get_user_and_ensure_allowed_callback(
         incoming,
@@ -234,14 +249,17 @@ async def handle_order_agree_callback(
     current = await state.get_state()
     if current != _ADVERTISER_AGREEMENTS_STATE:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = await state_store.get_data()
     if data.get("flow_type") != "order_creation":
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Сессия истекла. Начните заново с «Создать заказ».",
@@ -249,6 +267,7 @@ async def handle_order_agree_callback(
         await state_store.clear()
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await advertiser_registration_service.confirm_advertiser_agreement(
         user_id=user_id,
     )
@@ -279,6 +298,7 @@ async def handle_order_type_callback(
     current = await state.get_state()
     if current != OrderCreationStates.order_type.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = incoming.data or ""
     if data == CALLBACK_ORDER_TYPE_UGC:
@@ -287,8 +307,10 @@ async def handle_order_type_callback(
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(order_type=order_type.value)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -394,6 +416,7 @@ async def handle_cooperation_format_callback(
     current = await state.get_state()
     if current != OrderCreationStates.cooperation_format.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = incoming.data or ""
     coop_map = {
@@ -403,9 +426,11 @@ async def handle_cooperation_format_callback(
     }
     if data not in coop_map:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     text = coop_map[data]
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(cooperation_format=text)
     if text == COOP_PAYMENT:
         await messenger_client.send_text(
@@ -615,12 +640,15 @@ async def handle_bloggers_needed_callback(
     current = await state.get_state()
     if current != OrderCreationStates.bloggers_needed.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     bloggers_needed = _parse_bloggers_callback_data(incoming.data or "")
     if bloggers_needed is None or bloggers_needed not in allowed_blogger_counts:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(bloggers_needed=bloggers_needed)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -721,9 +749,11 @@ async def handle_order_photo_callback(
     current = await state.get_state()
     if current != OrderCreationStates.order_photo.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = incoming.data or ""
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     if data == CALLBACK_ORDER_PHOTO_SKIP:
         await state_store.update_data(product_photo_file_id=None)
         await messenger_client.send_text(
@@ -868,12 +898,15 @@ async def handle_content_usage_callback(
     current = await state.get_state()
     if current != OrderCreationStates.content_usage.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     content_usage_offer = _content_usage_from_callback(incoming.data or "")
     if content_usage_offer is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(content_usage=content_usage_offer)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -915,12 +948,15 @@ async def handle_deadlines_callback(
     current = await state.get_state()
     if current != OrderCreationStates.deadlines.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     deadlines_offer = _deadlines_offer_from_callback(incoming.data or "")
     if deadlines_offer is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(deadlines=deadlines_offer)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,

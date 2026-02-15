@@ -9,7 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 # Application errors are handled by ErrorHandlerMiddleware
-from ugc_bot.application.messenger.dto import Button
+from ugc_bot.application.messenger.dto import Button, IncomingCallback
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -75,6 +75,20 @@ from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+async def _remove_inline_keyboard_from_callback(
+    incoming: IncomingCallback,
+    messenger_client: MessengerClient,
+) -> None:
+    """Remove inline keyboard from the message that triggered the callback."""
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+
 
 CREATOR_CHOOSE_ACTION_TEXT = "Выберите действие:"
 CREATOR_INTRO_NOT_REGISTERED = (
@@ -219,6 +233,7 @@ async def start_registration_inline(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
@@ -399,12 +414,15 @@ async def handle_blogger_gender_callback(
     current = await state.get_state()
     if current != BloggerRegistrationStates.blogger_gender.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     blogger_gender = _blogger_gender_from_callback(incoming.data or "")
     if blogger_gender is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(blogger_gender=blogger_gender)
     topics_text = (
         "О чём ваш контент?\n"
@@ -553,12 +571,15 @@ async def handle_audience_gender_callback(
     current = await state.get_state()
     if current != BloggerRegistrationStates.audience_gender.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     audience_gender = _audience_gender_from_callback(incoming.data or "")
     if audience_gender is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(audience_gender=audience_gender)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -721,13 +742,16 @@ async def handle_audience_age_callback(
     current = await state.get_state()
     if current != BloggerRegistrationStates.audience_age.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = incoming.data or ""
     if data not in _AGE_CALLBACK_TO_RANGE:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     min_age, max_age = _AGE_CALLBACK_TO_RANGE[data]
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(
         audience_age_min=min_age, audience_age_max=max_age
     )
@@ -851,9 +875,11 @@ async def handle_barter_callback(
     current = await state.get_state()
     if current != BloggerRegistrationStates.barter.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     barter = incoming.data == CALLBACK_BLOGGER_BARTER_Y
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(barter=barter)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -955,12 +981,15 @@ async def handle_work_format_callback(
     current = await state.get_state()
     if current != BloggerRegistrationStates.work_format.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     work_format = _work_format_from_callback(incoming.data or "")
     if work_format is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(work_format=work_format)
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
@@ -1135,12 +1164,14 @@ async def handle_agreements_callback(
     current = await state.get_state()
     if current != BloggerRegistrationStates.agreements.state:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
 
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Сессия истекла. Начните заново.",
@@ -1148,6 +1179,7 @@ async def handle_agreements_callback(
         await state_store.clear()
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     try:
         telegram_username = getattr(incoming.user, "username", None)
         await blogger_registration_service.confirm_blogger_agreement(

@@ -11,7 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.messenger.context import MessageContext
-from ugc_bot.application.messenger.dto import IncomingMessage
+from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -670,6 +670,19 @@ class EditProfileStates(StatesGroup):
     entering_value = State()
 
 
+async def _remove_inline_keyboard_from_callback(
+    incoming: IncomingCallback,
+    messenger_client: MessengerClient,
+) -> None:
+    """Remove inline keyboard from the message that triggered the callback."""
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+
+
 @router.message(Command("profile"))
 @router.message(lambda msg: (msg.text or "").strip() == MY_PROFILE_BUTTON_TEXT)
 async def show_profile(
@@ -760,11 +773,13 @@ async def handle_profile_agree_callback(
     current = await state.get_state()
     if current not in (_BLOGGER_AGREEMENTS_STATE, _ADVERTISER_AGREEMENTS_STATE):
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = await state.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Сессия истекла. Откройте «Мой профиль» снова.",
@@ -772,6 +787,7 @@ async def handle_profile_agree_callback(
         await state.clear()
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     if current == _BLOGGER_AGREEMENTS_STATE:
         telegram_username = getattr(incoming.user, "username", None)
         await blogger_registration_service.confirm_blogger_agreement(
@@ -821,6 +837,7 @@ async def handle_profile_edit_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     if incoming.user is None or not incoming.user.external_id:
         return
     user = await profile_service.get_user_by_external(
@@ -886,6 +903,7 @@ async def handle_profile_my_profile_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state.clear()
     if incoming.user is None or not incoming.user.external_id:
         return
@@ -958,6 +976,7 @@ async def handle_profile_edit_type_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     if incoming.data == CALLBACK_PROFILE_EDIT_TYPE_BLOGGER:
         await state.update_data(edit_profile_type="blogger")
         await messenger_client.send_text(
@@ -997,6 +1016,7 @@ async def handle_profile_edit_field_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     data = await state.get_data()
     profile_type = data.get("edit_profile_type", "blogger")
     field_key = (incoming.data or "").replace(
@@ -1167,12 +1187,7 @@ async def handle_profile_edit_choice_callback(
         max_order_price,
         config,
     )
-    if incoming.message_id:
-        await messenger_client.edit_reply_markup(
-            chat_id=incoming.chat_id,
-            message_id=incoming.message_id,
-            keyboard=None,
-        )
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
 
 
 def _edit_field_rows(
