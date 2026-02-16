@@ -38,7 +38,7 @@ from ugc_bot.bot.handlers.my_orders import (
 )
 from ugc_bot.bot.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import Order, OrderResponse
+from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType
 
 
@@ -60,7 +60,7 @@ async def test_show_my_orders_returns_early_when_no_from_user(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """show_my_orders returns without answering when from_user is None."""
 
@@ -73,7 +73,7 @@ async def test_show_my_orders_returns_early_when_no_from_user(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     message = FakeMessage(text="/my_orders", user=None)
@@ -96,7 +96,7 @@ async def test_show_my_orders_from_profile_callback_advertiser_no_orders(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -110,7 +110,7 @@ async def test_show_my_orders_from_profile_callback_advertiser_no_orders(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     user = await create_test_user(
@@ -151,7 +151,7 @@ async def test_show_my_orders_from_profile_callback_agreement_required(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -173,7 +173,7 @@ async def test_show_my_orders_from_profile_callback_agreement_required(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     callback = FakeCallback(
@@ -205,7 +205,7 @@ async def test_show_my_orders_from_profile_callback_advertiser_with_orders(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -232,7 +232,7 @@ async def test_show_my_orders_from_profile_callback_advertiser_with_orders(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     callback = FakeCallback(
@@ -262,7 +262,7 @@ async def test_show_my_orders_from_profile_callback_blogger_with_responses(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -281,13 +281,9 @@ async def test_show_my_orders_from_profile_callback_blogger_with_responses(
         username="blogger_resp",
     )
     await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order.order_id,
-            blogger_id=blogger_user.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
@@ -298,7 +294,7 @@ async def test_show_my_orders_from_profile_callback_blogger_with_responses(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     callback = FakeCallback(
@@ -328,7 +324,7 @@ async def test_paginate_orders_blogger_no_profile(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -348,7 +344,7 @@ async def test_paginate_orders_blogger_no_profile(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     msg = FakeMessage(user=FakeUser(805))
@@ -377,7 +373,7 @@ async def test_paginate_orders_blogger_page2(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -400,13 +396,11 @@ async def test_paginate_orders_blogger_page2(
             order_id=uuid4(),
             price=100.0 * (i + 1),
         )
-        await order_response_repo.save(
-            OrderResponse(
-                response_id=uuid4(),
-                order_id=order.order_id,
-                blogger_id=blogger_user.user_id,
-                responded_at=datetime.now(timezone.utc),
-            )
+        await offer_dispatch_repo.record_sent(
+            order.order_id, blogger_user.user_id
+        )
+        await offer_dispatch_repo.record_response(
+            order.order_id, blogger_user.user_id, accepted=True, in_offer=True
         )
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
@@ -417,7 +411,7 @@ async def test_paginate_orders_blogger_page2(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     msg = FakeMessage(user=FakeUser(806))
@@ -446,7 +440,7 @@ async def test_show_my_orders_user_not_found(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Show hint when user is not in DB (get_user returns None)."""
 
@@ -459,7 +453,7 @@ async def test_show_my_orders_user_not_found(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     message = FakeMessage(text="/my_orders", user=FakeUser(1))
@@ -483,7 +477,7 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Show hint when neither advertiser nor blogger profile exists."""
 
@@ -496,7 +490,7 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -529,7 +523,7 @@ async def test_show_my_orders_shows_agreement_when_not_confirmed(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """When user has profile but agreement not confirmed, show agreement."""
 
@@ -542,7 +536,7 @@ async def test_show_my_orders_shows_agreement_when_not_confirmed(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -582,7 +576,7 @@ async def test_show_my_orders_shows_agreement_when_blogger_not_confirmed(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """When user has only blogger profile and no agreement, show agreement."""
 
@@ -595,7 +589,7 @@ async def test_show_my_orders_shows_agreement_when_blogger_not_confirmed(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -634,7 +628,7 @@ async def test_my_orders_blogger_no_responses(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Blogger with no responses sees hint."""
 
@@ -647,7 +641,7 @@ async def test_my_orders_blogger_no_responses(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -680,7 +674,7 @@ async def test_my_orders_blogger_with_responses(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Blogger sees orders they responded to."""
 
@@ -693,7 +687,7 @@ async def test_my_orders_blogger_with_responses(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -720,13 +714,10 @@ async def test_my_orders_blogger_with_responses(
         username="creator",
     )
     await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
-    response = OrderResponse(
-        response_id=uuid4(),
-        order_id=order.order_id,
-        blogger_id=blogger_user.user_id,
-        responded_at=datetime.now(timezone.utc),
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
-    await order_response_repo.save(response)
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(6))
     await show_my_orders(
@@ -756,7 +747,7 @@ async def test_my_orders_empty(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Show hint when no orders exist."""
 
@@ -769,7 +760,7 @@ async def test_my_orders_empty(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -803,7 +794,7 @@ async def test_my_orders_list(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """List existing orders."""
 
@@ -816,7 +807,7 @@ async def test_my_orders_list(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -872,7 +863,7 @@ async def test_my_orders_both_profiles_with_orders(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Both profiles: two messages with advertiser and blogger orders."""
 
@@ -885,7 +876,7 @@ async def test_my_orders_both_profiles_with_orders(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -917,13 +908,10 @@ async def test_my_orders_both_profiles_with_orders(
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
     )
-    response = OrderResponse(
-        response_id=uuid4(),
-        order_id=other_order.order_id,
-        blogger_id=user.user_id,
-        responded_at=datetime.now(timezone.utc),
+    await offer_dispatch_repo.record_sent(other_order.order_id, user.user_id)
+    await offer_dispatch_repo.record_response(
+        other_order.order_id, user.user_id, accepted=True, in_offer=True
     )
-    await order_response_repo.save(response)
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(10))
     await show_my_orders(
@@ -960,7 +948,7 @@ async def test_my_orders_both_profiles_both_empty(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """User with both profiles but no orders gets two hint messages."""
 
@@ -973,7 +961,7 @@ async def test_my_orders_both_profiles_both_empty(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1019,7 +1007,7 @@ async def test_my_orders_both_profiles_advertiser_only(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Both profiles: advertiser has orders, blogger has none — list + hint."""
 
@@ -1032,7 +1020,7 @@ async def test_my_orders_both_profiles_advertiser_only(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1087,7 +1075,7 @@ async def test_my_orders_both_profiles_blogger_only(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Both profiles: blogger has responses, advertiser none — hint + list."""
 
@@ -1100,7 +1088,7 @@ async def test_my_orders_both_profiles_blogger_only(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1128,13 +1116,10 @@ async def test_my_orders_both_profiles_blogger_only(
     )
     await create_test_advertiser_profile(advertiser_repo, blogger_user.user_id)
     await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
-    response = OrderResponse(
-        response_id=uuid4(),
-        order_id=order.order_id,
-        blogger_id=blogger_user.user_id,
-        responded_at=datetime.now(timezone.utc),
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
-    await order_response_repo.save(response)
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(13))
     await show_my_orders(
@@ -1170,7 +1155,7 @@ async def test_paginate_orders_returns_early_when_no_from_user(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """paginate_orders returns without answering when from_user is None."""
 
@@ -1183,7 +1168,7 @@ async def test_paginate_orders_returns_early_when_no_from_user(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     callback = FakeCallback(
@@ -1206,7 +1191,7 @@ async def test_paginate_orders_user_not_found(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """paginate_orders answers when user is not found."""
 
@@ -1219,7 +1204,7 @@ async def test_paginate_orders_user_not_found(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     callback = FakeCallback(
@@ -1243,7 +1228,7 @@ async def test_paginate_orders_no_advertiser_profile(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """paginate_orders answers when advertiser profile is missing."""
 
@@ -1256,7 +1241,7 @@ async def test_paginate_orders_no_advertiser_profile(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     await create_test_user(
@@ -1287,7 +1272,7 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -1302,7 +1287,7 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     user = await create_test_user(
@@ -1342,7 +1327,7 @@ async def test_paginate_orders_invalid_page_uses_one(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """paginate_orders with invalid page string falls back to page 1."""
 
@@ -1355,7 +1340,7 @@ async def test_paginate_orders_invalid_page_uses_one(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     user = await create_test_user(
@@ -1387,7 +1372,7 @@ async def test_my_orders_page_one_shows_forward_button(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -1402,7 +1387,7 @@ async def test_my_orders_page_one_shows_forward_button(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     user = await create_test_user(
@@ -1459,7 +1444,7 @@ async def test_my_orders_pagination(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -1474,7 +1459,7 @@ async def test_my_orders_pagination(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1525,14 +1510,12 @@ async def test_my_orders_with_complaint_button(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Show complaint button for closed orders with responses."""
 
     from datetime import datetime, timezone
     from uuid import UUID
-
-    from ugc_bot.domain.entities import OrderResponse
 
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
@@ -1543,7 +1526,7 @@ async def test_my_orders_with_complaint_button(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1571,13 +1554,9 @@ async def test_my_orders_with_complaint_button(
         completed_at=datetime.now(timezone.utc),
     )
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000923"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
@@ -1607,7 +1586,7 @@ async def test_paginate_orders_blogger(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -1622,7 +1601,7 @@ async def test_paginate_orders_blogger(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1649,13 +1628,9 @@ async def test_paginate_orders_blogger(
         username="blogger",
     )
     await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order.order_id,
-            blogger_id=blogger_user.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(11))
@@ -1794,7 +1769,7 @@ async def test_my_orders_shows_active_status_and_matched_count(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Active order shows 'Активен' and dynamic matched count 2/10."""
 
@@ -1807,7 +1782,7 @@ async def test_my_orders_shows_active_status_and_matched_count(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1839,21 +1814,13 @@ async def test_my_orders_shows_active_status_and_matched_count(
         bloggers_needed=10,
         status=OrderStatus.ACTIVE,
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order.order_id,
-            blogger_id=blogger1.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger1.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger1.user_id, accepted=True, in_offer=True
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order.order_id,
-            blogger_id=blogger2.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger2.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger2.user_id, accepted=True, in_offer=True
     )
 
     message = FakeMessage(
@@ -1888,7 +1855,7 @@ async def test_my_orders_shows_completed_status_and_completion_date(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Completed order shows 'Завершён' and completion date."""
 
@@ -1901,7 +1868,7 @@ async def test_my_orders_shows_completed_status_and_completion_date(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1930,13 +1897,9 @@ async def test_my_orders_shows_completed_status_and_completion_date(
             external_id=f"b{i}",
             username=f"blogger{i}",
         )
-        await order_response_repo.save(
-            OrderResponse(
-                response_id=uuid4(),
-                order_id=order.order_id,
-                blogger_id=blogger.user_id,
-                responded_at=datetime.now(timezone.utc),
-            )
+        await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+        await offer_dispatch_repo.record_response(
+            order.order_id, blogger.user_id, accepted=True, in_offer=True
         )
 
     message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_done"))
@@ -1968,7 +1931,7 @@ async def test_my_orders_advertiser_shows_barter(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Advertiser order list shows barter when barter_description is set."""
 
@@ -1981,7 +1944,7 @@ async def test_my_orders_advertiser_shows_barter(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -2032,7 +1995,7 @@ async def test_my_orders_blogger_shows_barter(
     advertiser_repo,
     order_repo,
     blogger_repo,
-    order_response_repo,
+    offer_dispatch_repo,
 ) -> None:
     """Blogger order list shows barter when barter_description is set."""
 
@@ -2045,7 +2008,7 @@ async def test_my_orders_blogger_shows_barter(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -2073,13 +2036,9 @@ async def test_my_orders_blogger_shows_barter(
         username="creator",
     )
     await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order.order_id,
-            blogger_id=blogger_user.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
 
     message = FakeMessage(

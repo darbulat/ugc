@@ -85,7 +85,7 @@
           <tr>
             <td>{{ r.blogger_id }}</td>
             <td>{{ r.responded_at }}</td>
-            <td>{% if r.accepted %}<span class="badge badge--ok">Принят</span>{% else %}<span class="badge">В резерве</span>{% endif %}</td>
+            <td>{% if r.in_offer %}<span class="badge badge--ok">Принят</span>{% elif r.accepted %}<span class="badge">В резерве</span>{% else %}<span class="badge">Пропустил</span>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>

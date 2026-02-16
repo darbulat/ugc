@@ -20,6 +20,9 @@ from tests.helpers.fakes import (
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
@@ -34,7 +37,7 @@ from ugc_bot.bot.handlers.offer_responses import (
 from ugc_bot.bot.handlers.utils import RateLimiter
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import Order, OrderResponse, User
+from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
@@ -44,8 +47,8 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInteractionRepository,
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
-    InMemoryOrderResponseRepository,
     InMemoryUserRepository,
 )
 from ugc_bot.metrics.collector import MetricsCollector
@@ -92,7 +95,7 @@ async def test_contact_sent_immediately(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     messenger_client,
 ) -> None:
@@ -125,13 +128,9 @@ async def test_contact_sent_immediately(
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000743"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
@@ -170,10 +169,34 @@ async def test_contact_sent_immediately(
 
 
 @pytest.mark.asyncio
-async def test_offer_skip_handler(messenger_client, event_adapter) -> None:
-    """Blogger 'Пропустить' on offer: no response recorded, keyboard removed."""
+async def test_offer_skip_handler(
+    user_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Blogger 'Пропустить' on offer: skip recorded, keyboard removed."""
 
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000749"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    offer_dispatch_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=offer_dispatch_repo,
+        transaction_manager=None,
+    )
     order_id = UUID("00000000-0000-0000-0000-000000000748")
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
     message = FakeMessage()
     message.reply_markup = object()
     callback = FakeCallback(
@@ -183,6 +206,8 @@ async def test_offer_skip_handler(messenger_client, event_adapter) -> None:
     )
     await handle_offer_skip(
         callback,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -197,13 +222,13 @@ async def test_offer_skip_handler(messenger_client, event_adapter) -> None:
 
 @pytest.mark.asyncio
 async def test_order_closed_when_limit_reached(
-    fake_tm: object, order_repo, order_response_repo
+    fake_tm: object, order_repo, offer_dispatch_repo
 ) -> None:
     """Close order when limit of responses is reached."""
 
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -218,6 +243,8 @@ async def test_order_closed_when_limit_reached(
 
     blogger1 = UUID("00000000-0000-0000-0000-000000000746")
     blogger2 = UUID("00000000-0000-0000-0000-000000000747")
+    await offer_dispatch_repo.record_sent(order.order_id, blogger1)
+    await offer_dispatch_repo.record_sent(order.order_id, blogger2)
     await response_service.respond_and_finalize(order.order_id, blogger1)
     await response_service.respond_and_finalize(order.order_id, blogger2)
 
@@ -232,7 +259,7 @@ async def test_offer_response_handler_success(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     messenger_client,
     event_adapter,
@@ -243,7 +270,7 @@ async def test_offer_response_handler_success(
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -271,6 +298,7 @@ async def test_offer_response_handler_success(
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
     )
+    await offer_dispatch_repo.record_sent(order.order_id, user.user_id)
 
     message = FakeMessage()
     message.reply_markup = object()
@@ -291,7 +319,9 @@ async def test_offer_response_handler_success(
         event_adapter=event_adapter,
     )
     assert callback.answers
-    responses = await order_response_repo.list_by_order(order.order_id)
+    responses = await offer_dispatch_repo.list_responses_by_order(
+        order.order_id
+    )
     assert list(responses)
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
@@ -303,7 +333,7 @@ async def test_offer_response_handler_blocked_user(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     offer_response_rate_limiter,
 ) -> None:
@@ -311,7 +341,7 @@ async def test_offer_response_handler_blocked_user(
 
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -359,12 +389,12 @@ async def test_offer_response_handler_order_not_active(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -455,7 +485,7 @@ async def test_offer_response_handler_order_not_found(
     interaction_repo = InMemoryInteractionRepository()
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -507,12 +537,12 @@ async def test_offer_response_handler_already_responded(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -552,13 +582,9 @@ async def test_offer_response_handler_already_responded(
         completed_at=None,
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000718"),
-            order_id=order.order_id,
-            blogger_id=user.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, user.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, user.user_id, accepted=True, in_offer=True
     )
 
     message = FakeMessage()
@@ -590,12 +616,12 @@ async def test_offer_response_handler_overflow_saved_no_contact(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -635,15 +661,16 @@ async def test_offer_response_handler_overflow_saved_no_contact(
         completed_at=None,
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000722"),
-            order_id=order.order_id,
-            blogger_id=UUID("00000000-0000-0000-0000-000000000723"),
-            responded_at=datetime.now(timezone.utc),
-            accepted=True,
-        )
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000723")
     )
+    await dispatch_repo.record_response(
+        order.order_id,
+        UUID("00000000-0000-0000-0000-000000000723"),
+        accepted=True,
+        in_offer=True,
+    )
+    await dispatch_repo.record_sent(order.order_id, user.user_id)
 
     message = FakeMessage()
     callback = FakeCallback(
@@ -670,9 +697,9 @@ async def test_offer_response_handler_overflow_saved_no_contact(
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
     assert ORDER_CLOSED_MESSAGE not in message.answers
-    total = await response_repo.count_by_order(order.order_id)
+    total = await dispatch_repo.count_by_order(order.order_id)
     assert total == 2
-    accepted_count = await response_repo.count_accepted_by_order(order.order_id)
+    accepted_count = await dispatch_repo.count_accepted_by_order(order.order_id)
     assert accepted_count == 1
 
 
@@ -688,7 +715,7 @@ async def test_offer_response_handler_no_from_user(
     interaction_repo = InMemoryInteractionRepository()
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -727,7 +754,7 @@ async def test_offer_response_handler_user_not_found(
     interaction_repo = InMemoryInteractionRepository()
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -766,7 +793,7 @@ async def test_offer_response_handler_paused_user(
     interaction_repo = InMemoryInteractionRepository()
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -815,7 +842,7 @@ async def test_offer_response_handler_no_blogger_profile(
     interaction_repo = InMemoryInteractionRepository()
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -865,7 +892,7 @@ async def test_offer_response_handler_unconfirmed_profile(
     interaction_repo = InMemoryInteractionRepository()
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -912,7 +939,7 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     messenger_client,
     event_adapter,
@@ -923,7 +950,7 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -973,7 +1000,9 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
 
     assert callback.answers
     assert "согласи" in callback.answers[0].lower()
-    responses = await order_response_repo.list_by_order(order.order_id)
+    responses = await offer_dispatch_repo.list_responses_by_order(
+        order.order_id
+    )
     assert not list(responses)
 
 
@@ -989,7 +1018,7 @@ async def test_offer_response_handler_invalid_uuid(
     interaction_repo = InMemoryInteractionRepository()
     response_service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1040,12 +1069,12 @@ async def test_offer_response_handler_exception(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1086,13 +1115,13 @@ async def test_offer_response_handler_exception(
     )
     await order_repo.save(order)
 
-    # Mock response_repo.save to raise exception
-    original_save = response_repo.save
+    # Mock dispatch_repo.record_response to raise exception
+    original_record = dispatch_repo.record_response
 
-    async def failing_save(response, session=None):
+    async def failing_record(*args, **kwargs):
         raise Exception("Test exception")
 
-    response_repo.save = failing_save  # type: ignore[assignment]
+    dispatch_repo.record_response = failing_record  # type: ignore[assignment]
 
     message = FakeMessage()
     callback = FakeCallback(
@@ -1116,7 +1145,7 @@ async def test_offer_response_handler_exception(
     assert any("ошибка" in ans.lower() for ans in callback.answers)
 
     # Restore original method
-    response_repo.save = original_save
+    dispatch_repo.record_response = original_record
 
 
 @pytest.mark.asyncio
@@ -1270,9 +1299,20 @@ async def test_maybe_send_contacts_missing_user_or_profile(
 
 @pytest.mark.asyncio
 async def test_offer_skip_edit_reply_markup_exception(
-    messenger_client, event_adapter
+    user_repo,
+    messenger_client,
+    event_adapter,
 ) -> None:
     """handle_offer_skip handles exception when edit_reply_markup fails."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        transaction_manager=None,
+    )
 
     class MessageWithFailingEdit:
         reply_markup = object()
@@ -1291,6 +1331,8 @@ async def test_offer_skip_edit_reply_markup_exception(
     )
     await handle_offer_skip(
         callback,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1307,7 +1349,7 @@ async def test_offer_response_handler_rate_limited(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     strict_rate_limiter,
 ) -> None:
@@ -1316,7 +1358,7 @@ async def test_offer_response_handler_rate_limited(
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1382,7 +1424,7 @@ async def test_offer_response_sends_product_link_and_what_next(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     messenger_client,
     event_adapter,
@@ -1393,7 +1435,7 @@ async def test_offer_response_sends_product_link_and_what_next(
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1455,7 +1497,7 @@ async def test_send_contact_ugc_plus_placement_format(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     messenger_client,
 ) -> None:
@@ -1489,13 +1531,9 @@ async def test_send_contact_ugc_plus_placement_format(
         status=OrderStatus.ACTIVE,
         order_type=OrderType.UGC_PLUS_PLACEMENT,
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000783"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
@@ -1521,7 +1559,7 @@ async def test_send_contact_empty_instagram_url(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     messenger_client,
 ) -> None:
@@ -1554,13 +1592,9 @@ async def test_send_contact_empty_instagram_url(
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000793"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
@@ -1586,7 +1620,7 @@ async def test_send_contact_instagram_url_without_http(
     user_repo,
     blogger_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     interaction_repo,
     messenger_client,
 ) -> None:
@@ -1622,13 +1656,9 @@ async def test_send_contact_instagram_url_without_http(
         bloggers_needed=2,
         status=OrderStatus.ACTIVE,
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000797"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))

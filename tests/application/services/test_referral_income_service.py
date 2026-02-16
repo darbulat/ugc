@@ -14,7 +14,6 @@ from ugc_bot.application.services.referral_income_service import (
 from ugc_bot.domain.entities import (
     Interaction,
     Order,
-    OrderResponse,
     Payment,
     PayoutRequest,
     ReferralOrderIncomeRow,
@@ -32,8 +31,8 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryInteractionRepository,
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
-    InMemoryOrderResponseRepository,
     InMemoryPaymentRepository,
     InMemoryPayoutRequestRepository,
     InMemoryUserReferralBindingRepository,
@@ -47,13 +46,13 @@ async def test_get_user_referral_stats_empty_returns_zeros() -> None:
     binding_repo = InMemoryUserReferralBindingRepository()
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
-    order_response_repo = InMemoryOrderResponseRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     payment_repo = InMemoryPaymentRepository()
     interaction_repo = InMemoryInteractionRepository()
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=order_response_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         interaction_repo=interaction_repo,
@@ -78,12 +77,12 @@ async def test_count_completed_orders_for_user_returns_zero_when_none() -> None:
     """count_completed_orders_for_user returns 0 when user has no completed."""
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
-    order_response_repo = InMemoryOrderResponseRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
 
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=order_response_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         order_repo=order_repo,
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=interaction_repo,
@@ -112,7 +111,7 @@ async def test_get_user_referral_stats_binding_without_user_skipped() -> None:
     user_repo = InMemoryUserRepository()
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -159,7 +158,7 @@ async def test_get_user_referral_stats_with_one_binding_no_orders() -> None:
     )
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -223,14 +222,10 @@ async def test_get_user_referral_stats_with_completed_order_counts_income() -> (
             completed_at=now,
         )
     )
-    order_response_repo = InMemoryOrderResponseRepository()
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=referred_id,
-            responded_at=now,
-        )
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    await offer_dispatch_repo.record_sent(order_id, referred_id)
+    await offer_dispatch_repo.record_response(
+        order_id, referred_id, accepted=True, in_offer=True
     )
     payment_repo = InMemoryPaymentRepository()
     await payment_repo.save(
@@ -265,7 +260,7 @@ async def test_get_user_referral_stats_with_completed_order_counts_income() -> (
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=order_response_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         order_repo=order_repo,
         payment_repo=payment_repo,
         interaction_repo=interaction_repo,
@@ -324,21 +319,17 @@ async def test_count_completed_orders_for_user_with_one_completed_order() -> (
             updated_at=now,
         )
     )
-    order_response_repo = InMemoryOrderResponseRepository(
+    offer_dispatch_repo = InMemoryOfferDispatchRepository(
         order_repo=order_repo, interaction_repo=interaction_repo
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=user_id,
-            responded_at=now,
-        )
+    await offer_dispatch_repo.record_sent(order_id, user_id)
+    await offer_dispatch_repo.record_response(
+        order_id, user_id, accepted=True, in_offer=True
     )
 
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=order_response_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         order_repo=order_repo,
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=interaction_repo,
@@ -373,18 +364,14 @@ async def test_count_completed_orders_for_user_skips_non_closed_order() -> None:
             completed_at=None,
         )
     )
-    order_response_repo = InMemoryOrderResponseRepository()
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=user_id,
-            responded_at=now,
-        )
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    await offer_dispatch_repo.record_sent(order_id, user_id)
+    await offer_dispatch_repo.record_response(
+        order_id, user_id, accepted=True, in_offer=True
     )
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=order_response_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         order_repo=order_repo,
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -433,7 +420,7 @@ async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
 
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -469,7 +456,7 @@ async def test_get_user_referral_stats_has_pending_payout_when_pending() -> (
 
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -503,7 +490,7 @@ async def test_has_request_today_false_when_request_yesterday() -> None:
 
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -543,7 +530,7 @@ async def test_get_user_referral_stats_stats_limit_zero_unlimited() -> None:
     )
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -560,7 +547,7 @@ async def test_count_completed_orders_for_user_with_session() -> None:
     """count_completed_orders_for_user with session uses it (no new tx)."""
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -614,21 +601,17 @@ async def test_count_completed_orders_by_user_ids_returns_dict() -> None:
             updated_at=now,
         )
     )
-    order_response_repo = InMemoryOrderResponseRepository(
+    offer_dispatch_repo = InMemoryOfferDispatchRepository(
         order_repo=order_repo, interaction_repo=interaction_repo
     )
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=user_id,
-            responded_at=now,
-        )
+    await offer_dispatch_repo.record_sent(order_id, user_id)
+    await offer_dispatch_repo.record_response(
+        order_id, user_id, accepted=True, in_offer=True
     )
     other_id = uuid4()
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=order_response_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
         order_repo=order_repo,
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=interaction_repo,
@@ -647,7 +630,7 @@ async def test_count_completed_orders_by_user_ids_with_session() -> None:
     """count_completed_orders_by_user_ids with session uses it."""
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -701,7 +684,7 @@ async def test_get_user_referral_stats_uses_loader_when_provided() -> None:
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -774,7 +757,7 @@ async def test_stats_uses_combined_loader_when_available() -> None:
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -829,7 +812,7 @@ async def test_get_user_referral_stats_loader_rate_after_first_year() -> None:
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -895,7 +878,7 @@ async def test_get_user_referral_stats_uses_custom_rate_when_set() -> None:
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -963,7 +946,7 @@ async def test_get_user_referral_stats_custom_rate_none_keeps_default() -> None:
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -1036,7 +1019,7 @@ async def test_get_user_referral_stats_counts_advertiser_order_income() -> None:
     )
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=order_repo,
         payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
@@ -1093,7 +1076,7 @@ async def test_get_user_referral_stats_loader_includes_advertiser_rows() -> (
 
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -1167,7 +1150,7 @@ async def test_advertiser_order_ignored_when_payment_not_paid() -> None:
     )
     service = ReferralIncomeService(
         user_referral_binding_repo=binding_repo,
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=order_repo,
         payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
@@ -1187,7 +1170,7 @@ async def test_get_referral_balances_batch_empty_returns_empty() -> None:
     """get_referral_balances_batch with empty user_ids returns {}."""
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -1241,7 +1224,7 @@ async def test_get_referral_balances_batch_uses_loader() -> None:
     )
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
@@ -1286,7 +1269,7 @@ async def test_get_referral_balances_batch_fallback_when_no_batch_loader() -> (
     )
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),

@@ -55,7 +55,7 @@ def build_referral_income_service(repos, transaction_manager):
     """Build ReferralIncomeService for admin dashboard balance calculation."""
     return ReferralIncomeService(
         user_referral_binding_repo=repos["user_referral_binding_repo"],
-        order_response_repo=repos["order_response_repo"],
+        offer_dispatch_repo=repos["offer_dispatch_repo"],
         order_repo=repos["order_repo"],
         payment_repo=repos["payment_repo"],
         interaction_repo=repos["interaction_repo"],
@@ -199,7 +199,7 @@ def build_bot_services(
         ),
         "offer_response_service": OfferResponseService(
             order_repo=repos["order_repo"],
-            response_repo=repos["order_response_repo"],
+            dispatch_repo=repos["offer_dispatch_repo"],
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),
@@ -246,7 +246,7 @@ def build_bot_services(
         ),
         "referral_income_service": ReferralIncomeService(
             user_referral_binding_repo=repos["user_referral_binding_repo"],
-            order_response_repo=repos["order_response_repo"],
+            offer_dispatch_repo=repos["offer_dispatch_repo"],
             order_repo=repos["order_repo"],
             payment_repo=repos["payment_repo"],
             interaction_repo=repos["interaction_repo"],
@@ -260,7 +260,7 @@ def build_bot_services(
         "issue_lock_manager": issue_lock_manager,
         "offer_response_rate_limiter": offer_response_rate_limiter,
         "order_repo": repos["order_repo"],
-        "order_response_repo": repos["order_response_repo"],
+        "offer_dispatch_repo": repos["offer_dispatch_repo"],
         "interaction_repo": repos["interaction_repo"],
         "user_repo": repos["user_repo"],
         "user_referral_binding_repo": repos["user_referral_binding_repo"],

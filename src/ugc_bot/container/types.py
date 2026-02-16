@@ -60,7 +60,7 @@ class BotServices(TypedDict):
     issue_lock_manager: Any
     offer_response_rate_limiter: Any
     order_repo: Any
-    order_response_repo: Any
+    offer_dispatch_repo: Any
     interaction_repo: Any
     user_repo: Any
     user_referral_binding_repo: Any

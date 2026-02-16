@@ -242,7 +242,7 @@ class ContactPricingModel(Base):
 
 
 class OfferDispatchModel(Base):
-    """ORM model for tracking offer dispatches."""
+    """ORM model for tracking offer dispatches and responses."""
 
     __tablename__ = "offer_dispatches"
 
@@ -258,35 +258,14 @@ class OfferDispatchModel(Base):
         primary_key=True,
         nullable=False,
     )
-    sent_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-
-
-class OrderResponseModel(Base):
-    """Order response ORM model."""
-
-    __tablename__ = "order_responses"
-
-    response_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        primary_key=True,
-        server_default=text("uuid_generate_v4()"),
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
-    order_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("orders.order_id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    blogger_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("users.user_id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    responded_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-    accepted: Mapped[bool] = mapped_column(
+    accepted: Mapped[Optional[bool]] = mapped_column(Boolean(), nullable=True)
+    in_offer: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, server_default=text("true")
     )
 

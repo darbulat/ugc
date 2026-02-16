@@ -26,8 +26,8 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     ComplaintModel,
+    OfferDispatchModel,
     OrderModel,
-    OrderResponseModel,
     PaymentModel,
     PayoutRequestModel,
     UserModel,
@@ -672,10 +672,12 @@ class AdminDashboardService:
         return int(result.scalar() or 0)
 
     async def _count_picked_creators(self, session: AsyncSession) -> int:
-        """Count unique creators with at least one order response."""
-        query = select(
-            func.count(distinct(OrderResponseModel.blogger_id))
-        ).select_from(OrderResponseModel)
+        """Count unique creators with at least one in_offer dispatch."""
+        query = (
+            select(func.count(distinct(OfferDispatchModel.blogger_id)))
+            .select_from(OfferDispatchModel)
+            .where(OfferDispatchModel.in_offer.is_(True))
+        )
         result = await session.execute(query)
         return int(result.scalar() or 0)
 
@@ -1213,10 +1215,11 @@ class AdminDashboardService:
         """Count creators matching filters."""
         responses = (
             select(
-                OrderResponseModel.blogger_id.label("user_id"),
-                func.count(OrderResponseModel.response_id).label("responses"),
+                OfferDispatchModel.blogger_id.label("user_id"),
+                func.count(OfferDispatchModel.blogger_id).label("responses"),
             )
-            .group_by(OrderResponseModel.blogger_id)
+            .where(OfferDispatchModel.accepted.isnot(None))
+            .group_by(OfferDispatchModel.blogger_id)
             .subquery()
         )
         complaints = (
@@ -1267,10 +1270,11 @@ class AdminDashboardService:
         """List creators with response and complaint counts."""
         responses = (
             select(
-                OrderResponseModel.blogger_id.label("user_id"),
-                func.count(OrderResponseModel.response_id).label("responses"),
+                OfferDispatchModel.blogger_id.label("user_id"),
+                func.count(OfferDispatchModel.blogger_id).label("responses"),
             )
-            .group_by(OrderResponseModel.blogger_id)
+            .where(OfferDispatchModel.accepted.isnot(None))
+            .group_by(OfferDispatchModel.blogger_id)
             .subquery()
         )
         complaints = (
@@ -1642,18 +1646,23 @@ class AdminDashboardService:
             total_responses,
         ) = row
         resp_list_result = await session.execute(
-            select(OrderResponseModel)
-            .where(OrderResponseModel.order_id == order_id)
-            .order_by(OrderResponseModel.responded_at)
+            select(OfferDispatchModel)
+            .where(OfferDispatchModel.order_id == order_id)
+            .order_by(
+                OfferDispatchModel.updated_at.asc().nullslast(),
+                OfferDispatchModel.created_at.asc(),
+            )
         )
         response_models = resp_list_result.scalars().all()
         responses_list = [
             {
                 "blogger_id": str(r.blogger_id),
-                "responded_at": r.responded_at,
-                "accepted": getattr(r, "accepted", True),
+                "responded_at": r.updated_at or r.created_at,
+                "accepted": getattr(r, "accepted", None),
+                "in_offer": getattr(r, "in_offer", True),
             }
             for r in response_models
+            if r.accepted is not None
         ]
         now = datetime.now(self._timezone)
         status_label = self._order_status_label(
@@ -1705,27 +1714,27 @@ class AdminDashboardService:
         return {"count": current, "change_pct": change_pct}
 
     def _order_responses_subquery(self):
-        """Build accepted responses count subquery (accepted=true only)."""
+        """Build accepted (in_offer) count subquery per order."""
         return (
             select(
-                OrderResponseModel.order_id.label("order_id"),
-                func.count(OrderResponseModel.response_id).label("responses"),
+                OfferDispatchModel.order_id.label("order_id"),
+                func.count(OfferDispatchModel.blogger_id).label("responses"),
             )
-            .where(OrderResponseModel.accepted.is_(True))
-            .group_by(OrderResponseModel.order_id)
+            .where(OfferDispatchModel.in_offer.is_(True))
+            .group_by(OfferDispatchModel.order_id)
             .subquery()
         )
 
     def _order_responses_total_subquery(self):
-        """Build total responses count subquery (all, accepted + overflow)."""
+        """Build total dispatches count subquery per order."""
         return (
             select(
-                OrderResponseModel.order_id.label("order_id"),
-                func.count(OrderResponseModel.response_id).label(
+                OfferDispatchModel.order_id.label("order_id"),
+                func.count(OfferDispatchModel.blogger_id).label(
                     "total_responses"
                 ),
             )
-            .group_by(OrderResponseModel.order_id)
+            .group_by(OfferDispatchModel.order_id)
             .subquery()
         )
 

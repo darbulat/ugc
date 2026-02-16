@@ -12,7 +12,6 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyNpsRepository,
     SqlAlchemyOfferDispatchRepository,
     SqlAlchemyOrderRepository,
-    SqlAlchemyOrderResponseRepository,
     SqlAlchemyOutboxRepository,
     SqlAlchemyPaymentRepository,
     SqlAlchemyPayoutRequestRepository,
@@ -46,9 +45,6 @@ def build_repos(
             session_factory=session_factory
         ),
         "order_repo": SqlAlchemyOrderRepository(
-            session_factory=session_factory
-        ),
-        "order_response_repo": SqlAlchemyOrderResponseRepository(
             session_factory=session_factory
         ),
         "offer_dispatch_repo": SqlAlchemyOfferDispatchRepository(

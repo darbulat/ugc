@@ -11,8 +11,8 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryContactPricingRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryInteractionRepository,
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
-    InMemoryOrderResponseRepository,
     InMemoryOutboxRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
@@ -26,7 +26,7 @@ class InMemoryRepositories(NamedTuple):
     blogger_repo: InMemoryBloggerProfileRepository
     advertiser_repo: InMemoryAdvertiserProfileRepository
     order_repo: InMemoryOrderRepository
-    order_response_repo: InMemoryOrderResponseRepository
+    offer_dispatch_repo: InMemoryOfferDispatchRepository
     interaction_repo: InMemoryInteractionRepository
     payment_repo: InMemoryPaymentRepository
     pricing_repo: InMemoryContactPricingRepository
@@ -44,7 +44,7 @@ def create_in_memory_repositories() -> InMemoryRepositories:
         blogger_repo=InMemoryBloggerProfileRepository(),
         advertiser_repo=InMemoryAdvertiserProfileRepository(),
         order_repo=InMemoryOrderRepository(),
-        order_response_repo=InMemoryOrderResponseRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         interaction_repo=InMemoryInteractionRepository(),
         payment_repo=InMemoryPaymentRepository(),
         pricing_repo=InMemoryContactPricingRepository(),
@@ -77,9 +77,9 @@ def order_repo() -> InMemoryOrderRepository:
 
 
 @pytest.fixture
-def order_response_repo() -> InMemoryOrderResponseRepository:
-    """Fixture for order response repository."""
-    return InMemoryOrderResponseRepository()
+def offer_dispatch_repo() -> InMemoryOfferDispatchRepository:
+    """Fixture for offer dispatch repository."""
+    return InMemoryOfferDispatchRepository()
 
 
 @pytest.fixture
@@ -136,7 +136,7 @@ def create_repository_fixtures() -> dict:
         "blogger_repo": repos.blogger_repo,
         "advertiser_repo": repos.advertiser_repo,
         "order_repo": repos.order_repo,
-        "order_response_repo": repos.order_response_repo,
+        "offer_dispatch_repo": repos.offer_dispatch_repo,
         "interaction_repo": repos.interaction_repo,
         "payment_repo": repos.payment_repo,
         "pricing_repo": repos.pricing_repo,

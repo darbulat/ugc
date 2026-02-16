@@ -20,7 +20,7 @@ from ugc_bot.bot.handlers.complaints import (
     select_complaint_target,
     start_complaint,
 )
-from ugc_bot.domain.entities import Order, OrderResponse, User
+from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
@@ -31,7 +31,7 @@ from ugc_bot.domain.enums import (
 
 @pytest.mark.asyncio
 async def test_start_complaint_invalid_format(
-    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
 ) -> None:
     """Reject malformed callback data."""
 
@@ -41,7 +41,7 @@ async def test_start_complaint_invalid_format(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -70,7 +70,7 @@ async def test_start_complaint_invalid_format(
 
 @pytest.mark.asyncio
 async def test_start_complaint_order_not_found(
-    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
 ) -> None:
     """Reject complaint for non-existent order."""
 
@@ -89,7 +89,7 @@ async def test_start_complaint_order_not_found(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -112,7 +112,7 @@ async def test_start_complaint_order_not_found(
 
 @pytest.mark.asyncio
 async def test_start_complaint_no_access(
-    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
 ) -> None:
     """Reject complaint when user has no access to order."""
 
@@ -146,7 +146,7 @@ async def test_start_complaint_no_access(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -172,7 +172,7 @@ async def test_handle_complaint_reason_success(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -214,13 +214,9 @@ async def test_handle_complaint_reason_success(
     )
     await order_repo.save(order)
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000974"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     order_service = build_order_service(
@@ -257,7 +253,7 @@ async def test_select_complaint_target_advertiser(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -299,13 +295,9 @@ async def test_select_complaint_target_advertiser(
     )
     await order_repo.save(order)
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000984"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -314,7 +306,7 @@ async def test_select_complaint_target_advertiser(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -352,7 +344,7 @@ async def test_select_complaint_target_invalid_format(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -375,7 +367,7 @@ async def test_select_complaint_target_invalid_format(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -405,7 +397,7 @@ async def test_select_complaint_target_blogger(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -447,13 +439,9 @@ async def test_select_complaint_target_blogger(
     )
     await order_repo.save(order)
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000988"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -462,7 +450,7 @@ async def test_select_complaint_target_blogger(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -500,7 +488,7 @@ async def test_select_complaint_target_no_bloggers(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -538,7 +526,7 @@ async def test_select_complaint_target_no_bloggers(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -568,7 +556,7 @@ async def test_handle_complaint_reason_text(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -643,7 +631,7 @@ async def test_handle_complaint_reason_other(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -685,13 +673,9 @@ async def test_handle_complaint_reason_other(
     )
     await order_repo.save(order)
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000997"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     complaint_service = ComplaintService(complaint_repo=complaint_repo)
@@ -794,7 +778,7 @@ async def test_handle_complaint_reason_duplicate(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -943,7 +927,7 @@ async def test_handle_complaint_reason_text_no_text(
 
 @pytest.mark.asyncio
 async def test_start_complaint_no_data(
-    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
 ) -> None:
     """Handle callback without data."""
 
@@ -953,7 +937,7 @@ async def test_start_complaint_no_data(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -973,7 +957,7 @@ async def test_start_complaint_no_data(
 
 @pytest.mark.asyncio
 async def test_start_complaint_user_not_found(
-    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
 ) -> None:
     """Handle complaint when user is not found."""
 
@@ -983,7 +967,7 @@ async def test_start_complaint_user_not_found(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1006,7 +990,7 @@ async def test_start_complaint_user_not_found(
 
 @pytest.mark.asyncio
 async def test_start_complaint_invalid_reported_id(
-    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
 ) -> None:
     """Reject complaint with invalid reported_id."""
 
@@ -1046,13 +1030,9 @@ async def test_start_complaint_invalid_reported_id(
     )
     await order_repo.save(order)
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000001023"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -1061,7 +1041,7 @@ async def test_start_complaint_invalid_reported_id(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1087,7 +1067,7 @@ async def test_start_complaint_invalid_reported_id(
 
 @pytest.mark.asyncio
 async def test_start_complaint_invalid_uuid(
-    fake_tm: object, user_repo, order_repo, order_response_repo, advertiser_repo
+    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
 ) -> None:
     """Reject invalid UUID in callback data."""
 
@@ -1108,7 +1088,7 @@ async def test_start_complaint_invalid_uuid(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1136,7 +1116,7 @@ async def test_select_complaint_target_no_from_user(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1148,7 +1128,7 @@ async def test_select_complaint_target_no_from_user(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1178,7 +1158,7 @@ async def test_select_complaint_target_invalid_uuid(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1201,7 +1181,7 @@ async def test_select_complaint_target_invalid_uuid(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1233,7 +1213,7 @@ async def test_select_complaint_target_no_data(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1256,7 +1236,7 @@ async def test_select_complaint_target_no_data(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1284,7 +1264,7 @@ async def test_select_complaint_target_order_not_found(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1307,7 +1287,7 @@ async def test_select_complaint_target_order_not_found(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1338,7 +1318,7 @@ async def test_select_complaint_target_blogger_no_access(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1390,13 +1370,14 @@ async def test_select_complaint_target_blogger_no_access(
     )
     await order_repo.save(order)
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000001036"),
-            order_id=order.order_id,
-            blogger_id=blogger_responded.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(
+        order.order_id, blogger_responded.user_id
+    )
+    await offer_dispatch_repo.record_response(
+        order.order_id,
+        blogger_responded.user_id,
+        accepted=True,
+        in_offer=True,
     )
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -1405,7 +1386,7 @@ async def test_select_complaint_target_blogger_no_access(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1435,7 +1416,7 @@ async def test_start_complaint_advertiser_success(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1477,13 +1458,9 @@ async def test_start_complaint_advertiser_success(
     )
     await order_repo.save(order)
 
-    await order_response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000001043"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -1492,7 +1469,7 @@ async def test_start_complaint_advertiser_success(
     )
     offer_response_service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -1640,7 +1617,7 @@ async def test_handle_complaint_reason_with_notify(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1789,7 +1766,7 @@ async def test_handle_complaint_reason_text_base_reason_not_drugoe(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1864,7 +1841,7 @@ async def test_handle_complaint_reason_text_with_bot(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:
@@ -1973,7 +1950,7 @@ async def test_handle_complaint_reason_text_duplicate(
     fake_tm: object,
     user_repo,
     order_repo,
-    order_response_repo,
+    offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
 ) -> None:

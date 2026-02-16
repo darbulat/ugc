@@ -1,15 +1,15 @@
 """Tests for in-memory repository implementations."""
 
 from datetime import datetime, timezone
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 
-from ugc_bot.domain.entities import Order, OrderResponse
+from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
-    InMemoryOrderResponseRepository,
 )
 
 
@@ -84,75 +84,73 @@ async def test_order_repo_list_completed_before() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_response_repo_list_by_blogger() -> None:
-    """list_by_blogger returns responses for the blogger."""
+async def test_offer_dispatch_repo_list_responses_by_blogger() -> None:
+    """list_responses_by_blogger returns dispatches where blogger responded."""
 
-    repo = InMemoryOrderResponseRepository()
+    repo = InMemoryOfferDispatchRepository()
     order_id = UUID("00000000-0000-0000-0000-000000000030")
     blogger_id = UUID("00000000-0000-0000-0000-000000000031")
-    repo.responses.append(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=blogger_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await repo.record_sent(order_id, blogger_id)
+    await repo.record_response(
+        order_id, blogger_id, accepted=True, in_offer=True
     )
-    responses = await repo.list_by_blogger(blogger_id)
+    responses = list(await repo.list_responses_by_blogger(blogger_id))
     assert len(responses) == 1
     assert responses[0].blogger_id == blogger_id
 
 
 @pytest.mark.asyncio
-async def test_order_response_repo_count_by_order() -> None:
-    """count_by_order returns count of responses for order."""
+async def test_offer_dispatch_repo_count_by_order() -> None:
+    """count_by_order returns count of dispatches for order."""
 
-    repo = InMemoryOrderResponseRepository()
+    repo = InMemoryOfferDispatchRepository()
     order_id = UUID("00000000-0000-0000-0000-000000000040")
-    repo.responses.append(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=UUID("00000000-0000-0000-0000-000000000041"),
-            responded_at=datetime.now(timezone.utc),
-        )
+    await repo.record_sent(
+        order_id, UUID("00000000-0000-0000-0000-000000000041")
     )
-    repo.responses.append(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=UUID("00000000-0000-0000-0000-000000000042"),
-            responded_at=datetime.now(timezone.utc),
-        )
+    await repo.record_sent(
+        order_id, UUID("00000000-0000-0000-0000-000000000042")
     )
     count = await repo.count_by_order(order_id)
     assert count == 2
+    await repo.record_response(
+        order_id,
+        UUID("00000000-0000-0000-0000-000000000041"),
+        accepted=True,
+        in_offer=True,
+    )
+    await repo.record_response(
+        order_id,
+        UUID("00000000-0000-0000-0000-000000000042"),
+        accepted=True,
+        in_offer=True,
+    )
     accepted_count = await repo.count_accepted_by_order(order_id)
     assert accepted_count == 2
 
 
 @pytest.mark.asyncio
-async def test_order_response_repo_count_accepted_by_order() -> None:
-    """count_accepted_by_order returns count of accepted responses only."""
-    repo = InMemoryOrderResponseRepository()
+async def test_offer_dispatch_repo_count_accepted_by_order() -> None:
+    """count_accepted_by_order returns count of in_offer=True only."""
+    repo = InMemoryOfferDispatchRepository()
     order_id = UUID("00000000-0000-0000-0000-000000000050")
-    repo.responses.append(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=UUID("00000000-0000-0000-0000-000000000051"),
-            responded_at=datetime.now(timezone.utc),
-            accepted=True,
-        )
+    await repo.record_sent(
+        order_id, UUID("00000000-0000-0000-0000-000000000051")
     )
-    repo.responses.append(
-        OrderResponse(
-            response_id=uuid4(),
-            order_id=order_id,
-            blogger_id=UUID("00000000-0000-0000-0000-000000000052"),
-            responded_at=datetime.now(timezone.utc),
-            accepted=False,
-        )
+    await repo.record_sent(
+        order_id, UUID("00000000-0000-0000-0000-000000000052")
+    )
+    await repo.record_response(
+        order_id,
+        UUID("00000000-0000-0000-0000-000000000051"),
+        accepted=True,
+        in_offer=True,
+    )
+    await repo.record_response(
+        order_id,
+        UUID("00000000-0000-0000-0000-000000000052"),
+        accepted=True,
+        in_offer=False,
     )
     assert await repo.count_by_order(order_id) == 2
     assert await repo.count_accepted_by_order(order_id) == 1

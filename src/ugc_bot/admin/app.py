@@ -50,8 +50,8 @@ from ugc_bot.infrastructure.db.models import (
     InstagramVerificationCodeModel,
     InteractionModel,
     NpsResponseModel,
+    OfferDispatchModel,
     OrderModel,
-    OrderResponseModel,
     PayoutRequestModel,
     UserModel,
 )
@@ -1037,24 +1037,26 @@ class OrderAdmin(ModelView, model=OrderModel):
         return result
 
 
-class OrderResponseAdmin(ModelView, model=OrderResponseModel):
-    """Admin view for order responses."""
+class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):
+    """Admin view for offer dispatches and responses."""
 
-    name = "Отклик на заказ"
-    name_plural = "Отклики на заказы"
+    name = "Оффер (отправка/отклик)"
+    name_plural = "Офферы (отправки и отклики)"
     column_list = [
-        OrderResponseModel.response_id,
-        OrderResponseModel.order_id,
-        OrderResponseModel.blogger_id,
-        OrderResponseModel.responded_at,
-        OrderResponseModel.accepted,
+        OfferDispatchModel.order_id,
+        OfferDispatchModel.blogger_id,
+        OfferDispatchModel.created_at,
+        OfferDispatchModel.updated_at,
+        OfferDispatchModel.accepted,
+        OfferDispatchModel.in_offer,
     ]
     column_labels = {
-        OrderResponseModel.response_id: "ID отклика",
-        OrderResponseModel.order_id: "ID заказа",
-        OrderResponseModel.blogger_id: "ID креатора",
-        OrderResponseModel.responded_at: "Дата отклика",
-        OrderResponseModel.accepted: "Принят",
+        OfferDispatchModel.order_id: "ID заказа",
+        OfferDispatchModel.blogger_id: "ID креатора",
+        OfferDispatchModel.created_at: "Отправлено",
+        OfferDispatchModel.updated_at: "Обновлено",
+        OfferDispatchModel.accepted: "Принял оффер",
+        OfferDispatchModel.in_offer: "В заказе",
     }
 
 
@@ -1481,7 +1483,7 @@ def create_admin_app() -> FastAPI:  # noqa: C901
     admin.add_view(BloggerProfileAdmin)
     admin.add_view(AdvertiserProfileAdmin)
     admin.add_view(OrderAdmin)
-    admin.add_view(OrderResponseAdmin)
+    admin.add_view(OfferDispatchAdmin)
     admin.add_view(InteractionAdmin)
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)

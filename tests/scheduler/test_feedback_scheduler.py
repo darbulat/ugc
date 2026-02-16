@@ -17,7 +17,6 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Interaction,
     Order,
-    OrderResponse,
     User,
 )
 from ugc_bot.domain.enums import (
@@ -39,8 +38,8 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryInteractionRepository,
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
-    InMemoryOrderResponseRepository,
     InMemoryUserRepository,
 )
 from ugc_bot.startup_logging import log_startup_info, safe_config_for_logging
@@ -71,7 +70,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -118,13 +117,9 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
         completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000963"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     # Create interaction with next_check_at in the past
@@ -174,7 +169,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -222,13 +217,9 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
     )
     await order_repo.save(order)
 
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000968"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
     interaction = await interaction_service.create_for_contacts_sent(
         order_id=order.order_id,
@@ -279,7 +270,7 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -322,13 +313,9 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
         completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-00000000096e"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
     interaction = await interaction_service.create_for_contacts_sent(
         order_id=order.order_id,
@@ -446,7 +433,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -486,13 +473,9 @@ async def test_run_once_existing_feedback_no_messages() -> None:
         completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000983"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
     await interaction_repo.save(
         Interaction(
@@ -533,7 +516,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -580,13 +563,9 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
         completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000993"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     await interaction_repo.save(
@@ -630,7 +609,7 @@ async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
     user_repo = InMemoryUserRepository()
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -664,13 +643,9 @@ async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
         completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000988"),
-            order_id=order.order_id,
-            blogger_id=blogger_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger_id, accepted=True, in_offer=True
     )
     interaction = await interaction_service.create_for_contacts_sent(
         order_id=order.order_id,
@@ -716,7 +691,7 @@ async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
 
     user_repo = InMemoryUserRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -747,13 +722,9 @@ async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
         completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-00000000098c"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
     interaction = await interaction_service.create_for_contacts_sent(
         order_id=order.order_id,
@@ -957,7 +928,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     advertiser_repo = InMemoryAdvertiserProfileRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -1027,13 +998,9 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
         completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
     )
     await order_repo.save(order)
-    await response_repo.save(
-        OrderResponse(
-            response_id=UUID("00000000-0000-0000-0000-000000000993"),
-            order_id=order.order_id,
-            blogger_id=blogger.user_id,
-            responded_at=datetime.now(timezone.utc),
-        )
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
     interaction = await interaction_service.create_for_contacts_sent(

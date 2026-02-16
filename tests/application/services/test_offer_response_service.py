@@ -13,8 +13,8 @@ from ugc_bot.application.services.offer_response_service import (
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
-    InMemoryOrderResponseRepository,
 )
 
 
@@ -23,7 +23,7 @@ async def test_offer_response_requires_transaction_manager() -> None:
     """Raise when transaction_manager is None."""
     service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=None,
     )
     with pytest.raises(ValueError, match="transaction_manager"):
@@ -38,10 +38,10 @@ async def test_offer_response_success(fake_tm: object) -> None:
     """Create response for active order."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -59,6 +59,9 @@ async def test_offer_response_success(fake_tm: object) -> None:
         completed_at=None,
     )
     await order_repo.save(order)
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000802")
+    )
 
     response = await service.respond(
         order_id=order.order_id,
@@ -74,10 +77,10 @@ async def test_offer_response_overflow_saved_with_accepted_false(
     """When limit reached, overflow response is saved with accepted=False."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -95,22 +98,28 @@ async def test_offer_response_overflow_saved_with_accepted_false(
         completed_at=None,
     )
     await order_repo.save(order)
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000812")
+    )
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000813")
+    )
     first = await service.respond_and_finalize(
         order_id=order.order_id,
         blogger_id=UUID("00000000-0000-0000-0000-000000000812"),
     )
     assert first.accepted is True
-    assert first.response.accepted is True
+    assert first.response.in_offer is True
 
     second = await service.respond_and_finalize(
         order_id=order.order_id,
         blogger_id=UUID("00000000-0000-0000-0000-000000000813"),
     )
     assert second.accepted is False
-    assert second.response.accepted is False
-    total = await response_repo.count_by_order(order.order_id)
+    assert second.response.in_offer is False
+    total = await dispatch_repo.count_by_order(order.order_id)
     assert total == 2
-    accepted_count = await response_repo.count_accepted_by_order(order.order_id)
+    accepted_count = await dispatch_repo.count_accepted_by_order(order.order_id)
     assert accepted_count == 1
 
 
@@ -120,7 +129,7 @@ async def test_offer_response_order_not_found(fake_tm: object) -> None:
 
     service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
 
@@ -136,10 +145,10 @@ async def test_offer_response_requires_active_order(fake_tm: object) -> None:
     """Fail when order is not active."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -171,10 +180,10 @@ async def test_offer_response_finalize_closes_order(fake_tm: object) -> None:
     """Finalize response closes order and sets contacts."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
     order = Order(
@@ -191,6 +200,9 @@ async def test_offer_response_finalize_closes_order(fake_tm: object) -> None:
         completed_at=None,
     )
     await order_repo.save(order)
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000842")
+    )
 
     result = await service.respond_and_finalize(
         order_id=order.order_id,
@@ -209,10 +221,10 @@ async def test_offer_response_transaction_manager(fake_tm: object) -> None:
     """Use transaction manager path for finalize."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
     order = Order(
@@ -229,6 +241,9 @@ async def test_offer_response_transaction_manager(fake_tm: object) -> None:
         completed_at=None,
     )
     await order_repo.save(order)
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000852")
+    )
 
     result = await service.respond_and_finalize(
         order_id=order.order_id,
@@ -252,10 +267,10 @@ async def test_offer_response_completed_at_set_only_when_last_blogger_responds(
     """completed_at is set only when the last blogger responds."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
     order = Order(
@@ -272,6 +287,12 @@ async def test_offer_response_completed_at_set_only_when_last_blogger_responds(
         completed_at=None,
     )
     await order_repo.save(order)
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000902")
+    )
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000903")
+    )
 
     result1 = await service.respond_and_finalize(
         order_id=order.order_id,
@@ -299,11 +320,11 @@ async def test_offer_response_records_metrics_when_enabled(
     """Record metrics when collector is provided."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     metrics = Mock()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         metrics_collector=metrics,
         transaction_manager=fake_tm,
     )
@@ -324,6 +345,7 @@ async def test_offer_response_records_metrics_when_enabled(
     await order_repo.save(order)
 
     blogger_id = UUID("00000000-0000-0000-0000-000000000862")
+    await dispatch_repo.record_sent(order.order_id, blogger_id)
     await service.respond_and_finalize(
         order_id=order.order_id, blogger_id=blogger_id
     )
@@ -340,7 +362,7 @@ async def test_offer_response_tx_order_not_found(fake_tm: object) -> None:
 
     service = OfferResponseService(
         order_repo=InMemoryOrderRepository(),
-        response_repo=InMemoryOrderResponseRepository(),
+        dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
 
@@ -356,10 +378,10 @@ async def test_offer_response_tx_requires_active_order(fake_tm: object) -> None:
     """Transaction path: fail when order is not active."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -393,10 +415,10 @@ async def test_offer_response_tx_duplicate_response_is_rejected(
     """Transaction path: reject duplicate response."""
 
     order_repo = InMemoryOrderRepository()
-    response_repo = InMemoryOrderResponseRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
     service = OfferResponseService(
         order_repo=order_repo,
-        response_repo=response_repo,
+        dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
 
@@ -417,6 +439,7 @@ async def test_offer_response_tx_duplicate_response_is_rejected(
             completed_at=None,
         )
     )
+    await dispatch_repo.record_sent(order_id, blogger_id)
 
     await service.respond_and_finalize(order_id=order_id, blogger_id=blogger_id)
     with pytest.raises(OrderCreationError):

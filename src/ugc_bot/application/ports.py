@@ -21,8 +21,8 @@ from ugc_bot.domain.entities import (
     ContactPricing,
     InstagramVerificationCode,
     Interaction,
+    OfferDispatch,
     Order,
-    OrderResponse,
     OutboxEvent,
     Payment,
     PayoutRequest,
@@ -193,56 +193,8 @@ class OrderRepository(ABC):
         """Persist order."""
 
 
-class OrderResponseRepository(ABC):
-    """Port for order response persistence."""
-
-    @abstractmethod
-    async def save(
-        self, response: OrderResponse, session: object | None = None
-    ) -> None:
-        """Persist order response."""
-
-    @abstractmethod
-    async def list_by_order(
-        self, order_id: UUID, session: object | None = None
-    ) -> Iterable[OrderResponse]:
-        """List responses by order."""
-
-    @abstractmethod
-    async def list_by_blogger(
-        self, blogger_id: UUID, session: object | None = None
-    ) -> Iterable[OrderResponse]:
-        """List responses by blogger (orders the blogger responded to)."""
-
-    @abstractmethod
-    async def exists(
-        self, order_id: UUID, blogger_id: UUID, session: object | None = None
-    ) -> bool:
-        """Check if blogger already responded."""
-
-    @abstractmethod
-    async def count_by_order(
-        self, order_id: UUID, session: object | None = None
-    ) -> int:
-        """Count responses by order (all, accepted and overflow)."""
-
-    @abstractmethod
-    async def count_accepted_by_order(
-        self, order_id: UUID, session: object | None = None
-    ) -> int:
-        """Count accepted responses by order (accepted=true only)."""
-
-    @abstractmethod
-    async def count_completed_orders_by_blogger_ids(
-        self,
-        blogger_ids: List[UUID],
-        session: object | None = None,
-    ) -> Dict[UUID, int]:
-        """Count completed orders (CLOSED, interaction OK) per blogger ID."""
-
-
 class OfferDispatchRepository(ABC):
-    """Port for tracking offer dispatches (who received offers)."""
+    """Port for offer dispatches and responses (sent offers and accept/skip)."""
 
     @abstractmethod
     async def record_sent(
@@ -254,10 +206,59 @@ class OfferDispatchRepository(ABC):
         """Record that an offer was sent to a blogger for an order."""
 
     @abstractmethod
+    async def record_response(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        accepted: bool,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Update dispatch with response (accepted/in_offer) and updated_at."""
+
+    @abstractmethod
     async def list_blogger_ids_sent_for_order(
         self, order_id: UUID, session: object | None = None
     ) -> list[UUID]:
         """List blogger ids who already received an offer for this order."""
+
+    @abstractmethod
+    async def list_responses_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> Iterable[OfferDispatch]:
+        """List dispatches (with response) by order."""
+
+    @abstractmethod
+    async def list_responses_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> Iterable[OfferDispatch]:
+        """List dispatches where blogger responded (accepted is not null)."""
+
+    @abstractmethod
+    async def exists_responded(
+        self, order_id: UUID, blogger_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if blogger already responded (accepted is not null)."""
+
+    @abstractmethod
+    async def count_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Count dispatches by order (all rows)."""
+
+    @abstractmethod
+    async def count_accepted_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Count in_offer=true by order (accepted within limit)."""
+
+    @abstractmethod
+    async def count_completed_orders_by_blogger_ids(
+        self,
+        blogger_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, int]:
+        """Count completed orders (CLOSED, interaction OK) per blogger ID."""
 
 
 class InteractionRepository(ABC):

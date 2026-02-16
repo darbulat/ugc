@@ -99,14 +99,19 @@ class Order:
 
 
 @dataclass(frozen=True)
-class OrderResponse:
-    """Order response entity linking bloggers to orders."""
+class OfferDispatch:
+    """Offer dispatch: sent offer and optional response (accepted/skip)."""
 
-    response_id: UUID
     order_id: UUID
     blogger_id: UUID
-    responded_at: datetime
-    accepted: bool = True  # False = overflow, for analytics and reserve
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    accepted: Optional[bool] = (
+        None  # True=Готов снять, False=Пропустить/overflow, None=no response
+    )
+    in_offer: bool = (
+        True  # Counted toward order; at most bloggers_needed per order
+    )
 
 
 @dataclass(frozen=True)

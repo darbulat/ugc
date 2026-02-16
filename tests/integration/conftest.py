@@ -126,7 +126,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         SqlAlchemyInteractionRepository,
         SqlAlchemyOfferDispatchRepository,
         SqlAlchemyOrderRepository,
-        SqlAlchemyOrderResponseRepository,
         SqlAlchemyPaymentRepository,
         SqlAlchemyUserRepository,
     )
@@ -143,9 +142,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         session_factory=session_factory
     )
     order_repo = SqlAlchemyOrderRepository(session_factory=session_factory)
-    order_response_repo = SqlAlchemyOrderResponseRepository(
-        session_factory=session_factory
-    )
     offer_dispatch_repo = SqlAlchemyOfferDispatchRepository(
         session_factory=session_factory
     )
@@ -228,7 +224,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     )
     dispatcher["offer_response_service"] = OfferResponseService(
         order_repo=order_repo,
-        response_repo=order_response_repo,
+        dispatch_repo=offer_dispatch_repo,
         transaction_manager=transaction_manager,
     )
     dispatcher["interaction_service"] = InteractionService(

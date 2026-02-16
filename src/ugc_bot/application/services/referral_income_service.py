@@ -8,8 +8,8 @@ from uuid import UUID
 
 from ugc_bot.application.ports import (
     InteractionRepository,
+    OfferDispatchRepository,
     OrderRepository,
-    OrderResponseRepository,
     PaymentRepository,
     PayoutRequestRepository,
     ReferralOrderIncomeRowLoader,
@@ -102,7 +102,7 @@ class ReferralIncomeService:
     """Calculate referral user income from completed orders."""
 
     user_referral_binding_repo: UserReferralBindingRepository
-    order_response_repo: OrderResponseRepository
+    offer_dispatch_repo: OfferDispatchRepository
     order_repo: OrderRepository
     payment_repo: PaymentRepository
     interaction_repo: InteractionRepository
@@ -366,11 +366,13 @@ class ReferralIncomeService:
             if creator is None:
                 continue
             responses = list(
-                await self.order_response_repo.list_by_blogger(
+                await self.offer_dispatch_repo.list_responses_by_blogger(
                     creator_id, session=session
                 )
             )
             for response in responses:
+                if not response.in_offer:
+                    continue
                 order = await self.order_repo.get_by_id(
                     response.order_id, session=session
                 )
@@ -504,7 +506,7 @@ class ReferralIncomeService:
 
         async def _run(sess: object | None) -> int:
             counts = await (
-                self.order_response_repo.count_completed_orders_by_blogger_ids(
+                self.offer_dispatch_repo.count_completed_orders_by_blogger_ids(
                     [user_id], session=sess
                 )
             )
@@ -523,7 +525,7 @@ class ReferralIncomeService:
 
         async def _run(sess: object | None) -> Dict[UUID, int]:
             return await (
-                self.order_response_repo.count_completed_orders_by_blogger_ids(
+                self.offer_dispatch_repo.count_completed_orders_by_blogger_ids(
                     user_ids, session=sess
                 )
             )

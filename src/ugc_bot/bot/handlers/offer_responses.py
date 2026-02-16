@@ -21,6 +21,9 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseResult,
     OfferResponseService,
@@ -128,25 +131,49 @@ async def _reply_offer_response_result(
         )
 
 
+def _parse_offer_skip_order_id(callback_data: str) -> UUID | None:
+    """Parse order_id from 'offer_skip:{order_id}'."""
+    if not callback_data or not callback_data.startswith("offer_skip:"):
+        return None
+    try:
+        return UUID(callback_data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        return None
+
+
 @router.callback_query(
     lambda callback: callback.data and callback.data.startswith("offer_skip:")
 )
 async def handle_offer_skip(
     callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    offer_dispatch_service: OfferDispatchService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle blogger pressing 'Пропустить' on offer (no response recorded).
+    """Handle blogger pressing 'Пропустить' on offer.
 
-    Removes inline keyboard so 'Готов снять UGC' can no longer be pressed.
+    Records skip in offer_dispatches (accepted=False, in_offer=False) and
+    removes inline keyboard.
     """
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
+    order_id = _parse_offer_skip_order_id(callback.data or "")
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg="Ок, пропущено.",
+        blocked_msg="Ок, пропущено.",
+        pause_msg="Ок, пропущено.",
+    )
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id, text="Ок, пропущено."
     )
+    if order_id is not None and user is not None:
+        await offer_dispatch_service.record_skip(order_id, user.user_id)
     if incoming.message_id:
         with contextlib.suppress(Exception):
             await messenger_client.edit_reply_markup(

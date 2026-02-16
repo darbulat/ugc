@@ -41,7 +41,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import Order, OrderResponse
+from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 
 router = Router()
@@ -173,7 +173,9 @@ async def show_my_orders(  # noqa: C901, PLR0912
         responses = await offer_response_service.list_by_blogger(user.user_id)
         order_responses = []
         for resp in sorted(
-            responses, key=lambda r: r.responded_at, reverse=True
+            responses,
+            key=lambda r: (r.updated_at or r.created_at, r.created_at),
+            reverse=True,
         ):
             order = await order_service.get_order(resp.order_id)
             if order is not None:
@@ -273,7 +275,9 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
         responses = await offer_response_service.list_by_blogger(user.user_id)
         order_responses = []
         for resp in sorted(
-            responses, key=lambda r: r.responded_at, reverse=True
+            responses,
+            key=lambda r: (r.updated_at or r.created_at, r.created_at),
+            reverse=True,
         ):
             order = await order_service.get_order(resp.order_id)
             if order is not None:
@@ -341,7 +345,9 @@ async def paginate_orders(
         responses = await offer_response_service.list_by_blogger(user.user_id)
         order_responses = []
         for resp in sorted(
-            responses, key=lambda r: r.responded_at, reverse=True
+            responses,
+            key=lambda r: (r.updated_at or r.created_at, r.created_at),
+            reverse=True,
         ):
             order = await order_service.get_order(resp.order_id)
             if order is not None:
@@ -436,7 +442,7 @@ async def _render_page(
 
 
 def _render_blogger_orders_page(
-    order_responses: list[tuple[Order, OrderResponse]],
+    order_responses: list[tuple[Order, OfferDispatch]],
     page: int = 1,
 ) -> tuple[str, Keyboard]:
     """Render paginated list of orders the blogger responded to."""

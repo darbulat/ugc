@@ -29,7 +29,6 @@ from ugc_bot.application.ports import (
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
-    OrderResponseRepository,
     OutboxRepository,
     PaymentRepository,
     PayoutRequestRepository,
@@ -44,8 +43,8 @@ from ugc_bot.domain.entities import (
     ContactPricing,
     InstagramVerificationCode,
     Interaction,
+    OfferDispatch,
     Order,
-    OrderResponse,
     OutboxEvent,
     Payment,
     PayoutRequest,
@@ -75,7 +74,6 @@ from ugc_bot.infrastructure.db.models import (
     NpsResponseModel,
     OfferDispatchModel,
     OrderModel,
-    OrderResponseModel,
     OutboxEventModel,
     PaymentModel,
     PayoutRequestModel,
@@ -557,140 +555,6 @@ class SqlAlchemyContactPricingRepository(ContactPricingRepository):
 
 
 @dataclass(slots=True)
-class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
-    """SQLAlchemy-backed order response repository."""
-
-    session_factory: async_sessionmaker[AsyncSession]
-
-    async def save(
-        self, response: OrderResponse, session: object | None = None
-    ) -> None:
-        """Persist order response."""
-
-        model = _to_order_response_model(response)
-        db_session = _get_async_session(session)
-        await db_session.merge(model)
-
-    async def list_by_order(
-        self, order_id: UUID, session: object | None = None
-    ) -> list[OrderResponse]:
-        """List responses by order."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OrderResponseModel).where(
-                OrderResponseModel.order_id == order_id
-            )
-        )
-        results = exec_result.scalars()
-        return [_to_order_response_entity(item) for item in results]
-
-    async def list_by_blogger(
-        self, blogger_id: UUID, session: object | None = None
-    ) -> list[OrderResponse]:
-        """List responses by blogger (orders the blogger responded to)."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OrderResponseModel).where(
-                OrderResponseModel.blogger_id == blogger_id
-            )
-        )
-        results = exec_result.scalars()
-        return [_to_order_response_entity(item) for item in results]
-
-    async def exists(
-        self, order_id: UUID, blogger_id: UUID, session: object | None = None
-    ) -> bool:
-        """Check if blogger already responded."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OrderResponseModel)
-            .where(
-                OrderResponseModel.order_id == order_id,
-                OrderResponseModel.blogger_id == blogger_id,
-            )
-        )
-        result = exec_result.scalar_one()
-        return int(result) > 0
-
-    async def count_by_order(
-        self, order_id: UUID, session: object | None = None
-    ) -> int:
-        """Count responses by order (all, accepted and overflow)."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OrderResponseModel)
-            .where(OrderResponseModel.order_id == order_id)
-        )
-        result = exec_result.scalar_one()
-        return int(result)
-
-    async def count_accepted_by_order(
-        self, order_id: UUID, session: object | None = None
-    ) -> int:
-        """Count accepted responses by order (accepted=true only)."""
-
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OrderResponseModel)
-            .where(
-                OrderResponseModel.order_id == order_id,
-                OrderResponseModel.accepted.is_(True),
-            )
-        )
-        result = exec_result.scalar_one()
-        return int(result)
-
-    async def count_completed_orders_by_blogger_ids(
-        self,
-        blogger_ids: List[UUID],
-        session: object | None = None,
-    ) -> Dict[UUID, int]:
-        """Count completed orders (CLOSED, interaction OK) per blogger ID."""
-        if not blogger_ids:
-            return {}
-        db_session = _get_async_session(session)
-        query = (
-            select(
-                OrderResponseModel.blogger_id,
-                func.count().label("cnt"),
-            )
-            .select_from(OrderResponseModel)
-            .join(
-                OrderModel,
-                and_(
-                    OrderResponseModel.order_id == OrderModel.order_id,
-                    OrderModel.status == OrderStatus.CLOSED,
-                ),
-            )
-            .join(
-                InteractionModel,
-                and_(
-                    InteractionModel.order_id == OrderResponseModel.order_id,
-                    InteractionModel.blogger_id
-                    == OrderResponseModel.blogger_id,
-                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
-                    InteractionModel.status == InteractionStatus.OK,
-                ),
-            )
-            .where(OrderResponseModel.blogger_id.in_(blogger_ids))
-            .group_by(OrderResponseModel.blogger_id)
-        )
-        exec_result = await db_session.execute(query)
-        rows = exec_result.all()
-        result = {uid: 0 for uid in blogger_ids}
-        for row in rows:
-            result[row.blogger_id] = int(row.cnt)
-        return result
-
-
-@dataclass(slots=True)
 class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
     """SQLAlchemy-backed offer dispatch repository."""
 
@@ -707,8 +571,29 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         model = OfferDispatchModel(
             order_id=order_id,
             blogger_id=blogger_id,
+            in_offer=False,
         )
         await db_session.merge(model)
+
+    async def record_response(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        accepted: bool,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Update dispatch with response (accepted/in_offer) and updated_at."""
+        db_session = _get_async_session(session)
+        now = datetime.now(timezone.utc)
+        await db_session.execute(
+            update(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.blogger_id == blogger_id,
+            )
+            .values(accepted=accepted, in_offer=in_offer, updated_at=now)
+        )
 
     async def list_blogger_ids_sent_for_order(
         self, order_id: UUID, session: object | None = None
@@ -721,6 +606,132 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
             )
         )
         return list(exec_result.scalars().all())
+
+    async def list_responses_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> List[OfferDispatch]:
+        """List dispatches (with response) by order."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(OfferDispatchModel)
+            .where(OfferDispatchModel.order_id == order_id)
+            .order_by(
+                OfferDispatchModel.updated_at.asc().nullslast(),
+                OfferDispatchModel.created_at.asc(),
+            )
+        )
+        results = exec_result.scalars().all()
+        return [_to_offer_dispatch_entity(m) for m in results]
+
+    async def list_responses_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> List[OfferDispatch]:
+        """List dispatches where blogger responded (accepted is not null)."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.blogger_id == blogger_id,
+                OfferDispatchModel.accepted.isnot(None),
+            )
+            .order_by(
+                OfferDispatchModel.updated_at.desc().nullslast(),
+                OfferDispatchModel.created_at.desc(),
+            )
+        )
+        results = exec_result.scalars().all()
+        return [_to_offer_dispatch_entity(m) for m in results]
+
+    async def exists_responded(
+        self, order_id: UUID, blogger_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if blogger already responded (accepted is not null)."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.blogger_id == blogger_id,
+                OfferDispatchModel.accepted.isnot(None),
+            )
+        )
+        result = exec_result.scalar_one()
+        return int(result) > 0
+
+    async def count_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Count dispatches by order (all rows)."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(OfferDispatchModel)
+            .where(OfferDispatchModel.order_id == order_id)
+        )
+        result = exec_result.scalar_one()
+        return int(result)
+
+    async def count_accepted_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Count in_offer=true by order (accepted within limit)."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.in_offer.is_(True),
+            )
+        )
+        result = exec_result.scalar_one()
+        return int(result)
+
+    async def count_completed_orders_by_blogger_ids(
+        self,
+        blogger_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, int]:
+        """Count completed orders (CLOSED, interaction OK) per blogger ID."""
+        if not blogger_ids:
+            return {}
+        db_session = _get_async_session(session)
+        query = (
+            select(
+                OfferDispatchModel.blogger_id,
+                func.count().label("cnt"),
+            )
+            .select_from(OfferDispatchModel)
+            .join(
+                OrderModel,
+                and_(
+                    OfferDispatchModel.order_id == OrderModel.order_id,
+                    OrderModel.status == OrderStatus.CLOSED,
+                ),
+            )
+            .join(
+                InteractionModel,
+                and_(
+                    InteractionModel.order_id == OfferDispatchModel.order_id,
+                    InteractionModel.blogger_id
+                    == OfferDispatchModel.blogger_id,
+                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
+                    InteractionModel.status == InteractionStatus.OK,
+                ),
+            )
+            .where(
+                OfferDispatchModel.blogger_id.in_(blogger_ids),
+                OfferDispatchModel.in_offer.is_(True),
+            )
+            .group_by(OfferDispatchModel.blogger_id)
+        )
+        exec_result = await db_session.execute(query)
+        rows = exec_result.all()
+        result = {uid: 0 for uid in blogger_ids}
+        for row in rows:
+            result[row.blogger_id] = int(row.cnt)
+        return result
 
 
 @dataclass(slots=True)
@@ -1101,17 +1112,16 @@ def _to_order_entity(model: OrderModel) -> Order:
     )
 
 
-def _to_order_response_entity(
-    model: OrderResponseModel,
-) -> OrderResponse:
-    """Map order response ORM model to domain entity."""
+def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
+    """Map offer dispatch ORM model to domain entity."""
 
-    return OrderResponse(
-        response_id=model.response_id,
+    return OfferDispatch(
         order_id=model.order_id,
         blogger_id=model.blogger_id,
-        responded_at=model.responded_at,
-        accepted=getattr(model, "accepted", True),
+        created_at=model.created_at,
+        updated_at=getattr(model, "updated_at", None),
+        accepted=getattr(model, "accepted", None),
+        in_offer=getattr(model, "in_offer", True),
     )
 
 
@@ -1176,20 +1186,6 @@ def _to_contact_pricing_entity(model: ContactPricingModel) -> ContactPricing:
         bloggers_count=model.bloggers_count,
         price=float(model.price),
         updated_at=model.updated_at,
-    )
-
-
-def _to_order_response_model(
-    response: OrderResponse,
-) -> OrderResponseModel:
-    """Map domain order response entity to ORM model."""
-
-    return OrderResponseModel(
-        response_id=response.response_id,
-        order_id=response.order_id,
-        blogger_id=response.blogger_id,
-        responded_at=response.responded_at,
-        accepted=response.accepted,
     )
 
 
@@ -1765,12 +1761,16 @@ class SqlReferralOrderIncomeLoader:
             )
             .select_from(UserReferralBindingModel)
             .join(
-                OrderResponseModel,
-                UserReferralBindingModel.referred_user_id
-                == OrderResponseModel.blogger_id,
+                OfferDispatchModel,
+                and_(
+                    UserReferralBindingModel.referred_user_id
+                    == OfferDispatchModel.blogger_id,
+                    OfferDispatchModel.in_offer.is_(True),
+                ),
             )
             .join(
-                OrderModel, OrderResponseModel.order_id == OrderModel.order_id
+                OrderModel,
+                OfferDispatchModel.order_id == OrderModel.order_id,
             )
             .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
             .join(
@@ -1877,12 +1877,16 @@ class SqlReferralOrderIncomeLoader:
             )
             .select_from(UserReferralBindingModel)
             .join(
-                OrderResponseModel,
-                UserReferralBindingModel.referred_user_id
-                == OrderResponseModel.blogger_id,
+                OfferDispatchModel,
+                and_(
+                    UserReferralBindingModel.referred_user_id
+                    == OfferDispatchModel.blogger_id,
+                    OfferDispatchModel.in_offer.is_(True),
+                ),
             )
             .join(
-                OrderModel, OrderResponseModel.order_id == OrderModel.order_id
+                OrderModel,
+                OfferDispatchModel.order_id == OrderModel.order_id,
             )
             .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
             .join(
@@ -1978,12 +1982,16 @@ class SqlReferralOrderIncomeLoader:
             )
             .select_from(UserReferralBindingModel)
             .join(
-                OrderResponseModel,
-                UserReferralBindingModel.referred_user_id
-                == OrderResponseModel.blogger_id,
+                OfferDispatchModel,
+                and_(
+                    UserReferralBindingModel.referred_user_id
+                    == OfferDispatchModel.blogger_id,
+                    OfferDispatchModel.in_offer.is_(True),
+                ),
             )
             .join(
-                OrderModel, OrderResponseModel.order_id == OrderModel.order_id
+                OrderModel,
+                OfferDispatchModel.order_id == OrderModel.order_id,
             )
             .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
             .join(

@@ -120,6 +120,25 @@ class OfferDispatchService:
 
         await with_optional_tx(self.transaction_manager, _run)
 
+    async def record_skip(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Record blogger skip (accepted=False, in_offer=False)."""
+
+        async def _run(sess: object | None) -> None:
+            await self.offer_dispatch_repo.record_response(
+                order_id,
+                blogger_id,
+                accepted=False,
+                in_offer=False,
+                session=sess,
+            )
+
+        await with_optional_tx(self.transaction_manager, _run)
+
     def format_offer(self, order: Order, advertiser_status: str) -> str:
         """Format offer text for a blogger (without product_link per TZ)."""
 

@@ -16,7 +16,6 @@ from ugc_bot.application.ports import (
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
-    OrderResponseRepository,
     OutboxRepository,
     PaymentRepository,
     PayoutRequestRepository,
@@ -31,8 +30,8 @@ from ugc_bot.domain.entities import (
     ContactPricing,
     InstagramVerificationCode,
     Interaction,
+    OfferDispatch,
     Order,
-    OrderResponse,
     OutboxEvent,
     Payment,
     PayoutRequest,
@@ -477,87 +476,137 @@ class InMemoryOrderRepository(OrderRepository):
 
 
 @dataclass
-class InMemoryOrderResponseRepository(OrderResponseRepository):
-    """In-memory implementation of order response repository."""
+class InMemoryOfferDispatchRepository(OfferDispatchRepository):
+    """In-memory implementation of offer dispatch repository."""
 
-    responses: list[OrderResponse] = field(default_factory=list)
+    _dispatches: Dict[Tuple[UUID, UUID], OfferDispatch] = field(
+        default_factory=dict
+    )
     order_repo: Optional[OrderRepository] = None
     interaction_repo: Optional[InteractionRepository] = None
 
-    async def save(
-        self, response: OrderResponse, session: object | None = None
+    async def record_sent(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
     ) -> None:
-        """Persist order response."""
+        """Record that an offer was sent to a blogger for an order."""
+        key = (order_id, blogger_id)
+        if key not in self._dispatches:
+            self._dispatches[key] = OfferDispatch(
+                order_id=order_id,
+                blogger_id=blogger_id,
+                created_at=datetime.now(timezone.utc),
+                updated_at=None,
+                accepted=None,
+                in_offer=False,
+            )
 
-        self.responses.append(response)
+    async def record_response(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        accepted: bool,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Update dispatch with response (accepted/in_offer) and updated_at."""
+        key = (order_id, blogger_id)
+        now = datetime.now(timezone.utc)
+        if key in self._dispatches:
+            d = self._dispatches[key]
+            self._dispatches[key] = OfferDispatch(
+                order_id=d.order_id,
+                blogger_id=d.blogger_id,
+                created_at=d.created_at,
+                updated_at=now,
+                accepted=accepted,
+                in_offer=in_offer,
+            )
 
-    async def list_by_order(
+    async def list_blogger_ids_sent_for_order(
         self, order_id: UUID, session: object | None = None
-    ) -> list[OrderResponse]:
-        """List responses by order."""
-
-        return [resp for resp in self.responses if resp.order_id == order_id]
-
-    async def list_by_blogger(
-        self, blogger_id: UUID, session: object | None = None
-    ) -> list[OrderResponse]:
-        """List responses by blogger (orders the blogger responded to)."""
-
+    ) -> List[UUID]:
+        """List blogger ids who already received an offer for this order."""
         return [
-            resp for resp in self.responses if resp.blogger_id == blogger_id
+            blogger_id
+            for (oid, blogger_id) in self._dispatches
+            if oid == order_id
         ]
 
-    async def exists(
+    async def list_responses_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> List[OfferDispatch]:
+        """List dispatches (with response) by order."""
+        return sorted(
+            [d for (oid, _), d in self._dispatches.items() if oid == order_id],
+            key=lambda x: (x.updated_at or x.created_at, x.created_at),
+        )
+
+    async def list_responses_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> List[OfferDispatch]:
+        """List dispatches where blogger responded (accepted is not null)."""
+        return sorted(
+            [
+                d
+                for (_, bid), d in self._dispatches.items()
+                if bid == blogger_id and d.accepted is not None
+            ],
+            key=lambda x: (x.updated_at or x.created_at, x.created_at),
+            reverse=True,
+        )
+
+    async def exists_responded(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
     ) -> bool:
-        """Check if blogger already responded."""
-
-        return any(
-            resp.order_id == order_id and resp.blogger_id == blogger_id
-            for resp in self.responses
+        """Check if blogger already responded (accepted is not null)."""
+        key = (order_id, blogger_id)
+        return (
+            key in self._dispatches
+            and self._dispatches[key].accepted is not None
         )
 
     async def count_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> int:
-        """Count responses by order (all, accepted and overflow)."""
-
-        return len(
-            [resp for resp in self.responses if resp.order_id == order_id]
-        )
+        """Count dispatches by order (all rows)."""
+        return sum(1 for (oid, _) in self._dispatches if oid == order_id)
 
     async def count_accepted_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> int:
-        """Count accepted responses by order (accepted=True only)."""
-
-        return len(
-            [
-                resp
-                for resp in self.responses
-                if resp.order_id == order_id and resp.accepted
-            ]
+        """Count in_offer=true by order (accepted within limit)."""
+        return sum(
+            1
+            for (oid, _), d in self._dispatches.items()
+            if oid == order_id and d.in_offer
         )
 
     async def count_completed_orders_by_blogger_ids(
         self,
-        blogger_ids: list[UUID],
+        blogger_ids: List[UUID],
         session: object | None = None,
-    ) -> dict[UUID, int]:
-        """Count completed orders per blogger (order/interaction if set)."""
+    ) -> Dict[UUID, int]:
+        """Count completed orders (CLOSED, interaction OK) per blogger ID."""
         if self.order_repo is None or self.interaction_repo is None:
             return {uid: 0 for uid in blogger_ids}
         result = {uid: 0 for uid in blogger_ids}
         for blogger_id in blogger_ids:
-            responses = await self.list_by_blogger(blogger_id, session=session)
-            for resp in responses:
+            dispatches = await self.list_responses_by_blogger(
+                blogger_id, session=session
+            )
+            for d in dispatches:
+                if not d.in_offer:
+                    continue
                 order = await self.order_repo.get_by_id(
-                    resp.order_id, session=session
+                    d.order_id, session=session
                 )
                 if order is None or order.status != OrderStatus.CLOSED:
                     continue
                 interaction = await self.interaction_repo.get_by_participants(
-                    order_id=resp.order_id,
+                    order_id=d.order_id,
                     blogger_id=blogger_id,
                     advertiser_id=order.advertiser_id,
                     session=session,
@@ -568,33 +617,6 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
                 ):
                     result[blogger_id] = result.get(blogger_id, 0) + 1
         return result
-
-
-@dataclass
-class InMemoryOfferDispatchRepository(OfferDispatchRepository):
-    """In-memory implementation of offer dispatch repository."""
-
-    _dispatches: List[Tuple[UUID, UUID]] = field(default_factory=list)
-
-    async def record_sent(
-        self,
-        order_id: UUID,
-        blogger_id: UUID,
-        session: object | None = None,
-    ) -> None:
-        """Record that an offer was sent to a blogger for an order."""
-        if (order_id, blogger_id) not in self._dispatches:
-            self._dispatches.append((order_id, blogger_id))
-
-    async def list_blogger_ids_sent_for_order(
-        self, order_id: UUID, session: object | None = None
-    ) -> List[UUID]:
-        """List blogger ids who already received an offer for this order."""
-        return [
-            blogger_id
-            for oid, blogger_id in self._dispatches
-            if oid == order_id
-        ]
 
 
 @dataclass

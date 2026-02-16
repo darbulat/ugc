@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID
 
@@ -14,7 +15,6 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
     Interaction,
     Order,
-    OrderResponse,
     OutboxEvent,
     Payment,
     PayoutRequest,
@@ -42,8 +42,8 @@ from ugc_bot.infrastructure.db.models import (
     ContactPricingModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    OfferDispatchModel,
     OrderModel,
-    OrderResponseModel,
     OutboxEventModel,
     PaymentModel,
     PayoutRequestModel,
@@ -61,7 +61,6 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyNpsRepository,
     SqlAlchemyOfferDispatchRepository,
     SqlAlchemyOrderRepository,
-    SqlAlchemyOrderResponseRepository,
     SqlAlchemyOutboxRepository,
     SqlAlchemyPaymentRepository,
     SqlAlchemyPayoutRequestRepository,
@@ -1036,9 +1035,8 @@ async def test_contact_pricing_repository_get() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_response_repository_methods() -> None:
-    """Save and query order responses."""
-
+async def test_offer_dispatch_repository_record_sent_and_response() -> None:
+    """record_sent and record_response merge/update offer dispatch."""
     session = FakeSession(None)
 
     class FakeAsyncSessionMaker:
@@ -1048,75 +1046,19 @@ async def test_order_response_repository_methods() -> None:
         def __call__(self):
             return self._session
 
-    repo = SqlAlchemyOrderResponseRepository(
+    repo = SqlAlchemyOfferDispatchRepository(
         session_factory=FakeAsyncSessionMaker(session)
     )
-    response = OrderResponse(
-        response_id=UUID("00000000-0000-0000-0000-000000000190"),
-        order_id=UUID("00000000-0000-0000-0000-000000000191"),
-        blogger_id=UUID("00000000-0000-0000-0000-000000000192"),
-        responded_at=datetime.now(timezone.utc),
-    )
-    await repo.save(response, session=session)
-    assert session.merged is not None
-    assert session.committed is False
-
-    model = OrderResponseModel(
-        response_id=response.response_id,
-        order_id=response.order_id,
-        blogger_id=response.blogger_id,
-        responded_at=response.responded_at,
-        accepted=True,
-    )
-    repo_get = SqlAlchemyOrderResponseRepository(
-        session_factory=_session_factory(model)
-    )
-    responses = await repo_get.list_by_order(
-        response.order_id, session=_repo_session(repo_get)
-    )
-    assert list(responses)
-
-    repo_exists = SqlAlchemyOrderResponseRepository(
-        session_factory=_session_factory(1)
-    )
-    assert (
-        await repo_exists.exists(
-            response.order_id,
-            response.blogger_id,
-            session=_repo_session(repo_exists),
-        )
-        is True
-    )
-
-    repo_count = SqlAlchemyOrderResponseRepository(
-        session_factory=_session_factory(2)
-    )
-    assert (
-        await repo_count.count_by_order(
-            response.order_id, session=_repo_session(repo_count)
-        )
-        == 2
-    )
-
-    from types import SimpleNamespace
-
+    order_id = UUID("00000000-0000-0000-0000-000000000191")
     blogger_id = UUID("00000000-0000-0000-0000-000000000192")
-    row_data = SimpleNamespace(blogger_id=blogger_id, cnt=2)
-    repo_completed = SqlAlchemyOrderResponseRepository(
-        session_factory=_session_factory([row_data])
-    )
-    completed = await repo_completed.count_completed_orders_by_blogger_ids(
-        [blogger_id], session=_repo_session(repo_completed)
-    )
-    assert completed == {blogger_id: 2}
+    await repo.record_sent(order_id, blogger_id, session=session)
+    assert session.merged is not None
 
-    empty_repo = SqlAlchemyOrderResponseRepository(
-        session_factory=_session_factory([])
+    await repo.record_response(
+        order_id, blogger_id, accepted=True, in_offer=True, session=session
     )
-    empty_completed = await empty_repo.count_completed_orders_by_blogger_ids(
-        [], session=_repo_session(empty_repo)
-    )
-    assert empty_completed == {}
+    # record_response uses execute(update(...)); merge already asserted above
+    assert session.merged is not None
 
 
 @pytest.mark.asyncio
@@ -1224,25 +1166,133 @@ async def test_require_session_raises_when_no_session() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_response_repository_list_by_blogger() -> None:
-    """list_by_blogger returns responses for the blogger."""
+async def test_offer_dispatch_repository_list_responses_by_blogger() -> None:
+    """list_responses_by_blogger returns dispatches where blogger responded."""
     blogger_id = UUID("00000000-0000-0000-0000-000000000193")
-    model = OrderResponseModel(
-        response_id=UUID("00000000-0000-0000-0000-000000000194"),
+    model = OfferDispatchModel(
         order_id=UUID("00000000-0000-0000-0000-000000000195"),
         blogger_id=blogger_id,
-        responded_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         accepted=True,
+        in_offer=True,
     )
-    repo = SqlAlchemyOrderResponseRepository(
+    repo = SqlAlchemyOfferDispatchRepository(
         session_factory=_session_factory([model])
     )
     responses = list(
-        await repo.list_by_blogger(blogger_id, session=_repo_session(repo))
+        await repo.list_responses_by_blogger(
+            blogger_id, session=_repo_session(repo)
+        )
     )
     assert len(responses) == 1
     assert responses[0].blogger_id == blogger_id
     assert responses[0].accepted is True
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_list_responses_by_order() -> None:
+    """list_responses_by_order returns dispatches for order."""
+    order_id = UUID("00000000-0000-0000-0000-000000000194")
+    model = OfferDispatchModel(
+        order_id=order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000195"),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        accepted=True,
+        in_offer=True,
+    )
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory([model])
+    )
+    responses = list(
+        await repo.list_responses_by_order(
+            order_id, session=_repo_session(repo)
+        )
+    )
+    assert len(responses) == 1
+    assert responses[0].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_exists_responded() -> None:
+    """exists_responded returns True when blogger responded."""
+    order_id = UUID("00000000-0000-0000-0000-000000000196")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000197")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(1)  # count = 1
+    )
+    out = await repo.exists_responded(
+        order_id, blogger_id, session=_repo_session(repo)
+    )
+    assert out is True
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_exists_responded_false() -> None:
+    """exists_responded returns False when count is 0."""
+    order_id = UUID("00000000-0000-0000-0000-000000000198")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000199")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(0)
+    )
+    out = await repo.exists_responded(
+        order_id, blogger_id, session=_repo_session(repo)
+    )
+    assert out is False
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_count_by_order() -> None:
+    """count_by_order returns number of dispatches for order."""
+    order_id = UUID("00000000-0000-0000-0000-00000000019a")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(3)
+    )
+    count = await repo.count_by_order(order_id, session=_repo_session(repo))
+    assert count == 3
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_count_accepted_by_order() -> None:
+    """count_accepted_by_order returns number with in_offer=True."""
+    order_id = UUID("00000000-0000-0000-0000-00000000019b")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(2)
+    )
+    count = await repo.count_accepted_by_order(
+        order_id, session=_repo_session(repo)
+    )
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_count_completed_orders_empty() -> None:
+    """count_completed_orders_by_blogger_ids returns {} for empty list."""
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory([])
+    )
+    out = await repo.count_completed_orders_by_blogger_ids(
+        [], session=_repo_session(repo)
+    )
+    assert out == {}
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repository_count_completed_orders() -> None:
+    """count_completed_orders_by_blogger_ids returns counts per blogger."""
+    blogger_id = UUID("00000000-0000-0000-0000-00000000019c")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(
+            [
+                SimpleNamespace(blogger_id=blogger_id, cnt=2),
+            ]
+        )
+    )
+    out = await repo.count_completed_orders_by_blogger_ids(
+        [blogger_id], session=_repo_session(repo)
+    )
+    assert out == {blogger_id: 2}
 
 
 @pytest.mark.asyncio
