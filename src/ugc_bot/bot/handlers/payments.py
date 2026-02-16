@@ -350,7 +350,5 @@ async def successful_payment_handler(
         chat_id=incoming.chat_id,
         text=ADVERTISER_AFTER_PAYMENT_IMPORTANT,
         parse_mode="Markdown",
-        keyboard=advertiser_after_payment_keyboard(
-            support_telegram_username=config.bot.support_telegram_username
-        ),
+        keyboard=advertiser_after_payment_keyboard(),
     )

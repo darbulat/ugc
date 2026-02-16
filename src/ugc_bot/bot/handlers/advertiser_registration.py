@@ -49,12 +49,11 @@ from ugc_bot.bot.validators import (
     validate_phone,
     validate_site_link,
 )
-from ugc_bot.config import AppConfig, load_config
+from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
 logger = logging.getLogger(__name__)
-_advertiser_conf = load_config()
 
 
 async def _remove_inline_keyboard_from_callback(
@@ -101,9 +100,7 @@ async def choose_advertiser_role(
         profile_getter=profile_service.get_advertiser_profile,
         choose_action_text=ADVERTISER_CHOOSE_ACTION_TEXT,
         intro_text=ADVERTISER_INTRO_TEXT,
-        menu_keyboard=lambda: advertiser_menu_keyboard(
-            support_telegram_username=_advertiser_conf.bot.support_telegram_username
-        ),
+        menu_keyboard=advertiser_menu_keyboard,
         start_keyboard=advertiser_start_keyboard,
     )
 
@@ -151,9 +148,7 @@ async def _advertiser_start_impl(
         await messenger_client.send_text(
             chat_id=chat_id,
             text="Выберите действие:",
-            keyboard=advertiser_menu_keyboard(
-                support_telegram_username=_advertiser_conf.bot.support_telegram_username
-            ),
+            keyboard=advertiser_menu_keyboard(),
         )
         return
     await state_store.update_data(user_id=user_id)
@@ -503,9 +498,7 @@ async def handle_agreements_confirm(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Теперь вы можете разместить заказ и найти UGC-креаторов.",
-        keyboard=advertiser_menu_keyboard(
-            support_telegram_username=_advertiser_conf.bot.support_telegram_username
-        ),
+        keyboard=advertiser_menu_keyboard(),
     )
 
 
@@ -551,7 +544,5 @@ async def handle_advertiser_agreements_callback(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Теперь вы можете разместить заказ и найти UGC-креаторов.",
-        keyboard=advertiser_menu_keyboard(
-            support_telegram_username=_advertiser_conf.bot.support_telegram_username
-        ),
+        keyboard=advertiser_menu_keyboard(),
     )

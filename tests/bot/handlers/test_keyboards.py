@@ -1,6 +1,6 @@
 """Tests for keyboard helpers."""
 
-from ugc_bot.application.messenger.dto import KeyboardKind
+from ugc_bot.application.messenger.dto import Button
 from ugc_bot.bot.handlers.keyboards import (
     ADVERTISER_START_BUTTON_TEXT,
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
@@ -13,8 +13,8 @@ from ugc_bot.bot.handlers.keyboards import (
     blogger_menu_keyboard,
     main_menu_keyboard,
     profile_keyboard,
-    support_inline_keyboard,
-    support_link_button,
+    support_keyboard,
+    with_support_keyboard,
 )
 
 
@@ -49,6 +49,24 @@ def test_blogger_menu_keyboard_resize() -> None:
     keyboard = blogger_menu_keyboard(confirmed=False)
 
     assert keyboard.resize is True
+
+
+def test_support_keyboard() -> None:
+    """Support keyboard has one Support button."""
+    keyboard = support_keyboard()
+
+    assert keyboard.rows is not None
+    assert len(keyboard.rows) == 1
+    assert keyboard.rows[0][0].text == SUPPORT_BUTTON_TEXT
+
+
+def test_with_support_keyboard_appends_support_row() -> None:
+    """with_support_keyboard appends Support button row."""
+    base = [[Button(text="A")]]
+    keyboard = with_support_keyboard(base)
+
+    assert len(keyboard.rows) == 2
+    assert keyboard.rows[1][0].text == SUPPORT_BUTTON_TEXT
 
 
 def test_main_menu_keyboard_persistent() -> None:
@@ -103,40 +121,3 @@ def test_profile_keyboard_one_time_false() -> None:
     keyboard = profile_keyboard(one_time_keyboard=False)
 
     assert keyboard.one_time is False
-
-
-def test_support_link_button_returns_button_when_username_set() -> None:
-    """support_link_button returns Button with SUPPORT_BUTTON_TEXT and URL."""
-    btn = support_link_button("usemycontent")
-    assert btn is not None
-    assert btn.text == SUPPORT_BUTTON_TEXT
-    assert btn.url == "https://t.me/usemycontent"
-
-
-def test_support_link_button_strips_at_prefix() -> None:
-    """support_link_button strips @ from username."""
-    btn = support_link_button("@support_team")
-    assert btn is not None
-    assert btn.url == "https://t.me/support_team"
-
-
-def test_support_link_button_returns_none_when_empty() -> None:
-    """support_link_button returns None when username is empty."""
-    assert support_link_button("") is None
-    assert support_link_button("   ") is None
-
-
-def test_support_inline_keyboard_returns_keyboard_when_username_set() -> None:
-    """support_inline_keyboard returns inline keyboard with support link."""
-    kb = support_inline_keyboard("usemycontent")
-    assert kb is not None
-    assert kb.kind == KeyboardKind.INLINE
-    assert len(kb.rows) == 1
-    assert len(kb.rows[0]) == 1
-    assert kb.rows[0][0].text == SUPPORT_BUTTON_TEXT
-    assert kb.rows[0][0].url == "https://t.me/usemycontent"
-
-
-def test_support_inline_keyboard_returns_none_when_username_empty() -> None:
-    """support_inline_keyboard returns None when username is empty."""
-    assert support_inline_keyboard("") is None
