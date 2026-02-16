@@ -1066,6 +1066,7 @@ async def test_order_response_repository_methods() -> None:
         order_id=response.order_id,
         blogger_id=response.blogger_id,
         responded_at=response.responded_at,
+        accepted=True,
     )
     repo_get = SqlAlchemyOrderResponseRepository(
         session_factory=_session_factory(model)
@@ -1231,6 +1232,7 @@ async def test_order_response_repository_list_by_blogger() -> None:
         order_id=UUID("00000000-0000-0000-0000-000000000195"),
         blogger_id=blogger_id,
         responded_at=datetime.now(timezone.utc),
+        accepted=True,
     )
     repo = SqlAlchemyOrderResponseRepository(
         session_factory=_session_factory([model])
@@ -1240,6 +1242,7 @@ async def test_order_response_repository_list_by_blogger() -> None:
     )
     assert len(responses) == 1
     assert responses[0].blogger_id == blogger_id
+    assert responses[0].accepted is True
 
 
 @pytest.mark.asyncio

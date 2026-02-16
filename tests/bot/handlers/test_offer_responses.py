@@ -14,9 +14,11 @@ from tests.helpers.fakes import (
     FakeCallback,
     FakeFSMContext,
     FakeMessage,
+    FakeMessengerClient,
     FakeUser,
 )
 from tests.helpers.services import build_profile_service
+from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
@@ -25,6 +27,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
     ORDER_CLOSED_MESSAGE,
     _send_contact_immediately,
+    _send_order_closed_and_remove_keyboard,
     handle_offer_response,
     handle_offer_skip,
 )
@@ -422,6 +425,25 @@ async def test_offer_response_handler_order_not_active(
 
 
 @pytest.mark.asyncio
+async def test_send_order_closed_and_remove_keyboard() -> None:
+    """Order-closed helper answers callback and sends order-closed message."""
+    incoming = IncomingCallback(
+        callback_id="cb1",
+        chat_id="123",
+        user=IncomingUser(
+            external_id="1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="u",
+        ),
+        message_id="456",
+    )
+    client = FakeMessengerClient()
+    await _send_order_closed_and_remove_keyboard(incoming, client)
+    assert len(client.answered_callbacks) == 1
+    assert any(ORDER_CLOSED_MESSAGE in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
 async def test_offer_response_handler_order_not_found(
     fake_tm: object,
     offer_response_rate_limiter,
@@ -559,11 +581,11 @@ async def test_offer_response_handler_already_responded(
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_limit_reached(
+async def test_offer_response_handler_overflow_saved_no_contact(
     fake_tm: object,
     offer_response_rate_limiter,
 ) -> None:
-    """Reject responses when limit reached."""
+    """Overflow saved, overflow message shown; no contact to advertiser."""
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
@@ -619,6 +641,7 @@ async def test_offer_response_handler_limit_reached(
             order_id=order.order_id,
             blogger_id=UUID("00000000-0000-0000-0000-000000000723"),
             responded_at=datetime.now(timezone.utc),
+            accepted=True,
         )
     )
 
@@ -640,10 +663,17 @@ async def test_offer_response_handler_limit_reached(
     )
 
     assert callback.answers
-    assert "Заказ уже закрыт" in callback.answers[0]
+    assert (
+        "укомплектован" in callback.answers[0]
+        or "сохранили ваш отклик" in callback.answers[0]
+    )
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
-    assert ORDER_CLOSED_MESSAGE in message.answers
+    assert ORDER_CLOSED_MESSAGE not in message.answers
+    total = await response_repo.count_by_order(order.order_id)
+    assert total == 2
+    accepted_count = await response_repo.count_accepted_by_order(order.order_id)
+    assert accepted_count == 1
 
 
 @pytest.mark.asyncio

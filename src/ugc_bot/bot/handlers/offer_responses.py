@@ -22,6 +22,7 @@ from ugc_bot.application.messenger.ports import (
 )
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_response_service import (
+    OfferResponseResult,
     OfferResponseService,
 )
 from ugc_bot.application.services.profile_service import ProfileService
@@ -78,6 +79,53 @@ async def _send_order_closed_and_remove_keyboard(
         chat_id=incoming.chat_id,
         text=ORDER_CLOSED_MESSAGE,
     )
+
+
+async def _reply_offer_response_result(
+    incoming: IncomingCallback,
+    result: OfferResponseResult,
+    blogger_id: UUID,
+    messenger_client: MessengerClient,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    interaction_service: InteractionService,
+) -> None:
+    """Answer callback, remove keyboard; if accepted, send link and contact."""
+    if result.accepted:
+        text = "Отклик принят! Ожидайте связи от рекламодателя."
+    else:
+        text = (
+            "Заказ уже укомплектован. Мы сохранили ваш отклик — "
+            "если кто-то откажется, с вами могут связаться."
+        )
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text=text,
+    )
+    if incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
+    if result.accepted:
+        if result.order.product_link:
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id, text=result.order.product_link
+            )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id, text=BLOGGER_AFTER_RESPONSE_WHAT_NEXT
+        )
+        await _send_contact_immediately(
+            order=result.order,
+            blogger_id=blogger_id,
+            response_count=result.response_count,
+            user_role_service=user_role_service,
+            profile_service=profile_service,
+            interaction_service=interaction_service,
+            messenger_client=messenger_client,
+        )
 
 
 @router.callback_query(
@@ -199,36 +247,14 @@ async def handle_offer_response(
         await _send_order_closed_and_remove_keyboard(incoming, messenger_client)
         return
 
-    await messenger_client.answer_callback(
-        callback_id=incoming.callback_id,
-        text="Отклик принят! Ожидайте связи от рекламодателя.",
-    )
-
-    if incoming.message_id:
-        with contextlib.suppress(Exception):
-            await messenger_client.edit_reply_markup(
-                chat_id=incoming.chat_id,
-                message_id=incoming.message_id,
-                keyboard=None,
-            )
-
-    if result.order.product_link:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=result.order.product_link
-        )
-    await messenger_client.send_text(
-        chat_id=incoming.chat_id, text=BLOGGER_AFTER_RESPONSE_WHAT_NEXT
-    )
-
-    # Send contact immediately after each response
-    await _send_contact_immediately(
-        order=result.order,
-        blogger_id=user.user_id,
-        response_count=result.response_count,
-        user_role_service=user_role_service,
-        profile_service=profile_service,
-        interaction_service=interaction_service,
-        messenger_client=messenger_client,
+    await _reply_offer_response_result(
+        incoming,
+        result,
+        user.user_id,
+        messenger_client,
+        user_role_service,
+        profile_service,
+        interaction_service,
     )
 
 

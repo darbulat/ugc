@@ -1518,6 +1518,7 @@ class AdminDashboardService:
     ) -> list[dict]:
         """List orders with derived status labels and flags."""
         responses = self._order_responses_subquery()
+        total_responses_subq = self._order_responses_total_subquery()
         open_complaints = self._open_complaints_subquery()
         query = (
             select(
@@ -1529,6 +1530,9 @@ class AdminDashboardService:
                 func.coalesce(
                     AdvertiserProfileModel.brand, UserModel.username
                 ).label("advertiser_name"),
+                func.coalesce(total_responses_subq.c.total_responses, 0).label(
+                    "total_responses"
+                ),
             )
             .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
             .outerjoin(
@@ -1536,6 +1540,10 @@ class AdminDashboardService:
                 AdvertiserProfileModel.user_id == OrderModel.advertiser_id,
             )
             .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
+            .outerjoin(
+                total_responses_subq,
+                total_responses_subq.c.order_id == OrderModel.order_id,
+            )
             .outerjoin(
                 open_complaints,
                 open_complaints.c.order_id == OrderModel.order_id,
@@ -1574,8 +1582,15 @@ class AdminDashboardService:
         rows = result.all()
         now = datetime.now(self._timezone)
         return [
-            self._build_order_row(now, order, responses_count, open_count, name)
-            for order, responses_count, open_count, name in rows
+            self._build_order_row(
+                now,
+                order,
+                responses_count,
+                open_count,
+                name,
+                total_responses=int(tr),
+            )
+            for order, responses_count, open_count, name, tr in rows
         ]
 
     async def _get_order_card(
@@ -1583,6 +1598,7 @@ class AdminDashboardService:
     ) -> dict | None:
         """Fetch detailed order card information."""
         responses = self._order_responses_subquery()
+        total_responses_subq = self._order_responses_total_subquery()
         open_complaints = self._open_complaints_subquery()
         query = (
             select(
@@ -1594,6 +1610,9 @@ class AdminDashboardService:
                 func.coalesce(
                     AdvertiserProfileModel.brand, UserModel.username
                 ).label("advertiser_name"),
+                func.coalesce(total_responses_subq.c.total_responses, 0).label(
+                    "total_responses"
+                ),
             )
             .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
             .outerjoin(
@@ -1601,6 +1620,10 @@ class AdminDashboardService:
                 AdvertiserProfileModel.user_id == OrderModel.advertiser_id,
             )
             .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
+            .outerjoin(
+                total_responses_subq,
+                total_responses_subq.c.order_id == OrderModel.order_id,
+            )
             .outerjoin(
                 open_complaints,
                 open_complaints.c.order_id == OrderModel.order_id,
@@ -1611,7 +1634,27 @@ class AdminDashboardService:
         row = result.one_or_none()
         if row is None:
             return None
-        order, responses_count, open_count, advertiser_name = row
+        (
+            order,
+            responses_count,
+            open_count,
+            advertiser_name,
+            total_responses,
+        ) = row
+        resp_list_result = await session.execute(
+            select(OrderResponseModel)
+            .where(OrderResponseModel.order_id == order_id)
+            .order_by(OrderResponseModel.responded_at)
+        )
+        response_models = resp_list_result.scalars().all()
+        responses_list = [
+            {
+                "blogger_id": str(r.blogger_id),
+                "responded_at": r.responded_at,
+                "accepted": getattr(r, "accepted", True),
+            }
+            for r in response_models
+        ]
         now = datetime.now(self._timezone)
         status_label = self._order_status_label(
             order, responses_count, open_count
@@ -1623,6 +1666,7 @@ class AdminDashboardService:
             "order_type": order.order_type.value,
             "bloggers_needed": int(order.bloggers_needed),
             "picked_count": int(responses_count),
+            "total_responses": int(total_responses),
             "progress": self._progress_ratio(
                 responses_count, order.bloggers_needed
             ),
@@ -1631,6 +1675,7 @@ class AdminDashboardService:
             "status_label": status_label,
             "status_age_hours": self._status_age_hours(now, order),
             "has_problem": open_count > 0,
+            "responses_list": responses_list,
         }
 
     async def _count_users_with_profile(
@@ -1660,11 +1705,25 @@ class AdminDashboardService:
         return {"count": current, "change_pct": change_pct}
 
     def _order_responses_subquery(self):
-        """Build responses count subquery."""
+        """Build accepted responses count subquery (accepted=true only)."""
         return (
             select(
                 OrderResponseModel.order_id.label("order_id"),
                 func.count(OrderResponseModel.response_id).label("responses"),
+            )
+            .where(OrderResponseModel.accepted.is_(True))
+            .group_by(OrderResponseModel.order_id)
+            .subquery()
+        )
+
+    def _order_responses_total_subquery(self):
+        """Build total responses count subquery (all, accepted + overflow)."""
+        return (
+            select(
+                OrderResponseModel.order_id.label("order_id"),
+                func.count(OrderResponseModel.response_id).label(
+                    "total_responses"
+                ),
             )
             .group_by(OrderResponseModel.order_id)
             .subquery()
@@ -1774,12 +1833,13 @@ class AdminDashboardService:
         responses: int,
         open_complaints: int,
         advertiser_name: str,
+        total_responses: int | None = None,
     ) -> dict:
         """Build order list row for UI/API."""
         status_label = self._order_status_label(
             order, responses, open_complaints
         )
-        return {
+        row = {
             "order_id": str(order.order_id),
             "advertiser": advertiser_name,
             "status_label": status_label,
@@ -1789,6 +1849,11 @@ class AdminDashboardService:
             "status_age_hours": self._status_age_hours(now, order),
             "has_problem": open_complaints > 0,
         }
+        if total_responses is not None:
+            row["total_responses"] = int(total_responses)
+        else:
+            row["total_responses"] = int(responses)
+        return row
 
     def _status_age_hours(self, now: datetime, order: OrderModel) -> float:
         """Return time spent in current status in hours."""

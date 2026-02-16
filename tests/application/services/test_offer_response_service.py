@@ -68,8 +68,10 @@ async def test_offer_response_success(fake_tm: object) -> None:
 
 
 @pytest.mark.asyncio
-async def test_offer_response_limit(fake_tm: object) -> None:
-    """Prevent responses above limit."""
+async def test_offer_response_overflow_saved_with_accepted_false(
+    fake_tm: object,
+) -> None:
+    """When limit reached, overflow response is saved with accepted=False."""
 
     order_repo = InMemoryOrderRepository()
     response_repo = InMemoryOrderResponseRepository()
@@ -93,16 +95,23 @@ async def test_offer_response_limit(fake_tm: object) -> None:
         completed_at=None,
     )
     await order_repo.save(order)
-    await service.respond(
+    first = await service.respond_and_finalize(
         order_id=order.order_id,
         blogger_id=UUID("00000000-0000-0000-0000-000000000812"),
     )
+    assert first.accepted is True
+    assert first.response.accepted is True
 
-    with pytest.raises(OrderCreationError):
-        await service.respond(
-            order_id=order.order_id,
-            blogger_id=UUID("00000000-0000-0000-0000-000000000813"),
-        )
+    second = await service.respond_and_finalize(
+        order_id=order.order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000813"),
+    )
+    assert second.accepted is False
+    assert second.response.accepted is False
+    total = await response_repo.count_by_order(order.order_id)
+    assert total == 2
+    accepted_count = await response_repo.count_accepted_by_order(order.order_id)
+    assert accepted_count == 1
 
 
 @pytest.mark.asyncio

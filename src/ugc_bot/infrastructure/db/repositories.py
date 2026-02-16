@@ -619,13 +619,30 @@ class SqlAlchemyOrderResponseRepository(OrderResponseRepository):
     async def count_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> int:
-        """Count responses by order."""
+        """Count responses by order (all, accepted and overflow)."""
 
         db_session = _get_async_session(session)
         exec_result = await db_session.execute(
             select(func.count())
             .select_from(OrderResponseModel)
             .where(OrderResponseModel.order_id == order_id)
+        )
+        result = exec_result.scalar_one()
+        return int(result)
+
+    async def count_accepted_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Count accepted responses by order (accepted=true only)."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(OrderResponseModel)
+            .where(
+                OrderResponseModel.order_id == order_id,
+                OrderResponseModel.accepted.is_(True),
+            )
         )
         result = exec_result.scalar_one()
         return int(result)
@@ -1094,6 +1111,7 @@ def _to_order_response_entity(
         order_id=model.order_id,
         blogger_id=model.blogger_id,
         responded_at=model.responded_at,
+        accepted=getattr(model, "accepted", True),
     )
 
 
@@ -1171,6 +1189,7 @@ def _to_order_response_model(
         order_id=response.order_id,
         blogger_id=response.blogger_id,
         responded_at=response.responded_at,
+        accepted=response.accepted,
     )
 
 

@@ -25,6 +25,7 @@ class OfferResponseResult:
     response_count: int
     order_closed: bool
     completed_at: Optional[datetime]
+    accepted: bool  # True = within limit; False = overflow (analytics/reserve)
 
 
 @dataclass(slots=True)
@@ -93,31 +94,39 @@ class OfferResponseService:
             )
             if order is None:
                 raise OrderCreationError("Order not found.")
-            if order.status != OrderStatus.ACTIVE:
+            accepted_count = await self.response_repo.count_accepted_by_order(
+                order_id, session=session
+            )
+            order_closed_or_inactive = order.status != OrderStatus.ACTIVE
+            if (
+                order_closed_or_inactive
+                and accepted_count < order.bloggers_needed
+            ):
                 raise OrderCreationError("Order is not active.")
             if await self.response_repo.exists(
                 order_id, blogger_id, session=session
             ):
                 raise OrderCreationError("You already responded to this order.")
 
-            response_count = await self.response_repo.count_by_order(
-                order_id, session=session
-            )
-            if response_count >= order.bloggers_needed:
-                raise OrderCreationError("Order response limit reached.")
-
+            within_limit = accepted_count < order.bloggers_needed
             response = OrderResponse(
                 response_id=uuid4(),
                 order_id=order_id,
                 blogger_id=blogger_id,
                 responded_at=now,
+                accepted=within_limit,
             )
             await self.response_repo.save(response, session=session)
-            response_count += 1
-            updated = _update_order_after_response(
-                order, response_count, now=now
-            )
-            await self.order_repo.save(updated, session=session)
+
+            if within_limit:
+                response_count = accepted_count + 1
+                updated = _update_order_after_response(
+                    order, response_count, now=now
+                )
+                await self.order_repo.save(updated, session=session)
+            else:
+                updated = order
+                response_count = accepted_count
 
         if self.metrics_collector:
             self.metrics_collector.record_blogger_response(
@@ -132,6 +141,7 @@ class OfferResponseService:
             response_count=response_count,
             order_closed=order_closed,
             completed_at=updated.completed_at,
+            accepted=within_limit,
         )
 
 

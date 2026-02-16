@@ -106,6 +106,7 @@ class OrderResponse:
     order_id: UUID
     blogger_id: UUID
     responded_at: datetime
+    accepted: bool = True  # False = overflow, for analytics and reserve
 
 
 @dataclass(frozen=True)

@@ -286,6 +286,9 @@ class OrderResponseModel(Base):
     responded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+    accepted: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, server_default=text("true")
+    )
 
 
 class InteractionModel(Base):

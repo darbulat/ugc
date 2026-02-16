@@ -520,10 +520,23 @@ class InMemoryOrderResponseRepository(OrderResponseRepository):
     async def count_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> int:
-        """Count responses by order."""
+        """Count responses by order (all, accepted and overflow)."""
 
         return len(
             [resp for resp in self.responses if resp.order_id == order_id]
+        )
+
+    async def count_accepted_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Count accepted responses by order (accepted=True only)."""
+
+        return len(
+            [
+                resp
+                for resp in self.responses
+                if resp.order_id == order_id and resp.accepted
+            ]
         )
 
     async def count_completed_orders_by_blogger_ids(

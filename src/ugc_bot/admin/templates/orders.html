@@ -41,6 +41,7 @@
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=advertiser&order={% if sort == 'advertiser' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Заказчик</a></th>
           <th>Статус</th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=picked_count&order={% if sort == 'picked_count' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Подобрано</a></th>
+          <th>Всего откликов</th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Дата создания</a></th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=status_age_hours&order={% if sort == 'status_age_hours' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Время в статусе (ч)</a></th>
           <th>Проблема</th>
@@ -53,6 +54,7 @@
             <td>{{ order.advertiser }}</td>
             <td>{{ status_labels.get(order.status_label, order.status_label) }}</td>
             <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
+            <td>{{ order.total_responses }}</td>
             <td>{{ order.created_at }}</td>
             <td>{{ order.status_age_hours }}</td>
             <td>

@@ -29,6 +29,10 @@
         <div class="detail-value">{{ order.picked_count }} / {{ order.bloggers_needed }}</div>
       </div>
       <div class="detail-row">
+        <div class="detail-label">Всего откликов</div>
+        <div class="detail-value">{{ order.total_responses }}</div>
+      </div>
+      <div class="detail-row">
         <div class="detail-label">Прогресс</div>
         <div class="detail-value">
           <div class="progress">
@@ -65,5 +69,28 @@
         </div>
       </div>
     </div>
+    {% if order.responses_list %}
+    <div class="card">
+      <h2>Отклики</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Креатор (ID)</th>
+            <th>Дата отклика</th>
+            <th>Статус</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in order.responses_list %}
+          <tr>
+            <td>{{ r.blogger_id }}</td>
+            <td>{{ r.responded_at }}</td>
+            <td>{% if r.accepted %}<span class="badge badge--ok">Принят</span>{% else %}<span class="badge">В резерве</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
   </section>
 {% endblock %}

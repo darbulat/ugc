@@ -127,3 +127,32 @@ async def test_order_response_repo_count_by_order() -> None:
     )
     count = await repo.count_by_order(order_id)
     assert count == 2
+    accepted_count = await repo.count_accepted_by_order(order_id)
+    assert accepted_count == 2
+
+
+@pytest.mark.asyncio
+async def test_order_response_repo_count_accepted_by_order() -> None:
+    """count_accepted_by_order returns count of accepted responses only."""
+    repo = InMemoryOrderResponseRepository()
+    order_id = UUID("00000000-0000-0000-0000-000000000050")
+    repo.responses.append(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order_id,
+            blogger_id=UUID("00000000-0000-0000-0000-000000000051"),
+            responded_at=datetime.now(timezone.utc),
+            accepted=True,
+        )
+    )
+    repo.responses.append(
+        OrderResponse(
+            response_id=uuid4(),
+            order_id=order_id,
+            blogger_id=UUID("00000000-0000-0000-0000-000000000052"),
+            responded_at=datetime.now(timezone.utc),
+            accepted=False,
+        )
+    )
+    assert await repo.count_by_order(order_id) == 2
+    assert await repo.count_accepted_by_order(order_id) == 1

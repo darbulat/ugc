@@ -1047,12 +1047,14 @@ class OrderResponseAdmin(ModelView, model=OrderResponseModel):
         OrderResponseModel.order_id,
         OrderResponseModel.blogger_id,
         OrderResponseModel.responded_at,
+        OrderResponseModel.accepted,
     ]
     column_labels = {
         OrderResponseModel.response_id: "ID отклика",
         OrderResponseModel.order_id: "ID заказа",
         OrderResponseModel.blogger_id: "ID креатора",
         OrderResponseModel.responded_at: "Дата отклика",
+        OrderResponseModel.accepted: "Принят",
     }
 
 

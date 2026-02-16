@@ -224,7 +224,13 @@ class OrderResponseRepository(ABC):
     async def count_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> int:
-        """Count responses by order."""
+        """Count responses by order (all, accepted and overflow)."""
+
+    @abstractmethod
+    async def count_accepted_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Count accepted responses by order (accepted=true only)."""
 
     @abstractmethod
     async def count_completed_orders_by_blogger_ids(
