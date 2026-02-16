@@ -274,12 +274,19 @@ async def _send_contact_immediately(
     profile_url = profile.instagram_url.strip()
     if profile_url and not profile_url.startswith("http"):
         profile_url = "https://" + profile_url
-    open_profile_kb = None
+    buttons: list[Button] = []
     if profile_url.startswith("http"):
-        open_profile_kb = Keyboard(
-            kind=KeyboardKind.INLINE,
-            rows=[[Button(text="🔗 Открыть профиль", url=profile_url)]],
+        buttons.append(Button(text="🔗 Открыть профиль", url=profile_url))
+    if user.telegram and user.telegram.strip():
+        buttons.append(
+            Button(
+                text="Написать в телеграм",
+                url=f"https://t.me/{user.telegram.lstrip('@')}",
+            )
         )
+    open_profile_kb = (
+        Keyboard(kind=KeyboardKind.INLINE, rows=[buttons]) if buttons else None
+    )
 
     advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
     if advertiser and advertiser.external_id.isdigit():
