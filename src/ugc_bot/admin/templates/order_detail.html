@@ -29,8 +29,12 @@
         <div class="detail-value">{{ order.picked_count }} / {{ order.bloggers_needed }}</div>
       </div>
       <div class="detail-row">
-        <div class="detail-label">Всего откликов</div>
-        <div class="detail-value">{{ order.total_responses }}</div>
+        <div class="detail-label">Отправлено уведомлений</div>
+        <div class="detail-value">{{ order.dispatched_count }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Откликов</div>
+        <div class="detail-value">{{ order.accepted_count }}</div>
       </div>
       <div class="detail-row">
         <div class="detail-label">Прогресс</div>

@@ -893,7 +893,7 @@ async def test_list_orders(service) -> None:
     """list_orders returns order rows with status labels."""
     order = _make_order()
     rows = [
-        (order, 3, 0, "Advertiser1", 3),
+        (order, 3, 0, "Advertiser1", 3, 3),
     ]
     results = [
         _FakeResult(scalar_value=1),
@@ -914,6 +914,8 @@ async def test_list_orders(service) -> None:
     )
     assert orders[0]["picked_count"] == 3
     assert orders[0]["needed_count"] == order.bloggers_needed
+    assert orders[0]["dispatched_count"] == 3
+    assert orders[0]["accepted_count"] == 3
     assert "status_age_hours" in orders[0]
     assert "has_problem" in orders[0]
 
@@ -922,7 +924,7 @@ async def test_list_orders(service) -> None:
 async def test_list_orders_with_status_filter(service) -> None:
     """list_orders filters by status_label when provided."""
     order = _make_order(bloggers_needed=3, status=OrderStatus.CLOSED)
-    rows = [(order, 3, 0, "Advertiser", 3)]
+    rows = [(order, 3, 0, "Advertiser", 3, 3)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -938,7 +940,7 @@ async def test_list_orders_with_status_filter(service) -> None:
 async def test_list_orders_status_filter_complaint_branch(service) -> None:
     """list_orders with status_filter=complaint builds complaint condition."""
     order = _make_order()
-    rows = [(order, 1, 1, "Advertiser", 1)]
+    rows = [(order, 1, 1, "Advertiser", 1, 1)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -953,7 +955,7 @@ async def test_list_orders_status_filter_complaint_branch(service) -> None:
 async def test_list_orders_status_filter_active_branch(service) -> None:
     """list_orders with status_filter=active builds active SQL condition."""
     order = _make_order()
-    rows = [(order, 0, 0, "Advertiser", 0)]
+    rows = [(order, 0, 0, "Advertiser", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -972,7 +974,7 @@ async def test_list_orders_status_filter_archive_branch(service) -> None:
         status=OrderStatus.CLOSED,
         completed_at=datetime.now(timezone.utc) - timedelta(days=14),
     )
-    rows = [(order, 5, 0, "Advertiser", 5)]
+    rows = [(order, 5, 0, "Advertiser", 5, 5)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -989,7 +991,7 @@ async def test_list_orders_status_filter_unknown_returns_none_condition(
 ) -> None:
     """list_orders with unknown status_filter applies no extra SQL condition."""
     order = _make_order()
-    rows = [(order, 0, 0, "Advertiser", 0)]
+    rows = [(order, 0, 0, "Advertiser", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1005,7 +1007,7 @@ async def test_get_order_card_returns_detail(service) -> None:
     """get_order_card returns full order detail."""
     order_id = uuid4()
     order = _make_order(order_id=order_id, bloggers_needed=10)
-    row = (order, 5, 0, "Brand Inc", 5)
+    row = (order, 5, 0, "Brand Inc", 5, 5)
     results = [
         _FakeResult(one_or_none_value=row),
         _FakeResult(all_rows=[]),
@@ -1019,7 +1021,8 @@ async def test_get_order_card_returns_detail(service) -> None:
     assert card["order_type"] == "ugc_only"
     assert card["bloggers_needed"] == 10
     assert card["picked_count"] == 5
-    assert card["total_responses"] == 5
+    assert card["dispatched_count"] == 5
+    assert card["accepted_count"] == 5
     assert card["progress"] == 0.5
     assert card["status_label"] == "active"
     assert "status_age_hours" in card
@@ -1131,7 +1134,7 @@ async def test_user_status_label_limited(service) -> None:
 async def test_order_status_complaint_when_open_complaints(service) -> None:
     """Order status is complaint when open_complaints > 0."""
     order = _make_order()
-    rows = [(order, 5, 1, "Advertiser", 5)]
+    rows = [(order, 5, 1, "Advertiser", 5, 5)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1147,7 +1150,7 @@ async def test_order_status_complaint_when_open_complaints(service) -> None:
 async def test_order_status_completed_when_enough_responses(service) -> None:
     """Order status is completed when picked >= needed."""
     order = _make_order(bloggers_needed=5)
-    rows = [(order, 5, 0, "Advertiser", 5)]
+    rows = [(order, 5, 0, "Advertiser", 5, 5)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1189,7 +1192,7 @@ async def test_build_delta_negative_change(service) -> None:
 async def test_progress_ratio_capped_at_one(service) -> None:
     """Progress ratio is capped at 1.0."""
     order = _make_order(bloggers_needed=5)
-    row = (order, 10, 0, "Advertiser", 10)
+    row = (order, 10, 0, "Advertiser", 10, 10)
     results = [
         _FakeResult(one_or_none_value=row),
         _FakeResult(all_rows=[]),
@@ -1279,7 +1282,7 @@ async def test_order_status_archive_when_old_and_no_complaints(service) -> None:
         status=OrderStatus.CLOSED,
         completed_at=datetime.now(timezone.utc) - timedelta(days=14),
     )
-    rows = [(order, 5, 0, "Advertiser", 5)]
+    rows = [(order, 5, 0, "Advertiser", 5, 5)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1296,6 +1299,7 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
         bloggers_needed=10,
         created_at=datetime.now(timezone.utc) - timedelta(hours=2),
     )
+    # Delayed orders query returns 4 columns per row
     rows = [(order, 8, 0, "Advertiser")]
     results = [
         _FakeResult(scalar_value=0),
@@ -1321,7 +1325,7 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
 async def test_progress_ratio_zero_when_needed_zero(service) -> None:
     """Progress ratio returns 0 when needed is 0."""
     order = _make_order(bloggers_needed=0)
-    row = (order, 5, 0, "Advertiser", 5)
+    row = (order, 5, 0, "Advertiser", 5, 5)
     results = [
         _FakeResult(one_or_none_value=row),
         _FakeResult(all_rows=[]),
@@ -1467,7 +1471,7 @@ async def test_list_advertisers_with_sort_and_search(service) -> None:
 async def test_list_orders_with_sort(service) -> None:
     """list_orders with sort uses correct order column."""
     order = _make_order()
-    rows = [(order, 2, 0, "AdvertiserA", 2)]
+    rows = [(order, 2, 0, "AdvertiserA", 2, 2)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1588,7 +1592,7 @@ async def test_list_creators_with_digit_search_hits_user_search_condition(
 async def test_list_orders_sort_picked_count(service) -> None:
     """list_orders with sort=picked_count uses responses coalesce."""
     order = _make_order()
-    rows = [(order, 2, 0, "Ad", 2)]
+    rows = [(order, 2, 0, "Ad", 2, 2)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1604,7 +1608,7 @@ async def test_list_orders_sort_picked_count(service) -> None:
 async def test_list_orders_sort_status_age_hours(service) -> None:
     """list_orders with sort=status_age_hours uses completed_at/created_at."""
     order = _make_order()
-    rows = [(order, 1, 0, "Ad", 1)]
+    rows = [(order, 1, 0, "Ad", 1, 1)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1744,7 +1748,7 @@ async def test_list_advertisers_unknown_sort_uses_default(service) -> None:
 async def test_list_orders_unknown_sort_uses_created_at(service) -> None:
     """list_orders with unknown sort uses created_at order."""
     order = _make_order()
-    rows = [(order, 0, 0, "Ad", 0)]
+    rows = [(order, 0, 0, "Ad", 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),

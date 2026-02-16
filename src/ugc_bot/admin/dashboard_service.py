@@ -1522,7 +1522,8 @@ class AdminDashboardService:
     ) -> list[dict]:
         """List orders with derived status labels and flags."""
         responses = self._order_responses_subquery()
-        total_responses_subq = self._order_responses_total_subquery()
+        dispatched_subq = self._order_responses_total_subquery()
+        accepted_subq = self._order_accepted_count_subquery()
         open_complaints = self._open_complaints_subquery()
         query = (
             select(
@@ -1534,8 +1535,11 @@ class AdminDashboardService:
                 func.coalesce(
                     AdvertiserProfileModel.brand, UserModel.username
                 ).label("advertiser_name"),
-                func.coalesce(total_responses_subq.c.total_responses, 0).label(
-                    "total_responses"
+                func.coalesce(dispatched_subq.c.dispatched_count, 0).label(
+                    "dispatched_count"
+                ),
+                func.coalesce(accepted_subq.c.accepted_count, 0).label(
+                    "accepted_count"
                 ),
             )
             .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
@@ -1545,8 +1549,12 @@ class AdminDashboardService:
             )
             .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
             .outerjoin(
-                total_responses_subq,
-                total_responses_subq.c.order_id == OrderModel.order_id,
+                dispatched_subq,
+                dispatched_subq.c.order_id == OrderModel.order_id,
+            )
+            .outerjoin(
+                accepted_subq,
+                accepted_subq.c.order_id == OrderModel.order_id,
             )
             .outerjoin(
                 open_complaints,
@@ -1592,9 +1600,17 @@ class AdminDashboardService:
                 responses_count,
                 open_count,
                 name,
-                total_responses=int(tr),
+                dispatched_count=dispatched_count,
+                accepted_count=accepted_count,
             )
-            for order, responses_count, open_count, name, tr in rows
+            for (
+                order,
+                responses_count,
+                open_count,
+                name,
+                dispatched_count,
+                accepted_count,
+            ) in rows
         ]
 
     async def _get_order_card(
@@ -1602,7 +1618,8 @@ class AdminDashboardService:
     ) -> dict | None:
         """Fetch detailed order card information."""
         responses = self._order_responses_subquery()
-        total_responses_subq = self._order_responses_total_subquery()
+        dispatched_subq = self._order_responses_total_subquery()
+        accepted_subq = self._order_accepted_count_subquery()
         open_complaints = self._open_complaints_subquery()
         query = (
             select(
@@ -1614,8 +1631,11 @@ class AdminDashboardService:
                 func.coalesce(
                     AdvertiserProfileModel.brand, UserModel.username
                 ).label("advertiser_name"),
-                func.coalesce(total_responses_subq.c.total_responses, 0).label(
-                    "total_responses"
+                func.coalesce(dispatched_subq.c.dispatched_count, 0).label(
+                    "dispatched_count"
+                ),
+                func.coalesce(accepted_subq.c.accepted_count, 0).label(
+                    "accepted_count"
                 ),
             )
             .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
@@ -1625,8 +1645,12 @@ class AdminDashboardService:
             )
             .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
             .outerjoin(
-                total_responses_subq,
-                total_responses_subq.c.order_id == OrderModel.order_id,
+                dispatched_subq,
+                dispatched_subq.c.order_id == OrderModel.order_id,
+            )
+            .outerjoin(
+                accepted_subq,
+                accepted_subq.c.order_id == OrderModel.order_id,
             )
             .outerjoin(
                 open_complaints,
@@ -1643,7 +1667,8 @@ class AdminDashboardService:
             responses_count,
             open_count,
             advertiser_name,
-            total_responses,
+            dispatched_count,
+            accepted_count,
         ) = row
         resp_list_result = await session.execute(
             select(OfferDispatchModel)
@@ -1675,7 +1700,8 @@ class AdminDashboardService:
             "order_type": order.order_type.value,
             "bloggers_needed": int(order.bloggers_needed),
             "picked_count": int(responses_count),
-            "total_responses": int(total_responses),
+            "dispatched_count": int(dispatched_count),
+            "accepted_count": int(accepted_count),
             "progress": self._progress_ratio(
                 responses_count, order.bloggers_needed
             ),
@@ -1726,14 +1752,28 @@ class AdminDashboardService:
         )
 
     def _order_responses_total_subquery(self):
-        """Build total dispatches count subquery per order."""
+        """Build total sent dispatches count subquery per order."""
         return (
             select(
                 OfferDispatchModel.order_id.label("order_id"),
                 func.count(OfferDispatchModel.blogger_id).label(
-                    "total_responses"
+                    "dispatched_count"
                 ),
             )
+            .group_by(OfferDispatchModel.order_id)
+            .subquery()
+        )
+
+    def _order_accepted_count_subquery(self):
+        """Build accepted=True (responses) count subquery per order."""
+        return (
+            select(
+                OfferDispatchModel.order_id.label("order_id"),
+                func.count(OfferDispatchModel.blogger_id).label(
+                    "accepted_count"
+                ),
+            )
+            .where(OfferDispatchModel.accepted.is_(True))
             .group_by(OfferDispatchModel.order_id)
             .subquery()
         )
@@ -1842,27 +1882,25 @@ class AdminDashboardService:
         responses: int,
         open_complaints: int,
         advertiser_name: str,
-        total_responses: int | None = None,
+        dispatched_count: int = 0,
+        accepted_count: int = 0,
     ) -> dict:
         """Build order list row for UI/API."""
         status_label = self._order_status_label(
             order, responses, open_complaints
         )
-        row = {
+        return {
             "order_id": str(order.order_id),
             "advertiser": advertiser_name,
             "status_label": status_label,
             "picked_count": int(responses),
             "needed_count": int(order.bloggers_needed),
+            "dispatched_count": int(dispatched_count),
+            "accepted_count": int(accepted_count),
             "created_at": order.created_at,
             "status_age_hours": self._status_age_hours(now, order),
             "has_problem": open_complaints > 0,
         }
-        if total_responses is not None:
-            row["total_responses"] = int(total_responses)
-        else:
-            row["total_responses"] = int(responses)
-        return row
 
     def _status_age_hours(self, now: datetime, order: OrderModel) -> float:
         """Return time spent in current status in hours."""
