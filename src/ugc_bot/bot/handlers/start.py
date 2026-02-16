@@ -24,8 +24,10 @@ from ugc_bot.bot.handlers.keyboards import (
     SUPPORT_BUTTON_TEXT,
     advertiser_menu_keyboard,
     main_menu_keyboard,
+    support_link_button,
 )
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.config import AppConfig, load_config
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
@@ -34,9 +36,13 @@ START_TEXT = (
     "UMC — сервис для UGC.\n" "Бизнесу — подбор креаторов, креаторам — заказы."
 )
 
+conf = load_config()
+
 SUPPORT_RESPONSE_TEXT = (
-    "Служба поддержки: @usemycontent\n" "Обращайтесь по любым вопросам!"
+    f"Служба поддержки: @{conf.bot.support_telegram_username}\n"
+    "Обращайтесь по любым вопросам!"
 )
+
 
 CREATOR_LABEL = "Я креатор"
 ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
@@ -84,9 +90,9 @@ async def change_role_button(
 
 
 @router.message(Command("support"))
-@router.message(lambda msg: (msg.text or "").strip() == SUPPORT_BUTTON_TEXT)
 async def support_button(
     message: Message,
+    config: AppConfig,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state: FSMContext,
@@ -100,6 +106,7 @@ async def support_button(
     incoming = event_adapter.from_message(message)
     await _support_button(
         incoming=incoming,
+        config=config,
         user_role_service=user_role_service,
         profile_service=profile_service,
         state_store=AiogramStateStore(state),
@@ -110,12 +117,18 @@ async def support_button(
 def _role_keyboard() -> Keyboard:
     """Build a reply keyboard for role selection."""
 
+    support_btn = support_link_button(conf.bot.support_telegram_username)
+    support_row: Button = (
+        support_btn
+        if support_btn is not None
+        else Button(text=SUPPORT_BUTTON_TEXT)
+    )
     return Keyboard(
         kind=KeyboardKind.REPLY,
         rows=[
             [Button(text=CREATOR_LABEL)],
             [Button(text=ADVERTISER_LABEL)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
+            [support_row],
         ],
         resize=True,
         one_time=True,
@@ -173,6 +186,7 @@ async def _change_role_button(
 async def _support_button(
     *,
     incoming: IncomingMessage,
+    config: AppConfig,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state_store: StateStore,
@@ -202,13 +216,18 @@ async def _support_button(
         if user
         else None
     )
+    support_username = config.bot.support_telegram_username
     reply_markup = (
-        advertiser_menu_keyboard()
+        advertiser_menu_keyboard(support_telegram_username=support_username)
         if advertiser is not None
-        else main_menu_keyboard()
+        else main_menu_keyboard(support_telegram_username=support_username)
+    )
+    support_text = (
+        f"Служба поддержки: @{support_username}\n"
+        "Обращайтесь по любым вопросам!"
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=SUPPORT_RESPONSE_TEXT,
+        text=support_text,
         keyboard=reply_markup,
     )

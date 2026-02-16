@@ -1,5 +1,7 @@
 """Tests for Support button (replaces former cancel handler)."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from tests.helpers.fakes import (
@@ -9,16 +11,21 @@ from tests.helpers.fakes import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.start import support_button
+from ugc_bot.config import AppConfig
 
 
 @pytest.mark.asyncio
 async def test_support_button_sends_support_text_and_menu(
     user_repo, blogger_repo
 ) -> None:
-    """Support button sends support text and main menu keyboard."""
+    """Support button sends support text (from env) and main menu keyboard."""
 
     from tests.helpers.services import build_profile_service
 
+    config = MagicMock(
+        spec=AppConfig,
+        bot=MagicMock(support_telegram_username="usemycontent"),
+    )
     service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo
@@ -28,12 +35,13 @@ async def test_support_button_sends_support_text_and_menu(
 
     await support_button(
         message,
+        config=config,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
     )
 
-    assert message.answers
+    assert len(message.answers) >= 1
     text = (
         message.answers[0][0]
         if isinstance(message.answers[0], tuple)
@@ -52,6 +60,9 @@ async def test_support_button_clears_state_when_in_fsm(
 
     from tests.helpers.services import build_profile_service
 
+    config = MagicMock(
+        spec=AppConfig, bot=MagicMock(support_telegram_username="")
+    )
     service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo
@@ -61,6 +72,7 @@ async def test_support_button_clears_state_when_in_fsm(
 
     await support_button(
         message,
+        config=config,
         user_role_service=service,
         profile_service=profile_service,
         state=state,

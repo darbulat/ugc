@@ -1,5 +1,7 @@
 """Tests for start and role handlers."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from tests.helpers.fakes import (
@@ -30,6 +32,7 @@ from ugc_bot.bot.handlers.start import (
     start_command,
     support_button,
 )
+from ugc_bot.config import AppConfig, load_config
 from ugc_bot.domain.enums import MessengerType
 
 
@@ -245,7 +248,10 @@ async def test_choose_role_advertiser_with_filled_profile_shows_menu(
 
     assert message.answers
     assert message.answers[-1][0] == "Выберите действие:"
-    assert message.answers[-1][1].rows == advertiser_menu_keyboard().rows
+    expected_rows = advertiser_menu_keyboard(
+        support_telegram_username=load_config().bot.support_telegram_username
+    ).rows
+    assert message.answers[-1][1].rows == expected_rows
 
 
 @pytest.mark.asyncio
@@ -298,10 +304,14 @@ async def test_choose_role_advertiser_response(user_repo, blogger_repo) -> None:
 async def test_support_button_sends_support_text(
     user_repo, blogger_repo
 ) -> None:
-    """Support button sends support text and main menu."""
+    """Support button sends support text (from env) and main menu."""
 
     from tests.helpers.services import build_profile_service
 
+    config = MagicMock(
+        spec=AppConfig,
+        bot=MagicMock(support_telegram_username="usemycontent"),
+    )
     service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo
@@ -311,15 +321,19 @@ async def test_support_button_sends_support_text(
 
     await support_button(
         message,
+        config=config,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
     )
 
-    assert message.answers
-    assert "Служба поддержки" in message.answers[0][0]
-    assert "@usemycontent" in message.answers[0][0]
-    assert message.answers[0][1] is not None
+    assert len(message.answers) >= 1
+    first = message.answers[0]
+    support_text = first[0] if isinstance(first, tuple) else first
+    assert "Служба поддержки" in support_text
+    assert "@usemycontent" in support_text
+    if isinstance(first, tuple):
+        assert first[1] is not None
 
 
 @pytest.mark.asyncio
@@ -330,6 +344,9 @@ async def test_support_button_without_from_user_returns_early(
 
     from tests.helpers.services import build_profile_service
 
+    config = MagicMock(
+        spec=AppConfig, bot=MagicMock(support_telegram_username="")
+    )
     service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo
@@ -339,6 +356,7 @@ async def test_support_button_without_from_user_returns_early(
 
     await support_button(
         message,
+        config=config,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
@@ -352,6 +370,9 @@ async def test_support_button_clears_fsm_state(user_repo, blogger_repo) -> None:
 
     from tests.helpers.services import build_profile_service
 
+    config = MagicMock(
+        spec=AppConfig, bot=MagicMock(support_telegram_username="")
+    )
     service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo
@@ -361,13 +382,16 @@ async def test_support_button_clears_fsm_state(user_repo, blogger_repo) -> None:
 
     await support_button(
         message,
+        config=config,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
     )
 
     assert state.cleared is True
-    assert "Служба поддержки" in message.answers[0][0]
+    first = message.answers[0]
+    support_text = first[0] if isinstance(first, tuple) else first
+    assert "Служба поддержки" in support_text
 
 
 @pytest.mark.asyncio
@@ -379,6 +403,9 @@ async def test_support_button_shows_advertiser_menu_when_has_profile(
     from tests.helpers.factories import create_test_advertiser_profile
     from tests.helpers.services import build_profile_service
 
+    config = MagicMock(
+        spec=AppConfig, bot=MagicMock(support_telegram_username="")
+    )
     service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
@@ -397,6 +424,7 @@ async def test_support_button_shows_advertiser_menu_when_has_profile(
 
     await support_button(
         message,
+        config=config,
         user_role_service=service,
         profile_service=profile_service,
         state=state,
@@ -404,6 +432,12 @@ async def test_support_button_shows_advertiser_menu_when_has_profile(
         event_adapter=event_adapter,
     )
 
-    assert message.answers
-    assert "Служба поддержки" in message.answers[0][0]
-    assert message.answers[0][1].rows == advertiser_menu_keyboard().rows
+    assert len(message.answers) >= 1
+    first = message.answers[0]
+    support_text = first[0] if isinstance(first, tuple) else first
+    assert "Служба поддержки" in support_text
+    assert isinstance(first, tuple)
+    assert (
+        first[1].rows
+        == advertiser_menu_keyboard(support_telegram_username="").rows
+    )

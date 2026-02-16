@@ -63,31 +63,26 @@ CALLBACK_PROFILE_WORK_ADS = "profile:work:ads"
 CALLBACK_PROFILE_WORK_UGC = "profile:work:ugc"
 
 
-def support_keyboard(one_time_keyboard: bool = True) -> Keyboard:
-    """Build a reply keyboard with a support button."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=SUPPORT_BUTTON_TEXT)]],
-        resize=True,
-        one_time=one_time_keyboard,
-    )
+def support_link_button(support_telegram_username: str) -> Button | None:
+    """Support button (link to Telegram DM from SUPPORT_TELEGRAM_USERNAME)."""
+    username = (support_telegram_username or "").strip().lstrip("@")
+    if not username:
+        return None
+    return Button(text=SUPPORT_BUTTON_TEXT, url=f"https://t.me/{username}")
 
 
-def with_support_keyboard(
-    keyboard: list[list[Button]],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Build a reply keyboard with a support button appended."""
+def _support_button(support_telegram_username: str) -> Button:
+    """Support button (link if username set, else text only)."""
+    btn = support_link_button(support_telegram_username)
+    return btn if btn is not None else Button(text=SUPPORT_BUTTON_TEXT)
 
-    combined = list(keyboard)
-    combined.append([Button(text=SUPPORT_BUTTON_TEXT)])
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=combined,
-        resize=True,
-        one_time=one_time_keyboard,
-    )
+
+def support_inline_keyboard(support_telegram_username: str) -> Keyboard | None:
+    """Inline keyboard with single support button (link to support DM)."""
+    btn = support_link_button(support_telegram_username)
+    if btn is None:
+        return None
+    return Keyboard(kind=KeyboardKind.INLINE, rows=[[btn]])
 
 
 def flow_keyboard(
@@ -156,6 +151,7 @@ def creator_start_keyboard_reply() -> Keyboard:
 
 def creator_filled_profile_keyboard(
     one_time_keyboard: bool = False,
+    support_telegram_username: str = "",
 ) -> Keyboard:
     """Keyboard for creator with filled profile: Edit, Profile, Orders."""
 
@@ -165,20 +161,20 @@ def creator_filled_profile_keyboard(
             [Button(text=EDIT_PROFILE_BUTTON_TEXT)],
             [Button(text=MY_PROFILE_BUTTON_TEXT)],
             [Button(text=MY_ORDERS_BUTTON_TEXT)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
+            [_support_button(support_telegram_username)],
         ],
         resize=True,
         one_time=one_time_keyboard,
     )
 
 
-def main_menu_keyboard() -> Keyboard:
+def main_menu_keyboard(support_telegram_username: str = "") -> Keyboard:
     """Build persistent main menu (Support, Change role)."""
 
     return Keyboard(
         kind=KeyboardKind.REPLY,
         rows=[
-            [Button(text=SUPPORT_BUTTON_TEXT)],
+            [_support_button(support_telegram_username)],
             [Button(text=CHANGE_ROLE_BUTTON_TEXT)],
         ],
         resize=True,
@@ -232,6 +228,7 @@ def confirm_agreement_inline_keyboard(callback_data: str) -> Keyboard:
 
 def advertiser_menu_keyboard(
     one_time_keyboard: bool = True,
+    support_telegram_username: str = "",
 ) -> Keyboard:
     """Build a reply keyboard for advertiser actions."""
 
@@ -242,14 +239,16 @@ def advertiser_menu_keyboard(
             [Button(text=MY_ORDERS_BUTTON_TEXT)],
             [Button(text=MY_PROFILE_BUTTON_TEXT)],
             [Button(text=EDIT_PROFILE_BUTTON_TEXT)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
+            [_support_button(support_telegram_username)],
         ],
         resize=True,
         one_time=one_time_keyboard,
     )
 
 
-def advertiser_after_payment_keyboard() -> Keyboard:
+def advertiser_after_payment_keyboard(
+    support_telegram_username: str = "",
+) -> Keyboard:
     """Keyboard after successful payment: Create order, My orders, Support."""
 
     return Keyboard(
@@ -257,7 +256,7 @@ def advertiser_after_payment_keyboard() -> Keyboard:
         rows=[
             [Button(text=CREATE_ORDER_BUTTON_TEXT)],
             [Button(text=MY_ORDERS_BUTTON_TEXT)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
+            [_support_button(support_telegram_username)],
         ],
         resize=True,
         one_time=False,

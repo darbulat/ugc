@@ -16,7 +16,11 @@ _ENV = SettingsConfigDict(
 )
 
 _FLAT_KEYS = {
-    "bot": ["BOT_TOKEN", "TELEGRAM_PROVIDER_TOKEN"],
+    "bot": [
+        "BOT_TOKEN",
+        "TELEGRAM_PROVIDER_TOKEN",
+        "SUPPORT_TELEGRAM_USERNAME",
+    ],
     "log": ["LOG_LEVEL", "LOG_FORMAT"],
     "db": [
         "DATABASE_URL",
@@ -110,6 +114,9 @@ class BotConfig(BaseSettings):
     bot_token: str = Field(alias="BOT_TOKEN")
     telegram_provider_token: str = Field(
         default="", alias="TELEGRAM_PROVIDER_TOKEN"
+    )
+    support_telegram_username: str = Field(
+        default="usemycontent", alias="SUPPORT_TELEGRAM_USERNAME"
     )
 
     @field_validator("bot_token")
