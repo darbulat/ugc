@@ -5,9 +5,14 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import OrderStatus, OrderType
+from ugc_bot.domain.entities import Interaction, Order
+from ugc_bot.domain.enums import (
+    InteractionStatus,
+    OrderStatus,
+    OrderType,
+)
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryInteractionRepository,
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
 )
@@ -154,3 +159,45 @@ async def test_offer_dispatch_repo_count_accepted_by_order() -> None:
     )
     assert await repo.count_by_order(order_id) == 2
     assert await repo.count_accepted_by_order(order_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_interaction_repo_list_blogger_ids_with_unfulfilled() -> None:
+    """Unfulfilled interaction blogger_ids (PENDING or ISSUE) returned."""
+    now = datetime.now(timezone.utc)
+    blogger_pending = UUID("00000000-0000-0000-0000-000000000060")
+    blogger_ok = UUID("00000000-0000-0000-0000-000000000061")
+    repo = InMemoryInteractionRepository()
+    await repo.save(
+        Interaction(
+            interaction_id=UUID("00000000-0000-0000-0000-000000000062"),
+            order_id=UUID("00000000-0000-0000-0000-000000000063"),
+            blogger_id=blogger_pending,
+            advertiser_id=UUID("00000000-0000-0000-0000-000000000064"),
+            status=InteractionStatus.PENDING,
+            from_advertiser=None,
+            from_blogger=None,
+            postpone_count=0,
+            next_check_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    await repo.save(
+        Interaction(
+            interaction_id=UUID("00000000-0000-0000-0000-000000000065"),
+            order_id=UUID("00000000-0000-0000-0000-000000000066"),
+            blogger_id=blogger_ok,
+            advertiser_id=UUID("00000000-0000-0000-0000-000000000067"),
+            status=InteractionStatus.OK,
+            from_advertiser=None,
+            from_blogger=None,
+            postpone_count=0,
+            next_check_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    result = await repo.list_blogger_ids_with_unfulfilled_interaction()
+    assert blogger_pending in result
+    assert blogger_ok not in result

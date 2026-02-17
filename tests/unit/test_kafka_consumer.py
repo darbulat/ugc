@@ -25,6 +25,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
+    InMemoryInteractionRepository,
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
@@ -39,6 +40,13 @@ from ugc_bot.kafka_consumer import (
     _start_kafka_client_with_retry,
     main,
     run_consumer,
+)
+
+_KAFKA_ORDER_CONFIG = SimpleNamespace(
+    allowed_blogger_counts="1,3,5,10",
+    max_order_price=10_000.0,
+    offer_dispatch_min_followers_enabled=False,
+    offer_dispatch_min_followers=1000,
 )
 
 
@@ -76,6 +84,8 @@ async def test_send_offers_sends_messages() -> None:
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
 
     now = datetime.now(timezone.utc)
@@ -180,6 +190,8 @@ async def test_send_offers_with_photo_uses_send_photo() -> None:
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
 
     now = datetime.now(timezone.utc)
@@ -290,6 +302,8 @@ async def test_send_offers_returns_when_order_not_found() -> None:
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
     order_id = UUID("00000000-0000-0000-0000-000000000999")
     bot = Mock(spec=["send_message"])
@@ -335,6 +349,8 @@ async def test_send_offers_returns_when_advertiser_not_found() -> None:
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
     bot = Mock(spec=["send_message"])
     bot.sent = []
@@ -389,6 +405,8 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
     with patch.object(
         OfferDispatchService,
@@ -631,6 +649,8 @@ async def test_send_offers_retries_then_succeeds() -> None:
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
     now = datetime.now(timezone.utc)
     advertiser = User(
@@ -725,6 +745,8 @@ async def test_send_offers_sends_to_dlq(
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
     now = datetime.now(timezone.utc)
     advertiser = User(
@@ -817,6 +839,8 @@ async def test_send_offers_user_blocked_bot_no_retry_no_dlq(
         blogger_repo=blogger_repo,
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_KAFKA_ORDER_CONFIG,
     )
     now = datetime.now(timezone.utc)
     advertiser = User(

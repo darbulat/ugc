@@ -36,7 +36,7 @@ from ugc_bot.bot.handlers.offer_responses import (
 )
 from ugc_bot.bot.handlers.utils import RateLimiter
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
-from ugc_bot.config import AppConfig
+from ugc_bot.config import AppConfig, OrderConfig
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
     MessengerType,
@@ -188,11 +188,19 @@ async def test_offer_skip_handler(
     await user_repo.save(blogger_user)
     user_service = UserRoleService(user_repo=user_repo)
     offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    _order_config = OrderConfig(
+        allowed_blogger_counts="1,3,5,10",
+        max_order_price=10_000.0,
+        offer_dispatch_min_followers_enabled=False,
+        offer_dispatch_min_followers=1000,
+    )
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_order_config,
         transaction_manager=None,
     )
     order_id = UUID("00000000-0000-0000-0000-000000000748")
@@ -1306,11 +1314,19 @@ async def test_offer_skip_edit_reply_markup_exception(
     """handle_offer_skip handles exception when edit_reply_markup fails."""
 
     user_service = UserRoleService(user_repo=user_repo)
+    _order_config = OrderConfig(
+        allowed_blogger_counts="1,3,5,10",
+        max_order_price=10_000.0,
+        offer_dispatch_min_followers_enabled=False,
+        offer_dispatch_min_followers=1000,
+    )
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        order_config=_order_config,
         transaction_manager=None,
     )
 

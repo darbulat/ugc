@@ -883,6 +883,23 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
             .values(next_check_at=next_check_at)
         )
 
+    async def list_blogger_ids_with_unfulfilled_interaction(
+        self, session: object | None = None
+    ) -> list[UUID]:
+        """Blogger ids with at least one interaction PENDING or ISSUE."""
+
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(InteractionModel.blogger_id)
+            .where(
+                InteractionModel.status.in_(
+                    [InteractionStatus.PENDING, InteractionStatus.ISSUE]
+                )
+            )
+            .distinct()
+        )
+        return list(exec_result.scalars().all())
+
 
 @dataclass(slots=True)
 class SqlAlchemyNpsRepository(NpsRepository):

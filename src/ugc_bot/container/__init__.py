@@ -77,7 +77,7 @@ class Container:
         """OfferDispatchService for Kafka consumer."""
         repos = self.build_repos()
         return service_factory.build_offer_dispatch_service(
-            repos, self._transaction_manager
+            repos, self._transaction_manager, self._config
         )
 
     def build_admin_services(

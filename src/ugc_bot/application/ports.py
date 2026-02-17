@@ -322,6 +322,12 @@ class InteractionRepository(ABC):
     ) -> None:
         """Update next_check_at (e.g. after sending feedback request)."""
 
+    @abstractmethod
+    async def list_blogger_ids_with_unfulfilled_interaction(
+        self, session: object | None = None
+    ) -> list[UUID]:
+        """Blogger ids with at least one interaction not in (OK, NO_DEAL)."""
+
 
 class NpsRepository(ABC):
     """Port for NPS response persistence."""

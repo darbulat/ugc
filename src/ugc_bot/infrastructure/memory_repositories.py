@@ -745,6 +745,18 @@ class InMemoryInteractionRepository(InteractionRepository):
             )
             self.interactions[interaction_id] = updated
 
+    async def list_blogger_ids_with_unfulfilled_interaction(
+        self, session: object | None = None
+    ) -> list[UUID]:
+        """Blogger ids with at least one interaction PENDING or ISSUE."""
+
+        unfulfilled = {
+            i.blogger_id
+            for i in self.interactions.values()
+            if i.status in (InteractionStatus.PENDING, InteractionStatus.ISSUE)
+        }
+        return list(unfulfilled)
+
 
 @dataclass
 class InMemoryNpsRepository(NpsRepository):

@@ -1345,6 +1345,28 @@ async def test_interaction_repository_list_by_status() -> None:
 
 
 @pytest.mark.asyncio
+async def test_interaction_repository_list_blogger_ids_with_unfulfilled() -> (
+    None
+):
+    """Unfulfilled interaction blogger_ids (PENDING or ISSUE) returned."""
+    blogger_pending = UUID("00000000-0000-0000-0000-000000000220")
+    blogger_issue = UUID("00000000-0000-0000-0000-000000000221")
+    blogger_ok = UUID("00000000-0000-0000-0000-000000000222")
+    # Fake session returns list of UUIDs (as from select(blogger_id).distinct())
+    result_ids = [blogger_pending, blogger_issue]
+    repo = SqlAlchemyInteractionRepository(
+        session_factory=_session_factory(result_ids)
+    )
+    result = await repo.list_blogger_ids_with_unfulfilled_interaction(
+        session=_repo_session(repo)
+    )
+    result_set = set(result)
+    assert blogger_pending in result_set
+    assert blogger_issue in result_set
+    assert blogger_ok not in result_set
+
+
+@pytest.mark.asyncio
 async def test_interaction_repository_update_next_check_at() -> None:
     """update_next_check_at executes update."""
     session = FakeSession(None)

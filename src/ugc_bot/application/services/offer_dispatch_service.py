@@ -10,11 +10,13 @@ from ugc_bot.application.geography import (
 )
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
+    InteractionRepository,
     OfferDispatchRepository,
     OrderRepository,
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.config import OrderConfig
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import OrderStatus, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -28,6 +30,8 @@ class OfferDispatchService:
     blogger_repo: BloggerProfileRepository
     order_repo: OrderRepository
     offer_dispatch_repo: OfferDispatchRepository
+    interaction_repo: InteractionRepository
+    order_config: OrderConfig
     transaction_manager: TransactionManager | None = None
 
     async def get_order_and_advertiser(
@@ -54,7 +58,7 @@ class OfferDispatchService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def _dispatch(
+    async def _dispatch(  # noqa: PLR0912
         self, order_id: UUID, session: object | None
     ) -> list[User]:
         order = await self.order_repo.get_by_id(order_id, session=session)
@@ -76,9 +80,20 @@ class OfferDispatchService:
         )
         already_sent_set = frozenset(already_sent)
 
+        unfulfilled_ids = await self.interaction_repo.list_blogger_ids_with_unfulfilled_interaction(  # noqa: E501
+            session=session
+        )
+        bloggers_with_unfulfilled = frozenset(unfulfilled_ids)
+
         geography_spec = None
         if order.geography:
             geography_spec = parse_geography(order.geography)
+
+        need_profile = (
+            geography_spec is not None
+            or self.order_config.offer_dispatch_min_followers_enabled
+        )
+        min_followers = self.order_config.offer_dispatch_min_followers
 
         users: list[User] = []
         for user_id in confirmed_ids:
@@ -86,21 +101,33 @@ class OfferDispatchService:
                 continue
             if user_id in already_sent_set:
                 continue
+            if user_id in bloggers_with_unfulfilled:
+                continue
             user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
                 continue
             if user.status != UserStatus.ACTIVE:
                 continue
-            if geography_spec is not None:
+            profile = None
+            if need_profile:
                 profile = await self.blogger_repo.get_by_user_id(
                     user_id, session=session
                 )
                 if profile is None:
                     continue
-                if not blogger_matches_geography(
+            if (
+                geography_spec is not None
+                and profile is not None
+                and not blogger_matches_geography(
                     profile.city,
                     geography_spec,
-                ):
+                )
+            ):
+                continue
+            if self.order_config.offer_dispatch_min_followers_enabled:
+                if profile is None or profile.instagram_followers_count is None:
+                    continue
+                if profile.instagram_followers_count < min_followers:
                     continue
             users.append(user)
         return users

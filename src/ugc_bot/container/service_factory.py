@@ -43,13 +43,15 @@ from ugc_bot.container.types import BotServices
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
 
 
-def build_offer_dispatch_service(repos, transaction_manager):
+def build_offer_dispatch_service(repos, transaction_manager, config: AppConfig):
     """Build OfferDispatchService for Kafka consumer."""
     return OfferDispatchService(
         user_repo=repos["user_repo"],
         blogger_repo=repos["blogger_repo"],
         order_repo=repos["order_repo"],
         offer_dispatch_repo=repos["offer_dispatch_repo"],
+        interaction_repo=repos["interaction_repo"],
+        order_config=config.order,
         transaction_manager=transaction_manager,
     )
 
@@ -215,6 +217,8 @@ def build_bot_services(
             blogger_repo=repos["blogger_repo"],
             order_repo=repos["order_repo"],
             offer_dispatch_repo=repos["offer_dispatch_repo"],
+            interaction_repo=repos["interaction_repo"],
+            order_config=config.order,
             transaction_manager=transaction_manager,
         ),
         "offer_response_service": OfferResponseService(
