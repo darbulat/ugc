@@ -9,6 +9,7 @@ NOISY_LOGGERS: tuple[str, ...] = (
     "aiokafka",
     "aiokafka.consumer.group_coordinator",
     "aiokafka.consumer.consumer",
+    "aiogram.event",
     "aiosqlite",
     "urllib3",
     "httpx",
