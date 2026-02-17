@@ -66,6 +66,8 @@ _FLAT_KEYS = {
         "ADMIN_INSTAGRAM_USERNAME",
         "INSTAGRAM_ACCESS_TOKEN",
         "INSTAGRAM_API_BASE_URL",
+        "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+        "INSTAGRAM_BUSINESS_ACCESS_TOKEN",
     ],
     "docs": [
         "DOCS_OFFER_URL",
@@ -266,6 +268,12 @@ class InstagramConfig(BaseSettings):
     )
     instagram_api_base_url: str = Field(
         default="https://graph.instagram.com", alias="INSTAGRAM_API_BASE_URL"
+    )
+    instagram_business_account_id: str = Field(
+        default="", alias="INSTAGRAM_BUSINESS_ACCOUNT_ID"
+    )
+    instagram_business_access_token: str = Field(
+        default="", alias="INSTAGRAM_BUSINESS_ACCESS_TOKEN"
     )
     instagram_stats_update_enabled: bool = Field(
         default=False, alias="INSTAGRAM_STATS_UPDATE_ENABLED"

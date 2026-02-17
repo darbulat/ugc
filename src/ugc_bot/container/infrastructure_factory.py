@@ -84,7 +84,13 @@ def build_instagram_api_client(config: AppConfig):
         HttpInstagramGraphApiClient,
     )
 
+    business_id = config.instagram.instagram_business_account_id.strip() or None
+    business_token = (
+        config.instagram.instagram_business_access_token.strip() or None
+    )
     return HttpInstagramGraphApiClient(
         access_token=config.instagram.instagram_access_token,
         base_url=config.instagram.instagram_api_base_url,
+        business_account_id=business_id,
+        business_access_token=business_token,
     )
