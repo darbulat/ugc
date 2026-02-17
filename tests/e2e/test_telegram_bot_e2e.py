@@ -10,7 +10,6 @@ import pytest
 
 from tests.e2e.telegram_client import (
     get_bot_message_containing,
-    get_last_bot_message,
     send_and_get_reply,
     send_to_bot,
 )
@@ -112,7 +111,9 @@ async def _send_and_wait(
     client, entity, bot_username: str, text: str
 ) -> str | None:
     """Send message to bot and return the bot's reply to this message."""
-    return await send_and_get_reply(client, entity, bot_username, text, timeout=20)
+    return await send_and_get_reply(
+        client, entity, bot_username, text, timeout=20
+    )
 
 
 @pytest.mark.e2e_telegram
@@ -206,7 +207,11 @@ async def test_blogger_registration_full_flow(
     assert text and ("UGC" in text or "размещ" in text.lower())
 
     text = await send_and_get_reply(
-        client, entity, bot_username, "❌ Только UGC (без размещения)", timeout=15
+        client,
+        entity,
+        bot_username,
+        "❌ Только UGC (без размещения)",
+        timeout=15,
     )
     assert text and "согласи" in text.lower()
 
@@ -389,7 +394,11 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     assert text and ("UGC" in text or "размещ" in text.lower())
 
     text = await send_and_get_reply(
-        client, entity, bot_username, "❌ Только UGC (без размещения)", timeout=15
+        client,
+        entity,
+        bot_username,
+        "❌ Только UGC (без размещения)",
+        timeout=15,
     )
     assert (
         text and "согласи" in text.lower()
@@ -577,7 +586,11 @@ async def test_order_creation_full_flow(
             )
         if text and "согласи" in text.lower():
             await send_and_get_reply(
-                client, entity, bot_username, "✅ Подтвердить согласие", timeout=20
+                client,
+                entity,
+                bot_username,
+                "✅ Подтвердить согласие",
+                timeout=20,
             )
 
     text = await send_and_get_reply(
@@ -612,7 +625,9 @@ async def test_order_creation_full_flow(
         client, entity, bot_username, "10", timeout=15
     )
     assert text and (
-        "ссылк" in text.lower() or "продукт" in text.lower() or "выберите" in text.lower()
+        "ссылк" in text.lower()
+        or "продукт" in text.lower()
+        or "выберите" in text.lower()
     )
 
     text = await send_and_get_reply(

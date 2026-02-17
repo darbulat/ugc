@@ -51,7 +51,7 @@ async def start_command(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle the /start command. Clears FSM so user always sees role selection."""
+    """Handle the /start command. Clears FSM so user always sees role."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -132,7 +132,7 @@ async def _start_command(
     user_role_service: UserRoleService,
     referral_service: ReferralService,
 ) -> None:
-    """Handle the /start command. Clears FSM so /start always shows role selection."""
+    """Handle the /start command. Clears FSM so /start always shows role."""
     if not incoming.user.external_id:
         return
     await state_store.clear()

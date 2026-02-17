@@ -45,9 +45,12 @@ async def get_last_bot_message(
     while time.monotonic() < deadline:
         messages = await client.get_messages(entity, limit=10)
         for msg in messages:
-            if not msg.out and msg.text:
-                if after_id is None or msg.id > after_id:
-                    return msg.text
+            if (
+                not msg.out
+                and msg.text
+                and (after_id is None or msg.id > after_id)
+            ):
+                return msg.text
         await asyncio.sleep(0.5)
     return None
 
@@ -55,7 +58,7 @@ async def get_last_bot_message(
 async def send_and_get_reply(
     client, entity, bot_username: str, text: str, timeout: float = 20.0
 ) -> str | None:
-    """Send a message to the bot and return the bot's reply (message after our send)."""
+    """Send a message to the bot and return the bot's reply."""
     sent = await send_to_bot(client, bot_username, text)
     return await get_last_bot_message(
         client, entity, timeout=timeout, after_message=sent

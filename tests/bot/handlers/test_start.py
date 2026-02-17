@@ -122,12 +122,10 @@ async def test_start_command_without_from_user_returns_early(
 async def test_start_command_clears_fsm_state(
     user_repo, messenger_client, event_adapter
 ) -> None:
-    """Start command clears FSM so user always sees role selection from scratch."""
+    """Start command clears FSM so user always sees role selection."""
     service = UserRoleService(user_repo=user_repo)
     referral_service = FakeReferralService()
-    message = FakeMessage(
-        text="/start", user=FakeUser(1, "test", "Alice")
-    )
+    message = FakeMessage(text="/start", user=FakeUser(1, "test", "Alice"))
     state = FakeFSMContext(state="BloggerRegistrationStates:instagram")
     await start_command(
         message,
