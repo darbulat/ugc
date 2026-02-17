@@ -24,3 +24,9 @@ scrape_configs:
         target_label: __path__
     pipeline_stages:
       - docker: {}
+      - match:
+          selector: '{service="grafana"}'
+          stages:
+            - drop:
+                # Grafana logs are very verbose at INFO. Keep only warning/error.
+                expression: '(?i)(^|[\\s,])(?:lvl|level)=info([\\s,]|$)'

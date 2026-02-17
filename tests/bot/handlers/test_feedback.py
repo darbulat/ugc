@@ -4085,3 +4085,187 @@ async def test_handle_issue_append_content_wrong_user_no_access(
         order_service,
     )
     assert any("Недостаточно прав" in str(a) for a in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_feedback_reason_invalid_reason_code(
+    user_repo,
+    interaction_repo,
+    blogger_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+) -> None:
+    """Reject fb_r callback with unknown reason code."""
+
+    from ugc_bot.application.services.blogger_registration_service import (
+        BloggerRegistrationService,
+    )
+    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001500"),
+        external_id="1500",
+        username="adv",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001502"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001503"),
+        advertiser_id=user.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001501"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    blogger_registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    callback = FakeCallback(
+        data=f"fb_r:adv:{interaction.interaction_id.hex}:z",
+        user=FakeUser(1500),
+    )
+    state = FakeFSMContext()
+    await handle_feedback_reason(
+        callback,
+        state,
+        user_service,
+        interaction_service,
+        blogger_registration_service,
+        nps_service,
+        order_service,
+    )
+    assert any("Неверный формат" in a for a in callback.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_nps_comment_session_expired_missing_score(
+    user_repo, nps_service
+) -> None:
+    """NPS comment: nps_user_id set but nps_score missing -> session expired."""
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_nps_comment,
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001510"),
+        external_id="1510",
+        username="u",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_nps_comment)
+    await state.update_data(nps_user_id=str(user.user_id))
+    message = FakeMessage(text="Comment", user=FakeUser(1510))
+    await handle_nps_comment(message, state, user_service, nps_service)
+    assert any("Сессия истекла" in str(a) for a in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_send_button_user_not_in_repo(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+) -> None:
+    """When Отправить and user not in repo, state is cleared and returns."""
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001520"),
+        external_id="1520",
+        username="adv",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001522"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000001523"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000001520"),
+        interaction_id=UUID("00000000-0000-0000-0000-000000001521"),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(interaction.interaction_id),
+        feedback_kind="adv",
+        issue_description_parts=["Text"],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(99999))
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert state.cleared is True
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_send_button_interaction_not_found(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+) -> None:
+    """Отправить with valid UUID but interaction missing: show not found."""
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001530"),
+        external_id="1530",
+        username="adv",
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(
+            UUID("00000000-0000-0000-0000-000000001531")
+        ),
+        feedback_kind="adv",
+        issue_description_parts=["Text"],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1530))
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+    assert state.cleared is True
+    assert any("Взаимодействие не найдено" in str(a) for a in message.answers)

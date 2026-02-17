@@ -3434,3 +3434,238 @@ async def test_edit_profile_enter_value_advertiser_site_link_empty_clears(
     )
     assert adv_service.update_calls
     assert adv_service.update_calls[0][1].get("site_link") is None
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_callback_no_user_returns_early(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit callback with no user returns without sending."""
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT,
+        user=None,
+        message=FakeMessage(user=None),
+    )
+    await handle_profile_edit_callback(
+        callback,
+        FakeFSMContext(),
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_my_profile_callback_no_user_returns_early(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """My profile callback with no user returns without sending."""
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MY_PROFILE,
+        user=None,
+        message=FakeMessage(user=None),
+    )
+    await handle_profile_my_profile_callback(
+        callback,
+        FakeFSMContext(),
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_my_profile_callback_user_not_found(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """My profile callback when user not in DB sends profile not found."""
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MY_PROFILE,
+        user=FakeUser(99999),
+        message=FakeMessage(user=FakeUser(99999)),
+    )
+    await handle_profile_my_profile_callback(
+        callback,
+        FakeFSMContext(),
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("Профиль не найден" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_unknown_field_returns(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback with unknown field_key returns without sending."""
+    user = await create_test_user(user_repo, external_id="80", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="80",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}unknown_key",
+        user=FakeUser(80),
+        message=FakeMessage(user=FakeUser(80)),
+    )
+    initial_sent = len(client.sent_text)
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == initial_sent
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_choice_callback_advertiser_type_returns(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit choice with profile_type advertiser returns (blogger-only)."""
+    user = await create_test_user(user_repo, external_id="81", username="u")
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="81",
+        edit_profile_type="advertiser",
+        editing_field="city",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AUDIENCE_F,
+        user=FakeUser(81),
+        message=FakeMessage(user=FakeUser(81)),
+    )
+    initial_sent = len(client.sent_text)
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=BloggerRegistrationService(
+            user_repo=user_repo, blogger_repo=blogger_repo
+        ),
+        user_role_service=UserRoleService(user_repo=user_repo),
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == initial_sent
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_phone_validation_error(
+    user_repo,
+) -> None:
+    """Edit advertiser phone with invalid value gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000856"),
+        external_id="71",
+        username="u",
+    )
+    message = FakeMessage(text="invalid", user=FakeUser(71))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "phone",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "71",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    assert not adv_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_company_activity_val_error(
+    user_repo,
+) -> None:
+    """Advertiser company_activity too long gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000857"),
+        external_id="72",
+        username="u",
+    )
+    message = FakeMessage(text="X" * 501, user=FakeUser(72))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "company_activity",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "72",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    assert not adv_service.update_calls

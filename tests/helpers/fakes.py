@@ -294,7 +294,7 @@ class FakeCallback:
     def __init__(
         self,
         data: str,
-        user: FakeUser,
+        user: FakeUser | None,
         message: FakeMessage | None = None,
         bot: object | None = None,
         callback_id: str | None = None,
@@ -303,7 +303,7 @@ class FakeCallback:
 
         Args:
             data: Callback data
-            user: User who triggered callback
+            user: User who triggered callback (None to simulate no user)
             message: Optional message
             bot: Optional bot instance (for admin notification)
         """
