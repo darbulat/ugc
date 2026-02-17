@@ -45,18 +45,20 @@ ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
 @router.message(CommandStart())
 async def start_command(
     message: Message,
+    state: FSMContext,
     user_role_service: UserRoleService,
     referral_service: ReferralService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle the /start command."""
+    """Handle the /start command. Clears FSM so user always sees role selection."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
     await _start_command(
         incoming=incoming,
+        state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
         user_role_service=user_role_service,
         referral_service=referral_service,
@@ -125,13 +127,15 @@ def _role_keyboard() -> Keyboard:
 async def _start_command(
     *,
     incoming: IncomingMessage,
+    state_store: StateStore,
     messenger_client: MessengerClient,
     user_role_service: UserRoleService,
     referral_service: ReferralService,
 ) -> None:
-    """Handle the /start command."""
+    """Handle the /start command. Clears FSM so /start always shows role selection."""
     if not incoming.user.external_id:
         return
+    await state_store.clear()
     user = await user_role_service.get_user(
         external_id=incoming.user.external_id,
         messenger_type=incoming.user.messenger_type,

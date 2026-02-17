@@ -146,6 +146,7 @@ services:
       - |
         python -m pytest -m "not e2e" --cov=ugc_bot --cov-report=term-missing && \
         python -m pytest tests/e2e -v -m e2e --timeout=90 && \
+        ([ -z "$$E2E_DATABASE_URL" ] || python scripts/clean_e2e_users.py) && \
         python -m pytest tests/e2e -v -m e2e_telegram --timeout=90
     restart: "no"
 
@@ -169,12 +170,18 @@ services:
       TELEGRAM_E2E_API_HASH: ${TELEGRAM_E2E_API_HASH:-}
       TELEGRAM_E2E_PHONE: ${TELEGRAM_E2E_PHONE:-}
       E2E_DATABASE_URL: ${E2E_DATABASE_URL:-}
+      E2E_CLEAN_TELEGRAM: ${E2E_CLEAN_TELEGRAM:-}
     volumes:
       - e2e_telethon_session:/app/tests/e2e/.telethon_session
     depends_on:
       nginx:
         condition: service_started
-    command: ["python", "-m", "pytest", "tests/e2e", "-m", "e2e_telegram", "-v", "--timeout=90"]
+    command:
+      - sh
+      - -c
+      - |
+        ([ -z "$$E2E_DATABASE_URL" ] || python scripts/clean_e2e_users.py) && \
+        python -m pytest tests/e2e -m e2e_telegram -v --timeout=90
     restart: "no"
 
 volumes:

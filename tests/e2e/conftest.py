@@ -29,8 +29,12 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     script = root / "scripts" / "clean_e2e_users.py"
     if not script.exists():
         return
+    cmd = [sys.executable, str(script)]
+    clean_telegram = os.environ.get("E2E_CLEAN_TELEGRAM", "").strip()
+    if clean_telegram:
+        cmd.extend(["--telegram", clean_telegram])
     subprocess.run(
-        [sys.executable, str(script)],
+        cmd,
         cwd=str(root),
         env=os.environ.copy(),
         check=False,

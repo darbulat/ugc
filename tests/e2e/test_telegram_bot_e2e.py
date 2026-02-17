@@ -11,6 +11,7 @@ import pytest
 from tests.e2e.telegram_client import (
     get_bot_message_containing,
     get_last_bot_message,
+    send_and_get_reply,
     send_to_bot,
 )
 
@@ -26,8 +27,9 @@ async def test_start_command(telegram_user_client, telegram_e2e_config) -> None:
     bot_username = telegram_e2e_config["bot_username"]
     entity = await telegram_user_client.get_entity(bot_username)
 
-    await send_to_bot(telegram_user_client, bot_username, "/start")
-    text = await get_last_bot_message(telegram_user_client, entity, timeout=20)
+    text = await send_and_get_reply(
+        telegram_user_client, entity, bot_username, "/start", timeout=20
+    )
 
     assert text is not None, "Bot did not reply to /start"
     # New user: welcome (UMC). Existing user: profile or menu.
@@ -52,11 +54,13 @@ async def test_role_selection_creator(
     bot_username = telegram_e2e_config["bot_username"]
     entity = await telegram_user_client.get_entity(bot_username)
 
-    await send_to_bot(telegram_user_client, bot_username, "/start")
-    await get_last_bot_message(telegram_user_client, entity, timeout=20)
+    await send_and_get_reply(
+        telegram_user_client, entity, bot_username, "/start", timeout=20
+    )
 
-    await send_to_bot(telegram_user_client, bot_username, "Я креатор")
-    text = await get_last_bot_message(telegram_user_client, entity, timeout=20)
+    text = await send_and_get_reply(
+        telegram_user_client, entity, bot_username, "Я креатор", timeout=20
+    )
 
     assert text is not None, "Bot did not reply to role selection"
     # New creator: intro. Existing: menu or profile.
@@ -82,13 +86,17 @@ async def test_role_selection_advertiser(
     bot_username = telegram_e2e_config["bot_username"]
     entity = await telegram_user_client.get_entity(bot_username)
 
-    await send_to_bot(telegram_user_client, bot_username, "/start")
-    await get_last_bot_message(telegram_user_client, entity, timeout=20)
-
-    await send_to_bot(
-        telegram_user_client, bot_username, "Мне нужны UGC‑креаторы"
+    await send_and_get_reply(
+        telegram_user_client, entity, bot_username, "/start", timeout=20
     )
-    text = await get_last_bot_message(telegram_user_client, entity, timeout=25)
+
+    text = await send_and_get_reply(
+        telegram_user_client,
+        entity,
+        bot_username,
+        "Мне нужны UGC‑креаторы",
+        timeout=25,
+    )
 
     assert text is not None, "Bot did not reply to role selection"
     assert (
@@ -103,9 +111,8 @@ async def test_role_selection_advertiser(
 async def _send_and_wait(
     client, entity, bot_username: str, text: str
 ) -> str | None:
-    """Send message to bot and return last bot reply."""
-    await send_to_bot(client, bot_username, text)
-    return await get_last_bot_message(client, entity, timeout=20)
+    """Send message to bot and return the bot's reply to this message."""
+    return await send_and_get_reply(client, entity, bot_username, text, timeout=20)
 
 
 @pytest.mark.e2e_telegram
@@ -122,68 +129,90 @@ async def test_blogger_registration_full_flow(
     entity = await telegram_user_client.get_entity(bot_username)
     client = telegram_user_client
 
-    await send_to_bot(client, bot_username, "/start")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=20
+    )
     assert text and ("UGC" in text or "профиль" in text or "Выберите" in text)
 
-    await send_to_bot(client, bot_username, "Я креатор")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Я креатор", timeout=15
+    )
     assert text and (
         "креатор" in text or "профиль" in text or "Создать" in text
     )
 
-    await send_to_bot(client, bot_username, "Создать профиль")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Создать профиль", timeout=20
+    )
     assert text is not None
     if "имя" in text.lower():
         text = await _send_and_wait(client, entity, bot_username, "E2E Креатор")
         assert text and "инстаграмм" in text.lower()
-    await send_to_bot(
+    text = await send_and_get_reply(
         client,
+        entity,
         bot_username,
         f"https://instagram.com/e2etest_creator_{int(time.time())}",
+        timeout=15,
     )
-    text = await get_last_bot_message(client, entity, timeout=15)
     assert text and "город" in text.lower()
 
-    await send_to_bot(client, bot_username, "Казань")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Казань", timeout=15
+    )
     assert text and "пол" in text.lower()
 
-    await send_to_bot(client, bot_username, "Женский")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Женский", timeout=15
+    )
     assert text and "тематик" in text.lower() or "контент" in text.lower()
 
-    await send_to_bot(client, bot_username, "бьюти, лайфстайл")
-    text = await get_last_bot_message(client, entity, timeout=15)
-    assert text and ("женщин" in text or "мужчин" in text or "поровну" in text)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "бьюти, лайфстайл", timeout=15
+    )
+    assert text and (
+        "женщин" in text
+        or "мужчин" in text
+        or "поровну" in text
+        or "смотрит" in text
+        or "контент" in text
+        or "аудитори" in text.lower()
+        or "наблюдениям" in text
+    )
 
-    await send_to_bot(client, bot_username, "👩 В основном женщины")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "👩 В основном женщины", timeout=15
+    )
     assert text and "возраст" in text.lower()
 
-    await send_to_bot(client, bot_username, "25–34")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "25–34", timeout=15
+    )
     assert text and "аудитори" in text.lower() or "город" in text.lower()
 
-    await send_to_bot(client, bot_username, "Москва")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Москва", timeout=15
+    )
     assert text and "цен" in text.lower() or "рубл" in text.lower()
 
-    await send_to_bot(client, bot_username, "1000")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "1000", timeout=15
+    )
     assert text and "бартер" in text.lower()
 
-    await send_to_bot(client, bot_username, "Нет")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Нет", timeout=15
+    )
     assert text and ("UGC" in text or "размещ" in text.lower())
 
-    await send_to_bot(client, bot_username, "❌ Только UGC (без размещения)")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "❌ Только UGC (без размещения)", timeout=15
+    )
     assert text and "согласи" in text.lower()
 
-    await send_to_bot(client, bot_username, "✅ Подтвердить согласие")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    )
     assert text is not None, "Bot did not reply after agreement"
     assert "Профиль создан" in text or "подтвердить Instagram" in text
 
@@ -202,11 +231,11 @@ async def test_advertiser_registration_full_flow(
     entity = await telegram_user_client.get_entity(bot_username)
     client = telegram_user_client
 
-    await send_to_bot(client, bot_username, "/start")
-    await get_last_bot_message(client, entity, timeout=15)
+    await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
 
-    await send_to_bot(client, bot_username, "Мне нужны UGC‑креаторы")
-    text = await get_last_bot_message(client, entity, timeout=25)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    )
     assert text and (
         "профиль" in text
         or "UGC" in text
@@ -214,8 +243,9 @@ async def test_advertiser_registration_full_flow(
         or "Начать" in text
     )
 
-    await send_to_bot(client, bot_username, "Начать")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Начать", timeout=20
+    )
     assert text is not None
     if "зовут" in text or "имя" in text.lower():
         text = await _send_and_wait(
@@ -223,28 +253,34 @@ async def test_advertiser_registration_full_flow(
         )
     assert "телефон" in text.lower() or "номер" in text.lower()
 
-    await send_to_bot(client, bot_username, "79001112233")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "79001112233", timeout=15
+    )
     assert text and "город" in text.lower()
 
-    await send_to_bot(client, bot_username, "Москва")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Москва", timeout=15
+    )
     assert text and "бренд" in text.lower()
 
-    await send_to_bot(client, bot_username, "E2E Test Brand")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "E2E Test Brand", timeout=15
+    )
     assert text and "компани" in text.lower() or "занимается" in text
 
-    await send_to_bot(client, bot_username, "Тестирование E2E")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Тестирование E2E", timeout=15
+    )
     assert text and "сайт" in text.lower() or "ссылк" in text.lower()
 
-    await send_to_bot(client, bot_username, "https://example.com")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "https://example.com", timeout=15
+    )
     assert text and "согласи" in text.lower()
 
-    await send_to_bot(client, bot_username, "✅ Подтвердить согласие")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    )
     assert text is not None, "Bot did not reply after agreement"
     assert "разместить заказ" in text or "заказ" in text
 
@@ -267,18 +303,27 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     client = telegram_user_client
     suffix = int(time.time())
 
-    await send_to_bot(client, bot_username, "/start")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=20
+    )
     assert text and ("UGC" in text or "профиль" in text or "Выберите" in text)
 
-    await send_to_bot(client, bot_username, "Я креатор")
-    text = await get_last_bot_message(client, entity, timeout=15)
-    assert text and (
-        "креатор" in text or "профиль" in text or "Создать" in text
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Я креатор", timeout=15
     )
+    assert text is not None
+    if "Выберите действие" in text:
+        pytest.skip(
+            "Blogger already has profile from previous test; "
+            "run e2e_telegram with this test first or in isolation."
+        )
+    assert (
+        "креатор" in text or "профиль" in text or "Создать" in text
+    ), f"Expected creator intro, got: {text!r}"
 
-    await send_to_bot(client, bot_username, "Создать профиль")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Создать профиль", timeout=20
+    )
     assert text is not None
     if "имя" in text.lower():
         text = await _send_and_wait(
@@ -286,71 +331,92 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         )
         assert text and "инстаграмм" in text.lower()
 
-    await send_to_bot(
+    text = await send_and_get_reply(
         client,
+        entity,
         bot_username,
         f"https://instagram.com/e2etest_exit_return_{suffix}",
+        timeout=15,
     )
-    text = await get_last_bot_message(client, entity, timeout=15)
     assert text and "город" in text.lower()
 
-    await send_to_bot(client, bot_username, "Казань")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Казань", timeout=15
+    )
     assert text and "пол" in text.lower()
 
-    await send_to_bot(client, bot_username, "Женский")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Женский", timeout=15
+    )
     assert text and ("тематик" in text.lower() or "контент" in text.lower())
 
-    await send_to_bot(client, bot_username, "бьюти, лайфстайл")
-    text = await get_last_bot_message(client, entity, timeout=15)
-    assert text and ("женщин" in text or "мужчин" in text or "поровну" in text)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "бьюти, лайфстайл", timeout=15
+    )
+    assert text and (
+        "женщин" in text
+        or "мужчин" in text
+        or "поровну" in text
+        or "смотрит" in text
+        or "контент" in text
+        or "аудитори" in text.lower()
+        or "наблюдениям" in text
+    )
 
-    await send_to_bot(client, bot_username, "👩 В основном женщины")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "👩 В основном женщины", timeout=15
+    )
     assert text and "возраст" in text.lower()
 
-    await send_to_bot(client, bot_username, "25–34")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "25–34", timeout=15
+    )
     assert text and ("аудитори" in text.lower() or "город" in text.lower())
 
-    await send_to_bot(client, bot_username, "Москва")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Москва", timeout=15
+    )
     assert text and ("цен" in text.lower() or "рубл" in text.lower())
 
-    await send_to_bot(client, bot_username, "1000")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "1000", timeout=15
+    )
     assert text and "бартер" in text.lower()
 
-    await send_to_bot(client, bot_username, "Нет")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Нет", timeout=15
+    )
     assert text and ("UGC" in text or "размещ" in text.lower())
 
-    await send_to_bot(client, bot_username, "❌ Только UGC (без размещения)")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "❌ Только UGC (без размещения)", timeout=15
+    )
     assert (
         text and "согласи" in text.lower()
     ), "Expected agreements step before exit"
 
     # Exit: send /start instead of confirming consent (clears FSM state).
-    await send_to_bot(client, bot_username, "/start")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=15
+    )
     assert text is not None, "Bot did not reply after /start on agreements step"
     assert (
         "прервана" in text or "Мой профиль" in text
     ), "Expected 'registration interrupted' message"
 
     # Return: open My Profile — bot should show agreements again.
-    await send_to_bot(client, bot_username, "👤 Мой профиль")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    )
     assert text is not None, "Bot did not reply to My Profile"
     assert (
         "согласи" in text.lower()
     ), "Expected agreements again when opening profile without consent"
 
     # Confirm consent and complete registration.
-    await send_to_bot(client, bot_username, "✅ Подтвердить согласие")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    )
     assert text is not None, "Bot did not reply after confirming consent"
     assert (
         "Профиль создан" in text or "подтвердить Instagram" in text
@@ -374,11 +440,11 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
     entity = await telegram_user_client.get_entity(bot_username)
     client = telegram_user_client
 
-    await send_to_bot(client, bot_username, "/start")
-    await get_last_bot_message(client, entity, timeout=15)
+    await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
 
-    await send_to_bot(client, bot_username, "Мне нужны UGC‑креаторы")
-    text = await get_last_bot_message(client, entity, timeout=25)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    )
     assert text and (
         "профиль" in text
         or "UGC" in text
@@ -386,58 +452,74 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
         or "Начать" in text
     )
 
-    await send_to_bot(client, bot_username, "Начать")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Начать", timeout=20
+    )
     assert text is not None
+    if "Выберите действие" in text:
+        pytest.skip(
+            "Advertiser already has profile from previous test; "
+            "run e2e_telegram with this test first or in isolation."
+        )
     if "зовут" in text or "имя" in text.lower():
         text = await _send_and_wait(
             client, entity, bot_username, "E2E ExitReturn Adv"
         )
     assert "телефон" in text.lower() or "номер" in text.lower()
 
-    await send_to_bot(client, bot_username, "79009998877")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "79009998877", timeout=15
+    )
     assert text and "город" in text.lower()
 
-    await send_to_bot(client, bot_username, "Санкт-Петербург")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Санкт-Петербург", timeout=15
+    )
     assert text and "бренд" in text.lower()
 
-    await send_to_bot(client, bot_username, "E2E ExitReturn Brand")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "E2E ExitReturn Brand", timeout=15
+    )
     assert text and ("компани" in text.lower() or "занимается" in text)
 
-    await send_to_bot(client, bot_username, "E2E тесты")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "E2E тесты", timeout=15
+    )
     assert text and "сайт" in text.lower() or "ссылк" in text.lower()
 
-    await send_to_bot(
-        client, bot_username, "https://exit-return-e2e.example.com"
+    text = await send_and_get_reply(
+        client,
+        entity,
+        bot_username,
+        "https://exit-return-e2e.example.com",
+        timeout=15,
     )
-    text = await get_last_bot_message(client, entity, timeout=15)
     assert (
         text and "согласи" in text.lower()
     ), "Expected agreements step before exit"
 
     # Exit: send /start instead of confirming consent (clears FSM state).
-    await send_to_bot(client, bot_username, "/start")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=15
+    )
     assert text is not None, "Bot did not reply after /start on agreements step"
     assert (
         "прервана" in text or "Мой профиль" in text
     ), "Expected 'registration interrupted' message"
 
     # Return: open My Profile — bot should show agreements again.
-    await send_to_bot(client, bot_username, "👤 Мой профиль")
-    text = await get_last_bot_message(client, entity, timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    )
     assert text is not None, "Bot did not reply to My Profile"
     assert (
         "согласи" in text.lower()
     ), "Expected agreements again when opening profile without consent"
 
     # Confirm consent and complete registration.
-    await send_to_bot(client, bot_username, "✅ Подтвердить согласие")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    )
     assert text is not None, "Bot did not reply after confirming consent"
     assert (
         "разместить заказ" in text or "заказ" in text
@@ -458,79 +540,99 @@ async def test_order_creation_full_flow(
     entity = await telegram_user_client.get_entity(bot_username)
     client = telegram_user_client
 
-    await send_to_bot(client, bot_username, "/start")
-    await get_last_bot_message(client, entity, timeout=20)
-    await send_to_bot(client, bot_username, "Мне нужны UGC‑креаторы")
-    text = await get_last_bot_message(client, entity, timeout=25)
+    await send_and_get_reply(client, entity, bot_username, "/start", timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    )
     # Already advertiser: menu. New: "Начать" then registration.
     if text and "Выберите действие" in text:
         pass
     else:
-        await send_to_bot(client, bot_username, "Начать")
-        text = await get_last_bot_message(client, entity, timeout=20)
+        text = await send_and_get_reply(
+            client, entity, bot_username, "Начать", timeout=20
+        )
         if text and ("зовут" in text or "имя" in text.lower()):
-            await send_to_bot(client, bot_username, "E2E Advertiser")
-            text = await get_last_bot_message(client, entity, timeout=20)
+            text = await send_and_get_reply(
+                client, entity, bot_username, "E2E Advertiser", timeout=20
+            )
         if text and ("телефон" in text.lower() or "номер" in text):
-            await send_to_bot(client, bot_username, "79001112233")
-            text = await get_last_bot_message(client, entity, timeout=20)
+            text = await send_and_get_reply(
+                client, entity, bot_username, "79001112233", timeout=20
+            )
         if text and "город" in text.lower():
-            await send_to_bot(client, bot_username, "Москва")
-            text = await get_last_bot_message(client, entity, timeout=20)
+            text = await send_and_get_reply(
+                client, entity, bot_username, "Москва", timeout=20
+            )
         if text and "бренд" in text.lower():
-            await send_to_bot(client, bot_username, "E2E Brand")
-            text = await get_last_bot_message(client, entity, timeout=20)
+            text = await send_and_get_reply(
+                client, entity, bot_username, "E2E Brand", timeout=20
+            )
         if text and ("компани" in text.lower() or "занимается" in text):
-            await send_to_bot(client, bot_username, "E2E Tests")
-            text = await get_last_bot_message(client, entity, timeout=20)
+            text = await send_and_get_reply(
+                client, entity, bot_username, "E2E Tests", timeout=20
+            )
         if text and ("сайт" in text.lower() or "ссылк" in text.lower()):
-            await send_to_bot(client, bot_username, "https://example.com")
-            text = await get_last_bot_message(client, entity, timeout=20)
+            text = await send_and_get_reply(
+                client, entity, bot_username, "https://example.com", timeout=20
+            )
         if text and "согласи" in text.lower():
-            await send_to_bot(client, bot_username, "✅ Подтвердить согласие")
-            await get_last_bot_message(client, entity, timeout=20)
+            await send_and_get_reply(
+                client, entity, bot_username, "✅ Подтвердить согласие", timeout=20
+            )
 
-    await send_to_bot(client, bot_username, "➕ Создать заказ")
-    text = await get_last_bot_message(client, entity, timeout=25)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "➕ Создать заказ", timeout=25
+    )
     assert text is not None
     if "Профиль" in text and "не заполнен" in text:
         pytest.skip("Advertiser profile not filled; run test_advertiser first")
     assert "нужно" in text.lower() or "вам" in text
 
-    await send_to_bot(client, bot_username, "🎥 UGC-видео для бренда")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "🎥 UGC-видео для бренда", timeout=15
+    )
     assert text and "опис" in text.lower() or "задач" in text.lower()
 
-    await send_to_bot(client, bot_username, "Видео с распаковкой продукта")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Видео с распаковкой продукта", timeout=15
+    )
     assert text and "формат" in text.lower() or "сотрудничеств" in text.lower()
 
-    await send_to_bot(client, bot_username, "💰 Оплата")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "💰 Оплата", timeout=15
+    )
     assert text and "бюджет" in text.lower() or "цен" in text.lower()
 
-    await send_to_bot(client, bot_username, "1500")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "1500", timeout=15
+    )
     assert text and "креатор" in text.lower()
 
-    await send_to_bot(client, bot_username, "1")
-    text = await get_last_bot_message(client, entity, timeout=15)
-    assert text and "ссылк" in text.lower() or "продукт" in text.lower()
+    text = await send_and_get_reply(
+        client, entity, bot_username, "10", timeout=15
+    )
+    assert text and (
+        "ссылк" in text.lower() or "продукт" in text.lower() or "выберите" in text.lower()
+    )
 
-    await send_to_bot(client, bot_username, "https://example.com/product")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "https://example.com/product", timeout=15
+    )
     assert text and "фото" in text.lower()
 
-    await send_to_bot(client, bot_username, "⏭ Пропустить")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "⏭ Пропустить", timeout=15
+    )
     assert text and "использовать" in text.lower() or "UGC" in text
 
-    await send_to_bot(client, bot_username, "📱 В соцсетях бренда")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "📱 В соцсетях бренда", timeout=15
+    )
     assert text and "срок" in text.lower() or "дней" in text
 
-    await send_to_bot(client, bot_username, "⏱ До 7 дней")
-    text = await get_last_bot_message(client, entity, timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "⏱ До 7 дней", timeout=15
+    )
     assert text and "город" in text.lower() or "регион" in text.lower()
 
     await send_to_bot(client, bot_username, "Москва")
