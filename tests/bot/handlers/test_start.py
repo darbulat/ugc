@@ -42,8 +42,10 @@ async def test_start_command_sends_role_keyboard(
     service = UserRoleService(user_repo=user_repo)
     referral_service = FakeReferralService()
     message = FakeMessage(text=None, user=FakeUser(1, "test", "Alice"))
+    state = FakeFSMContext(state=None)
     await start_command(
         message,
+        state=state,
         user_role_service=service,
         referral_service=referral_service,
         messenger_client=messenger_client,
@@ -82,8 +84,10 @@ async def test_start_command_with_referral_code_saves_pending(
     message = FakeMessage(
         text="/start ref_123", user=FakeUser(1, "test", "Alice")
     )
+    state = FakeFSMContext(state=None)
     await start_command(
         message,
+        state=state,
         user_role_service=service,
         referral_service=referral_service,
         messenger_client=messenger_client,
@@ -102,14 +106,40 @@ async def test_start_command_without_from_user_returns_early(
     service = UserRoleService(user_repo=user_repo)
     referral_service = FakeReferralService()
     message = FakeMessage(text=None, user=None)
+    state = FakeFSMContext(state=None)
     await start_command(
         message,
+        state=state,
         user_role_service=service,
         referral_service=referral_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
     assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_start_command_clears_fsm_state(
+    user_repo, messenger_client, event_adapter
+) -> None:
+    """Start command clears FSM so user always sees role selection from scratch."""
+    service = UserRoleService(user_repo=user_repo)
+    referral_service = FakeReferralService()
+    message = FakeMessage(
+        text="/start", user=FakeUser(1, "test", "Alice")
+    )
+    state = FakeFSMContext(state="BloggerRegistrationStates:instagram")
+    await start_command(
+        message,
+        state=state,
+        user_role_service=service,
+        referral_service=referral_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert state.cleared is True
+    assert message.answers
+    assert "UMC — сервис для UGC" in message.answers[0][0]
 
 
 @pytest.mark.asyncio

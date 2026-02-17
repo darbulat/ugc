@@ -32,17 +32,34 @@ async def send_to_bot(client, bot_username: str, text: str):
 
 
 async def get_last_bot_message(
-    client, entity, timeout: float = 15.0
+    client, entity, timeout: float = 15.0, after_message=None
 ) -> str | None:
-    """Wait for and return the last message from the bot in the chat."""
+    """Wait for and return a message from the bot in the chat.
+
+    If after_message is set (the message we just sent), returns the first
+    bot message with id > after_message.id so we get the reply to our send.
+    Otherwise returns the most recent bot message (may be stale).
+    """
+    after_id = after_message.id if after_message is not None else None
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        messages = await client.get_messages(entity, limit=5)
+        messages = await client.get_messages(entity, limit=10)
         for msg in messages:
             if not msg.out and msg.text:
-                return msg.text
-        await asyncio.sleep(1)
+                if after_id is None or msg.id > after_id:
+                    return msg.text
+        await asyncio.sleep(0.5)
     return None
+
+
+async def send_and_get_reply(
+    client, entity, bot_username: str, text: str, timeout: float = 20.0
+) -> str | None:
+    """Send a message to the bot and return the bot's reply (message after our send)."""
+    sent = await send_to_bot(client, bot_username, text)
+    return await get_last_bot_message(
+        client, entity, timeout=timeout, after_message=sent
+    )
 
 
 async def get_bot_message_containing(

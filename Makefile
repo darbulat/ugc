@@ -13,16 +13,17 @@ E2E_TIMEOUT ?= 90
 # DB-changing targets must not run in parallel with make -j
 .NOTPARALLEL: migrate restore-db restore-db-s3
 
-.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker format format-check migrate docker-up docker-down dev-up dev-down admin export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 all
+.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down dev-up dev-down admin export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 all
 
 help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Development:  install-dev, format, format-check, lint, typecheck, test, coverage"
-	@echo "E2E:          e2e, e2e-dev, e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
+	@echo "E2E:          e2e, e2e-dev (Playwright vs dev), e2e-telegram-dev (Telegram vs dev; E2E_DATABASE_URL, E2E_CLEAN_TELEGRAM=darbulat), e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
 	@echo "Infra:        docker-up, docker-down, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
 	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
 	@echo "Tests (Docker): test-docker, e2e-docker, test-all-docker (unit + integration + e2e in one run)"
+	@echo "Tests (dev, in container, same network): test-all-docker-dev (DEV_NETWORK=ugc_default, E2E_* in .env)"
 	@echo "Export:       export-requirements"
 
 export-requirements:
@@ -94,6 +95,19 @@ test-docker:
 # One command: unit + integration + e2e + e2e_telegram. Uses nginx from main compose (test overlay); WEBHOOK_BASE_URL must point at nginx (e.g. ngrok to host:80). Requires TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET in .env.
 test-all-docker:
 	$(COMPOSE_TEST_WITH_MAIN) run --rm test-all
+
+# Run full test suite in a container attached to the dev stack network (no Python on host). Set DEV_NETWORK to dev network name (e.g. ugc_default), E2E_BASE_URL=http://admin:8001, E2E_DATABASE_URL=postgresql+psycopg://...@db:5432/ugc, E2E_CLEAN_TELEGRAM=darbulat in .env.
+test-all-docker-dev:
+	@if [ -z "$${DEV_NETWORK}" ]; then \
+		echo "Error: DEV_NETWORK is required (e.g. ugc_default). Get it: docker network ls | grep default"; \
+		exit 1; \
+	fi
+	docker compose -f docker-compose.test-dev.yml build test-all-dev
+	docker compose -f docker-compose.test-dev.yml run --rm test-all-dev
+
+# One-time Telethon auth for test-all-docker-dev; session saved in volume. Run with -it: make test-all-docker-dev-auth
+test-all-docker-dev-auth:
+	docker compose -f docker-compose.test-dev.yml --profile auth run --rm -it test-all-dev-auth
 
 migrate:
 	uv run alembic upgrade head

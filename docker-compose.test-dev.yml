@@ -1,0 +1,75 @@
+# Run full test suite (unit + integration + e2e + e2e_telegram) in a container
+# that is on the same Docker network as the already running dev stack.
+# No DB/admin/app started here — tests use existing dev services.
+#
+# 1) Start dev stack and note its network, e.g.:
+#      docker compose -p ugc up -d
+#    Network name will be ugc_default.
+#
+# 2) In .env set:
+#      DEV_NETWORK=ugc_default
+#      E2E_BASE_URL=http://admin:8001
+#      E2E_ADMIN_USERNAME=...   # same as ADMIN_USERNAME on dev (admin login for e2e)
+#      E2E_ADMIN_PASSWORD=...   # same as ADMIN_PASSWORD on dev
+#      E2E_DATABASE_URL=postgresql+psycopg://USER:PASS@db:5432/ugc
+#      E2E_CLEAN_TELEGRAM=darbulat
+#      TELEGRAM_E2E_BOT_TOKEN=... TELEGRAM_E2E_BOT_USERNAME=... (and API_ID, API_HASH, PHONE)
+#
+# 3) Run tests in the same network:
+#      DEV_NETWORK=ugc_default docker compose -f docker-compose.test-dev.yml run --rm test-all-dev
+#    Or: make test-all-docker-dev (see Makefile)
+
+services:
+  test-all-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    env_file: .env
+    environment:
+      E2E_BASE_URL: ${E2E_BASE_URL:-http://admin:8001}
+      E2E_ADMIN_USERNAME: ${E2E_ADMIN_USERNAME:-${ADMIN_USERNAME:-test_admin}}
+      E2E_ADMIN_PASSWORD: ${E2E_ADMIN_PASSWORD:-${ADMIN_PASSWORD:-test_pass}}
+      E2E_DATABASE_URL: ${E2E_DATABASE_URL}
+      E2E_CLEAN_TELEGRAM: ${E2E_CLEAN_TELEGRAM:-darbulat}
+      TELEGRAM_E2E_BOT_TOKEN: ${TELEGRAM_E2E_BOT_TOKEN:-}
+      TELEGRAM_E2E_BOT_USERNAME: ${TELEGRAM_E2E_BOT_USERNAME:-}
+      TELEGRAM_E2E_API_ID: ${TELEGRAM_E2E_API_ID:-}
+      TELEGRAM_E2E_API_HASH: ${TELEGRAM_E2E_API_HASH:-}
+      TELEGRAM_E2E_PHONE: ${TELEGRAM_E2E_PHONE:-}
+    volumes:
+      - e2e_telethon_session:/app/tests/e2e/.telethon_session
+    networks:
+      - dev
+    command:
+      - sh
+      - -c
+      - |
+        python -m pytest tests/e2e -v -m e2e --timeout=90 && \
+        ([ -z "$${E2E_DATABASE_URL}" ] || python scripts/clean_e2e_users.py) && \
+        python -m pytest tests/e2e -v -m e2e_telegram --timeout=90
+    restart: "no"
+
+  # One-time Telethon auth: run with -it, enter code from Telegram; session saved in e2e_telethon_session for test-all-dev.
+  test-all-dev-auth:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    env_file: .env
+    environment:
+      TELEGRAM_E2E_API_ID: ${TELEGRAM_E2E_API_ID:-}
+      TELEGRAM_E2E_API_HASH: ${TELEGRAM_E2E_API_HASH:-}
+      TELEGRAM_E2E_PHONE: ${TELEGRAM_E2E_PHONE:-}
+    volumes:
+      - e2e_telethon_session:/app/tests/e2e/.telethon_session
+    command: ["python", "scripts/telegram_e2e_auth.py"]
+    restart: "no"
+    profiles:
+      - auth
+
+networks:
+  dev:
+    external: true
+    name: ${DEV_NETWORK:-ugc_default}
+
+volumes:
+  e2e_telethon_session:

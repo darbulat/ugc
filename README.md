@@ -25,7 +25,10 @@ Set `DATABASE_URL` in `.env`, then run:
 ## E2E tests
 
 - **Local** (admin started automatically on port 8001): `make e2e`
-- **Against deployed dev**: set `E2E_BASE_URL` (and optionally `E2E_ADMIN_USERNAME` / `E2E_ADMIN_PASSWORD`) in `.env` or the environment, then run `make e2e-dev`
+- **Against deployed dev (Playwright)**: set `E2E_BASE_URL` (and optionally `E2E_ADMIN_USERNAME` / `E2E_ADMIN_PASSWORD`) in `.env` or the environment, then run `make e2e-dev`
+- **Against deployed dev (Telegram)**: set `E2E_DATABASE_URL` to the dev DB and `E2E_CLEAN_TELEGRAM=darbulat` in `.env`, then run `make e2e-telegram-dev` (or `make e2e-telegram`). Only the user with that telegram is removed before tests so the rest of dev data is untouched.
+- **Full suite against dev** (unit + integration + Playwright e2e + Telegram e2e, no Docker): set `E2E_BASE_URL` in `.env`; for Telegram e2e also set `E2E_DATABASE_URL` and `E2E_CLEAN_TELEGRAM=darbulat`. Then run `make test-all-dev`.
+- **Full suite in container on dev network** (no Python on host): dev stack and tests run in Docker; the test container joins the dev stack network. In `.env` set `DEV_NETWORK=ugc_default`, `E2E_BASE_URL=http://admin:8001`, `E2E_ADMIN_USERNAME` and `E2E_ADMIN_PASSWORD` to match the dev admin (or leave unset if `ADMIN_USERNAME`/`ADMIN_PASSWORD` are in `.env`), `E2E_DATABASE_URL=postgresql+psycopg://user:pass@db:5432/ugc`, `E2E_CLEAN_TELEGRAM=darbulat`, and Telegram E2E vars. Then run `make test-all-docker-dev`.
 - **Docker** (Postgres + admin in containers): `make e2e-docker`
 - **Telegram bot E2E** (Docker): set `TELEGRAM_E2E_*` and once `make e2e-telegram-docker-auth`; then `make e2e-telegram-docker`. To start with a clean DB on each run, set `E2E_DATABASE_URL` to the same DB as the bot — pytest will clean users before tests; or run `make e2e-telegram-clean` manually.
 
