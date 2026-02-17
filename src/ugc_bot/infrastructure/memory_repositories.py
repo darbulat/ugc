@@ -11,6 +11,7 @@ from ugc_bot.application.ports import (
     ComplaintRepository,
     ContactPricingRepository,
     InstagramGraphApiClient,
+    InstagramProfileInfo,
     InstagramVerificationRepository,
     InteractionRepository,
     NpsRepository,
@@ -312,6 +313,23 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
             if profile.confirmed
         ]
 
+    async def list_confirmed_with_instagram_id(
+        self,
+        limit: int,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[BloggerProfile]:
+        """List confirmed profiles with non-empty instagram_user_id."""
+        eligible = [
+            p
+            for p in self.profiles.values()
+            if p.confirmed
+            and getattr(p, "instagram_user_id", None)
+            and (p.instagram_user_id or "").strip() != ""
+        ]
+        eligible.sort(key=lambda p: p.user_id)
+        return eligible[offset : offset + limit]
+
 
 @dataclass
 class InMemoryAdvertiserProfileRepository(AdvertiserProfileRepository):
@@ -397,10 +415,22 @@ class InMemoryInstagramGraphApiClient(InstagramGraphApiClient):
     """In-memory implementation of Instagram Graph API client for testing."""
 
     username_map: Dict[str, str] = field(default_factory=dict)
+    profile_map: Dict[str, InstagramProfileInfo] = field(default_factory=dict)
 
     async def get_username_by_id(self, instagram_user_id: str) -> str | None:
         """Get Instagram username by user ID from in-memory map."""
         return self.username_map.get(instagram_user_id)
+
+    async def get_profile_by_id(
+        self, instagram_user_id: str
+    ) -> Optional[InstagramProfileInfo]:
+        """Get profile by ID: profile_map if set, else from username_map."""
+        if instagram_user_id in self.profile_map:
+            return self.profile_map[instagram_user_id]
+        username = self.username_map.get(instagram_user_id)
+        if username is not None:
+            return InstagramProfileInfo(username=username)
+        return None
 
 
 @dataclass

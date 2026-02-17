@@ -47,6 +47,8 @@
           <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=username&order={% if sort == 'username' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Ник / Instagram</a></th>
           <th>Город</th>
           <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
+          <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=followers&order={% if sort == 'followers' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Подписчики</a></th>
+          <th>Постов</th>
           <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=responses&order={% if sort == 'responses' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Откликов</a></th>
           <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
           <th>Статус</th>
@@ -59,6 +61,8 @@
             <td>{{ creator.username }} / {{ creator.instagram }}</td>
             <td>{{ creator.city if creator.city else '—' }}</td>
             <td>{{ creator.created_at }}</td>
+            <td>{{ creator.instagram_followers_count if creator.instagram_followers_count is not none else '—' }}</td>
+            <td>{{ creator.instagram_media_count if creator.instagram_media_count is not none else '—' }}</td>
             <td>{{ creator.responses }}</td>
             <td>{{ creator.complaints }}</td>
             <td>{{ user_status_labels.get(creator.status, creator.status) }}</td>

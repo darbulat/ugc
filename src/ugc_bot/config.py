@@ -267,6 +267,18 @@ class InstagramConfig(BaseSettings):
     instagram_api_base_url: str = Field(
         default="https://graph.instagram.com", alias="INSTAGRAM_API_BASE_URL"
     )
+    instagram_stats_update_enabled: bool = Field(
+        default=False, alias="INSTAGRAM_STATS_UPDATE_ENABLED"
+    )
+    instagram_stats_update_interval_seconds: int = Field(
+        default=86400, alias="INSTAGRAM_STATS_UPDATE_INTERVAL_SECONDS"
+    )
+    instagram_stats_batch_size: int = Field(
+        default=50, alias="INSTAGRAM_STATS_BATCH_SIZE"
+    )
+    instagram_stats_delay_seconds: float = Field(
+        default=1.0, alias="INSTAGRAM_STATS_DELAY_SECONDS"
+    )
 
 
 class DocsConfig(BaseSettings):

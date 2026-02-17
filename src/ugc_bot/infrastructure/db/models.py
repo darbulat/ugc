@@ -159,6 +159,27 @@ class BloggerProfileModel(Base):
     blogger_gender: Mapped[Optional[BloggerGender]] = mapped_column(
         _enum_column(BloggerGender), nullable=True
     )
+    instagram_user_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    instagram_followers_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    instagram_media_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    instagram_follows_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    instagram_biography: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+    instagram_username: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    instagram_stats_fetched_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class AdvertiserProfileModel(Base):

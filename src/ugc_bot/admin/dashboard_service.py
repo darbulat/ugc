@@ -1290,6 +1290,8 @@ class AdminDashboardService:
                 UserModel,
                 BloggerProfileModel.instagram_url,
                 BloggerProfileModel.city,
+                BloggerProfileModel.instagram_followers_count,
+                BloggerProfileModel.instagram_media_count,
                 func.coalesce(responses.c.responses, 0).label("responses"),
                 func.coalesce(complaints.c.complaints, 0).label("complaints"),
             )
@@ -1316,9 +1318,10 @@ class AdminDashboardService:
             sort_by, responses, complaints
         )
         if order_column is not None:
-            query = query.order_by(
-                order_column.asc() if order_asc else order_column.desc()
-            )
+            direction = order_column.asc() if order_asc else order_column.desc()
+            if sort_by == "followers":
+                direction = direction.nulls_last()
+            query = query.order_by(direction)
         else:
             query = query.order_by(UserModel.created_at.desc())
         query = query.limit(limit).offset(offset)
@@ -1326,7 +1329,15 @@ class AdminDashboardService:
         rows = result.all()
         items = []
         for row in rows:
-            user, instagram_url, city, resp_count, compl_count = row
+            (
+                user,
+                instagram_url,
+                city,
+                followers_count,
+                media_count,
+                resp_count,
+                compl_count,
+            ) = row
             items.append(
                 {
                     "user_id": str(user.user_id),
@@ -1337,6 +1348,8 @@ class AdminDashboardService:
                     "responses": int(resp_count),
                     "complaints": int(compl_count),
                     "status": self._user_status_label(user.status),
+                    "instagram_followers_count": followers_count,
+                    "instagram_media_count": media_count,
                 }
             )
         return items
@@ -1351,6 +1364,8 @@ class AdminDashboardService:
             return func.coalesce(responses.c.responses, 0)
         if sort_by == "complaints":
             return func.coalesce(complaints.c.complaints, 0)
+        if sort_by == "followers":
+            return BloggerProfileModel.instagram_followers_count
         return None
 
     async def _count_advertisers(

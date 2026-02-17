@@ -110,6 +110,17 @@ class Container:
             self._config, repos, self._transaction_manager
         )
 
+    def build_instagram_stats_scheduler_deps(self) -> dict:
+        """Deps for Instagram stats update scheduler."""
+        repos = self.build_repos()
+        instagram_api_client = self.build_instagram_api_client()
+        return service_factory.build_instagram_stats_scheduler_deps(
+            self._config,
+            repos,
+            self._transaction_manager,
+            instagram_api_client,
+        )
+
     def build_instagram_verification_service(
         self,
     ) -> InstagramVerificationService:

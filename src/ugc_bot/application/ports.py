@@ -132,6 +132,15 @@ class BloggerProfileRepository(ABC):
     ) -> list[UUID]:
         """List user ids with confirmed blogger profiles."""
 
+    @abstractmethod
+    async def list_confirmed_with_instagram_id(
+        self,
+        limit: int,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> List[BloggerProfile]:
+        """List confirmed blogger profiles with non-empty instagram_user_id."""
+
 
 class AdvertiserProfileRepository(ABC):
     """Port for advertiser profile persistence."""
@@ -362,6 +371,35 @@ class InstagramVerificationRepository(ABC):
         """Fetch valid unexpired verification code by string (for webhook)."""
 
 
+class InstagramProfileInfo:
+    """Instagram profile data from Graph API (IG User node)."""
+
+    __slots__ = (
+        "username",
+        "followers_count",
+        "media_count",
+        "follows_count",
+        "biography",
+        "has_profile_pic",
+    )
+
+    def __init__(
+        self,
+        username: str,
+        followers_count: Optional[int] = None,
+        media_count: Optional[int] = None,
+        follows_count: Optional[int] = None,
+        biography: Optional[str] = None,
+        has_profile_pic: Optional[bool] = None,
+    ) -> None:
+        self.username = username
+        self.followers_count = followers_count
+        self.media_count = media_count
+        self.follows_count = follows_count
+        self.biography = biography
+        self.has_profile_pic = has_profile_pic
+
+
 class InstagramGraphApiClient(ABC):
     """Port for Instagram Graph API client."""
 
@@ -374,6 +412,19 @@ class InstagramGraphApiClient(ABC):
 
         Returns:
             Username if found, None otherwise
+        """
+
+    @abstractmethod
+    async def get_profile_by_id(
+        self, instagram_user_id: str
+    ) -> Optional["InstagramProfileInfo"]:
+        """Get full profile (username, counts, biography) by user ID.
+
+        Args:
+            instagram_user_id: Instagram-scoped user ID (sender_id from webhook)
+
+        Returns:
+            Profile info if found, None on error or missing username
         """
 
 

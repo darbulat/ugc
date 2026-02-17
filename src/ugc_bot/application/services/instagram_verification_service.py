@@ -15,6 +15,7 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     InstagramGraphApiClient,
+    InstagramProfileInfo,
     InstagramVerificationRepository,
     TransactionManager,
     UserRepository,
@@ -223,7 +224,28 @@ class InstagramVerificationService:
         profile_username = _extract_username_from_instagram_url(
             profile.instagram_url
         )
-        api_username = await self._fetch_api_username(instagram_sender_id)
+        profile_info: Optional[InstagramProfileInfo] = None
+        if self.instagram_api_client:
+            try:
+                profile_info = (
+                    await self.instagram_api_client.get_profile_by_id(
+                        instagram_sender_id
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to get Instagram profile from API",
+                    extra={
+                        "sender_id": instagram_sender_id,
+                        "error": str(exc),
+                    },
+                    exc_info=exc,
+                )
+        api_username = (
+            profile_info.username
+            if profile_info
+            else await self._fetch_api_username(instagram_sender_id)
+        )
 
         if not _usernames_match(api_username, profile_username):
             logger.warning(
@@ -251,6 +273,22 @@ class InstagramVerificationService:
             },
         )
 
+        now = datetime.now(timezone.utc)
+        instagram_user_id = instagram_sender_id
+        instagram_followers_count = None
+        instagram_media_count = None
+        instagram_follows_count = None
+        instagram_biography = None
+        instagram_username = None
+        instagram_stats_fetched_at = None
+        if profile_info:
+            instagram_followers_count = profile_info.followers_count
+            instagram_media_count = profile_info.media_count
+            instagram_follows_count = profile_info.follows_count
+            instagram_biography = profile_info.biography
+            instagram_username = profile_info.username
+            instagram_stats_fetched_at = now
+
         async def _confirm(session: object | None) -> None:
             await self.verification_repo.mark_used(
                 valid_code.code_id, session=session
@@ -268,7 +306,16 @@ class InstagramVerificationService:
                 price=profile.price,
                 barter=profile.barter,
                 work_format=profile.work_format,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=now,
+                wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
+                blogger_gender=profile.blogger_gender,
+                instagram_user_id=instagram_user_id,
+                instagram_followers_count=instagram_followers_count,
+                instagram_media_count=instagram_media_count,
+                instagram_follows_count=instagram_follows_count,
+                instagram_biography=instagram_biography,
+                instagram_username=instagram_username,
+                instagram_stats_fetched_at=instagram_stats_fetched_at,
             )
             await self.blogger_repo.save(confirmed_profile, session=session)
 

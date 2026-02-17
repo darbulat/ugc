@@ -839,6 +839,8 @@ async def test_list_creators(service) -> None:
             user,
             "https://instagram.com/u1",
             "Moscow",
+            None,
+            None,
             5,
             1,
         ),
@@ -1106,7 +1108,7 @@ async def test_count_open_complaints(service) -> None:
 async def test_user_status_label_active(service) -> None:
     """_user_status_label returns active for ACTIVE status."""
     user = _make_user(status=UserStatus.ACTIVE)
-    rows = [(user, "url", "", 0, 0)]
+    rows = [(user, "url", "", None, None, 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1120,7 +1122,7 @@ async def test_user_status_label_active(service) -> None:
 async def test_user_status_label_limited(service) -> None:
     """_user_status_label returns limited for non-ACTIVE status."""
     user = _make_user(status=UserStatus.BLOCKED)
-    rows = [(user, "url", "", 0, 0)]
+    rows = [(user, "url", "", None, None, 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1221,7 +1223,7 @@ async def test_advertiser_fallback_to_username_when_no_brand(service) -> None:
 async def test_list_creators_only_new_filter(service) -> None:
     """list_creators with only_new=True applies date filter."""
     user = _make_user()
-    rows = [(user, "url", "", 0, 0)]
+    rows = [(user, "url", "", None, None, 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1237,7 +1239,7 @@ async def test_list_creators_only_new_filter(service) -> None:
 async def test_list_creators_only_with_complaints_filter(service) -> None:
     """list_creators with only_with_complaints=True filters by complaints."""
     user = _make_user()
-    rows = [(user, "url", "", 0, 2)]
+    rows = [(user, "url", "", None, None, 0, 2)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1430,7 +1432,7 @@ async def test_search_users_by_digit_external_id(service) -> None:
 async def test_list_creators_with_sort_and_search(service) -> None:
     """list_creators with sort and search query uses correct params."""
     user = _make_user()
-    rows = [(user, "https://instagram.com/u", "", 2, 0)]
+    rows = [(user, "https://instagram.com/u", "", None, None, 2, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1576,7 +1578,7 @@ async def test_list_creators_with_digit_search_hits_user_search_condition(
 ) -> None:
     """list_creators with digit q uses _user_search_condition (external_id)."""
     user = _make_user()
-    rows = [(user, "https://instagram.com/u", "", 0, 0)]
+    rows = [(user, "https://instagram.com/u", "", None, None, 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1672,7 +1674,7 @@ async def test_apply_referrers_filter_unknown_returns_unchanged(
 async def test_list_creators_sort_responses(service) -> None:
     """list_creators with sort=responses uses responses column."""
     user = _make_user()
-    rows = [(user, "https://instagram.com/u", "", 10, 0)]
+    rows = [(user, "https://instagram.com/u", "", None, None, 10, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1688,7 +1690,7 @@ async def test_list_creators_sort_responses(service) -> None:
 async def test_list_creators_sort_complaints(service) -> None:
     """list_creators with sort=complaints uses complaints column."""
     user = _make_user()
-    rows = [(user, "url", "", 0, 3)]
+    rows = [(user, "url", "", None, None, 0, 3)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1704,7 +1706,7 @@ async def test_list_creators_sort_complaints(service) -> None:
 async def test_list_creators_unknown_sort_uses_default(service) -> None:
     """list_creators with unknown sort uses default order (created_at desc)."""
     user = _make_user()
-    rows = [(user, "url", "", 0, 0)]
+    rows = [(user, "url", "", None, None, 0, 0)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),

@@ -9,6 +9,7 @@ from ugc_bot.application.errors import (
     BloggerRegistrationError,
     UserNotFoundError,
 )
+from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationMismatch,
@@ -364,6 +365,53 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> (
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
+
+
+@pytest.mark.asyncio
+async def test_verify_code_by_instagram_sender_saves_instagram_stats() -> None:
+    """Webhook verification saves instagram_user_id and stats from API."""
+    user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_id = await _seed_user(user_repo)
+    await _seed_profile(profile_repo, user_id)
+
+    full_profile = InstagramProfileInfo(
+        username="test_user",
+        followers_count=1000,
+        media_count=50,
+        follows_count=200,
+        biography="Fitness",
+    )
+    api_client = InMemoryInstagramGraphApiClient(
+        profile_map={"instagram_sender_1": full_profile},
+    )
+
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        instagram_api_client=api_client,
+    )
+    verification = await service.generate_code(user_id)
+
+    result = await service.verify_code_by_instagram_sender(
+        instagram_sender_id="instagram_sender_1",
+        code=verification.code,
+        admin_instagram_username="admin",
+    )
+
+    assert isinstance(result, VerificationSuccess)
+    updated = await profile_repo.get_by_user_id(user_id)
+    assert updated is not None
+    assert updated.confirmed is True
+    assert updated.instagram_user_id == "instagram_sender_1"
+    assert updated.instagram_username == "test_user"
+    assert updated.instagram_followers_count == 1000
+    assert updated.instagram_media_count == 50
+    assert updated.instagram_follows_count == 200
+    assert updated.instagram_biography == "Fitness"
+    assert updated.instagram_stats_fetched_at is not None
 
 
 @pytest.mark.asyncio

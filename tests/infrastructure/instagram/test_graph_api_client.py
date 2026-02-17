@@ -5,8 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.infrastructure.instagram.graph_api_client import (
     HttpInstagramGraphApiClient,
+    _parse_profile_response,
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryInstagramGraphApiClient,
@@ -195,3 +197,216 @@ async def test_in_memory_client() -> None:
 
     username3 = await client.get_username_by_id("unknown")
     assert username3 is None
+
+
+def test_parse_profile_response_returns_none_when_no_username() -> None:
+    """_parse_profile_response returns None when username missing."""
+    assert _parse_profile_response({}) is None
+    assert _parse_profile_response({"id": "123"}) is None
+
+
+def test_parse_profile_response_returns_info() -> None:
+    """_parse_profile_response returns InstagramProfileInfo with all fields."""
+    data = {
+        "username": "jane",
+        "followers_count": 1000,
+        "media_count": 42,
+        "follows_count": 200,
+        "biography": "Hello",
+        "has_profile_pic": True,
+    }
+    info = _parse_profile_response(data)
+    assert info is not None
+    assert info.username == "jane"
+    assert info.followers_count == 1000
+    assert info.media_count == 42
+    assert info.follows_count == 200
+    assert info.biography == "Hello"
+    assert info.has_profile_pic is True
+
+
+def test_parse_profile_response_minimal_username_only() -> None:
+    """_parse_profile_response works with only username."""
+    info = _parse_profile_response({"username": "minimal"})
+    assert info is not None
+    assert info.username == "minimal"
+    assert info.followers_count is None
+    assert info.media_count is None
+
+
+def test_parse_profile_response_invalid_int_returns_none_for_that_field() -> (
+    None
+):
+    """_parse_profile_response treats invalid int as None for that field."""
+    data = {
+        "username": "x",
+        "followers_count": "not_a_number",
+        "media_count": 10,
+    }
+    info = _parse_profile_response(data)
+    assert info is not None
+    assert info.followers_count is None
+    assert info.media_count == 10
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_success() -> None:
+    """get_profile_by_id returns InstagramProfileInfo on success."""
+    client = HttpInstagramGraphApiClient(access_token="test_token")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "username": "jane",
+        "followers_count": 500,
+        "media_count": 10,
+    }
+    mock_response.raise_for_status.return_value = None
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        info = await client.get_profile_by_id("123456")
+
+        assert info is not None
+        assert info.username == "jane"
+        assert info.followers_count == 500
+        assert info.media_count == 10
+        call_args = mock_client.get.call_args
+        assert "followers_count" in call_args[1]["params"]["fields"]
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_404_returns_none() -> None:
+    """get_profile_by_id returns None on 404 (no retry)."""
+    client = HttpInstagramGraphApiClient(
+        access_token="token",
+        retry_attempts=1,
+    )
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_response.text = "Not Found"
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Not Found",
+        request=MagicMock(),
+        response=mock_response,
+    )
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+        assert await client.get_profile_by_id("123") is None
+    mock_client.get.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_no_token() -> None:
+    """get_profile_by_id returns None when no token."""
+    client = HttpInstagramGraphApiClient(access_token="")
+    assert await client.get_profile_by_id("123") is None
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_retry_succeeds_after_503() -> None:
+    """get_profile_by_id retries on 503 and returns profile on second call."""
+    client = HttpInstagramGraphApiClient(
+        access_token="token",
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+    error_response = MagicMock()
+    error_response.status_code = 503
+    error_response.text = "Unavailable"
+    error_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Unavailable",
+        request=MagicMock(),
+        response=error_response,
+    )
+    success_response = MagicMock()
+    success_response.json.return_value = {
+        "username": "jane",
+        "followers_count": 100,
+    }
+    success_response.raise_for_status.return_value = None
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.side_effect = [error_response, success_response]
+        mock_client_class.return_value = mock_client
+        info = await client.get_profile_by_id("123")
+    assert info is not None
+    assert info.username == "jane"
+    assert info.followers_count == 100
+    assert mock_client.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_retry_succeeds_after_request_error() -> None:
+    """get_profile_by_id retries on RequestError and returns profile."""
+    client = HttpInstagramGraphApiClient(
+        access_token="token",
+        retry_attempts=3,
+        retry_delay_seconds=0.0,
+    )
+    success_response = MagicMock()
+    success_response.json.return_value = {"username": "bob", "media_count": 5}
+    success_response.raise_for_status.return_value = None
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.side_effect = [
+            httpx.RequestError("Connection error"),
+            success_response,
+        ]
+        mock_client_class.return_value = mock_client
+        info = await client.get_profile_by_id("456")
+    assert info is not None
+    assert info.username == "bob"
+    assert mock_client.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_no_username_in_response() -> None:
+    """get_profile_by_id returns None when response has no username."""
+    client = HttpInstagramGraphApiClient(access_token="token")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "123"}
+    mock_response.raise_for_status.return_value = None
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+        assert await client.get_profile_by_id("123") is None
+
+
+@pytest.mark.asyncio
+async def test_in_memory_client_get_profile_by_id() -> None:
+    """In-memory client get_profile_by_id uses profile_map or username_map."""
+    full_profile = InstagramProfileInfo(
+        username="full_user",
+        followers_count=100,
+        media_count=5,
+    )
+    client = InMemoryInstagramGraphApiClient(
+        username_map={"uid2": "minimal_user"},
+        profile_map={"uid1": full_profile},
+    )
+    info1 = await client.get_profile_by_id("uid1")
+    assert info1 is not None
+    assert info1.username == "full_user"
+    assert info1.followers_count == 100
+
+    info2 = await client.get_profile_by_id("uid2")
+    assert info2 is not None
+    assert info2.username == "minimal_user"
+    assert info2.followers_count is None
+
+    assert await client.get_profile_by_id("unknown") is None

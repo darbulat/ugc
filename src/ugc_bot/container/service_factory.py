@@ -15,6 +15,9 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.instagram_stats_update_service import (
+    InstagramStatsUpdateService,
+)
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -133,6 +136,23 @@ def build_instagram_verification_service(
         instagram_api_client=instagram_api_client,
         transaction_manager=transaction_manager,
     )
+
+
+def build_instagram_stats_scheduler_deps(
+    config: AppConfig, repos, transaction_manager, instagram_api_client
+):
+    """Build deps for Instagram stats update scheduler."""
+    ig_config = config.instagram
+    return {
+        "instagram_stats_update_service": InstagramStatsUpdateService(
+            blogger_repo=repos["blogger_repo"],
+            instagram_api_client=instagram_api_client,
+            transaction_manager=transaction_manager,
+            batch_size=ig_config.instagram_stats_batch_size,
+            delay_seconds=ig_config.instagram_stats_delay_seconds,
+        ),
+        "interval_seconds": ig_config.instagram_stats_update_interval_seconds,
+    }
 
 
 def build_bot_services(

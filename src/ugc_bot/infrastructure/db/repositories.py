@@ -294,6 +294,32 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         results = exec_result.scalars()
         return list(results)
 
+    async def list_confirmed_with_instagram_id(
+        self,
+        limit: int,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[BloggerProfile]:
+        """List confirmed profiles with non-empty instagram_user_id."""
+        db_session = _get_async_session(session)
+        stmt = (
+            select(BloggerProfileModel)
+            .where(
+                BloggerProfileModel.confirmed.is_(True),
+                BloggerProfileModel.instagram_user_id.isnot(None),
+                BloggerProfileModel.instagram_user_id != "",
+            )
+            .order_by(
+                BloggerProfileModel.instagram_stats_fetched_at.asc().nulls_first(),
+                BloggerProfileModel.user_id,
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db_session.execute(stmt)
+        rows = result.scalars().all()
+        return [_to_blogger_profile_entity(row) for row in rows]
+
 
 @dataclass(slots=True)
 class SqlAlchemyAdvertiserProfileRepository(AdvertiserProfileRepository):
@@ -967,6 +993,17 @@ def _to_blogger_profile_entity(
         ),
         updated_at=model.updated_at,
         blogger_gender=blogger_gender,
+        instagram_user_id=getattr(model, "instagram_user_id", None),
+        instagram_followers_count=getattr(
+            model, "instagram_followers_count", None
+        ),
+        instagram_media_count=getattr(model, "instagram_media_count", None),
+        instagram_follows_count=getattr(model, "instagram_follows_count", None),
+        instagram_biography=getattr(model, "instagram_biography", None),
+        instagram_username=getattr(model, "instagram_username", None),
+        instagram_stats_fetched_at=getattr(
+            model, "instagram_stats_fetched_at", None
+        ),
     )
 
 
@@ -991,6 +1028,13 @@ def _to_blogger_profile_model(
         wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
         updated_at=profile.updated_at,
         blogger_gender=profile.blogger_gender,
+        instagram_user_id=profile.instagram_user_id,
+        instagram_followers_count=profile.instagram_followers_count,
+        instagram_media_count=profile.instagram_media_count,
+        instagram_follows_count=profile.instagram_follows_count,
+        instagram_biography=profile.instagram_biography,
+        instagram_username=profile.instagram_username,
+        instagram_stats_fetched_at=profile.instagram_stats_fetched_at,
     )
 
 
