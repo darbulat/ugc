@@ -300,7 +300,7 @@ class ReferralIncomeService:
                 and completed_utc.year == now_utc.year
             ):
                 income_current_month += commission
-        return (income_current_month, income_total, len(seen_orders))
+        return income_current_month, income_total, len(seen_orders)
 
     async def _income_from_advertiser_orders(
         self,

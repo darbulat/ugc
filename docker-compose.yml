@@ -1,12 +1,18 @@
+# App services connect to PostgreSQL via PgBouncer (pgbouncer:6432). db_backup and
+# postgres_exporter use direct connection to db:5432. pool_mode=session in pgbouncer.
 services:
   app:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     expose:
       - "9999"
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_healthy
       kafka:
@@ -31,11 +37,15 @@ services:
   app_2:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     expose:
       - "9999"
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_healthy
       kafka:
@@ -60,18 +70,26 @@ services:
   migrate:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
     command: ["alembic", "upgrade", "head"]
     restart: "no"
 
   admin:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
     command:
       [
         "uvicorn",
@@ -101,9 +119,13 @@ services:
   instagram_webhook:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
     command:
       [
         "uvicorn",
@@ -167,9 +189,13 @@ services:
   kafka_consumer:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
       kafka:
         condition: service_healthy
     command: ["python", "-m", "ugc_bot.kafka_consumer"]
@@ -178,27 +204,39 @@ services:
   feedback_scheduler:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
     command: ["python", "-m", "ugc_bot.feedback_scheduler"]
     restart: unless-stopped
 
   role_reminder_scheduler:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
     command: ["python", "-m", "ugc_bot.role_reminder_scheduler"]
     restart: unless-stopped
 
   outbox_processor:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
       kafka:
         condition: service_healthy
     command: ["python", "-m", "ugc_bot.outbox_processor"]
@@ -207,9 +245,13 @@ services:
   instagram_stats_scheduler:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
         condition: service_healthy
+      pgbouncer:
+        condition: service_started
     command: ["python", "-m", "ugc_bot.instagram_stats_scheduler"]
     restart: unless-stopped
 
@@ -239,6 +281,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@db:5432/${POSTGRES_DB:-ugc}
+      AUTH_TYPE: plain
+      LISTEN_PORT: 6432
+      POOL_MODE: session
+    volumes:
+      - ./config/postgres/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    expose:
+      - "6432"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -458,7 +516,7 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@db:5432/${POSTGRES_DB:-ugc}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-ugc}

@@ -22,6 +22,10 @@ skeleton, configuration templates, and a working bot powered by `aiogram`.
 Set `DATABASE_URL` in `.env`, then run:
 - `alembic upgrade head`
 
+In the Docker stack, app services connect to PostgreSQL via PgBouncer
+(pgbouncer:6432); backup and postgres_exporter use a direct connection to db:5432.
+PgBouncer uses session pooling so Alembic migrations work without changes.
+
 ## E2E tests
 
 - **Local** (admin started automatically on port 8001): `make e2e`
