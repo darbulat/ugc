@@ -942,6 +942,8 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.content_usage,
         OrderModel.deadlines,
         OrderModel.geography,
+        OrderModel.min_followers,
+        OrderModel.max_followers,
         OrderModel.status,
         OrderModel.created_at,
     ]
@@ -957,6 +959,8 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.content_usage: "Использование контента",
         OrderModel.deadlines: "Сроки",
         OrderModel.geography: "География",
+        OrderModel.min_followers: "Мин. подписчиков",
+        OrderModel.max_followers: "Макс. подписчиков",
         OrderModel.status: "Статус",
         OrderModel.created_at: "Дата создания",
         OrderModel.order_type: "Тип заказа",
@@ -974,6 +978,8 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.content_usage,
         OrderModel.deadlines,
         OrderModel.geography,
+        OrderModel.min_followers,
+        OrderModel.max_followers,
         OrderModel.product_photo_file_id,
     ]
 

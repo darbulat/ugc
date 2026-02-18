@@ -108,6 +108,8 @@ class Order:
     # Used for barter orders and product delivery.
     geography: Optional[str] = None
     product_photo_file_id: Optional[str] = None
+    min_followers: Optional[int] = None
+    max_followers: Optional[int] = None
 
 
 @dataclass(frozen=True)

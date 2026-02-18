@@ -163,6 +163,8 @@ class OrderService:
                 product_photo_file_id=(
                     (product_photo_file_id or "").strip() or None
                 ),
+                min_followers=None,
+                max_followers=None,
             )
             await self.order_repo.save(order, session=session)
 

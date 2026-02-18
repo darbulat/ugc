@@ -1181,6 +1181,8 @@ def _to_order_entity(model: OrderModel) -> Order:
         deadlines=getattr(model, "deadlines", None),
         geography=getattr(model, "geography", None),
         product_photo_file_id=getattr(model, "product_photo_file_id", None),
+        min_followers=getattr(model, "min_followers", None),
+        max_followers=getattr(model, "max_followers", None),
     )
 
 
@@ -1217,6 +1219,8 @@ def _to_order_model(order: Order) -> OrderModel:
         deadlines=order.deadlines,
         geography=order.geography,
         product_photo_file_id=order.product_photo_file_id,
+        min_followers=order.min_followers,
+        max_followers=order.max_followers,
     )
 
 

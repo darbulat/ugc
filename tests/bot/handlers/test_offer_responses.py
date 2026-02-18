@@ -191,8 +191,6 @@ async def test_offer_skip_handler(
     _order_config = OrderConfig(
         allowed_blogger_counts="1,3,5,10",
         max_order_price=10_000.0,
-        offer_dispatch_min_followers_enabled=False,
-        offer_dispatch_min_followers=1000,
     )
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
@@ -200,7 +198,6 @@ async def test_offer_skip_handler(
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_order_config,
         transaction_manager=None,
     )
     order_id = UUID("00000000-0000-0000-0000-000000000748")
@@ -1317,8 +1314,6 @@ async def test_offer_skip_edit_reply_markup_exception(
     _order_config = OrderConfig(
         allowed_blogger_counts="1,3,5,10",
         max_order_price=10_000.0,
-        offer_dispatch_min_followers_enabled=False,
-        offer_dispatch_min_followers=1000,
     )
     offer_dispatch_service = OfferDispatchService(
         user_repo=user_repo,
@@ -1326,7 +1321,6 @@ async def test_offer_skip_edit_reply_markup_exception(
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_order_config,
         transaction_manager=None,
     )
 

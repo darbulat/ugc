@@ -83,8 +83,6 @@ _FLAT_KEYS = {
     "order": [
         "ALLOWED_BLOGGER_COUNTS",
         "MAX_ORDER_PRICE",
-        "OFFER_DISPATCH_MIN_FOLLOWERS_ENABLED",
-        "OFFER_DISPATCH_MIN_FOLLOWERS",
     ],
     "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
 }
@@ -340,12 +338,6 @@ class OrderConfig(BaseSettings):
         default="1,3,5,10", alias="ALLOWED_BLOGGER_COUNTS"
     )
     max_order_price: float = Field(default=10_000.0, alias="MAX_ORDER_PRICE")
-    offer_dispatch_min_followers_enabled: bool = Field(
-        default=True, alias="OFFER_DISPATCH_MIN_FOLLOWERS_ENABLED"
-    )
-    offer_dispatch_min_followers: int = Field(
-        default=1000, alias="OFFER_DISPATCH_MIN_FOLLOWERS"
-    )
 
     @field_validator("allowed_blogger_counts")
     @classmethod

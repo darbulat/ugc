@@ -221,7 +221,6 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=interaction_repo,
-        order_config=config.order,
         transaction_manager=transaction_manager,
     )
     dispatcher["offer_response_service"] = OfferResponseService(

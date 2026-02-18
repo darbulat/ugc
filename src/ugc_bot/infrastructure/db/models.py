@@ -269,6 +269,8 @@ class OrderModel(Base):
     product_photo_file_id: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )
+    min_followers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_followers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class ContactPricingModel(Base):

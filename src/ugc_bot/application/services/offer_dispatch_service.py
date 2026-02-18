@@ -16,7 +16,6 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
-from ugc_bot.config import OrderConfig
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import OrderStatus, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -31,7 +30,6 @@ class OfferDispatchService:
     order_repo: OrderRepository
     offer_dispatch_repo: OfferDispatchRepository
     interaction_repo: InteractionRepository
-    order_config: OrderConfig
     transaction_manager: TransactionManager | None = None
 
     async def get_order_and_advertiser(
@@ -89,11 +87,16 @@ class OfferDispatchService:
         if order.geography:
             geography_spec = parse_geography(order.geography)
 
-        need_profile = (
-            geography_spec is not None
-            or self.order_config.offer_dispatch_min_followers_enabled
+        min_followers = (
+            order.min_followers if order.min_followers is not None else 0
         )
-        min_followers = self.order_config.offer_dispatch_min_followers
+        max_followers = (
+            order.max_followers if order.max_followers is not None else 0
+        )
+        min_enabled = order.min_followers is not None
+        max_enabled = order.max_followers is not None
+
+        need_profile = geography_spec is not None or min_enabled or max_enabled
 
         users: list[User] = []
         for user_id in confirmed_ids:
@@ -124,10 +127,15 @@ class OfferDispatchService:
                 )
             ):
                 continue
-            if self.order_config.offer_dispatch_min_followers_enabled:
+            if min_enabled:
                 if profile is None or profile.instagram_followers_count is None:
                     continue
                 if profile.instagram_followers_count < min_followers:
+                    continue
+            if max_enabled:
+                if profile is None or profile.instagram_followers_count is None:
+                    continue
+                if profile.instagram_followers_count > max_followers:
                     continue
             users.append(user)
         return users

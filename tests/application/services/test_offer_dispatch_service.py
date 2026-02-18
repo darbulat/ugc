@@ -1,16 +1,21 @@
 """Tests for offer dispatch service."""
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 
 from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.ports import BloggerProfileRepository
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
-from ugc_bot.domain.entities import BloggerProfile, Interaction, Order, User
+from ugc_bot.domain.entities import (
+    BloggerProfile,
+    Interaction,
+    Order,
+    User,
+)
 from ugc_bot.domain.enums import (
     AudienceGender,
     InteractionStatus,
@@ -28,14 +33,6 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 
-# Order config: min followers off for tests without profile stats (no env).
-_ORDER_CONFIG = SimpleNamespace(
-    allowed_blogger_counts="1,3,5,10",
-    max_order_price=10_000.0,
-    offer_dispatch_min_followers_enabled=False,
-    offer_dispatch_min_followers=1000,
-)
-
 
 @pytest.mark.asyncio
 async def test_dispatch_selects_confirmed_bloggers() -> None:
@@ -51,7 +48,6 @@ async def test_dispatch_selects_confirmed_bloggers() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order = Order(
@@ -115,7 +111,6 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
         transaction_manager=fake_tm,
     )
     order = Order(
@@ -176,7 +171,6 @@ async def test_dispatch_raises_when_order_not_found() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
     missing_order_id = UUID("00000000-0000-0000-0000-000000000605")
 
@@ -198,7 +192,6 @@ async def test_dispatch_requires_active_order() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order = Order(
@@ -236,7 +229,6 @@ async def test_get_order_and_advertiser_with_transaction_manager(
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
         transaction_manager=fake_tm,
     )
     order = Order(
@@ -289,7 +281,6 @@ async def test_get_order_and_advertiser_returns_none_when_order_missing() -> (
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
     missing_order_id = UUID("00000000-0000-0000-0000-000000000617")
     got_order, got_advertiser = await service.get_order_and_advertiser(
@@ -315,7 +306,6 @@ async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
         transaction_manager=fake_tm,
     )
     missing_order_id = UUID("00000000-0000-0000-0000-000000000616")
@@ -334,7 +324,6 @@ def test_format_offer_ugc_only() -> None:
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000614"),
@@ -363,7 +352,6 @@ def test_format_offer_with_barter_and_optional_fields() -> None:
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000618"),
@@ -397,7 +385,6 @@ def test_format_offer_ugc_plus_placement() -> None:
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000614"),
@@ -432,7 +419,6 @@ async def test_dispatch_skips_ineligible_bloggers() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order = Order(
@@ -514,7 +500,6 @@ async def test_dispatch_no_profiles_returns_empty() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order = Order(
@@ -549,7 +534,6 @@ async def test_dispatch_filters_by_geography_city() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order = Order(
@@ -641,7 +625,6 @@ async def test_dispatch_geography_country_includes_all() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order = Order(
@@ -717,7 +700,6 @@ async def test_dispatch_geography_empty_no_filter() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order = Order(
@@ -782,7 +764,6 @@ async def test_dispatch_excludes_order_author() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     advertiser_id = UUID("00000000-0000-0000-0000-000000000650")
@@ -940,7 +921,6 @@ async def test_dispatch_excludes_bloggers_who_already_received_offer() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     result = await service.dispatch(order.order_id)
@@ -959,7 +939,6 @@ async def test_record_offer_sent() -> None:
         order_repo=InMemoryOrderRepository(),
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=_ORDER_CONFIG,
     )
 
     order_id = UUID("00000000-0000-0000-0000-000000000670")
@@ -969,6 +948,27 @@ async def test_record_offer_sent() -> None:
 
     sent = await offer_dispatch_repo.list_blogger_ids_sent_for_order(order_id)
     assert sent == [blogger_id]
+
+
+@pytest.mark.asyncio
+async def test_record_skip() -> None:
+    """record_skip persists accepted=False, in_offer=False to repo."""
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000001")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000002")
+    await offer_dispatch_repo.record_sent(order_id, blogger_id)
+    await service.record_skip(order_id, blogger_id)
+    responses = await offer_dispatch_repo.list_responses_by_order(order_id)
+    assert len(responses) == 1
+    assert responses[0].accepted is False
+    assert responses[0].in_offer is False
 
 
 @pytest.mark.asyncio
@@ -1046,7 +1046,6 @@ async def test_dispatch_excludes_bloggers_with_unfulfilled_interaction() -> (
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=interaction_repo,
-        order_config=_ORDER_CONFIG,
     )
 
     result = await service.dispatch(order.order_id)
@@ -1127,7 +1126,6 @@ async def test_dispatch_includes_bloggers_with_only_ok_or_no_deal() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=interaction_repo,
-        order_config=_ORDER_CONFIG,
     )
 
     result = await service.dispatch(order.order_id)
@@ -1138,12 +1136,6 @@ async def test_dispatch_includes_bloggers_with_only_ok_or_no_deal() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_min_followers_excludes_below_threshold() -> None:
     """Min followers on: bloggers with followers < threshold excluded."""
-    order_config_enabled = SimpleNamespace(
-        allowed_blogger_counts="1,3,5,10",
-        max_order_price=10_000.0,
-        offer_dispatch_min_followers_enabled=True,
-        offer_dispatch_min_followers=1000,
-    )
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
@@ -1161,6 +1153,8 @@ async def test_dispatch_min_followers_excludes_below_threshold() -> None:
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
         completed_at=None,
+        min_followers=1000,
+        max_followers=None,
     )
     await order_repo.save(order)
 
@@ -1199,7 +1193,6 @@ async def test_dispatch_min_followers_excludes_below_threshold() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=order_config_enabled,
     )
 
     result = await service.dispatch(order.order_id)
@@ -1209,12 +1202,6 @@ async def test_dispatch_min_followers_excludes_below_threshold() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_min_followers_includes_at_or_above_threshold() -> None:
     """Min followers on: bloggers with followers >= threshold included."""
-    order_config_enabled = SimpleNamespace(
-        allowed_blogger_counts="1,3,5,10",
-        max_order_price=10_000.0,
-        offer_dispatch_min_followers_enabled=True,
-        offer_dispatch_min_followers=1000,
-    )
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
@@ -1232,6 +1219,8 @@ async def test_dispatch_min_followers_includes_at_or_above_threshold() -> None:
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
         completed_at=None,
+        min_followers=1000,
+        max_followers=None,
     )
     await order_repo.save(order)
 
@@ -1270,7 +1259,6 @@ async def test_dispatch_min_followers_includes_at_or_above_threshold() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=order_config_enabled,
     )
 
     result = await service.dispatch(order.order_id)
@@ -1281,12 +1269,6 @@ async def test_dispatch_min_followers_includes_at_or_above_threshold() -> None:
 @pytest.mark.asyncio
 async def test_dispatch_min_followers_excludes_none_when_enabled() -> None:
     """Min followers on: bloggers with followers_count None excluded."""
-    order_config_enabled = SimpleNamespace(
-        allowed_blogger_counts="1,3,5,10",
-        max_order_price=10_000.0,
-        offer_dispatch_min_followers_enabled=True,
-        offer_dispatch_min_followers=1000,
-    )
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
@@ -1304,6 +1286,8 @@ async def test_dispatch_min_followers_excludes_none_when_enabled() -> None:
         status=OrderStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
         completed_at=None,
+        min_followers=1000,
+        max_followers=None,
     )
     await order_repo.save(order)
 
@@ -1342,8 +1326,282 @@ async def test_dispatch_min_followers_excludes_none_when_enabled() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        order_config=order_config_enabled,
     )
 
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_max_followers_excludes_above_threshold() -> None:
+    """Max followers on: bloggers with followers > threshold excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000770"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000771"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_followers=None,
+        max_followers=5000,
+    )
+    await order_repo.save(order)
+
+    blogger_high = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000772"),
+        external_id="172",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_high",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_high)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_high.user_id,
+            instagram_url="https://instagram.com/high",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_followers_count=10_000,
+        )
+    )
+
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_max_followers_excludes_none_when_enabled() -> None:
+    """Max followers on: bloggers with followers_count None excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000775"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000776"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_followers=None,
+        max_followers=5000,
+    )
+    await order_repo.save(order)
+
+    blogger_nostats = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000777"),
+        external_id="177",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_nostats",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_nostats)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_nostats.user_id,
+            instagram_url="https://instagram.com/nostats",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_followers_count=None,
+        )
+    )
+
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_uses_order_min_max_followers(fake_tm: object) -> None:
+    """Order min_followers/max_followers are used for filtering."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000780"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000781"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_followers=500,
+        max_followers=3000,
+    )
+    await order_repo.save(order)
+
+    blogger_in_range = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000782"),
+        external_id="182",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_ok",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_in_range)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_in_range.user_id,
+            instagram_url="https://instagram.com/ok",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_followers_count=2000,
+        )
+    )
+
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        transaction_manager=fake_tm,
+    )
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger_in_range.user_id
+
+
+class _BloggerRepoNoneProfile(BloggerProfileRepository):
+    """One confirmed user_id but get_by_user_id returns None (edge case)."""
+
+    def __init__(self, user_id: UUID) -> None:
+        self._user_id = user_id
+
+    async def list_confirmed_user_ids(
+        self, session: object | None = None
+    ) -> list[UUID]:
+        return [self._user_id]
+
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ):
+        return None
+
+    async def list_confirmed_with_instagram_id(
+        self, limit: int, offset: int = 0, session: object | None = None
+    ):
+        return []
+
+    async def save(self, profile, session: object | None = None) -> None:
+        pass
+
+    async def get_by_instagram_url(
+        self, instagram_url: str, session: object | None = None
+    ):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_skips_when_profile_fetch_returns_none() -> None:
+    """Skip when need_profile and get_by_user_id returns None."""
+    user_id = UUID("00000000-0000-0000-0000-000000000790")
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=user_id,
+            external_id="790",
+            messenger_type=MessengerType.TELEGRAM,
+            username="u",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    blogger_repo = _BloggerRepoNoneProfile(user_id)
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000791"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000792"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_followers=1000,
+        max_followers=None,
+    )
+    await order_repo.save(order)
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
     result = await service.dispatch(order.order_id)
     assert result == []
