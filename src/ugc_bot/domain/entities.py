@@ -40,6 +40,7 @@ class User:
     referral_code: Optional[str] = None
     referral_payout_rate: Optional[Decimal] = None
     agreement_confirmed_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,7 @@ class BloggerProfile:
     work_format: WorkFormat
     updated_at: datetime
     wanted_to_change_terms_count: int = 0
+    created_at: Optional[datetime] = None
     blogger_gender: Optional[BloggerGender] = None
     instagram_user_id: Optional[str] = None
     instagram_followers_count: Optional[int] = None
@@ -80,6 +82,8 @@ class AdvertiserProfile:
     site_link: Optional[str] = None
     city: Optional[str] = None
     company_activity: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -96,7 +100,8 @@ class Order:
     bloggers_needed: int
     status: OrderStatus
     created_at: datetime
-    completed_at: Optional[datetime]
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     content_usage: Optional[str] = None
     deadlines: Optional[str] = None
     # Advertiser's answer: where creator may be (1–10 cities, regions, or "РФ").
@@ -161,7 +166,8 @@ class Complaint:
     reason: str
     status: ComplaintStatus
     created_at: datetime
-    reviewed_at: Optional[datetime]
+    updated_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
     file_ids: Optional[list[str]] = None
 
 
@@ -177,7 +183,8 @@ class Payment:
     currency: str
     external_id: str
     created_at: datetime
-    paid_at: Optional[datetime]
+    updated_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -187,6 +194,7 @@ class ContactPricing:
     bloggers_count: int
     price: float
     updated_at: datetime
+    created_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -232,6 +240,7 @@ class PayoutRequest:
     requested_at: datetime
     status: PayoutRequestStatus
     amount: Optional[Decimal] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

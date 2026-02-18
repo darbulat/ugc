@@ -113,6 +113,11 @@ class UserModel(Base):
     agreement_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
 
 
 class BloggerProfileModel(Base):
@@ -152,6 +157,9 @@ class BloggerProfileModel(Base):
     )
     wanted_to_change_terms_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
@@ -201,6 +209,14 @@ class AdvertiserProfileModel(Base):
     company_activity: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
 
 
 class OrderModel(Base):
@@ -242,6 +258,11 @@ class OrderModel(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
     content_usage: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     deadlines: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     geography: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -257,6 +278,9 @@ class ContactPricingModel(Base):
 
     bloggers_count: Mapped[int] = mapped_column(Integer, primary_key=True)
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -397,6 +421,11 @@ class ComplaintModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -427,6 +456,11 @@ class PaymentModel(Base):
     external_id: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
     )
     paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -557,4 +591,9 @@ class PayoutRequestModel(Base):
     amount: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(10, 2),
         nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
     )

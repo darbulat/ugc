@@ -957,6 +957,7 @@ def _to_user_entity(model: UserModel) -> User:
         referral_code=getattr(model, "referral_code", None),
         referral_payout_rate=getattr(model, "referral_payout_rate", None),
         agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
+        updated_at=getattr(model, "updated_at", None),
     )
 
 
@@ -978,6 +979,8 @@ def _to_user_model(user: User) -> UserModel:
         referral_code=getattr(user, "referral_code", None),
         referral_payout_rate=getattr(user, "referral_payout_rate", None),
         agreement_confirmed_at=getattr(user, "agreement_confirmed_at", None),
+        updated_at=getattr(user, "updated_at", None)
+        or datetime.now(timezone.utc),
     )
 
 
@@ -1008,6 +1011,7 @@ def _to_blogger_profile_entity(
         wanted_to_change_terms_count=getattr(
             model, "wanted_to_change_terms_count", 0
         ),
+        created_at=getattr(model, "created_at", model.updated_at),
         updated_at=model.updated_at,
         blogger_gender=blogger_gender,
         instagram_user_id=getattr(model, "instagram_user_id", None),
@@ -1043,6 +1047,7 @@ def _to_blogger_profile_model(
         barter=profile.barter,
         work_format=profile.work_format,
         wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
+        created_at=profile.created_at or profile.updated_at,
         updated_at=profile.updated_at,
         blogger_gender=profile.blogger_gender,
         instagram_user_id=profile.instagram_user_id,
@@ -1103,6 +1108,9 @@ def _to_advertiser_profile_entity(
         site_link=getattr(model, "site_link", None),
         city=getattr(model, "city", None),
         company_activity=getattr(model, "company_activity", None),
+        created_at=getattr(model, "created_at", None)
+        or getattr(model, "updated_at", None),
+        updated_at=getattr(model, "updated_at", None),
     )
 
 
@@ -1118,6 +1126,8 @@ def _to_advertiser_profile_model(
         site_link=profile.site_link,
         city=profile.city,
         company_activity=profile.company_activity,
+        created_at=profile.created_at or datetime.now(timezone.utc),
+        updated_at=profile.updated_at or datetime.now(timezone.utc),
     )
 
 
@@ -1165,6 +1175,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         bloggers_needed=model.bloggers_needed,
         status=model.status,
         created_at=model.created_at,
+        updated_at=getattr(model, "updated_at", model.created_at),
         completed_at=model.completed_at,
         content_usage=getattr(model, "content_usage", None),
         deadlines=getattr(model, "deadlines", None),
@@ -1200,6 +1211,7 @@ def _to_order_model(order: Order) -> OrderModel:
         bloggers_needed=order.bloggers_needed,
         status=order.status,
         created_at=order.created_at,
+        updated_at=order.updated_at or order.created_at,
         completed_at=order.completed_at,
         content_usage=order.content_usage,
         deadlines=order.deadlines,
@@ -1220,6 +1232,7 @@ def _to_payment_entity(model: PaymentModel) -> Payment:
         currency=model.currency,
         external_id=model.external_id,
         created_at=model.created_at,
+        updated_at=getattr(model, "updated_at", model.created_at),
         paid_at=model.paid_at,
     )
 
@@ -1236,6 +1249,7 @@ def _to_payment_model(payment: Payment) -> PaymentModel:
         currency=payment.currency,
         external_id=payment.external_id,
         created_at=payment.created_at,
+        updated_at=payment.updated_at or payment.created_at,
         paid_at=payment.paid_at,
     )
 
@@ -1246,6 +1260,7 @@ def _to_contact_pricing_entity(model: ContactPricingModel) -> ContactPricing:
     return ContactPricing(
         bloggers_count=model.bloggers_count,
         price=float(model.price),
+        created_at=getattr(model, "created_at", model.updated_at),
         updated_at=model.updated_at,
     )
 
@@ -1550,6 +1565,7 @@ def _to_complaint_entity(model: ComplaintModel) -> Complaint:
         reason=model.reason,
         status=model.status,
         created_at=model.created_at,
+        updated_at=getattr(model, "updated_at", model.created_at),
         reviewed_at=model.reviewed_at,
         file_ids=getattr(model, "file_ids", None),
     )
@@ -1566,6 +1582,7 @@ def _to_complaint_model(complaint: Complaint) -> ComplaintModel:
         reason=complaint.reason,
         status=complaint.status,
         created_at=complaint.created_at,
+        updated_at=complaint.updated_at or complaint.created_at,
         reviewed_at=complaint.reviewed_at,
         file_ids=complaint.file_ids,
     )
@@ -2164,6 +2181,7 @@ def _to_payout_request_entity(
         requested_at=model.requested_at,
         status=model.status,
         amount=model.amount,
+        updated_at=getattr(model, "updated_at", model.requested_at),
     )
 
 
@@ -2176,4 +2194,5 @@ def _to_payout_request_model(request: PayoutRequest) -> PayoutRequestModel:
         requested_at=request.requested_at,
         status=request.status,
         amount=request.amount,
+        updated_at=request.updated_at or request.requested_at,
     )
