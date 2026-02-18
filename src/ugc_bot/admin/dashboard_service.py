@@ -1179,6 +1179,10 @@ class AdminDashboardService:
             "creators": lambda x: x.get("referred_creators", 0),
             "advertisers": lambda x: x.get("referred_advertisers", 0),
             "new_in_period": lambda x: x.get("new_in_period", 0),
+            "manager": lambda x: (
+                (x.get("telegram") or x.get("username") or "").lower()
+            ),
+            "code": lambda x: (x.get("referral_code") or "").lower(),
         }
         key_fn = key_map.get(sort_by)
         if key_fn is None:
@@ -1319,7 +1323,7 @@ class AdminDashboardService:
         )
         if order_column is not None:
             direction = order_column.asc() if order_asc else order_column.desc()
-            if sort_by == "followers":
+            if sort_by in ("followers", "media", "city"):
                 direction = direction.nulls_last()
             query = query.order_by(direction)
         else:
@@ -1356,16 +1360,24 @@ class AdminDashboardService:
 
     def _creators_sort_column(self, sort_by: str, responses, complaints):
         """Return sort column for creators list or None for default."""
+        if sort_by == "user_id":
+            return UserModel.user_id
         if sort_by == "username":
             return UserModel.username
+        if sort_by == "city":
+            return BloggerProfileModel.city
         if sort_by == "created_at":
             return UserModel.created_at
+        if sort_by == "followers":
+            return BloggerProfileModel.instagram_followers_count
+        if sort_by == "media":
+            return BloggerProfileModel.instagram_media_count
         if sort_by == "responses":
             return func.coalesce(responses.c.responses, 0)
         if sort_by == "complaints":
             return func.coalesce(complaints.c.complaints, 0)
-        if sort_by == "followers":
-            return BloggerProfileModel.instagram_followers_count
+        if sort_by == "status":
+            return UserModel.status
         return None
 
     async def _count_advertisers(
@@ -1390,6 +1402,8 @@ class AdminDashboardService:
 
     def _advertisers_sort_column(self, sort_by: str, orders, complaints):
         """Return sort column for advertisers list or None for default."""
+        if sort_by == "user_id":
+            return UserModel.user_id
         if sort_by == "created_at":
             return UserModel.created_at
         if sort_by == "name":
@@ -1587,12 +1601,20 @@ class AdminDashboardService:
         )
         if status_cond is not None:
             query = query.where(status_cond)
-        if sort_by == "picked_count":
-            order_col: Any = func.coalesce(responses.c.responses, 0)
+        if sort_by == "order_id":
+            order_col: Any = OrderModel.order_id
         elif sort_by == "advertiser":
             order_col = func.coalesce(
                 AdvertiserProfileModel.brand, UserModel.username
             )
+        elif sort_by == "status":
+            order_col = OrderModel.status
+        elif sort_by in ("picked_count", "responses"):
+            order_col = func.coalesce(responses.c.responses, 0)
+        elif sort_by == "dispatched_count":
+            order_col = func.coalesce(dispatched_subq.c.dispatched_count, 0)
+        elif sort_by == "open_complaints":
+            order_col = func.coalesce(open_complaints.c.open_complaints, 0)
         elif sort_by == "status_age_hours":
             order_col = func.coalesce(
                 OrderModel.completed_at, OrderModel.created_at

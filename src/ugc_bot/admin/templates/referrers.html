@@ -49,8 +49,8 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Менеджер</th>
-            <th>Код</th>
+            <th><a href="/admin/referrers?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=manager&referrers_order={% if ref_sort == 'manager' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Менеджер</a></th>
+            <th><a href="/admin/referrers?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=code&referrers_order={% if ref_sort == 'code' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Код</a></th>
             <th><a href="/admin/referrers?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=balance&referrers_order={% if ref_sort == 'balance' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Баланс</a></th>
             <th><a href="/admin/referrers?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=total_referred&referrers_order={% if ref_sort == 'total_referred' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Всего привлечено</a></th>
             <th><a href="/admin/referrers?period={{ period }}&referrers_filter={{ ref_filter }}&referrers_sort=creators&referrers_order={% if ref_sort == 'creators' and ref_order == 'desc' %}asc{% else %}desc{% endif %}&referrers_per_page={{ ref_per_page }}">Креаторы</a></th>

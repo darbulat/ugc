@@ -14,7 +14,7 @@
     <table class="table">
       <thead>
         <tr>
-          <th>ID</th>
+          <th><a href="/admin/users/advertisers?sort=user_id&order={% if sort == 'user_id' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">ID</a></th>
           <th><a href="/admin/users/advertisers?sort=name&order={% if sort == 'name' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Имя / компания</a></th>
           <th><a href="/admin/users/advertisers?sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
           <th><a href="/admin/users/advertisers?sort=orders_total&order={% if sort == 'orders_total' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов создано</a></th>

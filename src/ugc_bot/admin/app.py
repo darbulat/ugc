@@ -803,6 +803,8 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.issue_count,
         UserModel.created_at,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (UserModel.created_at, True)
     column_labels = {
         UserModel.user_id: "ID пользователя",
         UserModel.external_id: "Внешний ID",
@@ -882,6 +884,8 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
         BloggerProfileModel.work_format,
         BloggerProfileModel.updated_at,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (BloggerProfileModel.updated_at, True)
     column_labels = {
         BloggerProfileModel.user_id: "ID пользователя",
         BloggerProfileModel.instagram_url: "Instagram",
@@ -912,6 +916,7 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
         AdvertiserProfileModel.company_activity,
         AdvertiserProfileModel.site_link,
     ]
+    column_sortable_list = list(column_list)
     column_labels = {
         AdvertiserProfileModel.user_id: "ID пользователя",
         AdvertiserProfileModel.contact: "Контакт",
@@ -940,6 +945,8 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.status,
         OrderModel.created_at,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (OrderModel.created_at, True)
     column_labels = {
         OrderModel.order_id: "ID заказа",
         OrderModel.advertiser_id: "ID заказчика",
@@ -1050,6 +1057,8 @@ class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):
         OfferDispatchModel.accepted,
         OfferDispatchModel.in_offer,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (OfferDispatchModel.created_at, True)
     column_labels = {
         OfferDispatchModel.order_id: "ID заказа",
         OfferDispatchModel.blogger_id: "ID креатора",
@@ -1076,6 +1085,8 @@ class InteractionAdmin(ModelView, model=InteractionModel):
         InteractionModel.created_at,
         InteractionModel.updated_at,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (InteractionModel.created_at, True)
     column_labels = {
         InteractionModel.interaction_id: "ID взаимодействия",
         InteractionModel.order_id: "ID заказа",
@@ -1141,6 +1152,7 @@ class InstagramVerificationAdmin(
         InstagramVerificationCodeModel.expires_at,
         InstagramVerificationCodeModel.used,
     ]
+    column_sortable_list = list(column_list)
     column_labels = {
         InstagramVerificationCodeModel.code_id: "ID кода",
         InstagramVerificationCodeModel.user_id: "ID пользователя",
@@ -1166,6 +1178,8 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
         ComplaintModel.created_at,
         ComplaintModel.reviewed_at,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (ComplaintModel.created_at, True)
     column_labels = {
         ComplaintModel.complaint_id: "ID жалобы",
         ComplaintModel.reporter_id: "ID заявителя",
@@ -1250,6 +1264,7 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
         ContactPricingModel.price,
         ContactPricingModel.updated_at,
     ]
+    column_sortable_list = list(column_list)
     column_labels = {
         ContactPricingModel.bloggers_count: "Кол-во креаторов",
         ContactPricingModel.price: "Цена",
@@ -1276,6 +1291,8 @@ class NpsResponseAdmin(ModelView, model=NpsResponseModel):
         NpsResponseModel.comment,
         NpsResponseModel.created_at,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (NpsResponseModel.created_at, True)
     column_labels = {
         NpsResponseModel.id: "ID",
         NpsResponseModel.user_id: "ID пользователя",
@@ -1303,6 +1320,8 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
         PayoutRequestModel.status,
         PayoutRequestModel.amount,
     ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (PayoutRequestModel.requested_at, True)
     form_columns = [
         PayoutRequestModel.status,
         PayoutRequestModel.amount,

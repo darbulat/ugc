@@ -37,15 +37,15 @@
     <table class="table">
       <thead>
         <tr>
-          <th>ID</th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=order_id&order={% if sort == 'order_id' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">ID</a></th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=advertiser&order={% if sort == 'advertiser' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Заказчик</a></th>
-          <th>Статус</th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=status&order={% if sort == 'status' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Статус</a></th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=picked_count&order={% if sort == 'picked_count' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Подобрано</a></th>
-          <th>Отправлено уведомлений</th>
-          <th>Откликов</th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=dispatched_count&order={% if sort == 'dispatched_count' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Отправлено уведомлений</a></th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=responses&order={% if sort == 'responses' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Откликов</a></th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Дата создания</a></th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=status_age_hours&order={% if sort == 'status_age_hours' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Время в статусе (ч)</a></th>
-          <th>Проблема</th>
+          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=open_complaints&order={% if sort == 'open_complaints' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Проблема</a></th>
         </tr>
       </thead>
       <tbody>

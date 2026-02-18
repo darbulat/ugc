@@ -1760,3 +1760,100 @@ async def test_list_orders_unknown_sort_uses_created_at(service) -> None:
         "today", status_filter=None, sort="unknown", order="asc"
     )
     assert len(result["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_creators_sort_user_id_city_media_status(service) -> None:
+    """list_creators with sort=user_id/city/media/status uses correct column."""
+    user = _make_user()
+    rows = [
+        (user, "url", "Moscow", 100, 5, 0, 0),
+    ]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    for sort_key in ("user_id", "city", "media", "status"):
+        result = await svc.list_creators(
+            "today", False, False, sort=sort_key, order="asc"
+        )
+        assert len(result["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_advertisers_sort_user_id(service) -> None:
+    """list_advertisers with sort=user_id uses user_id column."""
+    user = _make_user()
+    rows = [(user, "B", 0, 0, 0)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_advertisers(sort="user_id", order="asc")
+    assert len(result["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_orders_sort_order_id_status_dispatched_open_complaints(
+    service,
+) -> None:
+    """list_orders sort=order_id, status, dispatched_count, open_complaints."""
+    order = _make_order()
+    rows = [(order, 1, 0, "Ad", 2, 1)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    for sort_key in (
+        "order_id",
+        "status",
+        "dispatched_count",
+        "open_complaints",
+    ):
+        result = await svc.list_orders(
+            "today", status_filter=None, sort=sort_key, order="desc"
+        )
+        assert len(result["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_orders_sort_responses(service) -> None:
+    """list_orders sort=responses uses responses column (like picked_count)."""
+    order = _make_order()
+    rows = [(order, 3, 0, "Ad", 1, 1)]
+    results = [
+        _FakeResult(scalar_value=1),
+        _FakeResult(all_rows=rows),
+    ]
+    svc = service(results)
+    result = await svc.list_orders(
+        "today", status_filter=None, sort="responses", order="desc"
+    )
+    assert result["items"][0]["picked_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_sort_referrers_manager_and_code(service) -> None:
+    """_sort_referrers sorts by manager (telegram/username) and code."""
+    referrers = [
+        {
+            "user_id": "a",
+            "telegram": "@b",
+            "username": "user_b",
+            "referral_code": "BBB",
+        },
+        {
+            "user_id": "b",
+            "telegram": None,
+            "username": "user_a",
+            "referral_code": "AAA",
+        },
+    ]
+    svc = service([])
+    by_manager = svc._sort_referrers(referrers, "manager", "asc")
+    assert by_manager[0]["user_id"] == "a"  # "@b" < "user_a" alphabetically
+    by_code = svc._sort_referrers(referrers, "code", "asc")
+    assert by_code[0]["referral_code"] == "AAA"
