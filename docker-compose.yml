@@ -204,6 +204,15 @@ services:
     command: ["python", "-m", "ugc_bot.outbox_processor"]
     restart: unless-stopped
 
+  instagram_stats_scheduler:
+    build: .
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "ugc_bot.instagram_stats_scheduler"]
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:
@@ -358,6 +367,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://${DOMAIN:-bot.usemycontent.ru}/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_LOG_LEVEL: "warn"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/monitoring/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro

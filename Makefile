@@ -13,7 +13,7 @@ E2E_TIMEOUT ?= 90
 # DB-changing targets must not run in parallel with make -j
 .NOTPARALLEL: migrate restore-db restore-db-s3
 
-.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down dev-up dev-down admin export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 all
+.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 all
 
 help:
 	@echo "Usage: make [target]"
@@ -21,6 +21,7 @@ help:
 	@echo "Development:  install-dev, format, format-check, lint, typecheck, test, coverage"
 	@echo "E2E:          e2e, e2e-dev (Playwright vs dev), e2e-telegram-dev (Telegram vs dev; E2E_DATABASE_URL, E2E_CLEAN_TELEGRAM=darbulat), e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
 	@echo "Infra:        docker-up, docker-down, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
+	@echo "Run:          admin, instagram-stats"
 	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
 	@echo "Tests (Docker): test-docker, e2e-docker, test-all-docker (unit + integration + e2e in one run)"
 	@echo "Tests (dev, in container, same network): test-all-docker-dev (DEV_NETWORK=ugc_default, E2E_* in .env)"
