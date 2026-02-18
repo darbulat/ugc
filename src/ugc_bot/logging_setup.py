@@ -61,23 +61,21 @@ class GroupCoordinatorErrorToWarningFilter(logging.Filter):
 
 
 class HealthMetricsFilter(logging.Filter):
-    """Filter out access logs for /health, /metrics and POST /webhook/telegram.
+    """Filter out access logs for /health, /metrics, webhooks.
 
-    Reduces log noise from health checks, Prometheus and Telegram webhook.
+    Reduces log noise from health checks, Prometheus, Telegram and Instagram.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """Return False for /health, /metrics, POST /webhook/telegram."""
+        """Return False for /health, /metrics and webhook paths."""
         if record.name != "uvicorn.access":
             return True
         msg = record.getMessage()
         if "POST /webhook/telegram HTTP/1.1" in msg:
             return False
-        return (
-            " /health" not in msg
-            and " /metrics" not in msg
-            and " /telegram/webhook" not in msg
-        )
+        if " /webhook/instagram " in msg:
+            return False
+        return " /health" not in msg and " /metrics" not in msg
 
 
 class JSONFormatter(logging.Formatter):
