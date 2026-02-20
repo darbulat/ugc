@@ -1,6 +1,6 @@
 """Service for advertiser registration."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -199,24 +199,7 @@ class AdvertiserRegistrationService:
                     "User not found for agreement confirmation."
                 )
             now = datetime.now(timezone.utc)
-            updated_user = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
-                username=user.username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
-                role_chosen_at=user.role_chosen_at,
-                last_role_reminder_at=user.last_role_reminder_at,
-                telegram=user.telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-                referral_payout_rate=getattr(
-                    user, "referral_payout_rate", None
-                ),
-                agreement_confirmed_at=now,
-            )
+            updated_user = replace(user, agreement_confirmed_at=now)
             await self.user_repo.save(updated_user, session=session)
 
             if self.referral_service:
@@ -261,8 +244,8 @@ class AdvertiserRegistrationService:
             if profile is None:
                 return None
 
-            updated = AdvertiserProfile(
-                user_id=profile.user_id,
+            updated = replace(
+                profile,
                 phone=phone.strip() if phone is not None else profile.phone,
                 brand=brand.strip() if brand is not None else profile.brand,
                 site_link=(site_link or "").strip() or None

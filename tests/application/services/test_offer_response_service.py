@@ -124,6 +124,49 @@ async def test_offer_response_overflow_saved_with_accepted_false(
 
 
 @pytest.mark.asyncio
+async def test_respond_and_finalize_preserves_order_min_max_followers(
+    fake_tm: object,
+) -> None:
+    """Regression: creator accept must not drop min_followers, max_followers."""
+
+    order_repo = InMemoryOrderRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
+    service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000815"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000816"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_followers=1000,
+        max_followers=50000,
+    )
+    await order_repo.save(order)
+    await dispatch_repo.record_sent(
+        order.order_id, UUID("00000000-0000-0000-0000-000000000817")
+    )
+    result = await service.respond_and_finalize(
+        order_id=order.order_id,
+        blogger_id=UUID("00000000-0000-0000-0000-000000000817"),
+    )
+    assert result.order.status == OrderStatus.CLOSED
+    saved = await order_repo.get_by_id(order.order_id)
+    assert saved is not None
+    assert saved.min_followers == 1000
+    assert saved.max_followers == 50000
+
+
+@pytest.mark.asyncio
 async def test_offer_response_order_not_found(fake_tm: object) -> None:
     """Fail when order is missing."""
 

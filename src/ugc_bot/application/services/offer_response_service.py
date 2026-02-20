@@ -1,6 +1,6 @@
 """Service for handling offer responses."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -165,20 +165,9 @@ def _update_order_after_response(
     completed_at = (
         now if response_count >= order.bloggers_needed else order.completed_at
     )
-    return Order(
-        order_id=order.order_id,
-        advertiser_id=order.advertiser_id,
-        order_type=order.order_type,
-        product_link=order.product_link,
-        offer_text=order.offer_text,
-        barter_description=order.barter_description,
-        price=order.price,
-        bloggers_needed=order.bloggers_needed,
+    return replace(
+        order,
         status=new_status,
-        created_at=order.created_at,
         completed_at=completed_at,
-        content_usage=order.content_usage,
-        deadlines=order.deadlines,
-        geography=order.geography,
-        product_photo_file_id=order.product_photo_file_id,
+        updated_at=now,
     )

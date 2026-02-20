@@ -1,6 +1,7 @@
 """Tests for the user role service."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -98,6 +99,35 @@ async def test_update_status() -> None:
     found = await repo.get_by_id(user.user_id)
     assert found is not None
     assert found.status == UserStatus.BLOCKED
+
+
+@pytest.mark.asyncio
+async def test_update_status_preserves_optional_fields() -> None:
+    """Regression: update_status must not drop optional user fields."""
+
+    repo = InMemoryUserRepository()
+    now = datetime.now(timezone.utc)
+    user = User(
+        user_id=uuid4(),
+        external_id="opt-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+        referral_code="ref123",
+        referral_payout_rate=Decimal("0.10"),
+        agreement_confirmed_at=now,
+    )
+    await repo.save(user)
+    service = UserRoleService(user_repo=repo)
+    await service.update_status(user.user_id, UserStatus.PAUSE)
+    found = await repo.get_by_id(user.user_id)
+    assert found is not None
+    assert found.status == UserStatus.PAUSE
+    assert found.referral_code == "ref123"
+    assert found.referral_payout_rate == Decimal("0.10")
+    assert found.agreement_confirmed_at == now
 
 
 @pytest.mark.asyncio
@@ -280,6 +310,33 @@ async def test_update_last_role_reminder_at(fake_tm: object) -> None:
     updated = await service.get_user_by_id(user.user_id)
     assert updated is not None
     assert updated.last_role_reminder_at is not None
+
+
+@pytest.mark.asyncio
+async def test_update_last_role_reminder_at_preserves_optional_fields() -> None:
+    """Regression: must not drop optional User fields on reminder update."""
+
+    repo = InMemoryUserRepository()
+    now = datetime.now(timezone.utc)
+    user = User(
+        user_id=uuid4(),
+        external_id="rem-opt",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+        referral_code="remref",
+        agreement_confirmed_at=now,
+    )
+    await repo.save(user)
+    service = UserRoleService(user_repo=repo)
+    await service.update_last_role_reminder_at(user.user_id)
+    found = await repo.get_by_id(user.user_id)
+    assert found is not None
+    assert found.last_role_reminder_at is not None
+    assert found.referral_code == "remref"
+    assert found.agreement_confirmed_at == now
 
 
 @pytest.mark.asyncio

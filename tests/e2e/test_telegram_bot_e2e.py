@@ -656,3 +656,129 @@ async def test_order_creation_full_flow(
     )
     assert text is not None, "Bot did not send order created message"
     assert "Заказ создан" in text
+
+
+async def _ensure_blogger_profile(client, entity, bot_username: str) -> None:
+    """Ensure user is in blogger context (has profile or menu); skip if not."""
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=20
+    )
+    assert text and ("UGC" in text or "профиль" in text or "Выберите" in text)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Я креатор", timeout=15
+    )
+    assert text is not None
+    if "Выберите действие" not in text and "Мой профиль" not in text:
+        pytest.skip(
+            "Blogger profile required for profile update e2e. "
+            "Run test_blogger_registration_full_flow first or in isolation."
+        )
+
+
+async def _ensure_advertiser_profile(client, entity, bot_username: str) -> None:
+    """Advertiser context (has profile/menu) or skip."""
+    await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    )
+    if not text or "Выберите действие" not in text:
+        pytest.skip(
+            "Advertiser profile required for profile update e2e. "
+            "Run test_advertiser_registration_full_flow first or in isolation."
+        )
+
+
+@pytest.mark.e2e_telegram
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not os.environ.get("TELEGRAM_E2E_BOT_TOKEN"),
+    reason="TELEGRAM_E2E_BOT_TOKEN not set",
+)
+async def test_blogger_profile_update(
+    telegram_user_client, telegram_e2e_config
+) -> None:
+    """E2E: My Profile -> edit blogger (e.g. city) -> assert updated."""
+    bot_username = telegram_e2e_config["bot_username"]
+    entity = await telegram_user_client.get_entity(bot_username)
+    client = telegram_user_client
+
+    await _ensure_blogger_profile(client, entity, bot_username)
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    )
+    assert text is not None, "Bot did not reply to My Profile"
+    assert "профиль" in text.lower() or "креатор" in text.lower()
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Редактировать профиль", timeout=20
+    )
+    assert text is not None
+    if "Выберите профиль" in text:
+        text = await send_and_get_reply(
+            client,
+            entity,
+            bot_username,
+            "Редактировать профиль блогера",
+            timeout=15,
+        )
+    assert text and "раздел" in text.lower()
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Город", timeout=15
+    )
+    assert text and "город" in text.lower()
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Нижний Новгород", timeout=15
+    )
+    assert text is not None, "Bot did not reply after city value"
+    assert "обновлён" in text or "Профиль обновлён" in text
+
+
+@pytest.mark.e2e_telegram
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not os.environ.get("TELEGRAM_E2E_BOT_TOKEN"),
+    reason="TELEGRAM_E2E_BOT_TOKEN not set",
+)
+async def test_advertiser_profile_update(
+    telegram_user_client, telegram_e2e_config
+) -> None:
+    """E2E: My Profile -> edit advertiser (e.g. city) -> assert updated."""
+    bot_username = telegram_e2e_config["bot_username"]
+    entity = await telegram_user_client.get_entity(bot_username)
+    client = telegram_user_client
+
+    await _ensure_advertiser_profile(client, entity, bot_username)
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    )
+    assert text is not None, "Bot did not reply to My Profile"
+    assert "профиль" in text.lower() or "рекламодатель" in text.lower()
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Редактировать профиль", timeout=20
+    )
+    assert text is not None
+    if "Выберите профиль" in text:
+        text = await send_and_get_reply(
+            client,
+            entity,
+            bot_username,
+            "Редактировать профиль рекламодателя",
+            timeout=15,
+        )
+    assert text and "раздел" in text.lower()
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Город", timeout=15
+    )
+    assert text and "город" in text.lower()
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "Казань", timeout=15
+    )
+    assert text is not None, "Bot did not reply after city value"
+    assert "обновлён" in text or "Профиль обновлён" in text

@@ -1,6 +1,6 @@
 """In-memory repository implementations."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
@@ -546,10 +546,8 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         now = datetime.now(timezone.utc)
         if key in self._dispatches:
             d = self._dispatches[key]
-            self._dispatches[key] = OfferDispatch(
-                order_id=d.order_id,
-                blogger_id=d.blogger_id,
-                created_at=d.created_at,
+            self._dispatches[key] = replace(
+                d,
                 updated_at=now,
                 accepted=accepted,
                 in_offer=in_offer,
@@ -730,19 +728,7 @@ class InMemoryInteractionRepository(InteractionRepository):
 
         interaction = self.interactions.get(interaction_id)
         if interaction is not None:
-            updated = Interaction(
-                interaction_id=interaction.interaction_id,
-                order_id=interaction.order_id,
-                blogger_id=interaction.blogger_id,
-                advertiser_id=interaction.advertiser_id,
-                status=interaction.status,
-                from_advertiser=interaction.from_advertiser,
-                from_blogger=interaction.from_blogger,
-                postpone_count=interaction.postpone_count,
-                next_check_at=next_check_at,
-                created_at=interaction.created_at,
-                updated_at=interaction.updated_at,
-            )
+            updated = replace(interaction, next_check_at=next_check_at)
             self.interactions[interaction_id] = updated
 
     async def list_blogger_ids_with_unfulfilled_interaction(
@@ -896,17 +882,8 @@ class InMemoryOutboxRepository(OutboxRepository):
         ]
         to_claim = sorted(pending, key=lambda e: e.created_at)[:limit]
         for event in to_claim:
-            self.events[event.event_id] = OutboxEvent(
-                event_id=event.event_id,
-                event_type=event.event_type,
-                aggregate_id=event.aggregate_id,
-                aggregate_type=event.aggregate_type,
-                payload=event.payload,
-                status=OutboxEventStatus.PROCESSING,
-                created_at=event.created_at,
-                processed_at=event.processed_at,
-                retry_count=event.retry_count,
-                last_error=event.last_error,
+            self.events[event.event_id] = replace(
+                event, status=OutboxEventStatus.PROCESSING
             )
         return to_claim
 
@@ -917,17 +894,8 @@ class InMemoryOutboxRepository(OutboxRepository):
 
         if event_id in self.events:
             event = self.events[event_id]
-            self.events[event_id] = OutboxEvent(
-                event_id=event.event_id,
-                event_type=event.event_type,
-                aggregate_id=event.aggregate_id,
-                aggregate_type=event.aggregate_type,
-                payload=event.payload,
-                status=OutboxEventStatus.PROCESSING,
-                created_at=event.created_at,
-                processed_at=event.processed_at,
-                retry_count=event.retry_count,
-                last_error=event.last_error,
+            self.events[event_id] = replace(
+                event, status=OutboxEventStatus.PROCESSING
             )
 
     async def mark_as_published(
@@ -940,17 +908,10 @@ class InMemoryOutboxRepository(OutboxRepository):
 
         if event_id in self.events:
             event = self.events[event_id]
-            self.events[event_id] = OutboxEvent(
-                event_id=event.event_id,
-                event_type=event.event_type,
-                aggregate_id=event.aggregate_id,
-                aggregate_type=event.aggregate_type,
-                payload=event.payload,
+            self.events[event_id] = replace(
+                event,
                 status=OutboxEventStatus.PUBLISHED,
-                created_at=event.created_at,
                 processed_at=processed_at,
-                retry_count=event.retry_count,
-                last_error=event.last_error,
             )
 
     async def mark_as_failed(
@@ -964,15 +925,9 @@ class InMemoryOutboxRepository(OutboxRepository):
 
         if event_id in self.events:
             event = self.events[event_id]
-            self.events[event_id] = OutboxEvent(
-                event_id=event.event_id,
-                event_type=event.event_type,
-                aggregate_id=event.aggregate_id,
-                aggregate_type=event.aggregate_type,
-                payload=event.payload,
+            self.events[event_id] = replace(
+                event,
                 status=OutboxEventStatus.FAILED,
-                created_at=event.created_at,
-                processed_at=event.processed_at,
                 retry_count=retry_count,
                 last_error=error,
             )
@@ -988,15 +943,9 @@ class InMemoryOutboxRepository(OutboxRepository):
 
         if event_id in self.events:
             event = self.events[event_id]
-            self.events[event_id] = OutboxEvent(
-                event_id=event.event_id,
-                event_type=event.event_type,
-                aggregate_id=event.aggregate_id,
-                aggregate_type=event.aggregate_type,
-                payload=event.payload,
+            self.events[event_id] = replace(
+                event,
                 status=OutboxEventStatus.PENDING,
-                created_at=event.created_at,
-                processed_at=event.processed_at,
                 retry_count=retry_count,
                 last_error=error,
             )

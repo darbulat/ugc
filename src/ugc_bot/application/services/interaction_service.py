@@ -1,7 +1,7 @@
 """Service for feedback interactions."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
@@ -118,18 +118,11 @@ class InteractionService:
         interaction = await self._get_by_id(interaction_id)
         if interaction is None:
             return
-        updated = Interaction(
-            interaction_id=interaction.interaction_id,
-            order_id=interaction.order_id,
-            blogger_id=interaction.blogger_id,
-            advertiser_id=interaction.advertiser_id,
-            status=interaction.status,
-            from_advertiser=interaction.from_advertiser,
-            from_blogger=interaction.from_blogger,
-            postpone_count=interaction.postpone_count,
+        now = datetime.now(timezone.utc)
+        updated = replace(
+            interaction,
             next_check_at=next_check_at,
-            created_at=interaction.created_at,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=now,
         )
         await self._save(updated)
 
@@ -195,18 +188,13 @@ class InteractionService:
             effective_status = final_status
             next_check = None
 
-        updated = Interaction(
-            interaction_id=interaction.interaction_id,
-            order_id=interaction.order_id,
-            blogger_id=interaction.blogger_id,
-            advertiser_id=interaction.advertiser_id,
+        now = datetime.now(timezone.utc)
+        updated = replace(
+            interaction,
             status=effective_status,
             from_advertiser=feedback_text,
-            from_blogger=interaction.from_blogger,
-            postpone_count=interaction.postpone_count,
             next_check_at=next_check,
-            created_at=interaction.created_at,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=now,
         )
         await self._save(updated)
 
@@ -257,18 +245,13 @@ class InteractionService:
             effective_status = final_status
             next_check = None
 
-        updated = Interaction(
-            interaction_id=interaction.interaction_id,
-            order_id=interaction.order_id,
-            blogger_id=interaction.blogger_id,
-            advertiser_id=interaction.advertiser_id,
+        now = datetime.now(timezone.utc)
+        updated = replace(
+            interaction,
             status=effective_status,
-            from_advertiser=interaction.from_advertiser,
             from_blogger=feedback_text,
-            postpone_count=interaction.postpone_count,
             next_check_at=next_check,
-            created_at=interaction.created_at,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=now,
         )
         await self._save(updated)
 
@@ -312,11 +295,9 @@ class InteractionService:
             new_status = InteractionStatus.PENDING
 
         new_postpone_count = interaction.postpone_count + 1
-        updated = Interaction(
-            interaction_id=interaction.interaction_id,
-            order_id=interaction.order_id,
-            blogger_id=interaction.blogger_id,
-            advertiser_id=interaction.advertiser_id,
+        now = datetime.now(timezone.utc)
+        updated = replace(
+            interaction,
             status=new_status,
             from_advertiser=feedback_text
             if side == "advertiser"
@@ -326,8 +307,7 @@ class InteractionService:
             else interaction.from_blogger,
             postpone_count=new_postpone_count,
             next_check_at=next_check,
-            created_at=interaction.created_at,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=now,
         )
         await self._save(updated)
 
@@ -442,18 +422,12 @@ class InteractionService:
         if interaction.status != InteractionStatus.ISSUE:
             raise InteractionError("Interaction is not in ISSUE status.")
 
-        resolved = Interaction(
-            interaction_id=interaction.interaction_id,
-            order_id=interaction.order_id,
-            blogger_id=interaction.blogger_id,
-            advertiser_id=interaction.advertiser_id,
+        now = datetime.now(timezone.utc)
+        resolved = replace(
+            interaction,
             status=final_status,
-            from_advertiser=interaction.from_advertiser,
-            from_blogger=interaction.from_blogger,
-            postpone_count=interaction.postpone_count,
             next_check_at=None,
-            created_at=interaction.created_at,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=now,
         )
         await self._save(resolved)
 

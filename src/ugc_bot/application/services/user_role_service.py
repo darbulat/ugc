@@ -2,7 +2,7 @@
 
 import logging
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
@@ -63,20 +63,12 @@ class UserRoleService:
                     if telegram_username is not None
                     else existing.telegram
                 )
-                updated = User(
-                    user_id=existing.user_id,
-                    external_id=existing.external_id,
-                    messenger_type=existing.messenger_type,
+                updated = replace(
+                    existing,
                     username=username,
                     status=status,
-                    issue_count=existing.issue_count,
-                    created_at=existing.created_at,
                     role_chosen_at=role_chosen_at,
-                    last_role_reminder_at=existing.last_role_reminder_at,
                     telegram=telegram,
-                    admin=existing.admin,
-                    referral_code=existing.referral_code,
-                    agreement_confirmed_at=existing.agreement_confirmed_at,
                 )
                 await self.user_repo.save(updated, session=session)
                 return updated
@@ -176,20 +168,7 @@ class UserRoleService:
             if user is None:
                 raise UserNotFoundError("User not found.")
 
-            updated = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
-                username=user.username,
-                status=status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
-                role_chosen_at=user.role_chosen_at,
-                last_role_reminder_at=user.last_role_reminder_at,
-                telegram=user.telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-            )
+            updated = replace(user, status=status)
             await self.user_repo.save(updated, session=session)
             return (updated, user)
 
@@ -284,20 +263,7 @@ class UserRoleService:
             if user is None:
                 return
             now = datetime.now(timezone.utc)
-            updated = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
-                username=user.username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
-                role_chosen_at=user.role_chosen_at,
-                last_role_reminder_at=now,
-                telegram=user.telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-            )
+            updated = replace(user, last_role_reminder_at=now)
             await self.user_repo.save(updated, session=session)
 
         await with_optional_tx(self.transaction_manager, _run)

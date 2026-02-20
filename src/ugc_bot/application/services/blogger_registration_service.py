@@ -1,6 +1,6 @@
 """Service for blogger registration."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -157,22 +157,11 @@ class BloggerRegistrationService:
                 if telegram_username is not None
                 else user.telegram
             )
-            updated_user = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
+            updated_user = replace(
+                user,
                 username=username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
                 role_chosen_at=role_chosen_at,
-                last_role_reminder_at=user.last_role_reminder_at,
                 telegram=telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-                referral_payout_rate=getattr(
-                    user, "referral_payout_rate", None
-                ),
                 agreement_confirmed_at=now,
             )
             await self.user_repo.save(updated_user, session=session)
@@ -273,22 +262,11 @@ class BloggerRegistrationService:
                 if telegram_username is not None
                 else user.telegram
             )
-            updated_user = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
+            updated_user = replace(
+                user,
                 username=username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
                 role_chosen_at=role_chosen_at,
-                last_role_reminder_at=user.last_role_reminder_at,
                 telegram=telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-                referral_payout_rate=getattr(
-                    user, "referral_payout_rate", None
-                ),
                 agreement_confirmed_at=None,
             )
             await self.user_repo.save(updated_user, session=session)
@@ -382,8 +360,9 @@ class BloggerRegistrationService:
                 instagram_url is not None
                 and new_instagram_url != profile.instagram_url
             )
-            updated = BloggerProfile(
-                user_id=profile.user_id,
+            now = datetime.now(timezone.utc)
+            updated = replace(
+                profile,
                 instagram_url=new_instagram_url,
                 confirmed=False if instagram_changed else profile.confirmed,
                 city=city.strip() if city is not None else profile.city,
@@ -407,19 +386,10 @@ class BloggerRegistrationService:
                 work_format=work_format
                 if work_format is not None
                 else profile.work_format,
-                wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=now,
                 blogger_gender=blogger_gender
                 if blogger_gender is not None
                 else profile.blogger_gender,
-                created_at=profile.created_at,
-                instagram_user_id=profile.instagram_user_id,
-                instagram_followers_count=profile.instagram_followers_count,
-                instagram_media_count=profile.instagram_media_count,
-                instagram_follows_count=profile.instagram_follows_count,
-                instagram_biography=profile.instagram_biography,
-                instagram_username=profile.instagram_username,
-                instagram_stats_fetched_at=profile.instagram_stats_fetched_at,
             )
             await self.blogger_repo.save(updated, session=session)
             return updated
@@ -437,31 +407,11 @@ class BloggerRegistrationService:
             )
             if profile is None:
                 return
-            updated = BloggerProfile(
-                user_id=profile.user_id,
-                instagram_url=profile.instagram_url,
-                confirmed=profile.confirmed,
-                city=profile.city,
-                topics=profile.topics,
-                audience_gender=profile.audience_gender,
-                audience_age_min=profile.audience_age_min,
-                audience_age_max=profile.audience_age_max,
-                audience_geo=profile.audience_geo,
-                price=profile.price,
-                barter=profile.barter,
-                work_format=profile.work_format,
+            updated = replace(
+                profile,
                 wanted_to_change_terms_count=profile.wanted_to_change_terms_count
                 + 1,
                 updated_at=datetime.now(timezone.utc),
-                blogger_gender=profile.blogger_gender,
-                created_at=profile.created_at,
-                instagram_user_id=profile.instagram_user_id,
-                instagram_followers_count=profile.instagram_followers_count,
-                instagram_media_count=profile.instagram_media_count,
-                instagram_follows_count=profile.instagram_follows_count,
-                instagram_biography=profile.instagram_biography,
-                instagram_username=profile.instagram_username,
-                instagram_stats_fetched_at=profile.instagram_stats_fetched_at,
             )
             await self.blogger_repo.save(updated, session=session)
 

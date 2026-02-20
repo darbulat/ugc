@@ -12,7 +12,7 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
-from ugc_bot.domain.entities import User
+from ugc_bot.domain.entities import AdvertiserProfile, User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
@@ -302,6 +302,38 @@ async def test_update_advertiser_profile_partial_update() -> None:
     assert updated.phone == "@updated_phone"
     assert updated.brand == "Brand"
     assert updated.site_link == "https://site.com"
+
+
+@pytest.mark.asyncio
+async def test_update_advertiser_profile_preserves_optional_fields() -> None:
+    """Regression: update_advertiser_profile must not drop optional fields."""
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    profile = AdvertiserProfile(
+        user_id=user_id,
+        phone="@p",
+        brand="B",
+        site_link="https://x.com",
+        city="Moscow",
+        company_activity="Activity",
+        created_at=now,
+        updated_at=now,
+    )
+    await advertiser_repo.save(profile)
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    updated = await service.update_advertiser_profile(user_id, city="SPB")
+    assert updated is not None
+    assert updated.city == "SPB"
+    assert updated.created_at == now
+    saved = await advertiser_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.created_at == now
+    assert saved.site_link == "https://x.com"
 
 
 @pytest.mark.asyncio

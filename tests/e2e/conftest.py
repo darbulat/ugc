@@ -12,6 +12,33 @@ from sqlalchemy import create_engine
 from ugc_bot.infrastructure.db.base import Base
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Run profile_update e2e_telegram tests after registration tests."""
+    telegram_items = [
+        (i, item)
+        for i, item in enumerate(items)
+        if item.get_closest_marker("e2e_telegram") is not None
+    ]
+    if not telegram_items:
+        return
+
+    def order_key(entry: tuple[int, pytest.Item]) -> tuple[int, int]:
+        idx, item = entry
+        nodeid = item.nodeid
+        # profile_update tests run last (higher key)
+        if "profile_update" in nodeid:
+            return (1, idx)
+        return (0, idx)
+
+    telegram_items.sort(key=order_key)
+    # Build set of telegram item ids to reorder only those in items
+    reordered_ids = [item.nodeid for _, item in telegram_items]
+    id_to_item = {item.nodeid: item for item in items}
+    # Remove telegram items from original positions, then append in new order
+    remaining = [item for item in items if item.nodeid not in reordered_ids]
+    items[:] = remaining + [id_to_item[nid] for nid in reordered_ids]
+
+
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Clean DB users before E2E Telegram tests when E2E_DATABASE_URL is set."""
     if not os.environ.get("E2E_DATABASE_URL"):

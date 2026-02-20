@@ -22,6 +22,7 @@ from ugc_bot.domain.entities import (
 )
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     MessengerType,
     UserStatus,
     WorkFormat,
@@ -134,7 +135,6 @@ async def test_verify_code_success() -> None:
 
     assert await service.verify_code(user_id, "ABC123") is True
     updated = await profile_repo.get_by_user_id(user_id)
-    updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
 
@@ -156,6 +156,59 @@ async def test_verify_code_invalid() -> None:
     )
 
     assert await service.verify_code(user_id, "WRONG") is False
+
+
+@pytest.mark.asyncio
+async def test_verify_code_preserves_optional_fields() -> None:
+    """Regression: verify_code must not drop optional profile fields."""
+
+    user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/verify_opt",
+        confirmed=False,
+        city="Moscow",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=now,
+        blogger_gender=BloggerGender.MALE,
+        instagram_user_id="ig_verify_opt",
+        instagram_followers_count=3000,
+        instagram_username="verify_opt",
+    )
+    await profile_repo.save(profile)
+    code = InstagramVerificationCode(
+        code_id=UUID("00000000-0000-0000-0000-000000000133"),
+        user_id=user_id,
+        code="XYZ789",
+        expires_at=now + timedelta(minutes=5),
+        used=False,
+        created_at=now,
+    )
+    await verification_repo.save(code)
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+    )
+    assert await service.verify_code(user_id, "XYZ789") is True
+    updated = await profile_repo.get_by_user_id(user_id)
+    assert updated is not None
+    assert updated.confirmed is True
+    assert updated.blogger_gender == BloggerGender.MALE
+    assert updated.instagram_user_id == "ig_verify_opt"
+    assert updated.instagram_followers_count == 3000
+    assert updated.instagram_username == "verify_opt"
 
 
 @pytest.mark.asyncio

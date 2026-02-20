@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -106,23 +107,9 @@ class InstagramStatsUpdateService:
                 else profile.instagram_url
             )
 
-            updated_profile = BloggerProfile(
-                user_id=profile.user_id,
+            updated_profile = replace(
+                profile,
                 instagram_url=instagram_url,
-                confirmed=profile.confirmed,
-                city=profile.city,
-                topics=profile.topics,
-                audience_gender=profile.audience_gender,
-                audience_age_min=profile.audience_age_min,
-                audience_age_max=profile.audience_age_max,
-                audience_geo=profile.audience_geo,
-                price=profile.price,
-                barter=profile.barter,
-                work_format=profile.work_format,
-                updated_at=profile.updated_at,
-                wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
-                blogger_gender=profile.blogger_gender,
-                instagram_user_id=profile.instagram_user_id,
                 instagram_followers_count=info.followers_count,
                 instagram_media_count=info.media_count,
                 instagram_follows_count=info.follows_count,

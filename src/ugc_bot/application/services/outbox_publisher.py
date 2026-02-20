@@ -1,6 +1,6 @@
 """Outbox publisher service for reliable event publishing."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
@@ -183,25 +183,7 @@ class OutboxPublisher:
         if order is None:
             raise ValueError(f"Order {order_id} not found")
 
-        activated_order = Order(
-            order_id=order.order_id,
-            advertiser_id=order.advertiser_id,
-            order_type=order.order_type,
-            product_link=order.product_link,
-            offer_text=order.offer_text,
-            barter_description=order.barter_description,
-            price=order.price,
-            bloggers_needed=order.bloggers_needed,
-            status=OrderStatus.ACTIVE,
-            created_at=order.created_at,
-            completed_at=order.completed_at,
-            content_usage=order.content_usage,
-            deadlines=order.deadlines,
-            geography=order.geography,
-            product_photo_file_id=order.product_photo_file_id,
-            min_followers=order.min_followers,
-            max_followers=order.max_followers,
-        )
+        activated_order = replace(order, status=OrderStatus.ACTIVE)
         await self.order_repo.save(activated_order, session=session)
 
         await kafka_publisher.publish(activated_order)

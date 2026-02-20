@@ -217,6 +217,27 @@ async def test_dismiss_complaint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dismiss_complaint_preserves_optional_fields() -> None:
+    """Regression: dismiss_complaint must not drop file_ids or updated_at."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo)
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000964"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000965"),
+        order_id=UUID("00000000-0000-0000-0000-000000000966"),
+        reason="Test",
+        file_ids=["file_id_1", "file_id_2"],
+    )
+    dismissed = await service.dismiss_complaint(complaint.complaint_id)
+    assert dismissed.status == ComplaintStatus.DISMISSED
+    assert dismissed.file_ids == ["file_id_1", "file_id_2"]
+    found = await repo.get_by_id(complaint.complaint_id)
+    assert found is not None
+    assert found.file_ids == ["file_id_1", "file_id_2"]
+
+
+@pytest.mark.asyncio
 async def test_dismiss_complaint_not_found() -> None:
     """Raise error when dismissing non-existent complaint."""
 
@@ -251,6 +272,29 @@ async def test_resolve_complaint_with_action() -> None:
     assert resolved.reviewed_at is not None
     assert resolved.complaint_id == complaint.complaint_id
     assert resolved.reason == complaint.reason
+
+
+@pytest.mark.asyncio
+async def test_resolve_complaint_preserves_optional_fields() -> None:
+    """Regression: resolve_complaint_with_action must not drop file_ids."""
+
+    repo = InMemoryComplaintRepository()
+    service = ComplaintService(complaint_repo=repo)
+    complaint = await service.create_complaint(
+        reporter_id=UUID("00000000-0000-0000-0000-000000000974"),
+        reported_id=UUID("00000000-0000-0000-0000-000000000975"),
+        order_id=UUID("00000000-0000-0000-0000-000000000976"),
+        reason="Test",
+        file_ids=["resolved_file_1"],
+    )
+    resolved = await service.resolve_complaint_with_action(
+        complaint.complaint_id
+    )
+    assert resolved.status == ComplaintStatus.ACTION_TAKEN
+    assert resolved.file_ids == ["resolved_file_1"]
+    found = await repo.get_by_id(complaint.complaint_id)
+    assert found is not None
+    assert found.file_ids == ["resolved_file_1"]
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 import logging
 import secrets
 import string
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID, uuid4
@@ -151,19 +151,9 @@ class InstagramVerificationService:
             await self.verification_repo.mark_used(
                 valid_code.code_id, session=session
             )
-            confirmed_profile = BloggerProfile(
-                user_id=profile.user_id,
-                instagram_url=profile.instagram_url,
+            confirmed_profile = replace(
+                profile,
                 confirmed=True,
-                city=profile.city,
-                topics=profile.topics,
-                audience_gender=profile.audience_gender,
-                audience_age_min=profile.audience_age_min,
-                audience_age_max=profile.audience_age_max,
-                audience_geo=profile.audience_geo,
-                price=profile.price,
-                barter=profile.barter,
-                work_format=profile.work_format,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(confirmed_profile, session=session)
@@ -293,22 +283,10 @@ class InstagramVerificationService:
             await self.verification_repo.mark_used(
                 valid_code.code_id, session=session
             )
-            confirmed_profile = BloggerProfile(
-                user_id=profile.user_id,
-                instagram_url=profile.instagram_url,
+            confirmed_profile = replace(
+                profile,
                 confirmed=True,
-                city=profile.city,
-                topics=profile.topics,
-                audience_gender=profile.audience_gender,
-                audience_age_min=profile.audience_age_min,
-                audience_age_max=profile.audience_age_max,
-                audience_geo=profile.audience_geo,
-                price=profile.price,
-                barter=profile.barter,
-                work_format=profile.work_format,
                 updated_at=now,
-                wanted_to_change_terms_count=profile.wanted_to_change_terms_count,
-                blogger_gender=profile.blogger_gender,
                 instagram_user_id=instagram_user_id,
                 instagram_followers_count=instagram_followers_count,
                 instagram_media_count=instagram_media_count,

@@ -1,7 +1,7 @@
 """Service for Telegram payments and order activation."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
@@ -118,34 +118,31 @@ class PaymentService:
                 )
 
             now = datetime.now(timezone.utc)
-            payment = Payment(
-                payment_id=existing.payment_id if existing else uuid4(),
-                order_id=order_id,
-                provider=self.provider,
-                status=PaymentStatus.PAID,
-                amount=round(total_amount / 100, 2),
-                currency=currency,
-                external_id=provider_payment_charge_id,
-                created_at=now,
-                paid_at=now,
-            )
+            if existing is not None:
+                payment = replace(
+                    existing,
+                    status=PaymentStatus.PAID,
+                    amount=round(total_amount / 100, 2),
+                    currency=currency,
+                    external_id=provider_payment_charge_id,
+                    paid_at=now,
+                    updated_at=now,
+                )
+            else:
+                payment = Payment(
+                    payment_id=uuid4(),
+                    order_id=order_id,
+                    provider=self.provider,
+                    status=PaymentStatus.PAID,
+                    amount=round(total_amount / 100, 2),
+                    currency=currency,
+                    external_id=provider_payment_charge_id,
+                    created_at=now,
+                    paid_at=now,
+                )
             await self.payment_repo.save(payment, session=session)
-            order_pending = Order(
-                order_id=order.order_id,
-                advertiser_id=order.advertiser_id,
-                order_type=order.order_type,
-                product_link=order.product_link,
-                offer_text=order.offer_text,
-                barter_description=order.barter_description,
-                price=order.price,
-                bloggers_needed=order.bloggers_needed,
-                status=OrderStatus.PENDING_MODERATION,
-                created_at=order.created_at,
-                completed_at=order.completed_at,
-                content_usage=order.content_usage,
-                deadlines=order.deadlines,
-                geography=order.geography,
-                product_photo_file_id=order.product_photo_file_id,
+            order_pending = replace(
+                order, status=OrderStatus.PENDING_MODERATION
             )
             await self.order_repo.save(order_pending, session=session)
 

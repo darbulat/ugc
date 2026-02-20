@@ -1,7 +1,7 @@
 """Service for handling complaints."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
@@ -138,16 +138,11 @@ class ComplaintService:
             if complaint is None:
                 raise ComplaintNotFoundError("Complaint not found.")
 
-            dismissed = Complaint(
-                complaint_id=complaint.complaint_id,
-                reporter_id=complaint.reporter_id,
-                reported_id=complaint.reported_id,
-                order_id=complaint.order_id,
-                reason=complaint.reason,
+            now = datetime.now(timezone.utc)
+            dismissed = replace(
+                complaint,
                 status=ComplaintStatus.DISMISSED,
-                created_at=complaint.created_at,
-                reviewed_at=datetime.now(timezone.utc),
-                file_ids=complaint.file_ids,
+                reviewed_at=now,
             )
             await self.complaint_repo.save(dismissed, session=session)
 
@@ -185,16 +180,11 @@ class ComplaintService:
             if complaint is None:
                 raise ComplaintNotFoundError("Complaint not found.")
 
-            resolved = Complaint(
-                complaint_id=complaint.complaint_id,
-                reporter_id=complaint.reporter_id,
-                reported_id=complaint.reported_id,
-                order_id=complaint.order_id,
-                reason=complaint.reason,
+            now = datetime.now(timezone.utc)
+            resolved = replace(
+                complaint,
                 status=ComplaintStatus.ACTION_TAKEN,
-                created_at=complaint.created_at,
-                reviewed_at=datetime.now(timezone.utc),
-                file_ids=complaint.file_ids,
+                reviewed_at=now,
             )
             await self.complaint_repo.save(resolved, session=session)
 

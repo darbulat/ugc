@@ -24,7 +24,18 @@ from ugc_bot.domain.enums import (
 
 @dataclass(frozen=True)
 class User:
-    """Core user entity."""
+    """Core user entity.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "User(" src/
+    3. For new users: set value or default in constructor. For updates of
+       existing user: use dataclasses.replace(user, ...) so the new field
+       is preserved.
+    4. Add the field to the regression test optional-fields list in
+       test_user_role_service.py if optional.
+    5. Update user entity/model mapping in infrastructure/db/repositories.py.
+    """
 
     user_id: UUID
     external_id: str
@@ -45,7 +56,20 @@ class User:
 
 @dataclass(frozen=True)
 class BloggerProfile:
-    """Blogger profile entity."""
+    """Blogger profile entity.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "BloggerProfile(" src/
+    3. For new profiles (registration): set value or default in constructor.
+       For updates of existing profile: use dataclasses.replace(profile, ...)
+       so the new field is preserved from profile.
+    4. Add the field to the regression test optional-fields list in
+       test_blogger_registration_service.py
+       (_BLOGGER_PROFILE_OPTIONAL_FIELDS and helper for full profile).
+    5. Update _to_blogger_profile_entity and _to_blogger_profile_model in
+       infrastructure/db/repositories.py.
+    """
 
     user_id: UUID
     instagram_url: str
@@ -74,7 +98,19 @@ class BloggerProfile:
 
 @dataclass(frozen=True)
 class AdvertiserProfile:
-    """Advertiser profile entity."""
+    """Advertiser profile entity.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "AdvertiserProfile(" src/
+    3. For new profiles: set value or default. For updates of existing
+       profile: use dataclasses.replace(profile, ...) so the new field
+       is preserved.
+    4. Add the field to the regression test optional-fields list in
+       test_advertiser_registration_service.py if optional.
+    5. Update _to_advertiser_profile_entity and _to_advertiser_profile_model
+       in infrastructure/db/repositories.py.
+    """
 
     user_id: UUID
     phone: str
@@ -88,7 +124,15 @@ class AdvertiserProfile:
 
 @dataclass(frozen=True)
 class Order:
-    """Order entity posted by an advertiser."""
+    """Order entity posted by an advertiser.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "Order(" src/
+    3. For new orders: set value or default. For updates (status change etc.):
+       use dataclasses.replace(order, ...) so the new field is preserved.
+    4. Update order entity/model mapping in infrastructure/db/repositories.py.
+    """
 
     order_id: UUID
     advertiser_id: UUID
@@ -114,7 +158,11 @@ class Order:
 
 @dataclass(frozen=True)
 class OfferDispatch:
-    """Offer dispatch: sent offer and optional response (accepted/skip)."""
+    """Offer dispatch: sent offer and optional response (accepted/skip).
+
+    When adding a new field: find usages with grep -r "OfferDispatch(" src/;
+    for updates use dataclasses.replace(dispatch, ...). Update repo mapping.
+    """
 
     order_id: UUID
     blogger_id: UUID
@@ -159,7 +207,17 @@ class InstagramVerificationCode:
 
 @dataclass(frozen=True)
 class Complaint:
-    """Complaint entity for reporting issues."""
+    """Complaint entity for reporting issues.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "Complaint(" src/
+    3. For new complaints: set value or default. For updates (dismiss/resolve):
+       use dataclasses.replace(complaint, ...) so the new field is preserved.
+    4. Add the field to the regression test optional-fields list in
+       test_complaint_service.py if optional.
+    5. Update complaint entity/model mapping in db/repositories.py.
+    """
 
     complaint_id: UUID
     reporter_id: UUID
@@ -175,7 +233,14 @@ class Complaint:
 
 @dataclass(frozen=True)
 class Payment:
-    """Payment entity."""
+    """Payment entity.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "Payment(" src/
+    3. For updates of existing payment use dataclasses.replace(payment, ...).
+    4. Update payment entity/model mapping in infrastructure/db/repositories.py.
+    """
 
     payment_id: UUID
     order_id: UUID
@@ -191,7 +256,11 @@ class Payment:
 
 @dataclass(frozen=True)
 class ContactPricing:
-    """Contact pricing entity."""
+    """Contact pricing entity.
+
+    When adding a new field: find usages with grep -r "ContactPricing(" src/;
+    for updates use dataclasses.replace(pricing, ...). Update repo mapping.
+    """
 
     bloggers_count: int
     price: float
@@ -201,7 +270,11 @@ class ContactPricing:
 
 @dataclass(frozen=True)
 class OutboxEvent:
-    """Outbox event entity for reliable event publishing."""
+    """Outbox event entity for reliable event publishing.
+
+    When adding a new field: find usages with grep -r "OutboxEvent(" src/;
+    for updates use dataclasses.replace(event, ...). Update repo mapping.
+    """
 
     event_id: UUID
     event_type: str
@@ -235,7 +308,11 @@ class UserReferralPending:
 
 @dataclass(frozen=True)
 class PayoutRequest:
-    """Payout request by user (referrer)."""
+    """Payout request by user (referrer).
+
+    When adding a new field: find usages with grep -r "PayoutRequest(" src/;
+    for updates use dataclasses.replace(request, ...). Update repo mapping.
+    """
 
     request_id: UUID
     user_id: UUID

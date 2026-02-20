@@ -690,6 +690,102 @@ async def test_increment_wanted_to_change_terms_preserves_instagram_stats() -> (
     assert saved.instagram_followers_count == 10000
 
 
+# Optional fields of BloggerProfile that must be preserved by any update path.
+# When adding a new optional field, add it here and set a value in
+# _blogger_profile_with_all_optional_fields; if an update path drops it, fail.
+_BLOGGER_PROFILE_OPTIONAL_FIELDS = (
+    "wanted_to_change_terms_count",
+    "created_at",
+    "blogger_gender",
+    "instagram_user_id",
+    "instagram_followers_count",
+    "instagram_media_count",
+    "instagram_follows_count",
+    "instagram_biography",
+    "instagram_username",
+    "instagram_stats_fetched_at",
+)
+
+
+def _blogger_profile_with_all_optional_fields(
+    user_id: UUID, now: datetime
+) -> BloggerProfile:
+    """Profile with every optional field set for regression tests."""
+    return BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/regression_user",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["lifestyle"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=20,
+        audience_age_max=40,
+        audience_geo="SPB",
+        price=2000.0,
+        barter=True,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=now,
+        wanted_to_change_terms_count=5,
+        created_at=now,
+        blogger_gender=BloggerGender.FEMALE,
+        instagram_user_id="ig_regression",
+        instagram_followers_count=7000,
+        instagram_media_count=150,
+        instagram_follows_count=200,
+        instagram_biography="Test bio",
+        instagram_username="regression_user",
+        instagram_stats_fetched_at=now,
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_blogger_profile_preserves_all_optional_fields() -> None:
+    """Regression: update_blogger_profile must not drop any optional field."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    profile = _blogger_profile_with_all_optional_fields(user_id, now)
+    await blogger_repo.save(profile)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    await service.update_blogger_profile(user_id, city="Kazan")
+    saved = await blogger_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.city == "Kazan"
+    for field in _BLOGGER_PROFILE_OPTIONAL_FIELDS:
+        assert getattr(saved, field) == getattr(
+            profile, field
+        ), f"update_blogger_profile must preserve {field}"
+
+
+@pytest.mark.asyncio
+async def test_increment_preserves_all_optional_fields() -> None:
+    """Regression: increment must not drop optional fields."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    profile = _blogger_profile_with_all_optional_fields(user_id, now)
+    await blogger_repo.save(profile)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    await service.increment_wanted_to_change_terms_count(user_id)
+    saved = await blogger_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.wanted_to_change_terms_count == 6
+    for field in _BLOGGER_PROFILE_OPTIONAL_FIELDS:
+        if field == "wanted_to_change_terms_count":
+            continue
+        assert getattr(saved, field) == getattr(
+            profile, field
+        ), f"increment_wanted_to_change_terms_count must preserve {field}"
+
+
 @pytest.mark.asyncio
 async def test_get_profile_by_instagram_url_without_transaction_manager() -> (
     None
