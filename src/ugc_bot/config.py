@@ -68,6 +68,12 @@ _FLAT_KEYS = {
         "INSTAGRAM_API_BASE_URL",
         "INSTAGRAM_BUSINESS_ACCOUNT_ID",
         "INSTAGRAM_BUSINESS_ACCESS_TOKEN",
+        "RAPIDAPI_KEY",
+        "RAPIDAPI_INSTAGRAM_HOST",
+        "INSTAGRAM_RAPID_STATS_ENABLED",
+        "INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS",
+        "INSTAGRAM_RAPID_STATS_BATCH_SIZE",
+        "INSTAGRAM_RAPID_STATS_DELAY_SECONDS",
     ],
     "docs": [
         "DOCS_OFFER_URL",
@@ -286,6 +292,22 @@ class InstagramConfig(BaseSettings):
     )
     instagram_stats_delay_seconds: float = Field(
         default=1.0, alias="INSTAGRAM_STATS_DELAY_SECONDS"
+    )
+    rapidapi_key: str = Field(default="", alias="RAPIDAPI_KEY")
+    rapidapi_instagram_host: str = Field(
+        default="", alias="RAPIDAPI_INSTAGRAM_HOST"
+    )
+    instagram_rapid_stats_enabled: bool = Field(
+        default=False, alias="INSTAGRAM_RAPID_STATS_ENABLED"
+    )
+    instagram_rapid_stats_interval_seconds: int = Field(
+        default=86400, alias="INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS"
+    )
+    instagram_rapid_stats_batch_size: int = Field(
+        default=50, alias="INSTAGRAM_RAPID_STATS_BATCH_SIZE"
+    )
+    instagram_rapid_stats_delay_seconds: float = Field(
+        default=1.0, alias="INSTAGRAM_RAPID_STATS_DELAY_SECONDS"
     )
 
 

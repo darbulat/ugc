@@ -7,6 +7,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
+    SqlAlchemyInstagramStatsRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyNpsRepository,
@@ -42,6 +43,9 @@ def build_repos(
             session_factory=session_factory
         ),
         "instagram_repo": SqlAlchemyInstagramVerificationRepository(
+            session_factory=session_factory
+        ),
+        "instagram_stats_repo": SqlAlchemyInstagramStatsRepository(
             session_factory=session_factory
         ),
         "order_repo": SqlAlchemyOrderRepository(

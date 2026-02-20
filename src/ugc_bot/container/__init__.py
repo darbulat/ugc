@@ -121,6 +121,21 @@ class Container:
             instagram_api_client,
         )
 
+    def build_rapid_api_client(self):
+        """Create Rapid API Instagram client if configured."""
+        return infrastructure_factory.build_rapid_api_client(self._config)
+
+    def build_instagram_rapid_stats_scheduler_deps(self) -> dict:
+        """Deps for Instagram Rapid API stats scheduler."""
+        repos = self.build_repos()
+        rapid_api_client = self.build_rapid_api_client()
+        return service_factory.build_instagram_rapid_stats_scheduler_deps(
+            self._config,
+            repos,
+            self._transaction_manager,
+            rapid_api_client,
+        )
+
     def build_instagram_verification_service(
         self,
     ) -> InstagramVerificationService:

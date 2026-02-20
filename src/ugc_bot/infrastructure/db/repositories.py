@@ -24,6 +24,7 @@ from ugc_bot.application.ports import (
     BloggerProfileRepository,
     ComplaintRepository,
     ContactPricingRepository,
+    InstagramStatsRepository,
     InstagramVerificationRepository,
     InteractionRepository,
     NpsRepository,
@@ -41,6 +42,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    InstagramStats,
     InstagramVerificationCode,
     Interaction,
     OfferDispatch,
@@ -69,6 +71,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
     ContactPricingModel,
+    InstagramStatsModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     NpsResponseModel,
@@ -423,6 +426,34 @@ class SqlAlchemyInstagramVerificationRepository(
         if result.used or result.expires_at <= now:
             return None
         return _to_verification_entity(result)
+
+
+@dataclass(slots=True)
+class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
+    """SQLAlchemy-backed Instagram stats repository (Rapid API results)."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[InstagramStats]:
+        """Fetch Instagram stats by user id."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(InstagramStatsModel).where(
+                InstagramStatsModel.user_id == user_id
+            )
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_instagram_stats_entity(result) if result else None
+
+    async def save(
+        self, stats: InstagramStats, session: object | None = None
+    ) -> None:
+        """Persist or update Instagram stats (upsert by user_id)."""
+        db_session = _get_async_session(session)
+        model = _to_instagram_stats_model(stats)
+        await db_session.merge(model)
 
 
 @dataclass(slots=True)
@@ -1158,6 +1189,34 @@ def _to_verification_model(
         expires_at=code.expires_at,
         used=code.used,
         created_at=code.created_at,
+    )
+
+
+def _to_instagram_stats_entity(model: InstagramStatsModel) -> InstagramStats:
+    """Map Instagram stats ORM model to domain entity."""
+    return InstagramStats(
+        user_id=model.user_id,
+        raw_response=model.raw_response,
+        fetched_at=model.fetched_at,
+        followers_count=model.followers_count,
+        follows_count=model.follows_count,
+        media_count=model.media_count,
+        instagram_username=model.instagram_username,
+        biography=model.biography,
+    )
+
+
+def _to_instagram_stats_model(stats: InstagramStats) -> InstagramStatsModel:
+    """Map domain Instagram stats entity to ORM model."""
+    return InstagramStatsModel(
+        user_id=stats.user_id,
+        raw_response=stats.raw_response,
+        fetched_at=stats.fetched_at,
+        followers_count=stats.followers_count,
+        follows_count=stats.follows_count,
+        media_count=stats.media_count,
+        instagram_username=stats.instagram_username,
+        biography=stats.biography,
     )
 
 

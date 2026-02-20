@@ -19,6 +19,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    InstagramStats,
     InstagramVerificationCode,
     Interaction,
     OfferDispatch,
@@ -431,6 +432,36 @@ class InstagramGraphApiClient(ABC):
 
         Returns:
             Profile info if found, None on error or missing username
+        """
+
+
+class InstagramStatsRepository(ABC):
+    """Port for Instagram stats persistence (Rapid API results)."""
+
+    @abstractmethod
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[InstagramStats]:
+        """Fetch Instagram stats by user id."""
+
+    @abstractmethod
+    async def save(
+        self, stats: InstagramStats, session: object | None = None
+    ) -> None:
+        """Persist or update Instagram stats (upsert by user_id)."""
+
+
+class InstagramRapidApiClient(ABC):
+    """Port for Rapid API Instagram profile/stats by username."""
+
+    @abstractmethod
+    async def get_profile_stats_by_username(
+        self, username: str
+    ) -> Optional[dict]:
+        """Fetch full profile/stats response for username.
+
+        Returns:
+            Raw API response dict, or None on error / not found.
         """
 
 

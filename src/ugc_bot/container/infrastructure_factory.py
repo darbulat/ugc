@@ -94,3 +94,20 @@ def build_instagram_api_client(config: AppConfig):
         business_account_id=business_id,
         business_access_token=business_token,
     )
+
+
+def build_rapid_api_client(config: AppConfig):
+    """Create Rapid API Instagram client if key and host configured."""
+    ig = config.instagram
+    if not ig.rapidapi_key or not ig.rapidapi_key.strip():
+        return None
+    if not ig.rapidapi_instagram_host or not ig.rapidapi_instagram_host.strip():
+        return None
+    from ugc_bot.infrastructure.instagram.rapid_api_client import (
+        HttpInstagramRapidApiClient,
+    )
+
+    return HttpInstagramRapidApiClient(
+        api_key=ig.rapidapi_key,
+        host=ig.rapidapi_instagram_host,
+    )

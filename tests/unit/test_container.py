@@ -151,6 +151,65 @@ def test_container_build_instagram_api_client_without_token() -> None:
     assert client is None
 
 
+def test_container_build_rapid_api_client_when_configured() -> None:
+    """build_rapid_api_client returns client when key and host are set."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "RAPIDAPI_KEY": "key",
+            "RAPIDAPI_INSTAGRAM_HOST": "instagram-v2",
+        }
+    )
+    container = Container(config)
+    client = container.build_rapid_api_client()
+    assert client is not None
+
+
+def test_container_build_rapid_api_client_without_key() -> None:
+    """build_rapid_api_client returns None when key or host is empty."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "RAPIDAPI_KEY": "",
+            "RAPIDAPI_INSTAGRAM_HOST": "host",
+        }
+    )
+    container = Container(config)
+    assert container.build_rapid_api_client() is None
+
+
+def test_container_build_feedback_scheduler_deps() -> None:
+    """build_feedback_scheduler_deps returns deps with interaction_repo."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    deps = container.build_feedback_scheduler_deps()
+    assert "interaction_repo" in deps
+    assert "interaction_service" in deps
+    assert "interval_seconds" not in deps
+
+
+def test_container_build_instagram_rapid_stats_scheduler_deps() -> None:
+    """Rapid stats scheduler deps include service and interval."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    deps = container.build_instagram_rapid_stats_scheduler_deps()
+    assert "instagram_rapid_stats_collector_service" in deps
+    assert "interval_seconds" in deps
+    assert deps["interval_seconds"] == 86400
+
+
 def test_container_build_bot_services() -> None:
     """build_bot_services creates all services for bot dispatcher."""
 

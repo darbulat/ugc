@@ -15,7 +15,11 @@ def test_db_engine():
     engine = create_engine("sqlite:///:memory:", echo=False)
 
     # Exclude tables with JSONB (not compatible with SQLite)
-    tables_to_exclude = {"outbox_events", "blogger_profiles"}
+    tables_to_exclude = {
+        "outbox_events",
+        "blogger_profiles",
+        "instagram_stats",
+    }
     tables_to_create = [
         table
         for table in Base.metadata.tables.values()
