@@ -648,3 +648,74 @@ class TestOutboxPublisher:
         retry_count = call_args[2]
         assert "Kafka connection failed" in error_msg
         assert retry_count == 1
+
+    @pytest.mark.asyncio
+    async def test_process_order_activation_preserves_min_max_followers(
+        self,
+    ) -> None:
+        """min_followers and max_followers are preserved on order activation."""
+
+        outbox_repo = Mock()
+        outbox_repo.claim_pending_events = AsyncMock()
+        outbox_repo.mark_as_processing = AsyncMock()
+        outbox_repo.mark_as_published = AsyncMock()
+        kafka_publisher = Mock()
+        kafka_publisher.publish = AsyncMock()
+
+        event = OutboxEvent(
+            event_id=UUID("00000000-0000-0000-0000-000000000003"),
+            event_type="order.activated",
+            aggregate_id="00000000-0000-0000-0000-000000000001",
+            aggregate_type="order",
+            payload={
+                "order_id": "00000000-0000-0000-0000-000000000001",
+                "advertiser_id": "00000000-0000-0000-0000-000000000002",
+                "product_link": "https://example.com",
+                "offer_text": "Test offer",
+                "bloggers_needed": 3,
+                "price": 1000.0,
+            },
+            status=OutboxEventStatus.PENDING,
+            created_at=datetime.now(timezone.utc),
+            processed_at=None,
+            retry_count=0,
+            last_error=None,
+        )
+
+        order_from_db = Order(
+            order_id=UUID("00000000-0000-0000-0000-000000000001"),
+            advertiser_id=UUID("00000000-0000-0000-0000-000000000002"),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Test offer",
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=3,
+            status=OrderStatus.PENDING_MODERATION,
+            created_at=datetime.now(timezone.utc),
+            completed_at=None,
+            min_followers=500,
+            max_followers=10_000,
+        )
+
+        outbox_repo.claim_pending_events.return_value = [event]
+
+        order_repo = Mock()
+        order_repo.get_by_id = AsyncMock(return_value=order_from_db)
+        order_repo.save = AsyncMock()
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
+        await publisher.process_pending_events(kafka_publisher, max_retries=3)
+
+        order_repo.save.assert_called_once()
+        saved_order = order_repo.save.call_args[0][0]
+        assert isinstance(saved_order, Order)
+        assert saved_order.min_followers == 500
+        assert saved_order.max_followers == 10_000
+        assert saved_order.status == OrderStatus.ACTIVE
+
+        kafka_publisher.publish.assert_called_once()
+        published_order = kafka_publisher.publish.call_args[0][0]
+        assert published_order.min_followers == 500
+        assert published_order.max_followers == 10_000

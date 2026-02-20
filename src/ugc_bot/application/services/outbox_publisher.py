@@ -199,6 +199,8 @@ class OutboxPublisher:
             deadlines=order.deadlines,
             geography=order.geography,
             product_photo_file_id=order.product_photo_file_id,
+            min_followers=order.min_followers,
+            max_followers=order.max_followers,
         )
         await self.order_repo.save(activated_order, session=session)
 
