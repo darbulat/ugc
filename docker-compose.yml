@@ -262,7 +262,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ugc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ugc}
     ports:
-      - "5432:5432"
+      - "65432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./config/postgres/replication.conf:/etc/postgresql/replication.conf:ro
@@ -334,6 +334,7 @@ services:
       zookeeper:
         condition: service_healthy
     environment:
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
