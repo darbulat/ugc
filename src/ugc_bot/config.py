@@ -70,6 +70,8 @@ _FLAT_KEYS = {
         "INSTAGRAM_BUSINESS_ACCESS_TOKEN",
         "RAPIDAPI_KEY",
         "RAPIDAPI_INSTAGRAM_HOST",
+        "RAPIDAPI_INSTAGRAM_PATH",
+        "RAPIDAPI_INSTAGRAM_PARAM_STYLE",
         "INSTAGRAM_RAPID_STATS_ENABLED",
         "INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS",
         "INSTAGRAM_RAPID_STATS_BATCH_SIZE",
@@ -296,6 +298,12 @@ class InstagramConfig(BaseSettings):
     rapidapi_key: str = Field(default="", alias="RAPIDAPI_KEY")
     rapidapi_instagram_host: str = Field(
         default="", alias="RAPIDAPI_INSTAGRAM_HOST"
+    )
+    rapidapi_instagram_path: str = Field(
+        default="", alias="RAPIDAPI_INSTAGRAM_PATH"
+    )
+    rapidapi_instagram_param_style: str = Field(
+        default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE"
     )
     instagram_rapid_stats_enabled: bool = Field(
         default=False, alias="INSTAGRAM_RAPID_STATS_ENABLED"

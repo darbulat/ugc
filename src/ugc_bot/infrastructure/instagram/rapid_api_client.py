@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 RAPIDAPI_BASE_URL = "https://{host}.rapidapi.com"
 DEFAULT_PROFILE_PATH = "/user/details-by-username"
+INSTAGRAM_PROFILE_URL_PREFIX = "https://www.instagram.com/"
 RAPIDAPI_TIMEOUT = 15.0
 
 
@@ -22,23 +23,32 @@ class HttpInstagramRapidApiClient(InstagramRapidApiClient):
         api_key: str,
         host: str,
         path: str = DEFAULT_PROFILE_PATH,
+        param_style: str = "username",
         timeout: float = RAPIDAPI_TIMEOUT,
     ) -> None:
         """Initialize Rapid API client.
 
         Args:
             api_key: X-RapidAPI-Key header value.
-            host: API host name (e.g. instagram-v2, instagram-statistics-api).
-            path: Request path (e.g. /user/details-by-username).
+            host: API host name (e.g. instagram-statistics-api).
+            path: Request path (e.g. /community).
+            param_style: "username" (query param username) or "url" (query
+                param url with full profile URL, for instagram-statistics-api).
             timeout: Request timeout in seconds.
         """
         self._api_key = (api_key or "").strip()
         self._host = (host or "").strip()
         self._path = (path or DEFAULT_PROFILE_PATH).strip().rstrip("/")
+        self._param_style = (
+            param_style or "username"
+        ).strip().lower() or "username"
         self._timeout = timeout
-        self._base_url = (
-            RAPIDAPI_BASE_URL.format(host=self._host) if self._host else ""
-        )
+        if not self._host:
+            self._base_url = ""
+        elif "rapidapi.com" in self._host:
+            self._base_url = f"https://{self._host}"
+        else:
+            self._base_url = RAPIDAPI_BASE_URL.format(host=self._host)
 
     def _is_configured(self) -> bool:
         return bool(self._api_key and self._base_url)
@@ -57,16 +67,21 @@ class HttpInstagramRapidApiClient(InstagramRapidApiClient):
             return None
 
         clean_username = username.strip()
-        url = f"{self._base_url}{self._path}"
+        request_url = f"{self._base_url}{self._path}"
         headers = {
             "X-RapidAPI-Key": self._api_key,
             "X-RapidAPI-Host": self._host,
         }
-        params = {"username": clean_username}
+        if self._param_style == "url":
+            params = {"url": f"{INSTAGRAM_PROFILE_URL_PREFIX}{clean_username}/"}
+        else:
+            params = {"username": clean_username}
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.get(url, headers=headers, params=params)
+                response = await client.get(
+                    request_url, headers=headers, params=params
+                )
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPStatusError as exc:

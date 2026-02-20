@@ -107,7 +107,13 @@ def build_rapid_api_client(config: AppConfig):
         HttpInstagramRapidApiClient,
     )
 
+    path = (ig.rapidapi_instagram_path or "").strip() or ""
+    param_style = (
+        ig.rapidapi_instagram_param_style or "username"
+    ).strip().lower() or "username"
     return HttpInstagramRapidApiClient(
         api_key=ig.rapidapi_key,
         host=ig.rapidapi_instagram_host,
+        path=path,
+        param_style=param_style,
     )
