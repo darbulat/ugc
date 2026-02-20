@@ -604,6 +604,93 @@ async def test_update_blogger_profile_same_instagram_url_keeps_confirmed() -> (
 
 
 @pytest.mark.asyncio
+async def test_update_blogger_profile_preserves_instagram_stats() -> None:
+    """Updating profile must not clear instagram_user_id and instagram stats."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/stats_user",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+            instagram_user_id="ig_123",
+            instagram_followers_count=5000,
+            instagram_media_count=100,
+            instagram_username="stats_user",
+            instagram_stats_fetched_at=now,
+        )
+    )
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    updated = await service.update_blogger_profile(user_id, city="SPB")
+    assert updated is not None
+    assert updated.city == "SPB"
+    assert updated.instagram_user_id == "ig_123"
+    assert updated.instagram_followers_count == 5000
+    assert updated.instagram_media_count == 100
+    assert updated.instagram_username == "stats_user"
+    assert updated.instagram_stats_fetched_at == now
+    saved = await blogger_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.instagram_user_id == "ig_123"
+    assert saved.instagram_followers_count == 5000
+
+
+@pytest.mark.asyncio
+async def test_increment_wanted_to_change_terms_preserves_instagram_stats() -> (
+    None
+):
+    """increment_wanted_to_change_terms_count must not clear instagram stats."""
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/inc_user",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": []},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=500.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+            instagram_user_id="ig_456",
+            instagram_followers_count=10000,
+        )
+    )
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    await service.increment_wanted_to_change_terms_count(user_id)
+    saved = await blogger_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.wanted_to_change_terms_count == 1
+    assert saved.instagram_user_id == "ig_456"
+    assert saved.instagram_followers_count == 10000
+
+
+@pytest.mark.asyncio
 async def test_get_profile_by_instagram_url_without_transaction_manager() -> (
     None
 ):
