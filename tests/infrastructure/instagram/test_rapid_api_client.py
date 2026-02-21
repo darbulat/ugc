@@ -2,10 +2,14 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
+from ugc_bot.application.ports import RapidApiRateLimitError
 from ugc_bot.infrastructure.instagram.rapid_api_client import (
     HttpInstagramRapidApiClient,
+    MultiProviderInstagramStatsClient,
+    SingleProviderWrapper,
 )
 
 
@@ -61,10 +65,33 @@ async def test_get_profile_stats_by_username_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_profile_stats_by_username_http_error_returns_none() -> None:
-    """Returns None on HTTP error."""
-    import httpx
+async def test_get_profile_stats_by_username_429_raises_rate_limit() -> None:
+    """Raises RapidApiRateLimitError on 429."""
+    client = HttpInstagramRapidApiClient(api_key="key", host="host")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 429
+    mock_resp.text = "Too Many Requests"
+    with patch(
+        "ugc_bot.infrastructure.instagram.rapid_api_client.httpx.AsyncClient"
+    ) as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "429",
+                request=MagicMock(),
+                response=mock_resp,
+            )
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+        with pytest.raises(RapidApiRateLimitError):
+            await client.get_profile_stats_by_username("jane")
 
+
+@pytest.mark.asyncio
+async def test_get_profile_stats_by_username_http_error_returns_none() -> None:
+    """Returns None on HTTP error (e.g. 404)."""
     client = HttpInstagramRapidApiClient(api_key="key", host="host")
 
     with patch(
@@ -173,3 +200,47 @@ async def test_param_style_url_sends_full_profile_url() -> None:
         "instagram-statistics-api.p.rapidapi.com"
         in mock_client.get.call_args[0][0]
     )
+
+
+@pytest.mark.asyncio
+async def test_single_provider_wrapper_returns_data_and_provider_id() -> None:
+    """SingleProviderWrapper returns (data, provider_id)."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryInstagramRapidApiClient,
+    )
+
+    raw = {"data": {"username": "x"}}
+    inner = InMemoryInstagramRapidApiClient(
+        profile_by_username={"x": raw},
+    )
+    client = SingleProviderWrapper(inner, "my_provider")
+    data, provider = await client.get_profile_stats_with_provider("x")
+    assert data == raw
+    assert provider == "my_provider"
+
+
+@pytest.mark.asyncio
+async def test_multi_provider_fallback_on_429() -> None:
+    """MultiProviderInstagramStatsClient tries next provider on 429."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryInstagramRapidApiClient,
+    )
+
+    class RateLimitClient(InMemoryInstagramRapidApiClient):
+        async def get_profile_stats_by_username(self, username: str):
+            raise RapidApiRateLimitError("429")
+
+    ok_data = {"data": {"username": "jane"}}
+    clients: list = [
+        (RateLimitClient(), "first"),
+        (
+            InMemoryInstagramRapidApiClient(
+                profile_by_username={"jane": ok_data},
+            ),
+            "second",
+        ),
+    ]
+    multi = MultiProviderInstagramStatsClient(clients)
+    data, provider = await multi.get_profile_stats_with_provider("jane")
+    assert data == ok_data
+    assert provider == "second"

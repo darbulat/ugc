@@ -1203,6 +1203,7 @@ def _to_instagram_stats_entity(model: InstagramStatsModel) -> InstagramStats:
         media_count=model.media_count,
         instagram_username=model.instagram_username,
         biography=model.biography,
+        provider=model.provider,
     )
 
 
@@ -1217,6 +1218,7 @@ def _to_instagram_stats_model(stats: InstagramStats) -> InstagramStatsModel:
         media_count=stats.media_count,
         instagram_username=stats.instagram_username,
         biography=stats.biography,
+        provider=stats.provider,
     )
 
 

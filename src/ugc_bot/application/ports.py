@@ -451,6 +451,10 @@ class InstagramStatsRepository(ABC):
         """Persist or update Instagram stats (upsert by user_id)."""
 
 
+class RapidApiRateLimitError(Exception):
+    """Raised when Rapid API returns 429 Too Many Requests."""
+
+
 class InstagramRapidApiClient(ABC):
     """Port for Rapid API Instagram profile/stats by username."""
 
@@ -462,6 +466,22 @@ class InstagramRapidApiClient(ABC):
 
         Returns:
             Raw API response dict, or None on error / not found.
+        Raises:
+            RapidApiRateLimitError: When API returns 429 (caller may try next).
+        """
+
+
+class InstagramStatsProviderClient(ABC):
+    """Client that returns Instagram stats with provider id (fallback chain)."""
+
+    @abstractmethod
+    async def get_profile_stats_with_provider(
+        self, username: str
+    ) -> Tuple[Optional[dict], str]:
+        """Fetch profile/stats and the provider id that returned them.
+
+        Returns:
+            (raw_response_dict, provider_id) or (None, provider_id on last try).
         """
 
 

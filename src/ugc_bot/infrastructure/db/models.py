@@ -213,6 +213,9 @@ class InstagramStatsModel(Base):
         String, nullable=True
     )
     biography: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    provider: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default=text("'rapid_api'")
+    )
 
 
 class AdvertiserProfileModel(Base):

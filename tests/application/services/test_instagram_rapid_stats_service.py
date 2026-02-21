@@ -12,6 +12,9 @@ from ugc_bot.application.services.instagram_rapid_stats_service import (
 )
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import AudienceGender, WorkFormat
+from ugc_bot.infrastructure.instagram.rapid_api_client import (
+    SingleProviderWrapper,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramRapidApiClient,
@@ -40,6 +43,18 @@ def test_extract_typed_fields_from_data_counts() -> None:
     assert b == "Bio text"
 
 
+def test_extract_typed_fields_username_from_url_without_slash() -> None:
+    """Username from data.url when url has no slash (single segment)."""
+    raw = {
+        "data": {
+            "counts": {"followed_by": 10},
+            "url": "single_handle",
+        },
+    }
+    f, fo, m, u, b = _extract_typed_fields(raw)
+    assert u == "single_handle"
+
+
 def test_extract_typed_fields_from_data_top_level() -> None:
     """Extract from data.* top-level fields."""
     raw = {
@@ -62,6 +77,17 @@ def test_extract_typed_fields_from_data_top_level() -> None:
 def test_extract_typed_fields_empty_raw() -> None:
     """Empty or invalid raw returns Nones."""
     assert _extract_typed_fields({}) == (None, None, None, None, None)
+
+
+def test_extract_typed_fields_data_not_dict_uses_raw_top_level() -> None:
+    """When data is not a dict, extract from raw top-level keys."""
+    raw = {"data": [], "username": "top", "biography": "bio text"}
+    f, fo, m, u, b = _extract_typed_fields(raw)
+    assert f is None
+    assert fo is None
+    assert m is None
+    assert u == "top"
+    assert b == "bio text"
 
 
 def test_username_from_profile_uses_instagram_username() -> None:
@@ -104,6 +130,27 @@ def test_username_from_profile_parses_url() -> None:
         instagram_username=None,
     )
     assert _username_from_profile(profile) == "parsed_nick"
+
+
+def test_username_from_profile_url_without_slash_returns_username() -> None:
+    """When URL has no slash, whole value (minus query) is username."""
+    profile = BloggerProfile(
+        user_id=uuid4(),
+        instagram_url="single_nick",
+        confirmed=True,
+        city="",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=0.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_username=None,
+    )
+    assert _username_from_profile(profile) == "single_nick"
 
 
 def test_username_from_profile_empty_url_returns_none() -> None:
@@ -223,15 +270,36 @@ def test_extract_typed_fields_non_numeric_counts_returns_none() -> None:
     assert u == "x"
 
 
+def test_extract_typed_fields_web_profile_info() -> None:
+    """Extract from Instagram web_profile_info data.user (edge_*)."""
+    raw = {
+        "data": {
+            "user": {
+                "username": "darbulat",
+                "biography": "My bio",
+                "edge_followed_by": {"count": 1000},
+                "edge_follow": {"count": 200},
+                "edge_owner_to_timeline_media": {"count": 50},
+            },
+        },
+    }
+    f, fo, m, u, b = _extract_typed_fields(raw)
+    assert f == 1000
+    assert fo == 200
+    assert m == 50
+    assert u == "darbulat"
+    assert b == "My bio"
+
+
 @pytest.mark.asyncio
 async def test_run_once_no_client_returns_zero() -> None:
-    """run_once returns (0, 0) when Rapid API client is None."""
+    """run_once returns (0, 0) when stats provider client is None."""
     blogger_repo = InMemoryBloggerProfileRepository()
     stats_repo = InMemoryInstagramStatsRepository()
     service = InstagramRapidStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
-        rapid_api_client=None,
+        stats_provider_client=None,
     )
     updated, errors = await service.run_once()
     assert updated == 0
@@ -243,11 +311,13 @@ async def test_run_once_empty_list_returns_zero() -> None:
     """run_once returns (0, 0) when no confirmed profiles."""
     blogger_repo = InMemoryBloggerProfileRepository()
     stats_repo = InMemoryInstagramStatsRepository()
-    client = InMemoryInstagramRapidApiClient()
+    client = SingleProviderWrapper(
+        InMemoryInstagramRapidApiClient(), "rapid_api"
+    )
     service = InstagramRapidStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
-        rapid_api_client=client,
+        stats_provider_client=client,
     )
     updated, errors = await service.run_once()
     assert updated == 0
@@ -289,14 +359,15 @@ async def test_run_once_saves_stats_from_rapid_api() -> None:
             "biography": "Bio",
         },
     }
-    client = InMemoryInstagramRapidApiClient(
-        profile_by_username={"jane": raw},
+    client = SingleProviderWrapper(
+        InMemoryInstagramRapidApiClient(profile_by_username={"jane": raw}),
+        "rapid_api",
     )
     stats_repo = InMemoryInstagramStatsRepository()
     service = InstagramRapidStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
-        rapid_api_client=client,
+        stats_provider_client=client,
         batch_size=10,
         delay_seconds=0.0,
     )
@@ -314,6 +385,7 @@ async def test_run_once_saves_stats_from_rapid_api() -> None:
     assert saved.media_count == 100
     assert saved.instagram_username == "jane"
     assert saved.biography == "Bio"
+    assert saved.provider == "rapid_api"
     assert saved.fetched_at is not None
 
 
@@ -340,12 +412,14 @@ async def test_run_once_skips_profile_without_username() -> None:
     )
     blogger_repo = InMemoryBloggerProfileRepository()
     await blogger_repo.save(profile)
-    client = InMemoryInstagramRapidApiClient()
+    client = SingleProviderWrapper(
+        InMemoryInstagramRapidApiClient(), "rapid_api"
+    )
     stats_repo = InMemoryInstagramStatsRepository()
     service = InstagramRapidStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
-        rapid_api_client=client,
+        stats_provider_client=client,
         delay_seconds=0.0,
     )
     updated, errors = await service.run_once()
@@ -377,12 +451,14 @@ async def test_run_once_client_returns_none_increments_errors() -> None:
     )
     blogger_repo = InMemoryBloggerProfileRepository()
     await blogger_repo.save(profile)
-    client = InMemoryInstagramRapidApiClient(profile_by_username={})
+    client = SingleProviderWrapper(
+        InMemoryInstagramRapidApiClient(profile_by_username={}), "rapid_api"
+    )
     stats_repo = InMemoryInstagramStatsRepository()
     service = InstagramRapidStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
-        rapid_api_client=client,
+        stats_provider_client=client,
         delay_seconds=0.0,
     )
     updated, errors = await service.run_once()
@@ -422,7 +498,9 @@ async def test_run_once_client_raises_increments_errors() -> None:
     service = InstagramRapidStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
-        rapid_api_client=FailingClient(),
+        stats_provider_client=SingleProviderWrapper(
+            FailingClient(), "rapid_api"
+        ),
         delay_seconds=0.0,
     )
     updated, errors = await service.run_once()

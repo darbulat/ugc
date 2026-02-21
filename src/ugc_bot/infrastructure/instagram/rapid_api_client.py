@@ -1,11 +1,15 @@
 """Rapid API client for Instagram profile/stats by username."""
 
 import logging
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import httpx
 
-from ugc_bot.application.ports import InstagramRapidApiClient
+from ugc_bot.application.ports import (
+    InstagramRapidApiClient,
+    InstagramStatsProviderClient,
+    RapidApiRateLimitError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +89,10 @@ class HttpInstagramRapidApiClient(InstagramRapidApiClient):
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                raise RapidApiRateLimitError(
+                    "Rapid API rate limit (429)"
+                ) from exc
             logger.warning(
                 "Rapid API request failed",
                 extra={
@@ -109,3 +117,51 @@ class HttpInstagramRapidApiClient(InstagramRapidApiClient):
             return None
 
         return data
+
+
+class SingleProviderWrapper(InstagramStatsProviderClient):
+    """Wraps one Rapid API client and returns stats with fixed provider id."""
+
+    def __init__(
+        self,
+        client: InstagramRapidApiClient,
+        provider_id: str = "rapid_api",
+    ) -> None:
+        self._client = client
+        self._provider_id = provider_id
+
+    async def get_profile_stats_with_provider(
+        self, username: str
+    ) -> Tuple[Optional[dict], str]:
+        """Call underlying client; return (data, provider_id)."""
+        data = await self._client.get_profile_stats_by_username(username)
+        return (data, self._provider_id)
+
+
+class MultiProviderInstagramStatsClient(InstagramStatsProviderClient):
+    """Tries multiple providers in order; on 429 uses the next provider."""
+
+    def __init__(
+        self,
+        clients_with_ids: List[Tuple[InstagramRapidApiClient, str]],
+    ) -> None:
+        """Initialize with list of (client, provider_id)."""
+        self._clients = clients_with_ids
+
+    async def get_profile_stats_with_provider(
+        self, username: str
+    ) -> Tuple[Optional[dict], str]:
+        """Try each provider; on RapidApiRateLimitError try next."""
+        last_provider = ""
+        for client, provider_id in self._clients:
+            last_provider = provider_id
+            try:
+                data = await client.get_profile_stats_by_username(username)
+                return (data, provider_id)
+            except RapidApiRateLimitError:
+                logger.info(
+                    "Rapid API rate limit, trying next provider",
+                    extra={"provider": provider_id, "username": username},
+                )
+                continue
+        return (None, last_provider)

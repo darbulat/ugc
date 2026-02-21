@@ -72,6 +72,16 @@ _FLAT_KEYS = {
         "RAPIDAPI_INSTAGRAM_HOST",
         "RAPIDAPI_INSTAGRAM_PATH",
         "RAPIDAPI_INSTAGRAM_PARAM_STYLE",
+        "RAPIDAPI_KEY_2",
+        "RAPIDAPI_INSTAGRAM_HOST_2",
+        "RAPIDAPI_INSTAGRAM_PATH_2",
+        "RAPIDAPI_INSTAGRAM_PARAM_STYLE_2",
+        "RAPIDAPI_KEY_3",
+        "RAPIDAPI_INSTAGRAM_HOST_3",
+        "RAPIDAPI_INSTAGRAM_PATH_3",
+        "RAPIDAPI_INSTAGRAM_PARAM_STYLE_3",
+        "INSTAGRAM_WEB_PROFILE_ENABLED",
+        "INSTAGRAM_WEB_PROFILE_APP_ID",
         "INSTAGRAM_RAPID_STATS_ENABLED",
         "INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS",
         "INSTAGRAM_RAPID_STATS_BATCH_SIZE",
@@ -304,6 +314,32 @@ class InstagramConfig(BaseSettings):
     )
     rapidapi_instagram_param_style: str = Field(
         default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE"
+    )
+    rapidapi_key_2: str = Field(default="", alias="RAPIDAPI_KEY_2")
+    rapidapi_instagram_host_2: str = Field(
+        default="", alias="RAPIDAPI_INSTAGRAM_HOST_2"
+    )
+    rapidapi_instagram_path_2: str = Field(
+        default="", alias="RAPIDAPI_INSTAGRAM_PATH_2"
+    )
+    rapidapi_instagram_param_style_2: str = Field(
+        default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE_2"
+    )
+    rapidapi_key_3: str = Field(default="", alias="RAPIDAPI_KEY_3")
+    rapidapi_instagram_host_3: str = Field(
+        default="", alias="RAPIDAPI_INSTAGRAM_HOST_3"
+    )
+    rapidapi_instagram_path_3: str = Field(
+        default="", alias="RAPIDAPI_INSTAGRAM_PATH_3"
+    )
+    rapidapi_instagram_param_style_3: str = Field(
+        default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE_3"
+    )
+    instagram_web_profile_enabled: bool = Field(
+        default=False, alias="INSTAGRAM_WEB_PROFILE_ENABLED"
+    )
+    instagram_web_profile_app_id: str = Field(
+        default="936619743392459", alias="INSTAGRAM_WEB_PROFILE_APP_ID"
     )
     instagram_rapid_stats_enabled: bool = Field(
         default=False, alias="INSTAGRAM_RAPID_STATS_ENABLED"

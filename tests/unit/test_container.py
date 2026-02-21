@@ -3,7 +3,7 @@
 import pytest
 
 from ugc_bot.config import AppConfig
-from ugc_bot.container import Container
+from ugc_bot.container import Container, infrastructure_factory
 
 
 def _config(database_url: str) -> AppConfig:
@@ -178,6 +178,81 @@ def test_container_build_rapid_api_client_without_key() -> None:
     )
     container = Container(config)
     assert container.build_rapid_api_client() is None
+
+
+def test_container_build_instagram_stats_provider_client_single() -> None:
+    """build_instagram_rapid_stats_scheduler_deps uses provider client."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "RAPIDAPI_KEY": "key",
+            "RAPIDAPI_INSTAGRAM_HOST": "instagram-v2",
+        }
+    )
+    container = Container(config)
+    deps = container.build_instagram_rapid_stats_scheduler_deps()
+    assert deps.get("instagram_rapid_stats_collector_service") is not None
+    assert deps.get("interval_seconds") is not None
+
+
+def test_container_build_instagram_stats_provider_client_none() -> None:
+    """When no Rapid API config, scheduler deps still built with None client."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "RAPIDAPI_KEY": "",
+            "RAPIDAPI_INSTAGRAM_HOST": "",
+        }
+    )
+    container = Container(config)
+    deps = container.build_instagram_rapid_stats_scheduler_deps()
+    assert "instagram_rapid_stats_collector_service" in deps
+    assert deps.get("interval_seconds") is not None
+
+
+def test_container_build_instagram_stats_provider_client_multi() -> None:
+    """With provider 1 and 2 configured, multi-provider client is built."""
+    from ugc_bot.infrastructure.instagram.rapid_api_client import (
+        MultiProviderInstagramStatsClient,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "RAPIDAPI_KEY": "key1",
+            "RAPIDAPI_INSTAGRAM_HOST": "host1",
+            "RAPIDAPI_KEY_2": "key2",
+            "RAPIDAPI_INSTAGRAM_HOST_2": "host2",
+        }
+    )
+    client = infrastructure_factory.build_instagram_stats_provider_client(
+        config
+    )
+    assert client is not None
+    assert isinstance(client, MultiProviderInstagramStatsClient)
+
+
+def test_container_build_instagram_stats_provider_client_web_only() -> None:
+    """With only INSTAGRAM_WEB_PROFILE_ENABLED=true, web client is built."""
+    from ugc_bot.infrastructure.instagram.rapid_api_client import (
+        SingleProviderWrapper,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "INSTAGRAM_WEB_PROFILE_ENABLED": True,
+        }
+    )
+    client = infrastructure_factory.build_instagram_stats_provider_client(
+        config
+    )
+    assert client is not None
+    assert isinstance(client, SingleProviderWrapper)
 
 
 def test_container_build_feedback_scheduler_deps() -> None:

@@ -98,7 +98,7 @@ class BloggerProfile:
 
 @dataclass(frozen=True)
 class InstagramStats:
-    """Instagram account statistics from Rapid API (per user)."""
+    """Instagram account statistics (per user), with data source provider."""
 
     user_id: UUID
     raw_response: dict
@@ -108,6 +108,7 @@ class InstagramStats:
     media_count: Optional[int] = None
     instagram_username: Optional[str] = None
     biography: Optional[str] = None
+    provider: str = "rapid_api"
 
 
 @dataclass(frozen=True)

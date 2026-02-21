@@ -160,7 +160,10 @@ def build_instagram_stats_scheduler_deps(
 
 
 def build_instagram_rapid_stats_scheduler_deps(
-    config: AppConfig, repos, transaction_manager, rapid_api_client
+    config: AppConfig,
+    repos,
+    transaction_manager,
+    stats_provider_client,
 ):
     """Build deps for Instagram Rapid API stats scheduler."""
     ig_config = config.instagram
@@ -169,7 +172,7 @@ def build_instagram_rapid_stats_scheduler_deps(
             InstagramRapidStatsCollectorService(
                 blogger_repo=repos["blogger_repo"],
                 instagram_stats_repo=repos["instagram_stats_repo"],
-                rapid_api_client=rapid_api_client,
+                stats_provider_client=stats_provider_client,
                 transaction_manager=transaction_manager,
                 batch_size=ig_config.instagram_rapid_stats_batch_size,
                 delay_seconds=ig_config.instagram_rapid_stats_delay_seconds,

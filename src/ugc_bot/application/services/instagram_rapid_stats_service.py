@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
-    InstagramRapidApiClient,
+    InstagramStatsProviderClient,
     InstagramStatsRepository,
     TransactionManager,
 )
@@ -93,6 +93,32 @@ def _extract_from_data(
     return (followers, follows, media, username, biography)
 
 
+def _extract_from_web_user(
+    user: dict,
+) -> tuple[
+    Optional[int], Optional[int], Optional[int], Optional[str], Optional[str]
+]:
+    """Extract from Instagram web_profile_info data.user (edge_* counts)."""
+    followers = _safe_int(
+        user.get("edge_followed_by", {}).get("count")
+        if isinstance(user.get("edge_followed_by"), dict)
+        else None
+    )
+    follows = _safe_int(
+        user.get("edge_follow", {}).get("count")
+        if isinstance(user.get("edge_follow"), dict)
+        else None
+    )
+    media = _safe_int(
+        user.get("edge_owner_to_timeline_media", {}).get("count")
+        if isinstance(user.get("edge_owner_to_timeline_media"), dict)
+        else None
+    )
+    username = _safe_str(user.get("username"))
+    biography = _safe_str(user.get("biography"))
+    return (followers, follows, media, username, biography)
+
+
 def _extract_typed_fields(
     raw: dict,
 ) -> tuple[
@@ -126,6 +152,10 @@ def _extract_typed_fields(
             )
             if data
             else None
+        )
+    elif isinstance(data, dict) and isinstance(data.get("user"), dict):
+        followers, follows, media, username, biography = _extract_from_web_user(
+            data["user"]
         )
     elif isinstance(data, dict):
         followers, follows, media, username, biography = _extract_from_data(
@@ -169,7 +199,7 @@ class InstagramRapidStatsCollectorService:
         self,
         blogger_repo: BloggerProfileRepository,
         instagram_stats_repo: InstagramStatsRepository,
-        rapid_api_client: Optional[InstagramRapidApiClient] = None,
+        stats_provider_client: Optional[InstagramStatsProviderClient] = None,
         transaction_manager: Optional[TransactionManager] = None,
         batch_size: int = 50,
         delay_seconds: float = 1.0,
@@ -179,14 +209,14 @@ class InstagramRapidStatsCollectorService:
         Args:
             blogger_repo: Repository for blogger profiles.
             instagram_stats_repo: Repository for instagram_stats.
-            rapid_api_client: Rapid API client (optional).
+            stats_provider_client: Client that returns stats with provider id.
             transaction_manager: Optional transaction manager for saves.
             batch_size: Max profiles to process per run.
             delay_seconds: Delay between API requests to respect rate limits.
         """
         self.blogger_repo = blogger_repo
         self.instagram_stats_repo = instagram_stats_repo
-        self.rapid_api_client = rapid_api_client
+        self.stats_provider_client = stats_provider_client
         self.transaction_manager = transaction_manager
         self._batch_size = batch_size
         self._delay_seconds = delay_seconds
@@ -197,7 +227,7 @@ class InstagramRapidStatsCollectorService:
         Returns:
             Tuple of (updated_count, error_count).
         """
-        if not self.rapid_api_client:
+        if not self.stats_provider_client:
             logger.warning(
                 "Rapid API client not configured, skipping stats update"
             )
@@ -232,7 +262,8 @@ class InstagramRapidStatsCollectorService:
                 continue
 
             try:
-                raw = await self.rapid_api_client.get_profile_stats_by_username(
+                client = self.stats_provider_client
+                raw, provider = await client.get_profile_stats_with_provider(
                     username
                 )
             except Exception as exc:
@@ -271,6 +302,7 @@ class InstagramRapidStatsCollectorService:
                 media_count=media,
                 instagram_username=parsed_username or username,
                 biography=biography,
+                provider=provider or "rapid_api",
             )
 
             async def _save(
