@@ -49,21 +49,47 @@ def _extract_from_counts(
     return (followers, follows, media)
 
 
+def _username_from_url(url_val: Any) -> Optional[str]:
+    """Extract username from Instagram profile URL if present."""
+    if not url_val or not isinstance(url_val, str):
+        return None
+    s = url_val.strip().rstrip("/")
+    if "/" in s:
+        return s.rsplit("/", 1)[-1].split("?")[0].strip() or None
+    return s.split("?")[0].strip() or None
+
+
 def _extract_from_data(
     data: dict,
 ) -> tuple[
     Optional[int], Optional[int], Optional[int], Optional[str], Optional[str]
 ]:
-    """Extract counts and profile fields from data dict (no nested counts)."""
+    """Extract counts and profile fields from data dict (no nested counts).
+
+    Supports instagram-v2 style (followers_count, username, biography) and
+    instagram-statistics-api style (usersCount, screenName, description).
+    """
     followers = _safe_int(
         data.get("followers_count")
         or data.get("follower_count")
         or data.get("followers")
+        or data.get("usersCount")
     )
     follows = _safe_int(data.get("follows_count") or data.get("follows"))
-    media = _safe_int(data.get("media_count") or data.get("media"))
-    username = _safe_str(data.get("username"))
-    biography = _safe_str(data.get("biography") or data.get("bio"))
+    media = _safe_int(
+        data.get("media_count")
+        or data.get("media")
+        or data.get("postsCount")
+        or data.get("totalPosts")
+        or data.get("mediaCount")
+        or data.get("posts_count")
+    )
+    username = _safe_str(
+        data.get("username") or data.get("screenName")
+    ) or _username_from_url(data.get("url"))
+    biography = _safe_str(
+        data.get("biography") or data.get("bio") or data.get("description")
+    )
     return (followers, follows, media, username, biography)
 
 
@@ -85,9 +111,21 @@ def _extract_typed_fields(
 
     if isinstance(counts, dict):
         followers, follows, media = _extract_from_counts(counts)
-        username = _safe_str(data.get("username")) if data else None
+        username = (
+            _safe_str(data.get("username") or data.get("screenName"))
+            if data
+            else None
+        )
+        if not username and data:
+            username = _username_from_url(data.get("url"))
         biography = _safe_str(
-            (data.get("biography") or data.get("bio")) if data else None
+            (
+                data.get("biography")
+                or data.get("bio")
+                or data.get("description")
+            )
+            if data
+            else None
         )
     elif isinstance(data, dict):
         followers, follows, media, username, biography = _extract_from_data(

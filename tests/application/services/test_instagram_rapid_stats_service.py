@@ -157,6 +157,53 @@ def test_extract_typed_fields_data_without_counts() -> None:
     assert b == "Hello"
 
 
+def test_extract_typed_fields_instagram_statistics_api_shape() -> None:
+    """Extract from instagram-statistics-api /community response shape."""
+    raw = {
+        "data": {
+            "usersCount": 48119,
+            "screenName": "history_kzn",
+            "url": "https://instagram.com/history_kzn",
+            "description": "▪️Ценитель архитектуры, истории и города Казани",
+            "name": "Руслан Бикуев «История Казани»",
+        },
+        "meta": {"code": 200, "message": "OK"},
+    }
+    f, fo, m, u, b = _extract_typed_fields(raw)
+    assert f == 48119
+    assert u == "history_kzn"
+    assert b == "▪️Ценитель архитектуры, истории и города Казани"
+    assert fo is None
+    assert m is None
+
+
+def test_extract_typed_fields_username_from_url_when_no_screenname() -> None:
+    """Username parsed from data.url when username/screenName missing."""
+    from ugc_bot.application.services.instagram_rapid_stats_service import (
+        _username_from_url,
+    )
+
+    assert (
+        _username_from_url("https://instagram.com/history_kzn") == "history_kzn"
+    )
+    assert (
+        _username_from_url("https://instagram.com/history_kzn/")
+        == "history_kzn"
+    )
+    assert _username_from_url("") is None
+    assert _username_from_url(None) is None
+
+    raw = {
+        "data": {
+            "counts": {"followed_by": 100},
+            "url": "https://instagram.com/some_user/",
+        },
+    }
+    f, fo, m, u, b = _extract_typed_fields(raw)
+    assert u == "some_user"
+    assert f == 100
+
+
 def test_extract_typed_fields_non_numeric_counts_returns_none() -> None:
     """Non-numeric count values are coerced to None."""
     raw = {
