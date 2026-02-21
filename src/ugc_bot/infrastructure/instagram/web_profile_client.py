@@ -38,6 +38,17 @@ class InstagramWebProfileClient(InstagramStatsProviderClient):
         self._x_ig_app_id = (x_ig_app_id or "").strip() or DEFAULT_X_IG_APP_ID
         self._timeout = timeout
 
+    async def get_profile_stats_by_username(
+        self, username: str
+    ) -> Optional[dict]:
+        """Fetch profile from web_profile_info; return raw JSON or None.
+
+        Used when this client is in a multi-provider chain that calls
+        get_profile_stats_by_username on each provider.
+        """
+        raw, _ = await self.get_profile_stats_with_provider(username)
+        return raw
+
     async def get_profile_stats_with_provider(
         self, username: str
     ) -> Tuple[Optional[dict], str]:

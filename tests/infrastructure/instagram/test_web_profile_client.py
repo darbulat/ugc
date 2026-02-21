@@ -11,6 +11,31 @@ from ugc_bot.infrastructure.instagram.web_profile_client import (
 
 
 @pytest.mark.asyncio
+async def test_get_profile_stats_by_username_returns_raw_dict() -> None:
+    """Returns raw dict from web_profile_info (used in multi-provider chain)."""
+    client = InstagramWebProfileClient()
+    response_data = {
+        "data": {"user": {"username": "x", "edge_followed_by": {"count": 1}}}
+    }
+    with patch(
+        "ugc_bot.infrastructure.instagram.web_profile_client.httpx.AsyncClient"
+    ) as mock_cls:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = response_data
+        mock_resp.raise_for_status = MagicMock()
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        mock_cls.return_value = mock_http
+
+        result = await client.get_profile_stats_by_username("x")
+
+    assert result == response_data
+
+
+@pytest.mark.asyncio
 async def test_get_profile_stats_with_provider_success() -> None:
     """Returns (data, 'instagram_web') on 200 with JSON."""
     client = InstagramWebProfileClient()
