@@ -146,8 +146,8 @@ def build_instagram_stats_provider_client(config: AppConfig):
         ig.rapidapi_instagram_path or "",
         ig.rapidapi_instagram_param_style or "username",
     )
-    if c1:
-        clients_with_ids.append((c1, "rapid_api"))
+    # if c1:
+    #     clients_with_ids.append((c1, "rapid_api"))
     # Provider 2
     c2 = _build_one_rapid_client(
         ig.rapidapi_key_2,

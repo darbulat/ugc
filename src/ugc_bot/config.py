@@ -336,13 +336,13 @@ class InstagramConfig(BaseSettings):
         default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE_3"
     )
     instagram_web_profile_enabled: bool = Field(
-        default=False, alias="INSTAGRAM_WEB_PROFILE_ENABLED"
+        default=True, alias="INSTAGRAM_WEB_PROFILE_ENABLED"
     )
     instagram_web_profile_app_id: str = Field(
         default="936619743392459", alias="INSTAGRAM_WEB_PROFILE_APP_ID"
     )
     instagram_rapid_stats_enabled: bool = Field(
-        default=False, alias="INSTAGRAM_RAPID_STATS_ENABLED"
+        default=True, alias="INSTAGRAM_RAPID_STATS_ENABLED"
     )
     instagram_rapid_stats_interval_seconds: int = Field(
         default=86400, alias="INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS"
