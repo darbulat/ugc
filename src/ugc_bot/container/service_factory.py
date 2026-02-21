@@ -176,6 +176,7 @@ def build_instagram_rapid_stats_scheduler_deps(
                 transaction_manager=transaction_manager,
                 batch_size=ig_config.instagram_rapid_stats_batch_size,
                 delay_seconds=ig_config.instagram_rapid_stats_delay_seconds,
+                stats_update_interval_seconds=ig_config.instagram_rapid_stats_interval_seconds,
             )
         ),
         "interval_seconds": ig_config.instagram_rapid_stats_interval_seconds,

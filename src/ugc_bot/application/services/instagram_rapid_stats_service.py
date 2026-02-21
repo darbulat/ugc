@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from ugc_bot.application.ports import (
@@ -203,6 +203,7 @@ class InstagramRapidStatsCollectorService:
         transaction_manager: Optional[TransactionManager] = None,
         batch_size: int = 50,
         delay_seconds: float = 1.0,
+        stats_update_interval_seconds: int = 86400,
     ) -> None:
         """Initialize the service.
 
@@ -213,6 +214,8 @@ class InstagramRapidStatsCollectorService:
             transaction_manager: Optional transaction manager for saves.
             batch_size: Max profiles to process per run.
             delay_seconds: Delay between API requests to respect rate limits.
+            stats_update_interval_seconds: (Re)fetch only if no instagram_stats
+                row or fetched_at is older than this many seconds.
         """
         self.blogger_repo = blogger_repo
         self.instagram_stats_repo = instagram_stats_repo
@@ -220,6 +223,7 @@ class InstagramRapidStatsCollectorService:
         self.transaction_manager = transaction_manager
         self._batch_size = batch_size
         self._delay_seconds = delay_seconds
+        self._stats_update_interval_seconds = stats_update_interval_seconds
 
     async def run_once(self) -> tuple[int, int]:
         """Fetch stats for one batch; save to instagram_stats.
@@ -233,10 +237,14 @@ class InstagramRapidStatsCollectorService:
             )
             return (0, 0)
 
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(seconds=self._stats_update_interval_seconds)
+
         async def _list(session: object | None):
             return await self.blogger_repo.list_confirmed_with_instagram_id(
                 limit=self._batch_size,
                 offset=0,
+                stats_older_than=threshold,
                 session=session,
             )
 
@@ -249,8 +257,6 @@ class InstagramRapidStatsCollectorService:
 
         updated = 0
         errors = 0
-        now = datetime.now(timezone.utc)
-
         for profile in profiles:
             username = _username_from_profile(profile)
             if not username:

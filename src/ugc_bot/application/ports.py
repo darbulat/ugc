@@ -138,9 +138,15 @@ class BloggerProfileRepository(ABC):
         self,
         limit: int,
         offset: int = 0,
+        stats_older_than: Optional[datetime] = None,
         session: object | None = None,
     ) -> List[BloggerProfile]:
-        """List confirmed blogger profiles with non-empty instagram_user_id."""
+        """List confirmed blogger profiles with non-empty instagram_user_id.
+
+        When stats_older_than is set, return only profiles that need stats
+        update: no row in instagram_stats or instagram_stats.fetched_at
+        is older than stats_older_than.
+        """
 
 
 class AdvertiserProfileRepository(ABC):

@@ -301,24 +301,52 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         self,
         limit: int,
         offset: int = 0,
+        stats_older_than: Optional[datetime] = None,
         session: object | None = None,
     ) -> list[BloggerProfile]:
-        """List confirmed profiles with non-empty instagram_user_id."""
+        """List confirmed profiles with non-empty instagram_user_id.
+
+        When stats_older_than is set, only profiles with no instagram_stats
+        row or instagram_stats.fetched_at < stats_older_than are returned.
+        """
         db_session = _get_async_session(session)
-        stmt = (
-            select(BloggerProfileModel)
-            .where(
-                BloggerProfileModel.confirmed.is_(True),
-                BloggerProfileModel.instagram_user_id.isnot(None),
-                BloggerProfileModel.instagram_user_id != "",
-            )
-            .order_by(
-                BloggerProfileModel.instagram_stats_fetched_at.asc().nulls_first(),
-                BloggerProfileModel.user_id,
-            )
-            .limit(limit)
-            .offset(offset)
+        base_conditions = (
+            BloggerProfileModel.confirmed.is_(True),
+            BloggerProfileModel.instagram_user_id.isnot(None),
+            BloggerProfileModel.instagram_user_id != "",
         )
+        if stats_older_than is None:
+            stmt = (
+                select(BloggerProfileModel)
+                .where(*base_conditions)
+                .order_by(
+                    BloggerProfileModel.instagram_stats_fetched_at.asc().nulls_first(),
+                    BloggerProfileModel.user_id,
+                )
+                .limit(limit)
+                .offset(offset)
+            )
+        else:
+            stmt = (
+                select(BloggerProfileModel)
+                .outerjoin(
+                    InstagramStatsModel,
+                    BloggerProfileModel.user_id == InstagramStatsModel.user_id,
+                )
+                .where(
+                    *base_conditions,
+                    or_(
+                        InstagramStatsModel.fetched_at.is_(None),
+                        InstagramStatsModel.fetched_at < stats_older_than,
+                    ),
+                )
+                .order_by(
+                    InstagramStatsModel.fetched_at.asc().nulls_first(),
+                    BloggerProfileModel.user_id,
+                )
+                .limit(limit)
+                .offset(offset)
+            )
         result = await db_session.execute(stmt)
         rows = result.scalars().all()
         return [_to_blogger_profile_entity(row) for row in rows]

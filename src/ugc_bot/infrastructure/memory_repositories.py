@@ -320,9 +320,13 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
         self,
         limit: int,
         offset: int = 0,
+        stats_older_than: Optional[datetime] = None,
         session: object | None = None,
     ) -> list[BloggerProfile]:
-        """List confirmed profiles with non-empty instagram_user_id."""
+        """List confirmed profiles with non-empty instagram_user_id.
+
+        stats_older_than is ignored (no instagram_stats in memory).
+        """
         eligible = [
             p
             for p in self.profiles.values()
