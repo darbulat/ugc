@@ -139,8 +139,8 @@ def build_instagram_stats_provider_client(config: AppConfig):
     )
 
     clients_with_ids = []
-    # Provider 1
-    c1 = _build_one_rapid_client(
+    # Provider 1 (built but not added to list; uncomment below to enable)
+    _ = _build_one_rapid_client(
         ig.rapidapi_key,
         ig.rapidapi_instagram_host,
         ig.rapidapi_instagram_path or "",

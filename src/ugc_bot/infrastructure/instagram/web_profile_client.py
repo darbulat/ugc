@@ -1,9 +1,13 @@
-"""Instagram Web Profile API client (public web endpoint)."""
+"""Instagram Web Profile API client (public web endpoint).
+
+Uses curl_cffi to mimic browser TLS fingerprint (avoids 429 from Instagram
+when Python/httpx is detected). Same IP with curl works; httpx gets 429.
+"""
 
 import logging
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple, cast
 
-import httpx
+from curl_cffi.requests import AsyncSession
 
 from ugc_bot.application.ports import InstagramStatsProviderClient
 
@@ -16,9 +20,10 @@ DEFAULT_USER_AGENT = (
 )
 DEFAULT_X_IG_APP_ID = "936619743392459"
 TIMEOUT = 15.0
+# Browser to impersonate (TLS/JA3); avoids 429 vs plain httpx.
+IMPERSONATE = "chrome124"
 
-# Headers that make the request look like a browser (curl/browser often send these).
-# Instagram may 429 requests that look like scripts (e.g. Python httpx TLS fingerprint).
+# Headers that make the request look like a browser.
 BROWSER_LIKE_HEADERS = {
     "Accept": "*/*",
     "Accept-Language": "en-US,en;q=0.9",
@@ -31,13 +36,14 @@ BROWSER_LIKE_HEADERS = {
 
 
 class InstagramWebProfileClient(InstagramStatsProviderClient):
-    """Client for Instagram web_profile_info (no auth, rate-limited by IP)."""
+    """Client for Instagram web_profile_info (curl_cffi TLS impersonation)."""
 
     def __init__(
         self,
         user_agent: str = DEFAULT_USER_AGENT,
         x_ig_app_id: str = DEFAULT_X_IG_APP_ID,
         timeout: float = TIMEOUT,
+        impersonate: str = IMPERSONATE,
     ) -> None:
         """Initialize web profile client.
 
@@ -45,10 +51,12 @@ class InstagramWebProfileClient(InstagramStatsProviderClient):
             user_agent: User-Agent header (browser-like).
             x_ig_app_id: X-IG-App-ID header (Instagram web app id).
             timeout: Request timeout in seconds.
+            impersonate: curl_cffi browser to impersonate (TLS fingerprint).
         """
         self._user_agent = (user_agent or "").strip() or DEFAULT_USER_AGENT
         self._x_ig_app_id = (x_ig_app_id or "").strip() or DEFAULT_X_IG_APP_ID
         self._timeout = timeout
+        self._impersonate = (impersonate or "").strip() or IMPERSONATE
 
     async def get_profile_stats_by_username(
         self, username: str
@@ -75,24 +83,26 @@ class InstagramWebProfileClient(InstagramStatsProviderClient):
         }
         params = {"username": clean_username}
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.get(
+            async with AsyncSession(
+                timeout=self._timeout,
+                impersonate=cast(Any, self._impersonate),
+            ) as session:
+                response = await session.get(
                     WEB_PROFILE_URL,
                     headers=headers,
                     params=params,
                 )
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    logger.warning(
+                        "Instagram web profile request failed",
+                        extra={
+                            "username": clean_username,
+                            "status_code": response.status_code,
+                        },
+                    )
+                    return (None, "instagram_web")
                 data = response.json()
-        except httpx.HTTPStatusError as exc:
-            logger.warning(
-                "Instagram web profile request failed",
-                extra={
-                    "username": clean_username,
-                    "status_code": exc.response.status_code,
-                },
-            )
-            return (None, "instagram_web")
-        except (httpx.RequestError, ValueError) as exc:
+        except Exception as exc:
             logger.warning(
                 "Instagram web profile request error",
                 extra={"username": clean_username, "error": str(exc)},

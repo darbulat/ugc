@@ -10,6 +10,14 @@ from ugc_bot.infrastructure.instagram.web_profile_client import (
 )
 
 
+def _make_session_mock(get_return_value):
+    mock_http = AsyncMock()
+    mock_http.get = AsyncMock(return_value=get_return_value)
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=None)
+    return mock_http
+
+
 @pytest.mark.asyncio
 async def test_get_profile_stats_by_username_returns_raw_dict() -> None:
     """Returns raw dict from web_profile_info (used in multi-provider chain)."""
@@ -17,18 +25,13 @@ async def test_get_profile_stats_by_username_returns_raw_dict() -> None:
     response_data = {
         "data": {"user": {"username": "x", "edge_followed_by": {"count": 1}}}
     }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = response_data
     with patch(
-        "ugc_bot.infrastructure.instagram.web_profile_client.httpx.AsyncClient"
+        "ugc_bot.infrastructure.instagram.web_profile_client.AsyncSession"
     ) as mock_cls:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = response_data
-        mock_resp.raise_for_status = MagicMock()
-        mock_http = AsyncMock()
-        mock_http.get = AsyncMock(return_value=mock_resp)
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=None)
-        mock_cls.return_value = mock_http
+        mock_cls.return_value = _make_session_mock(mock_resp)
 
         result = await client.get_profile_stats_by_username("x")
 
@@ -47,17 +50,13 @@ async def test_get_profile_stats_with_provider_success() -> None:
             },
         },
     }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = response_data
     with patch(
-        "ugc_bot.infrastructure.instagram.web_profile_client.httpx.AsyncClient"
+        "ugc_bot.infrastructure.instagram.web_profile_client.AsyncSession"
     ) as mock_cls:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = response_data
-        mock_resp.raise_for_status = MagicMock()
-        mock_http = AsyncMock()
-        mock_http.get = AsyncMock(return_value=mock_resp)
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=None)
+        mock_http = _make_session_mock(mock_resp)
         mock_cls.return_value = mock_http
 
         data, provider = await client.get_profile_stats_with_provider(
@@ -84,24 +83,14 @@ async def test_get_profile_stats_with_provider_empty_username() -> None:
 
 @pytest.mark.asyncio
 async def test_get_profile_stats_with_provider_http_error() -> None:
-    """Returns (None, 'instagram_web') on HTTP error."""
-    import httpx
-
+    """Returns (None, 'instagram_web') on non-2xx status (e.g. 404)."""
     client = InstagramWebProfileClient()
     mock_resp = MagicMock()
     mock_resp.status_code = 404
     with patch(
-        "ugc_bot.infrastructure.instagram.web_profile_client.httpx.AsyncClient"
+        "ugc_bot.infrastructure.instagram.web_profile_client.AsyncSession"
     ) as mock_cls:
-        mock_http = AsyncMock()
-        mock_http.get = AsyncMock(
-            side_effect=httpx.HTTPStatusError(
-                "404", request=MagicMock(), response=mock_resp
-            )
-        )
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=None)
-        mock_cls.return_value = mock_http
+        mock_cls.return_value = _make_session_mock(mock_resp)
 
         data, provider = await client.get_profile_stats_with_provider("x")
 
@@ -111,15 +100,13 @@ async def test_get_profile_stats_with_provider_http_error() -> None:
 
 @pytest.mark.asyncio
 async def test_get_profile_stats_with_provider_request_error() -> None:
-    """Returns (None, 'instagram_web') on RequestError."""
-    import httpx
-
+    """Returns (None, 'instagram_web') on request/network error."""
     client = InstagramWebProfileClient()
     with patch(
-        "ugc_bot.infrastructure.instagram.web_profile_client.httpx.AsyncClient"
+        "ugc_bot.infrastructure.instagram.web_profile_client.AsyncSession"
     ) as mock_cls:
         mock_http = AsyncMock()
-        mock_http.get = AsyncMock(side_effect=httpx.RequestError("network"))
+        mock_http.get = AsyncMock(side_effect=OSError("network"))
         mock_http.__aenter__ = AsyncMock(return_value=mock_http)
         mock_http.__aexit__ = AsyncMock(return_value=None)
         mock_cls.return_value = mock_http
@@ -134,18 +121,13 @@ async def test_get_profile_stats_with_provider_request_error() -> None:
 async def test_get_profile_stats_with_provider_non_dict_response() -> None:
     """Returns (None, 'instagram_web') when response is not a dict."""
     client = InstagramWebProfileClient()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = []
     with patch(
-        "ugc_bot.infrastructure.instagram.web_profile_client.httpx.AsyncClient"
+        "ugc_bot.infrastructure.instagram.web_profile_client.AsyncSession"
     ) as mock_cls:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = []
-        mock_resp.raise_for_status = MagicMock()
-        mock_http = AsyncMock()
-        mock_http.get = AsyncMock(return_value=mock_resp)
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=None)
-        mock_cls.return_value = mock_http
+        mock_cls.return_value = _make_session_mock(mock_resp)
 
         data, provider = await client.get_profile_stats_with_provider("x")
 
