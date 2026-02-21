@@ -291,6 +291,37 @@ def test_extract_typed_fields_web_profile_info() -> None:
     assert b == "My bio"
 
 
+def test_extract_typed_fields_web_profile_info_real_shape() -> None:
+    """Parse real web_profile_info (edge_* with count, page_info, edges)."""
+    raw = {
+        "data": {
+            "user": {
+                "username": "_adelya_osipova_",
+                "biography": (
+                    "Менеджер внешней рекламы\nВнедряю спорт в свою жизнь"
+                ),
+                "edge_followed_by": {"count": 1626},
+                "edge_follow": {"count": 556},
+                "edge_owner_to_timeline_media": {
+                    "count": 93,
+                    "page_info": {
+                        "has_next_page": True,
+                        "end_cursor": "QVFDQnBM...",
+                    },
+                    "edges": [],
+                },
+            },
+        },
+        "status": "ok",
+    }
+    f, fo, m, u, b = _extract_typed_fields(raw)
+    assert f == 1626
+    assert fo == 556
+    assert m == 93
+    assert u == "_adelya_osipova_"
+    assert "Менеджер внешней рекламы" in (b or "")
+
+
 @pytest.mark.asyncio
 async def test_run_once_no_client_returns_zero() -> None:
     """run_once returns (0, 0) when stats provider client is None."""
