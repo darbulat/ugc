@@ -183,4 +183,7 @@ def build_instagram_stats_provider_client(config: AppConfig):
         return SingleProviderWrapper(
             clients_with_ids[0][0], clients_with_ids[0][1]
         )
-    return MultiProviderInstagramStatsClient(clients_with_ids)
+    return MultiProviderInstagramStatsClient(
+        clients_with_ids,
+        ig.instagram_stats_provider_fallback_delay_seconds,
+    )

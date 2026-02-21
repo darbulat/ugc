@@ -1,5 +1,6 @@
 """Rapid API client for Instagram profile/stats by username."""
 
+import asyncio
 import logging
 from typing import List, Optional, Tuple
 
@@ -139,21 +140,23 @@ class SingleProviderWrapper(InstagramStatsProviderClient):
 
 
 class MultiProviderInstagramStatsClient(InstagramStatsProviderClient):
-    """Tries multiple providers in order; on 429 uses the next provider."""
+    """Tries multiple providers in order; on 429 waits then uses next."""
 
     def __init__(
         self,
         clients_with_ids: List[Tuple[InstagramRapidApiClient, str]],
+        fallback_delay_seconds: float = 2.0,
     ) -> None:
-        """Initialize with list of (client, provider_id)."""
+        """Initialize with list of (client, provider_id) and delay after 429."""
         self._clients = clients_with_ids
+        self._fallback_delay = max(0.0, float(fallback_delay_seconds))
 
     async def get_profile_stats_with_provider(
         self, username: str
     ) -> Tuple[Optional[dict], str]:
-        """Try each provider; on RapidApiRateLimitError try next."""
+        """Try each provider; on RapidApiRateLimitError wait then try next."""
         last_provider = ""
-        for client, provider_id in self._clients:
+        for i, (client, provider_id) in enumerate(self._clients):
             last_provider = provider_id
             try:
                 data = await client.get_profile_stats_by_username(username)
@@ -163,5 +166,7 @@ class MultiProviderInstagramStatsClient(InstagramStatsProviderClient):
                     "Rapid API rate limit, trying next provider",
                     extra={"provider": provider_id, "username": username},
                 )
+                if self._fallback_delay > 0 and i < len(self._clients) - 1:
+                    await asyncio.sleep(self._fallback_delay)
                 continue
         return (None, last_provider)

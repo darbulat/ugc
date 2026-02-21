@@ -353,6 +353,10 @@ class InstagramConfig(BaseSettings):
     instagram_rapid_stats_delay_seconds: float = Field(
         default=1.0, alias="INSTAGRAM_RAPID_STATS_DELAY_SECONDS"
     )
+    instagram_stats_provider_fallback_delay_seconds: float = Field(
+        default=2.0,
+        alias="INSTAGRAM_STATS_PROVIDER_FALLBACK_DELAY_SECONDS",
+    )
 
 
 class DocsConfig(BaseSettings):

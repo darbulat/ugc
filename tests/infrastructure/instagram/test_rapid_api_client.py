@@ -240,7 +240,41 @@ async def test_multi_provider_fallback_on_429() -> None:
             "second",
         ),
     ]
-    multi = MultiProviderInstagramStatsClient(clients)
+    multi = MultiProviderInstagramStatsClient(clients, fallback_delay_seconds=0)
     data, provider = await multi.get_profile_stats_with_provider("jane")
+    assert data == ok_data
+    assert provider == "second"
+
+
+@pytest.mark.asyncio
+async def test_multi_provider_sleeps_after_429_before_next() -> None:
+    """After 429, client waits fallback_delay_seconds before next provider."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryInstagramRapidApiClient,
+    )
+
+    class RateLimitClient(InMemoryInstagramRapidApiClient):
+        async def get_profile_stats_by_username(self, username: str):
+            raise RapidApiRateLimitError("429")
+
+    ok_data = {"data": {"username": "jane"}}
+    clients: list = [
+        (RateLimitClient(), "first"),
+        (
+            InMemoryInstagramRapidApiClient(
+                profile_by_username={"jane": ok_data},
+            ),
+            "second",
+        ),
+    ]
+    with patch(
+        "ugc_bot.infrastructure.instagram.rapid_api_client.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as mock_sleep:
+        multi = MultiProviderInstagramStatsClient(
+            clients, fallback_delay_seconds=3.0
+        )
+        data, provider = await multi.get_profile_stats_with_provider("jane")
+    mock_sleep.assert_awaited_once_with(3.0)
     assert data == ok_data
     assert provider == "second"
