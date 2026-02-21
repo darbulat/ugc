@@ -17,6 +17,18 @@ DEFAULT_USER_AGENT = (
 DEFAULT_X_IG_APP_ID = "936619743392459"
 TIMEOUT = 15.0
 
+# Headers that make the request look like a browser (curl/browser often send these).
+# Instagram may 429 requests that look like scripts (e.g. Python httpx TLS fingerprint).
+BROWSER_LIKE_HEADERS = {
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.instagram.com/",
+    "Origin": "https://www.instagram.com",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
+
 
 class InstagramWebProfileClient(InstagramStatsProviderClient):
     """Client for Instagram web_profile_info (no auth, rate-limited by IP)."""
@@ -57,6 +69,7 @@ class InstagramWebProfileClient(InstagramStatsProviderClient):
             return (None, "instagram_web")
         clean_username = username.strip()
         headers = {
+            **BROWSER_LIKE_HEADERS,
             "User-Agent": self._user_agent,
             "X-IG-App-ID": self._x_ig_app_id,
         }
