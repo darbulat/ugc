@@ -8,6 +8,44 @@ success, (None, error_message) on failure.
 from datetime import date
 from urllib.parse import urlparse
 
+# Bot commands that must not be saved as user input (e.g. in profile/order).
+# /support is allowed (user may mention support in free text). Stored lowercase.
+FORBIDDEN_BOT_COMMANDS = frozenset(
+    {
+        "/start",
+        "/profile",
+        "/creator",
+        "/advertiser",
+        "/create_order",
+        "/my_orders",
+        "/referral",
+        "/referral_list",
+        "/verify_instagram",
+        "/pay_order",
+        "/role",
+        "/write",
+        "/cancel",
+    }
+)
+
+
+def validate_not_bot_command(value: str) -> str | None:
+    """Reject if value is exactly a bot command (except /support).
+
+    Prevents saving /profile, /creator, /advertiser etc. in profile/order.
+    Returns error message if value is a forbidden command, None otherwise.
+    """
+    v = (value or "").strip()
+    if not v:
+        return None
+    if v.lower() in FORBIDDEN_BOT_COMMANDS:
+        return (
+            "Не используйте команды бота в качестве ответа. "
+            "Введите текст заново."
+        )
+    return None
+
+
 # Order creation
 OFFER_TEXT_MIN = 20
 OFFER_TEXT_MAX = 2000
@@ -45,6 +83,9 @@ def _digits_only(s: str) -> str:
 def validate_offer_text(value: str) -> str | None:
     """Validate order offer text length."""
     v = (value or "").strip()
+    err = validate_not_bot_command(v)
+    if err is not None:
+        return err
     if len(v) < OFFER_TEXT_MIN:
         return f"Опишите задачу подробнее (минимум {OFFER_TEXT_MIN} символов)."
     if len(v) > OFFER_TEXT_MAX:
@@ -55,6 +96,10 @@ def validate_offer_text(value: str) -> str | None:
 def validate_barter_description(value: str, required: bool) -> str | None:
     """Validate barter description."""
     v = (value or "").strip()
+    if v:
+        err = validate_not_bot_command(v)
+        if err is not None:
+            return err
     if required and not v:
         return "Опишите бартерное предложение."
     if v and len(v) < BARTER_DESCRIPTION_MIN:
@@ -124,6 +169,9 @@ def validate_product_link(value: str) -> str | None:
 def validate_geography(value: str) -> str | None:
     """Validate geography field."""
     v = (value or "").strip()
+    err = validate_not_bot_command(v)
+    if err is not None:
+        return err
     if not v:
         return "Укажите географию. Примеры: Казань, Москва / РФ"
     if len(v) > GEOGRAPHY_MAX:
@@ -138,6 +186,9 @@ def validate_name(
 ) -> str | None:
     """Validate name field."""
     v = (value or "").strip()
+    err = validate_not_bot_command(v)
+    if err is not None:
+        return err
     if len(v) < min_len:
         return f"Введите минимум {min_len} символа."
     if len(v) > max_len:
@@ -171,6 +222,9 @@ def validate_phone(value: str) -> str | None:
 def validate_brand(value: str) -> str | None:
     """Validate brand name."""
     v = (value or "").strip()
+    err = validate_not_bot_command(v)
+    if err is not None:
+        return err
     if len(v) < BRAND_MIN:
         return f"Введите минимум {BRAND_MIN} символа."
     if len(v) > BRAND_MAX:
@@ -228,6 +282,10 @@ def validate_birth_date(value: str) -> tuple[date | None, str | None]:
 def validate_city(value: str | None, required: bool = False) -> str | None:
     """Validate city (optional or required)."""
     v = (value or "").strip() or None
+    if v:
+        err = validate_not_bot_command(v)
+        if err is not None:
+            return err
     if required and not v:
         return "Укажите город. Введите снова:"
     if v and len(v) > CITY_MAX:
@@ -238,8 +296,12 @@ def validate_city(value: str | None, required: bool = False) -> str | None:
 def validate_company_activity(value: str | None) -> str | None:
     """Validate company activity (optional)."""
     v = (value or "").strip() or None
-    if v and len(v) > COMPANY_ACTIVITY_MAX:
-        return f"Максимум {COMPANY_ACTIVITY_MAX} символов."
+    if v:
+        err = validate_not_bot_command(v)
+        if err is not None:
+            return err
+        if len(v) > COMPANY_ACTIVITY_MAX:
+            return f"Максимум {COMPANY_ACTIVITY_MAX} символов."
     return None
 
 
@@ -254,6 +316,9 @@ def validate_site_link(value: str | None) -> str | None:
 def validate_nickname(value: str) -> str | None:
     """Validate blogger nickname."""
     v = (value or "").strip()
+    err = validate_not_bot_command(v)
+    if err is not None:
+        return err
     if len(v) < NICKNAME_MIN:
         return f"Введите минимум {NICKNAME_MIN} символа."
     if len(v) > NICKNAME_MAX:
@@ -273,6 +338,9 @@ def validate_topics(topics: list[str]) -> str | None:
 def validate_audience_geo(value: str) -> str | None:
     """Validate audience geography."""
     v = (value or "").strip()
+    err = validate_not_bot_command(v)
+    if err is not None:
+        return err
     if not v:
         return "Укажите хотя бы один город. Введите снова:"
     if len(v) > AUDIENCE_GEO_MAX:

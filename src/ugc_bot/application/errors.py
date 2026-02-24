@@ -31,3 +31,17 @@ class ComplaintAlreadyExistsError(ValueError):
 
 class ComplaintNotFoundError(ValueError):
     """Raised when a complaint cannot be found."""
+
+
+class ScrapeCreatorsAPIError(RuntimeError):
+    """ScrapeCreators API error (e.g. 402 out of credits)."""
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int,
+        response_text: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_text = response_text

@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 
 import httpx
 
+from ugc_bot.application.errors import ScrapeCreatorsAPIError
 from ugc_bot.application.ports import (
     InstagramRapidApiClient,
     InstagramStatsProviderClient,
@@ -77,15 +78,21 @@ class ScrapeCreatorsProfileClient(
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPStatusError as exc:
-            logger.warning(
+            status_code = exc.response.status_code
+            response_snippet = (exc.response.text or "")[:200]
+            logger.error(
                 "ScrapeCreators request failed",
                 extra={
                     "handle": clean_handle,
-                    "status_code": exc.response.status_code,
-                    "response": (exc.response.text or "")[:200],
+                    "status_code": status_code,
+                    "response": response_snippet,
                 },
             )
-            return None
+            raise ScrapeCreatorsAPIError(
+                f"ScrapeCreators API error: {status_code}",
+                status_code=status_code,
+                response_text=exc.response.text or "",
+            ) from exc
         except (httpx.RequestError, ValueError) as exc:
             logger.warning(
                 "ScrapeCreators request error",

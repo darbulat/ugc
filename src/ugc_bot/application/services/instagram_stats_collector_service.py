@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from ugc_bot.application.errors import ScrapeCreatorsAPIError
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     InstagramStatsProviderClient,
@@ -299,6 +300,8 @@ class InstagramStatsCollectorService:
                 raw, provider = await client.get_profile_stats_with_provider(
                     username
                 )
+            except ScrapeCreatorsAPIError:
+                raise
             except Exception as exc:
                 logger.warning(
                     "Failed to fetch Instagram stats",

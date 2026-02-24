@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from ugc_bot.application.errors import ScrapeCreatorsAPIError
 from ugc_bot.application.services.instagram_stats_collector_service import (
     InstagramStatsCollectorService,
     _extract_instagram_id,
@@ -748,3 +749,49 @@ async def test_run_once_client_raises_increments_errors() -> None:
     updated, errors = await service.run_once()
     assert updated == 0
     assert errors == 1
+
+
+@pytest.mark.asyncio
+async def test_run_once_scrapecreators_api_error_propagates() -> None:
+    """ScrapeCreatorsAPIError from client is re-raised for alerting."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=0.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_1",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    class ScrapeCreatorsFailingClient(InMemoryInstagramRapidApiClient):
+        async def get_profile_stats_by_username(self, username: str):
+            raise ScrapeCreatorsAPIError(
+                "ScrapeCreators API error: 402",
+                status_code=402,
+                response_text='{"message":"out of credits"}',
+            )
+
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=SingleProviderWrapper(
+            ScrapeCreatorsFailingClient(), "scrapecreators"
+        ),
+        delay_seconds=0.0,
+    )
+    with pytest.raises(ScrapeCreatorsAPIError) as exc_info:
+        await service.run_once()
+    assert exc_info.value.status_code == 402

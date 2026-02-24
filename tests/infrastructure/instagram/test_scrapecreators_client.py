@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from ugc_bot.application.errors import ScrapeCreatorsAPIError
 from ugc_bot.infrastructure.instagram.scrapecreators_client import (
     ScrapeCreatorsProfileClient,
 )
@@ -12,11 +13,8 @@ from ugc_bot.infrastructure.instagram.scrapecreators_client import (
 
 @pytest.mark.asyncio
 async def test_get_profile_not_configured() -> None:
-    """Returns None when API key is empty."""
+    """Returns None when API key is empty (client not configured)."""
     client = ScrapeCreatorsProfileClient(api_key="")
-    assert await client.get_profile("handle") is None
-
-    client = ScrapeCreatorsProfileClient(api_key="key", base_url="")
     assert await client.get_profile("handle") is None
 
 
@@ -93,8 +91,8 @@ async def test_get_profile_with_trim_sends_param() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_profile_http_error_returns_none() -> None:
-    """Returns None on HTTP 4xx/5xx."""
+async def test_get_profile_http_error_raises_scrapecreators_api_error() -> None:
+    """Raises ScrapeCreatorsAPIError on HTTP 4xx/5xx so scheduler can alert."""
     client = ScrapeCreatorsProfileClient(api_key="key")
 
     with patch(
@@ -115,26 +113,32 @@ async def test_get_profile_http_error_returns_none() -> None:
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_cls.return_value = mock_client
 
-        result = await client.get_profile("jane")
+        with pytest.raises(ScrapeCreatorsAPIError) as exc_info:
+            await client.get_profile("jane")
 
-    assert result is None
+    assert exc_info.value.status_code == 404
+    assert "404" in str(exc_info.value)
+    assert exc_info.value.response_text == "Not Found"
 
 
 @pytest.mark.asyncio
-async def test_get_profile_429_returns_none() -> None:
-    """Returns None on 429 (no exception raised)."""
+async def test_get_profile_402_out_of_credits_raises() -> None:
+    """Raises ScrapeCreatorsAPIError on 402 (out of credits) for alerting."""
     client = ScrapeCreatorsProfileClient(api_key="key")
+    response_body = (
+        '{"success":false,"message":"Looks like you\'re out of credits :("}'
+    )
 
     with patch(
         "ugc_bot.infrastructure.instagram.scrapecreators_client.httpx.AsyncClient"
     ) as mock_client_cls:
         mock_resp = MagicMock()
-        mock_resp.status_code = 429
-        mock_resp.text = "Too Many"
+        mock_resp.status_code = 402
+        mock_resp.text = response_body
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(
             side_effect=httpx.HTTPStatusError(
-                "429",
+                "402",
                 request=MagicMock(),
                 response=mock_resp,
             )
@@ -143,9 +147,11 @@ async def test_get_profile_429_returns_none() -> None:
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_cls.return_value = mock_client
 
-        result = await client.get_profile("jane")
+        with pytest.raises(ScrapeCreatorsAPIError) as exc_info:
+            await client.get_profile("dankebeerr")
 
-    assert result is None
+    assert exc_info.value.status_code == 402
+    assert exc_info.value.response_text == response_body
 
 
 @pytest.mark.asyncio
@@ -214,8 +220,19 @@ async def test_get_profile_missing_success_or_data_returns_none() -> None:
 
     assert result is None
 
-    mock_response.json.return_value = {"success": True}
-    result2 = await client.get_profile("jane")
+    with patch(
+        "ugc_bot.infrastructure.instagram.scrapecreators_client.httpx.AsyncClient"
+    ) as mock_client_cls:
+        mock_response2 = MagicMock()
+        mock_response2.status_code = 200
+        mock_response2.json.return_value = {"success": True}
+        mock_response2.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response2)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+        result2 = await client.get_profile("jane")
     assert result2 is None
 
 

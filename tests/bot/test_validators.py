@@ -3,6 +3,7 @@
 from datetime import date
 
 from ugc_bot.bot.validators import (
+    FORBIDDEN_BOT_COMMANDS,
     normalize_instagram_url,
     normalize_url,
     validate_audience_geo,
@@ -14,6 +15,7 @@ from ugc_bot.bot.validators import (
     validate_geography,
     validate_name,
     validate_nickname,
+    validate_not_bot_command,
     validate_offer_text,
     validate_phone,
     validate_price,
@@ -24,8 +26,45 @@ from ugc_bot.bot.validators import (
 )
 
 
+class TestValidateNotBotCommand:
+    """Tests for validate_not_bot_command (forbidden commands not saved)."""
+
+    def test_empty_or_whitespace_ok(self) -> None:
+        assert validate_not_bot_command("") is None
+        assert validate_not_bot_command("   ") is None
+
+    def test_forbidden_commands_rejected(self) -> None:
+        for cmd in FORBIDDEN_BOT_COMMANDS:
+            assert validate_not_bot_command(cmd) is not None, cmd
+            assert validate_not_bot_command(cmd.upper()) is not None, cmd
+            assert "команд" in (validate_not_bot_command(cmd) or "").lower()
+
+    def test_profile_creator_advertiser_rejected(self) -> None:
+        assert validate_not_bot_command("/profile") is not None
+        assert validate_not_bot_command("/creator") is not None
+        assert validate_not_bot_command("/advertiser") is not None
+        assert validate_not_bot_command("/Profile") is not None
+
+    def test_support_allowed(self) -> None:
+        assert validate_not_bot_command("/support") is None
+        assert validate_not_bot_command("/Support") is None
+
+    def test_ordinary_text_ok(self) -> None:
+        assert validate_not_bot_command("Казань") is None
+        assert validate_not_bot_command("Москва, РФ") is None
+        assert (
+            validate_not_bot_command("Напишите в /support если нужна помощь")
+            is None
+        )
+
+
 class TestValidateOfferText:
     """Tests for validate_offer_text."""
+
+    def test_bot_command_rejected(self) -> None:
+        assert validate_offer_text("/profile") is not None
+        assert validate_offer_text("/creator") is not None
+        assert validate_offer_text("/advertiser") is not None
 
     def test_empty_returns_error(self) -> None:
         assert validate_offer_text("") is not None
@@ -58,6 +97,14 @@ class TestValidateBarterDescription:
 
     def test_too_short_when_provided_returns_error(self) -> None:
         assert validate_barter_description("Short", required=False) is not None
+
+    def test_bot_command_rejected(self) -> None:
+        assert (
+            validate_barter_description("/profile", required=False) is not None
+        )
+        assert (
+            validate_barter_description("/creator", required=True) is not None
+        )
 
     def test_min_length_ok(self) -> None:
         assert validate_barter_description("A" * 10, required=True) is None
@@ -151,6 +198,10 @@ class TestValidateGeography:
     def test_empty_returns_error(self) -> None:
         assert validate_geography("") is not None
 
+    def test_bot_command_rejected(self) -> None:
+        assert validate_geography("/profile") is not None
+        assert validate_geography("/advertiser") is not None
+
     def test_valid_ok(self) -> None:
         assert validate_geography("Казань, Москва") is None
         assert validate_geography("РФ") is None
@@ -167,6 +218,10 @@ class TestValidateName:
 
     def test_single_char_returns_error(self) -> None:
         assert validate_name("A") is not None
+
+    def test_bot_command_rejected(self) -> None:
+        assert validate_name("/profile") is not None
+        assert validate_name("/creator") is not None
 
     def test_min_length_ok(self) -> None:
         assert validate_name("Ab") is None
@@ -211,6 +266,9 @@ class TestValidateBrand:
     def test_single_char_returns_error(self) -> None:
         assert validate_brand("A") is not None
 
+    def test_bot_command_rejected(self) -> None:
+        assert validate_brand("/advertiser") is not None
+
     def test_min_length_ok(self) -> None:
         assert validate_brand("AB") is None
 
@@ -228,6 +286,10 @@ class TestValidateCity:
         assert validate_city("", required=False) is None
         assert validate_city(None, required=False) is None
 
+    def test_bot_command_rejected(self) -> None:
+        assert validate_city("/profile", required=False) is not None
+        assert validate_city("/creator", required=True) is not None
+
     def test_valid_ok(self) -> None:
         assert validate_city("Казань", required=True) is None
 
@@ -241,6 +303,9 @@ class TestValidateCompanyActivity:
     def test_empty_ok(self) -> None:
         assert validate_company_activity(None) is None
         assert validate_company_activity("") is None
+
+    def test_bot_command_rejected(self) -> None:
+        assert validate_company_activity("/advertiser") is not None
 
     def test_over_max_returns_error(self) -> None:
         assert validate_company_activity("A" * 501) is not None
@@ -266,6 +331,10 @@ class TestValidateNickname:
 
     def test_empty_returns_error(self) -> None:
         assert validate_nickname("") is not None
+
+    def test_bot_command_rejected(self) -> None:
+        assert validate_nickname("/creator") is not None
+        assert validate_nickname("/profile") is not None
 
     def test_single_char_returns_error(self) -> None:
         assert validate_nickname("A") is not None
@@ -296,6 +365,9 @@ class TestValidateAudienceGeo:
 
     def test_empty_returns_error(self) -> None:
         assert validate_audience_geo("") is not None
+
+    def test_bot_command_rejected(self) -> None:
+        assert validate_audience_geo("/profile") is not None
 
     def test_valid_ok(self) -> None:
         assert validate_audience_geo("Москва") is None
