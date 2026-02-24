@@ -1,6 +1,6 @@
 """Tests for offer dispatch service."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -9,15 +9,18 @@ from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.ports import BloggerProfileRepository
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
+    _age_from_birth_date,
 )
 from ugc_bot.domain.entities import (
     BloggerProfile,
+    InstagramStats,
     Interaction,
     Order,
     User,
 )
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     InteractionStatus,
     MessengerType,
     OrderStatus,
@@ -27,6 +30,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
+    InMemoryInstagramStatsRepository,
     InMemoryInteractionRepository,
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
@@ -1609,3 +1613,762 @@ async def test_dispatch_skips_when_profile_fetch_returns_none() -> None:
     )
     result = await service.dispatch(order.order_id)
     assert result == []
+
+
+def test_age_from_birth_date() -> None:
+    """_age_from_birth_date returns full years or None."""
+    assert _age_from_birth_date(None, date(2025, 6, 15)) is None
+    assert _age_from_birth_date(date(2000, 6, 15), date(2025, 6, 15)) == 25
+    assert _age_from_birth_date(date(2000, 6, 16), date(2025, 6, 15)) == 24
+    assert _age_from_birth_date(date(2000, 1, 1), date(2025, 12, 31)) == 25
+
+
+@pytest.mark.asyncio
+async def test_dispatch_age_filter_includes_in_range() -> None:
+    """Order min_age/max_age: blogger with birth_date in range included."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000800"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000801"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_age=20,
+        max_age=30,
+    )
+    await order_repo.save(order)
+    blogger_ok = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000802"),
+        external_id="802",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_ok",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_ok)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_ok.user_id,
+            instagram_url="https://instagram.com/ok",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            birth_date=date(2000, 6, 15),
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger_ok.user_id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_age_filter_excludes_out_of_range() -> None:
+    """Order max_age: blogger older than max excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000810"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000811"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        max_age=25,
+    )
+    await order_repo.save(order)
+    blogger_old = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000812"),
+        external_id="812",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_old",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_old)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_old.user_id,
+            instagram_url="https://instagram.com/old",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            birth_date=date(1990, 1, 1),
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_gender_filter_includes_match() -> None:
+    """Order required_blogger_gender: matching blogger included."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000820"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000821"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        required_blogger_gender=BloggerGender.MALE,
+    )
+    await order_repo.save(order)
+    blogger_male = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000822"),
+        external_id="822",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_male",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_male)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_male.user_id,
+            instagram_url="https://instagram.com/male",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            blogger_gender=BloggerGender.MALE,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger_male.user_id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_gender_filter_excludes_mismatch() -> None:
+    """Order required_blogger_gender: non-matching blogger excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000830"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000831"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        required_blogger_gender=BloggerGender.MALE,
+    )
+    await order_repo.save(order)
+    blogger_female = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000832"),
+        external_id="832",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_female",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_female)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_female.user_id,
+            instagram_url="https://instagram.com/female",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            blogger_gender=BloggerGender.FEMALE,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_min_publications_includes_above() -> None:
+    """Order min_publications: blogger with enough media_count included."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000840"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000841"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_publications=10,
+        max_publications=100,
+    )
+    await order_repo.save(order)
+    blogger_ok = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000842"),
+        external_id="842",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_ok",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_ok)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_ok.user_id,
+            instagram_url="https://instagram.com/ok",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_media_count=50,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger_ok.user_id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_age_filter_excludes_no_birth_date() -> None:
+    """Order min_age: blogger with no birth_date excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000813"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000814"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_age=20,
+    )
+    await order_repo.save(order)
+    blogger_no_birth = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000815"),
+        external_id="815",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_nobirth",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_no_birth)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_no_birth.user_id,
+            instagram_url="https://instagram.com/nobirth",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            birth_date=None,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_age_filter_excludes_below_min() -> None:
+    """Order min_age: blogger younger than min excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000816"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000817"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_age=30,
+    )
+    await order_repo.save(order)
+    blogger_young = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000818"),
+        external_id="818",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_young",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_young)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_young.user_id,
+            instagram_url="https://instagram.com/young",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            birth_date=date(2005, 1, 1),
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_min_publications_excludes_below() -> None:
+    """Order min_publications: blogger with fewer publications excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000843"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000844"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_publications=50,
+    )
+    await order_repo.save(order)
+    blogger_low = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000845"),
+        external_id="845",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_low",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_low)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_low.user_id,
+            instagram_url="https://instagram.com/low",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_media_count=10,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_max_publications_excludes_above() -> None:
+    """Order max_publications: blogger with more publications excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000846"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000847"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        max_publications=20,
+    )
+    await order_repo.save(order)
+    blogger_high = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000848"),
+        external_id="848",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_high",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_high)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_high.user_id,
+            instagram_url="https://instagram.com/high",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_media_count=100,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_min_publications_excludes_none_media_count() -> None:
+    """Order min_publications: blogger with no media_count excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000853"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000854"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_publications=5,
+    )
+    await order_repo.save(order)
+    blogger_no_media = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000855"),
+        external_id="855",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_nomedia",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_no_media)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_no_media.user_id,
+            instagram_url="https://instagram.com/nomedia",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_media_count=None,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_gender_filter_excludes_no_gender() -> None:
+    """Order required_blogger_gender: blogger with no gender excluded."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000833"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000834"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        required_blogger_gender=BloggerGender.MALE,
+    )
+    await order_repo.save(order)
+    blogger_no_gender = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000835"),
+        external_id="835",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_nogender",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_no_gender)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_no_gender.user_id,
+            instagram_url="https://instagram.com/nogender",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            blogger_gender=None,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_uses_instagram_stats_when_repo_provided() -> None:
+    """With instagram_stats_repo, followers/media come from instagram_stats."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    stats_repo = InMemoryInstagramStatsRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000850"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000851"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        min_followers=500,
+        max_followers=5000,
+    )
+    await order_repo.save(order)
+    blogger_ok = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000852"),
+        external_id="852",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_ok",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_ok)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_ok.user_id,
+            instagram_url="https://instagram.com/ok",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+            instagram_followers_count=100,
+            instagram_media_count=5,
+        )
+    )
+    await stats_repo.save(
+        InstagramStats(
+            user_id=blogger_ok.user_id,
+            raw_response={},
+            fetched_at=datetime.now(timezone.utc),
+            followers_count=2000,
+            media_count=10,
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        instagram_stats_repo=stats_repo,
+    )
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger_ok.user_id

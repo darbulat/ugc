@@ -1748,6 +1748,13 @@ class AdminDashboardService:
             "status_age_hours": self._status_age_hours(now, order),
             "has_problem": open_count > 0,
             "responses_list": responses_list,
+            "min_age": getattr(order, "min_age", None),
+            "max_age": getattr(order, "max_age", None),
+            "min_publications": getattr(order, "min_publications", None),
+            "max_publications": getattr(order, "max_publications", None),
+            "required_blogger_gender": getattr(
+                order, "required_blogger_gender", None
+            ),
         }
 
     async def _count_users_with_profile(

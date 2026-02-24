@@ -171,6 +171,12 @@ class Order:
     product_photo_file_id: Optional[str] = None
     min_followers: Optional[int] = None
     max_followers: Optional[int] = None
+    # Admin-only filters for matching bloggers (optional)
+    min_age: Optional[int] = None
+    max_age: Optional[int] = None
+    min_publications: Optional[int] = None
+    max_publications: Optional[int] = None
+    required_blogger_gender: Optional[BloggerGender] = None
 
 
 @dataclass(frozen=True)

@@ -304,6 +304,17 @@ class OrderModel(Base):
     )
     min_followers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     max_followers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    min_age: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_age: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    min_publications: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    max_publications: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    required_blogger_gender: Mapped[Optional[BloggerGender]] = mapped_column(
+        _enum_column(BloggerGender), nullable=True
+    )
 
 
 class ContactPricingModel(Base):

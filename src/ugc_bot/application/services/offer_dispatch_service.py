@@ -1,6 +1,7 @@
 """Service for dispatching offers to bloggers."""
 
 from dataclasses import dataclass
+from datetime import date
 from uuid import UUID
 
 from ugc_bot.application.errors import OrderCreationError
@@ -10,6 +11,7 @@ from ugc_bot.application.geography import (
 )
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
+    InstagramStatsRepository,
     InteractionRepository,
     OfferDispatchRepository,
     OrderRepository,
@@ -21,6 +23,16 @@ from ugc_bot.domain.enums import OrderStatus, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
+def _age_from_birth_date(birth_date: date | None, today: date) -> int | None:
+    """Return full years age from birth_date, or None if birth_date is None."""
+    if birth_date is None:
+        return None
+    age = today.year - birth_date.year
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        age -= 1
+    return age
+
+
 @dataclass(slots=True)
 class OfferDispatchService:
     """Select eligible bloggers for offers."""
@@ -30,6 +42,7 @@ class OfferDispatchService:
     order_repo: OrderRepository
     offer_dispatch_repo: OfferDispatchRepository
     interaction_repo: InteractionRepository
+    instagram_stats_repo: InstagramStatsRepository | None = None
     transaction_manager: TransactionManager | None = None
 
     async def get_order_and_advertiser(
@@ -59,6 +72,8 @@ class OfferDispatchService:
     async def _dispatch(  # noqa: PLR0912
         self, order_id: UUID, session: object | None
     ) -> list[User]:
+        from ugc_bot.domain.entities import BloggerProfile
+
         order = await self.order_repo.get_by_id(order_id, session=session)
         if order is None:
             raise OrderCreationError("Order not found.")
@@ -93,10 +108,30 @@ class OfferDispatchService:
         max_followers = (
             order.max_followers if order.max_followers is not None else 0
         )
-        min_enabled = order.min_followers is not None
-        max_enabled = order.max_followers is not None
+        min_followers_enabled = order.min_followers is not None
+        max_followers_enabled = order.max_followers is not None
+        min_publications_enabled = order.min_publications is not None
+        max_publications_enabled = order.max_publications is not None
+        min_age_enabled = order.min_age is not None
+        max_age_enabled = order.max_age is not None
+        gender_enabled = order.required_blogger_gender is not None
 
-        need_profile = geography_spec is not None or min_enabled or max_enabled
+        need_profile = (
+            geography_spec is not None
+            or min_followers_enabled
+            or max_followers_enabled
+            or min_publications_enabled
+            or max_publications_enabled
+            or min_age_enabled
+            or max_age_enabled
+            or gender_enabled
+        )
+        need_instagram_stats = (
+            (min_followers_enabled or max_followers_enabled)
+            or (min_publications_enabled or max_publications_enabled)
+        ) and self.instagram_stats_repo is not None
+
+        today = date.today()
 
         users: list[User] = []
         for user_id in confirmed_ids:
@@ -111,7 +146,7 @@ class OfferDispatchService:
                 continue
             if user.status != UserStatus.ACTIVE:
                 continue
-            profile = None
+            profile: BloggerProfile | None = None
             if need_profile:
                 profile = await self.blogger_repo.get_by_user_id(
                     user_id, session=session
@@ -127,15 +162,56 @@ class OfferDispatchService:
                 )
             ):
                 continue
-            if min_enabled:
-                if profile is None or profile.instagram_followers_count is None:
+            followers_count: int | None = None
+            media_count: int | None = None
+            if need_instagram_stats and self.instagram_stats_repo:
+                stats = await self.instagram_stats_repo.get_by_user_id(
+                    user_id, session=session
+                )
+                if stats is not None:
+                    followers_count = stats.followers_count
+                    media_count = stats.media_count
+            if (
+                followers_count is None or media_count is None
+            ) and profile is not None:
+                if followers_count is None:
+                    followers_count = profile.instagram_followers_count
+                if media_count is None:
+                    media_count = profile.instagram_media_count
+            if min_followers_enabled:
+                if followers_count is None:
                     continue
-                if profile.instagram_followers_count < min_followers:
+                if followers_count < min_followers:
                     continue
-            if max_enabled:
-                if profile is None or profile.instagram_followers_count is None:
+            if max_followers_enabled:
+                if followers_count is None:
                     continue
-                if profile.instagram_followers_count > max_followers:
+                if followers_count > max_followers:
+                    continue
+            if min_publications_enabled and order.min_publications is not None:
+                if media_count is None:
+                    continue
+                if media_count < order.min_publications:
+                    continue
+            if max_publications_enabled and order.max_publications is not None:
+                if media_count is None:
+                    continue
+                if media_count > order.max_publications:
+                    continue
+            if min_age_enabled or max_age_enabled:
+                if profile is None:
+                    continue
+                age = _age_from_birth_date(profile.birth_date, today)
+                if age is None:
+                    continue
+                if order.min_age is not None and age < order.min_age:
+                    continue
+                if order.max_age is not None and age > order.max_age:
+                    continue
+            if gender_enabled and order.required_blogger_gender is not None:
+                if profile is None or profile.blogger_gender is None:
+                    continue
+                if profile.blogger_gender != order.required_blogger_gender:
                     continue
             users.append(user)
         return users

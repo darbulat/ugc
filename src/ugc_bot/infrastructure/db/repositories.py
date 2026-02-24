@@ -1276,6 +1276,11 @@ def _to_order_entity(model: OrderModel) -> Order:
         product_photo_file_id=getattr(model, "product_photo_file_id", None),
         min_followers=getattr(model, "min_followers", None),
         max_followers=getattr(model, "max_followers", None),
+        min_age=getattr(model, "min_age", None),
+        max_age=getattr(model, "max_age", None),
+        min_publications=getattr(model, "min_publications", None),
+        max_publications=getattr(model, "max_publications", None),
+        required_blogger_gender=getattr(model, "required_blogger_gender", None),
     )
 
 
@@ -1314,6 +1319,11 @@ def _to_order_model(order: Order) -> OrderModel:
         product_photo_file_id=order.product_photo_file_id,
         min_followers=order.min_followers,
         max_followers=order.max_followers,
+        min_age=order.min_age,
+        max_age=order.max_age,
+        min_publications=order.min_publications,
+        max_publications=order.max_publications,
+        required_blogger_gender=order.required_blogger_gender,
     )
 
 

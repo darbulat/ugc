@@ -54,6 +54,7 @@ def build_offer_dispatch_service(repos, transaction_manager):
         order_repo=repos["order_repo"],
         offer_dispatch_repo=repos["offer_dispatch_repo"],
         interaction_repo=repos["interaction_repo"],
+        instagram_stats_repo=repos.get("instagram_stats_repo"),
         transaction_manager=transaction_manager,
     )
 

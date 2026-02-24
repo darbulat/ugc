@@ -165,6 +165,11 @@ class OrderService:
                 ),
                 min_followers=None,
                 max_followers=None,
+                min_age=None,
+                max_age=None,
+                min_publications=None,
+                max_publications=None,
+                required_blogger_gender=None,
             )
             await self.order_repo.save(order, session=session)
 
