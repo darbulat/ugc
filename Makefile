@@ -110,8 +110,10 @@ test-all-docker-dev:
 test-all-docker-dev-auth:
 	docker compose -f docker-compose.test-dev.yml --profile auth run --rm -it test-all-dev-auth
 
+# Sequential: backup DB (one-off), then run Alembic migrations in containers.
 migrate:
-	uv run alembic upgrade head
+	docker compose up --build -d db_backup
+	docker compose up --build migrate
 
 docker-up:
 	docker compose up -d --build
