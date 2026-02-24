@@ -12,6 +12,8 @@ from ugc_bot.application.ports import (
     ContactPricingRepository,
     InstagramGraphApiClient,
     InstagramProfileInfo,
+    InstagramRapidApiClient,
+    InstagramStatsRepository,
     InstagramVerificationRepository,
     InteractionRepository,
     NpsRepository,
@@ -29,6 +31,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    InstagramStats,
     InstagramVerificationCode,
     Interaction,
     OfferDispatch,
@@ -317,9 +320,13 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
         self,
         limit: int,
         offset: int = 0,
+        stats_older_than: Optional[datetime] = None,
         session: object | None = None,
     ) -> list[BloggerProfile]:
-        """List confirmed profiles with non-empty instagram_user_id."""
+        """List confirmed profiles with non-empty instagram_user_id.
+
+        stats_older_than is ignored (no instagram_stats in memory).
+        """
         eligible = [
             p
             for p in self.profiles.values()
@@ -408,6 +415,38 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
             used=True,
             created_at=existing.created_at,
         )
+
+
+@dataclass
+class InMemoryInstagramStatsRepository(InstagramStatsRepository):
+    """In-memory implementation of Instagram stats repository."""
+
+    stats: Dict[UUID, InstagramStats] = field(default_factory=dict)
+
+    async def get_by_user_id(
+        self, user_id: UUID, session: object | None = None
+    ) -> Optional[InstagramStats]:
+        """Fetch Instagram stats by user id."""
+        return self.stats.get(user_id)
+
+    async def save(
+        self, stats: InstagramStats, session: object | None = None
+    ) -> None:
+        """Persist or update Instagram stats (upsert by user_id)."""
+        self.stats[stats.user_id] = stats
+
+
+@dataclass
+class InMemoryInstagramRapidApiClient(InstagramRapidApiClient):
+    """In-memory Rapid API client for testing."""
+
+    profile_by_username: Dict[str, dict] = field(default_factory=dict)
+
+    async def get_profile_stats_by_username(
+        self, username: str
+    ) -> Optional[dict]:
+        """Return pre-set response for username."""
+        return self.profile_by_username.get(username)
 
 
 @dataclass

@@ -15,6 +15,9 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.instagram_stats_collector_service import (
+    InstagramStatsCollectorService,
+)
 from ugc_bot.application.services.instagram_stats_update_service import (
     InstagramStatsUpdateService,
 )
@@ -153,6 +156,34 @@ def build_instagram_stats_scheduler_deps(
             delay_seconds=ig_config.instagram_stats_delay_seconds,
         ),
         "interval_seconds": ig_config.instagram_stats_update_interval_seconds,
+    }
+
+
+def build_instagram_stats_collector_scheduler_deps(
+    config: AppConfig,
+    repos,
+    transaction_manager,
+    stats_provider_client,
+):
+    """Build deps for Instagram stats collector scheduler."""
+    ig_config = config.instagram
+    return {
+        "instagram_stats_collector_service": (
+            InstagramStatsCollectorService(
+                blogger_repo=repos["blogger_repo"],
+                instagram_stats_repo=repos["instagram_stats_repo"],
+                stats_provider_client=stats_provider_client,
+                transaction_manager=transaction_manager,
+                batch_size=ig_config.instagram_stats_collector_batch_size,
+                delay_seconds=ig_config.instagram_stats_collector_delay_seconds,
+                stats_update_interval_seconds=(
+                    ig_config.instagram_stats_collector_interval_seconds
+                ),
+            )
+        ),
+        "interval_seconds": (
+            ig_config.instagram_stats_collector_interval_seconds
+        ),
     }
 
 

@@ -792,8 +792,4 @@ async def test_advertiser_profile_update(
     )
     assert text is not None, "Bot did not reply after city value"
     # Bot may reply with "Профиль обновлён" or show profile with updated city
-    assert (
-        "обновлён" in text
-        or "Профиль обновлён" in text
-        or "Казань" in text
-    )
+    assert "обновлён" in text or "Профиль обновлён" in text or "Казань" in text

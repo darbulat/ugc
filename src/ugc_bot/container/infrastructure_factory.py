@@ -94,3 +94,23 @@ def build_instagram_api_client(config: AppConfig):
         business_account_id=business_id,
         business_access_token=business_token,
     )
+
+
+def build_scrapecreators_profile_client(config: AppConfig):
+    """Create ScrapeCreators profile client if API key is set."""
+    ig = config.instagram
+    if not (ig.scrapecreators_api_key or "").strip():
+        return None
+    from ugc_bot.infrastructure.instagram.scrapecreators_client import (
+        ScrapeCreatorsProfileClient,
+    )
+
+    return ScrapeCreatorsProfileClient(
+        api_key=ig.scrapecreators_api_key.strip(),
+        base_url=ig.scrapecreators_base_url or "https://api.scrapecreators.com",
+    )
+
+
+def build_instagram_stats_provider_client(config: AppConfig):
+    """Create stats provider client (ScrapeCreators only)."""
+    return build_scrapecreators_profile_client(config)

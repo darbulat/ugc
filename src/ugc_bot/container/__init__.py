@@ -121,6 +121,21 @@ class Container:
             instagram_api_client,
         )
 
+    def build_instagram_stats_collector_scheduler_deps(self) -> dict:
+        """Deps for Instagram stats collector scheduler."""
+        repos = self.build_repos()
+        stats_provider_client = (
+            infrastructure_factory.build_instagram_stats_provider_client(
+                self._config
+            )
+        )
+        return service_factory.build_instagram_stats_collector_scheduler_deps(
+            self._config,
+            repos,
+            self._transaction_manager,
+            stats_provider_client,
+        )
+
     def build_instagram_verification_service(
         self,
     ) -> InstagramVerificationService:

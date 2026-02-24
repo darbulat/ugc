@@ -190,6 +190,37 @@ class BloggerProfileModel(Base):
     )
 
 
+class InstagramStatsModel(Base):
+    """Instagram stats ORM model (Rapid API response per user)."""
+
+    __tablename__ = "instagram_stats"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    raw_response: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    followers_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    follows_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    media_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    instagram_username: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    biography: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    provider: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default=text("'rapid_api'")
+    )
+    instagram_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+
+
 class AdvertiserProfileModel(Base):
     """Advertiser profile ORM model."""
 

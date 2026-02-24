@@ -68,6 +68,14 @@ _FLAT_KEYS = {
         "INSTAGRAM_API_BASE_URL",
         "INSTAGRAM_BUSINESS_ACCOUNT_ID",
         "INSTAGRAM_BUSINESS_ACCESS_TOKEN",
+        "INSTAGRAM_WEB_PROFILE_ENABLED",
+        "INSTAGRAM_WEB_PROFILE_APP_ID",
+        "INSTAGRAM_STATS_COLLECTOR_ENABLED",
+        "INSTAGRAM_STATS_COLLECTOR_INTERVAL_SECONDS",
+        "INSTAGRAM_STATS_COLLECTOR_BATCH_SIZE",
+        "INSTAGRAM_STATS_COLLECTOR_DELAY_SECONDS",
+        "SCRAPECREATORS_API_KEY",
+        "SCRAPECREATORS_BASE_URL",
     ],
     "docs": [
         "DOCS_OFFER_URL",
@@ -287,6 +295,34 @@ class InstagramConfig(BaseSettings):
     instagram_stats_delay_seconds: float = Field(
         default=1.0, alias="INSTAGRAM_STATS_DELAY_SECONDS"
     )
+    instagram_stats_collector_enabled: bool = Field(
+        default=True, alias="INSTAGRAM_STATS_COLLECTOR_ENABLED"
+    )
+    instagram_stats_collector_interval_seconds: int = Field(
+        default=86400, alias="INSTAGRAM_STATS_COLLECTOR_INTERVAL_SECONDS"
+    )
+    instagram_stats_collector_batch_size: int = Field(
+        default=50, alias="INSTAGRAM_STATS_COLLECTOR_BATCH_SIZE"
+    )
+    instagram_stats_collector_delay_seconds: float = Field(
+        default=1.0, alias="INSTAGRAM_STATS_COLLECTOR_DELAY_SECONDS"
+    )
+    instagram_stats_provider_fallback_delay_seconds: float = Field(
+        default=2.0,
+        alias="INSTAGRAM_STATS_PROVIDER_FALLBACK_DELAY_SECONDS",
+    )
+    scrapecreators_api_key: str = Field(
+        default="", alias="SCRAPECREATORS_API_KEY"
+    )
+    scrapecreators_base_url: str = Field(
+        default="https://api.scrapecreators.com",
+        alias="SCRAPECREATORS_BASE_URL",
+    )
+
+    @field_validator("scrapecreators_base_url")
+    @classmethod
+    def strip_scrapecreators_base_url_trailing_slash(cls, v: str) -> str:
+        return v.rstrip("/") if v else v
 
 
 class DocsConfig(BaseSettings):

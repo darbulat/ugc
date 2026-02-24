@@ -1548,7 +1548,11 @@ class _BloggerRepoNoneProfile(BloggerProfileRepository):
         return None
 
     async def list_confirmed_with_instagram_id(
-        self, limit: int, offset: int = 0, session: object | None = None
+        self,
+        limit: int,
+        offset: int = 0,
+        stats_older_than=None,
+        session: object | None = None,
     ):
         return []
 

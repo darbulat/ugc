@@ -97,6 +97,22 @@ class BloggerProfile:
 
 
 @dataclass(frozen=True)
+class InstagramStats:
+    """Instagram account statistics (per user), with data source provider."""
+
+    user_id: UUID
+    raw_response: dict
+    fetched_at: datetime
+    followers_count: Optional[int] = None
+    follows_count: Optional[int] = None
+    media_count: Optional[int] = None
+    instagram_username: Optional[str] = None
+    biography: Optional[str] = None
+    provider: str = "rapid_api"
+    instagram_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class AdvertiserProfile:
     """Advertiser profile entity.
 

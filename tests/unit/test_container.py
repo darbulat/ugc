@@ -3,7 +3,7 @@
 import pytest
 
 from ugc_bot.config import AppConfig
-from ugc_bot.container import Container
+from ugc_bot.container import Container, infrastructure_factory
 
 
 def _config(database_url: str) -> AppConfig:
@@ -149,6 +149,119 @@ def test_container_build_instagram_api_client_without_token() -> None:
     container = Container(config)
     client = container.build_instagram_api_client()
     assert client is None
+
+
+def test_container_build_instagram_stats_provider_client_single() -> None:
+    """build_instagram_stats_collector_scheduler_deps uses ScrapeCreators."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SCRAPECREATORS_API_KEY": "sk",
+        }
+    )
+    container = Container(config)
+    deps = container.build_instagram_stats_collector_scheduler_deps()
+    assert deps.get("instagram_stats_collector_service") is not None
+    assert deps.get("interval_seconds") is not None
+
+
+def test_container_build_instagram_stats_provider_client_none() -> None:
+    """When no ScrapeCreators config, scheduler deps built with None client."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SCRAPECREATORS_API_KEY": "",
+        }
+    )
+    container = Container(config)
+    deps = container.build_instagram_stats_collector_scheduler_deps()
+    assert "instagram_stats_collector_service" in deps
+    assert deps.get("interval_seconds") is not None
+
+
+def test_build_scrapecreators_client_none_when_key_empty() -> None:
+    """build_scrapecreators_profile_client returns None when API key empty."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SCRAPECREATORS_API_KEY": "",
+        }
+    )
+    client = infrastructure_factory.build_scrapecreators_profile_client(config)
+    assert client is None
+
+
+def test_container_build_scrapecreators_profile_client_when_key_set() -> None:
+    """build_scrapecreators_profile_client returns client when API key set."""
+    from ugc_bot.infrastructure.instagram.scrapecreators_client import (
+        ScrapeCreatorsProfileClient,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SCRAPECREATORS_API_KEY": "sk_test",
+        }
+    )
+    client = infrastructure_factory.build_scrapecreators_profile_client(config)
+    assert client is not None
+    assert isinstance(client, ScrapeCreatorsProfileClient)
+
+
+def test_container_build_instagram_stats_provider_returns_scrapecreators() -> (
+    None
+):
+    """build_instagram_stats_provider_client returns ScrapeCreators client."""
+    from ugc_bot.infrastructure.instagram.scrapecreators_client import (
+        ScrapeCreatorsProfileClient,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SCRAPECREATORS_API_KEY": "sk",
+        }
+    )
+    client = infrastructure_factory.build_instagram_stats_provider_client(
+        config
+    )
+    assert client is not None
+    assert isinstance(client, ScrapeCreatorsProfileClient)
+
+
+def test_container_build_feedback_scheduler_deps() -> None:
+    """build_feedback_scheduler_deps returns deps with interaction_repo."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    deps = container.build_feedback_scheduler_deps()
+    assert "interaction_repo" in deps
+    assert "interaction_service" in deps
+    assert "interval_seconds" not in deps
+
+
+def test_container_build_instagram_stats_collector_scheduler_deps() -> None:
+    """Stats collector scheduler deps include service and interval."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    deps = container.build_instagram_stats_collector_scheduler_deps()
+    assert "instagram_stats_collector_service" in deps
+    assert "interval_seconds" in deps
+    assert deps["interval_seconds"] == 86400
 
 
 def test_container_build_bot_services() -> None:
