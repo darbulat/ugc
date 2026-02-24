@@ -7,6 +7,7 @@ import pytest
 
 from ugc_bot.application.services.instagram_rapid_stats_service import (
     InstagramRapidStatsCollectorService,
+    _extract_instagram_id,
     _extract_typed_fields,
     _username_from_profile,
 )
@@ -322,6 +323,39 @@ def test_extract_typed_fields_web_profile_info_real_shape() -> None:
     assert "Менеджер внешней рекламы" in (b or "")
 
 
+def test_extract_typed_fields_data_not_dict_uses_raw_fallback() -> None:
+    """When data is not a dict, use raw for username/biography fallback."""
+    raw = {"data": "invalid", "username": "x", "biography": "b"}
+    f, fo, m, u, b = _extract_typed_fields(raw)
+    assert f is None
+    assert fo is None
+    assert m is None
+    assert u == "x"
+    assert b == "b"
+
+
+def test_extract_instagram_id_from_data_user() -> None:
+    """Extract id from data.user.id (ScrapeCreators shape)."""
+    assert _extract_instagram_id({"data": {"user": {"id": "123"}}}) == "123"
+
+
+def test_extract_instagram_id_from_data_id() -> None:
+    """Extract id from data.id when no data.user."""
+    assert _extract_instagram_id({"data": {"id": "456"}}) == "456"
+
+
+def test_extract_instagram_id_from_top_level() -> None:
+    """Extract id from top-level id."""
+    assert _extract_instagram_id({"id": "789"}) == "789"
+
+
+def test_extract_instagram_id_returns_none_when_no_id() -> None:
+    """Return None when no id in raw."""
+    assert _extract_instagram_id({}) is None
+    assert _extract_instagram_id({"data": {}}) is None
+    assert _extract_instagram_id({"data": {"user": {}}}) is None
+
+
 @pytest.mark.asyncio
 async def test_run_once_no_client_returns_zero() -> None:
     """run_once returns (0, 0) when stats provider client is None."""
@@ -418,6 +452,183 @@ async def test_run_once_saves_stats_from_rapid_api() -> None:
     assert saved.biography == "Bio"
     assert saved.provider == "rapid_api"
     assert saved.fetched_at is not None
+
+
+@pytest.mark.asyncio
+async def test_run_once_saves_instagram_id_when_data_user_has_id() -> None:
+    """When raw has data.user.id (e.g. ScrapeCreators), instagram_id saved."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_123",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    raw = {
+        "success": True,
+        "data": {
+            "user": {
+                "id": "2700692569",
+                "username": "jane",
+                "biography": "Bio",
+                "edge_followed_by": {"count": 100},
+                "edge_follow": {"count": 50},
+                "edge_owner_to_timeline_media": {"count": 10},
+            }
+        },
+        "status": "ok",
+    }
+    client = SingleProviderWrapper(
+        InMemoryInstagramRapidApiClient(profile_by_username={"jane": raw}),
+        "scrapecreators",
+    )
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramRapidStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=client,
+        batch_size=10,
+        delay_seconds=0.0,
+    )
+
+    updated, errors = await service.run_once()
+    assert updated == 1
+    assert errors == 0
+
+    saved = await stats_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.instagram_id == "2700692569"
+    assert saved.followers_count == 100
+    assert saved.follows_count == 50
+    assert saved.media_count == 10
+    assert saved.instagram_username == "jane"
+    assert saved.biography == "Bio"
+
+
+@pytest.mark.asyncio
+async def test_run_once_saves_instagram_id_from_data_id() -> None:
+    """When raw has data.id but no data.user, instagram_id is still saved."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_123",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    raw = {
+        "success": True,
+        "data": {
+            "id": "456",
+            "username": "jane",
+            "followers_count": 10,
+            "follows_count": 5,
+            "media_count": 2,
+            "biography": "Bio",
+        },
+        "status": "ok",
+    }
+    client = SingleProviderWrapper(
+        InMemoryInstagramRapidApiClient(profile_by_username={"jane": raw}),
+        "scrapecreators",
+    )
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramRapidStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=client,
+        batch_size=10,
+        delay_seconds=0.0,
+    )
+
+    updated, errors = await service.run_once()
+    assert updated == 1
+    assert errors == 0
+
+    saved = await stats_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.instagram_id == "456"
+
+
+@pytest.mark.asyncio
+async def test_run_once_saves_instagram_id_from_top_level_id() -> None:
+    """When raw has top-level id only, instagram_id is still saved."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_123",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    raw = {
+        "id": "789",
+        "username": "jane",
+        "followers_count": 1,
+        "follows_count": 0,
+        "media_count": 0,
+        "biography": "",
+    }
+    client = SingleProviderWrapper(
+        InMemoryInstagramRapidApiClient(profile_by_username={"jane": raw}),
+        "rapid_api",
+    )
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramRapidStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=client,
+        batch_size=10,
+        delay_seconds=0.0,
+    )
+
+    updated, errors = await service.run_once()
+    assert updated == 1
+    assert errors == 0
+
+    saved = await stats_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.instagram_id == "789"
 
 
 @pytest.mark.asyncio

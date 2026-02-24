@@ -216,6 +216,9 @@ class InstagramStatsModel(Base):
     provider: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default=text("'rapid_api'")
     )
+    instagram_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
 
 
 class AdvertiserProfileModel(Base):

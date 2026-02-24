@@ -1232,6 +1232,7 @@ def _to_instagram_stats_entity(model: InstagramStatsModel) -> InstagramStats:
         instagram_username=model.instagram_username,
         biography=model.biography,
         provider=model.provider,
+        instagram_id=model.instagram_id,
     )
 
 
@@ -1247,6 +1248,7 @@ def _to_instagram_stats_model(stats: InstagramStats) -> InstagramStatsModel:
         instagram_username=stats.instagram_username,
         biography=stats.biography,
         provider=stats.provider,
+        instagram_id=stats.instagram_id,
     )
 
 

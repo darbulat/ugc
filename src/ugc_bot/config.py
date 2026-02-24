@@ -86,6 +86,8 @@ _FLAT_KEYS = {
         "INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS",
         "INSTAGRAM_RAPID_STATS_BATCH_SIZE",
         "INSTAGRAM_RAPID_STATS_DELAY_SECONDS",
+        "SCRAPECREATORS_API_KEY",
+        "SCRAPECREATORS_BASE_URL",
     ],
     "docs": [
         "DOCS_OFFER_URL",
@@ -357,6 +359,18 @@ class InstagramConfig(BaseSettings):
         default=2.0,
         alias="INSTAGRAM_STATS_PROVIDER_FALLBACK_DELAY_SECONDS",
     )
+    scrapecreators_api_key: str = Field(
+        default="", alias="SCRAPECREATORS_API_KEY"
+    )
+    scrapecreators_base_url: str = Field(
+        default="https://api.scrapecreators.com",
+        alias="SCRAPECREATORS_BASE_URL",
+    )
+
+    @field_validator("scrapecreators_base_url")
+    @classmethod
+    def strip_scrapecreators_base_url_trailing_slash(cls, v: str) -> str:
+        return v.rstrip("/") if v else v
 
 
 class DocsConfig(BaseSettings):

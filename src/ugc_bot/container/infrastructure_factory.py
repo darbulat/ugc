@@ -130,6 +130,21 @@ def build_rapid_api_client(config: AppConfig):
     )
 
 
+def build_scrapecreators_profile_client(config: AppConfig):
+    """Create ScrapeCreators profile client if API key is set."""
+    ig = config.instagram
+    if not (ig.scrapecreators_api_key or "").strip():
+        return None
+    from ugc_bot.infrastructure.instagram.scrapecreators_client import (
+        ScrapeCreatorsProfileClient,
+    )
+
+    return ScrapeCreatorsProfileClient(
+        api_key=ig.scrapecreators_api_key.strip(),
+        base_url=ig.scrapecreators_base_url or "https://api.scrapecreators.com",
+    )
+
+
 def build_instagram_stats_provider_client(config: AppConfig):
     """Create stats provider client (single or multi-provider fallback)."""
     ig = config.instagram
@@ -166,6 +181,10 @@ def build_instagram_stats_provider_client(config: AppConfig):
     )
     if c3:
         clients_with_ids.append((c3, "rapid_api_3"))
+    # ScrapeCreators API (x-api-key)
+    scrapecreators = build_scrapecreators_profile_client(config)
+    if scrapecreators:
+        clients_with_ids.append((scrapecreators, "scrapecreators"))
     # Instagram Web Profile API (no key; rate-limited by IP)
     if ig.instagram_web_profile_enabled:
         from ugc_bot.infrastructure.instagram.web_profile_client import (

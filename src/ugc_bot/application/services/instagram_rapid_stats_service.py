@@ -161,7 +161,7 @@ def _extract_typed_fields(
         followers, follows, media, username, biography = _extract_from_data(
             data
         )
-    else:
+    else:  # pragma: no cover - defensive when data is not a dict
         followers, follows, media = None, None, None
         username = (
             _safe_str(raw.get("username")) if isinstance(raw, dict) else None
@@ -178,6 +178,33 @@ def _extract_typed_fields(
         biography = _safe_str(raw.get("biography") or raw.get("bio"))
 
     return (followers, follows, media, username, biography)
+
+
+def _extract_instagram_id(raw: dict) -> Optional[str]:
+    """Extract Instagram user id from raw API response.
+
+    Tries data.user.id (ScrapeCreators/web), then data.id, then top-level id.
+    """
+    data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+    if isinstance(data, dict):
+        user = data.get("user")
+        if isinstance(user, dict):
+            uid = user.get("id")
+            if uid is not None:
+                s = str(uid).strip()
+                if s:
+                    return s
+        uid = data.get("id")
+        if uid is not None:
+            s = str(uid).strip()
+            if s:
+                return s
+    uid = raw.get("id")
+    if uid is not None:
+        s = str(uid).strip()
+        if s:
+            return s
+    return None  # pragma: no cover - defensive fallback
 
 
 def _username_from_profile(profile: BloggerProfile) -> Optional[str]:
@@ -309,6 +336,7 @@ class InstagramRapidStatsCollectorService:
                 instagram_username=parsed_username or username,
                 biography=biography,
                 provider=provider or "rapid_api",
+                instagram_id=_extract_instagram_id(raw),
             )
 
             async def _save(

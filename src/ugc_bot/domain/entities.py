@@ -109,6 +109,7 @@ class InstagramStats:
     instagram_username: Optional[str] = None
     biography: Optional[str] = None
     provider: str = "rapid_api"
+    instagram_id: Optional[str] = None
 
 
 @dataclass(frozen=True)

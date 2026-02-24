@@ -255,6 +255,60 @@ def test_container_build_instagram_stats_provider_client_web_only() -> None:
     assert isinstance(client, SingleProviderWrapper)
 
 
+def test_build_scrapecreators_client_none_when_key_empty() -> None:
+    """build_scrapecreators_profile_client returns None when API key empty."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SCRAPECREATORS_API_KEY": "",
+        }
+    )
+    client = infrastructure_factory.build_scrapecreators_profile_client(config)
+    assert client is None
+
+
+def test_container_build_scrapecreators_profile_client_when_key_set() -> None:
+    """build_scrapecreators_profile_client returns client when API key set."""
+    from ugc_bot.infrastructure.instagram.scrapecreators_client import (
+        ScrapeCreatorsProfileClient,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SCRAPECREATORS_API_KEY": "sk_test",
+        }
+    )
+    client = infrastructure_factory.build_scrapecreators_profile_client(config)
+    assert client is not None
+    assert isinstance(client, ScrapeCreatorsProfileClient)
+
+
+def test_container_build_instagram_stats_provider_includes_scrapecreators() -> (
+    None
+):
+    """With only SCRAPECREATORS_API_KEY set, provider is ScrapeCreators."""
+    from ugc_bot.infrastructure.instagram.rapid_api_client import (
+        SingleProviderWrapper,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "INSTAGRAM_WEB_PROFILE_ENABLED": False,
+            "SCRAPECREATORS_API_KEY": "sk",
+        }
+    )
+    client = infrastructure_factory.build_instagram_stats_provider_client(
+        config
+    )
+    assert client is not None
+    assert isinstance(client, SingleProviderWrapper)
+
+
 def test_container_build_feedback_scheduler_deps() -> None:
     """build_feedback_scheduler_deps returns deps with interaction_repo."""
     config = AppConfig.model_validate(
