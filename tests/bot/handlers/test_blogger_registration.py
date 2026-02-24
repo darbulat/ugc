@@ -31,6 +31,7 @@ from ugc_bot.bot.handlers.blogger_registration import (
     handle_audience_gender_callback,
     handle_barter,
     handle_barter_callback,
+    handle_birth_date,
     handle_blogger_gender,
     handle_blogger_gender_callback,
     handle_city,
@@ -441,6 +442,7 @@ async def test_handle_work_format_session_expired_sends_message(
         nickname="x",
         instagram_url="https://instagram.com/x",
         city="M",
+        birth_date="1995-05-15",
         topics={"selected": ["a"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -499,6 +501,7 @@ async def test_handle_agreements_creates_profile(
         blogger_gender=BloggerGender.MALE,
         display_name="bob",
         telegram_username="bob",
+        birth_date=None,
     )
 
     message = FakeMessage(
@@ -616,6 +619,7 @@ async def test_handle_agreements_shows_verification_button(
         blogger_gender=BloggerGender.MALE,
         display_name="alice",
         telegram_username="alice",
+        birth_date=None,
     )
 
     message = FakeMessage(
@@ -670,19 +674,58 @@ async def test_handle_city_empty_rejects(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_valid_stores_and_asks_blogger_gender() -> None:
-    """handle_city stores city and asks for blogger gender."""
+async def test_handle_city_valid_stores_and_asks_birth_date() -> None:
+    """handle_city stores city and asks for birth date."""
     state = FakeFSMContext()
     message = FakeMessage(text="Москва", user=FakeUser(1, "u", "U"))
 
     await handle_city(message, state)
 
     assert state._data["city"] == "Москва"
+    assert state.state == BloggerRegistrationStates.birth_date
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "дату рождения" in text.lower() or "дд.мм" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_birth_date_valid_stores_and_asks_gender() -> None:
+    """handle_birth_date stores valid date and asks for gender."""
+    state = FakeFSMContext()
+    message = FakeMessage(text="15.05.1995", user=FakeUser(1, "u", "U"))
+
+    await handle_birth_date(message, state)
+
+    assert state._data.get("birth_date") == "1995-05-15"
     assert state.state == BloggerRegistrationStates.blogger_gender
     assert message.answers
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
     assert "пол" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_birth_date_invalid_sends_error() -> None:
+    """handle_birth_date sends error for invalid input."""
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.birth_date.state)
+    message = FakeMessage(text="32.13.2000", user=FakeUser(1, "u", "U"))
+
+    await handle_birth_date(message, state)
+
+    assert (
+        "birth_date" not in state._data or state._data.get("birth_date") is None
+    )
+    assert state.state == BloggerRegistrationStates.birth_date.state
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert (
+        "дату" in text.lower()
+        or "формат" in text.lower()
+        or "некоррект" in text.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -849,6 +892,7 @@ async def test_handle_work_format_valid_ads(user_repo, blogger_repo) -> None:
         nickname="x",
         instagram_url="https://instagram.com/x",
         city="M",
+        birth_date="1995-05-15",
         topics={"selected": ["a"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -1123,6 +1167,7 @@ async def test_work_format_callback_saves_and_shows_agreements(
         user_id=user.user_id,
         instagram_url="https://instagram.com/work_cb",
         city="Moscow",
+        birth_date="1995-05-15",
         topics={"selected": ["tech"]},
         audience_gender=AudienceGender.MALE.value,
         audience_age_min=18,
@@ -1200,6 +1245,7 @@ async def test_work_format_callback_duplicate_instagram_sends_message(
         user_id=user.user_id,
         instagram_url="https://instagram.com/dup",
         city="Moscow",
+        birth_date="1995-05-15",
         topics={"selected": ["tech"]},
         audience_gender="m",
         audience_age_min=18,
@@ -1832,6 +1878,7 @@ async def test_handle_work_format_with_all_docs(
         nickname="x",
         instagram_url="https://instagram.com/x",
         city="M",
+        birth_date="1995-05-15",
         topics={"selected": ["a"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -1891,6 +1938,7 @@ async def test_handle_work_format_no_docs(user_repo, blogger_repo) -> None:
         nickname="x",
         instagram_url="https://instagram.com/x",
         city="M",
+        birth_date="1995-05-15",
         topics={"selected": ["a"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -1990,6 +2038,7 @@ async def test_handle_agreements_unique_violation(
         nickname="bob",
         instagram_url="https://instagram.com/duplicate",
         city="Moscow",
+        birth_date="1995-05-15",
         topics={"selected": ["fitness"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,

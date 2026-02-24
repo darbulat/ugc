@@ -1084,6 +1084,7 @@ def _to_blogger_profile_entity(
         instagram_stats_fetched_at=getattr(
             model, "instagram_stats_fetched_at", None
         ),
+        birth_date=getattr(model, "birth_date", None),
     )
 
 
@@ -1116,6 +1117,7 @@ def _to_blogger_profile_model(
         instagram_biography=profile.instagram_biography,
         instagram_username=profile.instagram_username,
         instagram_stats_fetched_at=profile.instagram_stats_fetched_at,
+        birth_date=profile.birth_date,
     )
 
 

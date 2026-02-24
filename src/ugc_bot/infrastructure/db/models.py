@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for persistence."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Optional
@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -188,6 +189,7 @@ class BloggerProfileModel(Base):
     instagram_stats_fetched_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
 
 class InstagramStatsModel(Base):

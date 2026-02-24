@@ -1,6 +1,7 @@
 """Blogger registration flow handlers."""
 
 import logging
+from datetime import date
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -60,6 +61,7 @@ from ugc_bot.bot.handlers.utils import (
 from ugc_bot.bot.validators import (
     normalize_instagram_url,
     validate_audience_geo,
+    validate_birth_date,
     validate_city,
     validate_nickname,
     validate_price,
@@ -92,9 +94,106 @@ async def _remove_inline_keyboard_from_callback(
 
 CREATOR_CHOOSE_ACTION_TEXT = "Выберите действие:"
 CREATOR_INTRO_NOT_REGISTERED = (
-    "Ты — UGC‑креатор.\n"
-    "После регистрации бренды смогут находить тебя и отправлять предложения."
+    "Ты — UGC‑креатор. Заказчики уже ищут креаторов здесь — полный профиль "
+    "помогает попасть в подбор и получать подходящие заказы.\n\n"
+    "Заполним профиль за пару минут — и ты в подборе."
 )
+
+# --- Регистрация креатора: тексты шагов (мотивация, зачем, прогресс) ---
+TOTAL_STEPS = 12
+
+
+def _step(n: int) -> str:
+    """Return progress suffix for step n of TOTAL_STEPS."""
+    return f"\n\nШаг {n} из {TOTAL_STEPS}"
+
+
+STEP_ASK_NAME = (
+    "Как к тебе обращаться? Введите ваше имя — заказчики будут видеть его "
+    "в анкете." + _step(1)
+)
+STEP_ASK_INSTAGRAM = (
+    "По ссылке на инстаграмм тебя находят заказчики и смотрят контент. "
+    "Прикрепи ссылку в формате instagram.com/name" + _step(2)
+)
+STEP_ASK_INSTAGRAM_FIRST = (
+    "По ссылке на инстаграмм тебя находят заказчики и смотрят контент. "
+    "Прикрепи ссылку в формате instagram.com/name" + _step(1)
+)
+STEP_ASK_CITY = (
+    "Заказчики фильтруют креаторов по городу — для доставки продукта и гео. "
+    "Из какого ты города? Пример: Казань, Москва, Санкт‑Петербург" + _step(3)
+)
+STEP_ASK_BIRTH_DATE = (
+    "Возраст важен заказчикам для целевой аудитории. "
+    "Укажи дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):" + _step(4)
+)
+STEP_ASK_GENDER = (
+    "Это помогает подбирать тебе релевантные заказы. Укажи свой пол:" + _step(5)
+)
+STEP_ASK_TOPICS = (
+    "По тематикам заказчики ищут креаторов — так тебе придут подходящие "
+    "офферы. Напиши 1–3 тематики через запятую: бизнес, инвестиции, фитнес, "
+    "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, стиль, "
+    "дети, семья, технологии, гаджеты, лайфстайл, другое" + _step(6)
+)
+STEP_ASK_AUDIENCE_GENDER = (
+    "Брендам важна целевая аудитория. Кто в основном смотрит твой контент? "
+    "По наблюдениям или статистике" + _step(7)
+)
+STEP_ASK_AUDIENCE_AGE = (
+    "Ещё один фильтр для заказчиков — подберём тебе релевантные заказы. "
+    "Основной возраст твоей аудитории?" + _step(8)
+)
+STEP_ASK_AUDIENCE_GEO = (
+    "География зрителей нужна заказчикам для таргета. "
+    "Где находится основная аудитория? Укажи до 3 городов через запятую: "
+    "Москва, Казань, Санкт‑Петербург" + _step(9)
+)
+STEP_ASK_PRICE = (
+    "Заказчики отбирают по бюджету — честная цена ускоряет сделку. "
+    "Сколько стоит 1 UGC‑видео? Укажи цену в рублях: 500, 1000, 2000"
+    + _step(10)
+)
+STEP_ASK_BARTER = (
+    "Много заказов с бартером — отметка «Да» увеличивает число офферов. "
+    "Иногда готов работать с брендами по бартеру?" + _step(11)
+)
+STEP_ASK_WORK_FORMAT = (
+    "Чтобы присылали только подходящие форматы. "
+    "Помимо UGC, как ещё готов работать с брендами? "
+    "Последний шаг перед подбором." + _step(12)
+)
+AGREEMENTS_INTRO_CREATOR = (
+    "Почти готово. Осталось подтвердить документы — и твой профиль попадёт "
+    "в подбор. Заказчики увидят тебя и смогут отправить предложение."
+)
+PROFILE_CREATED_TEXT = (
+    "Профиль создан 👍\n\n"
+    "Заказчики уже ищут креаторов — полный профиль повышает шансы "
+    "получить оффер.\n\n"
+    "Остался последний шаг — подтвердить Instagram‑аккаунт. "
+    "Это нужно, чтобы:\n"
+    "— защитить бренды от фейков\n"
+    "— повысить доверие к твоему профилю\n"
+    "— быстрее получать заказы"
+)
+ERR_INSTAGRAM_EMPTY = (
+    "Ссылка не может быть пустой. Давай ещё раз — прикрепи ссылку "
+    "в формате instagram.com/name"
+)
+ERR_INSTAGRAM_FORMAT = "Неверный формат. Нужна ссылка вида instagram.com/name"
+ERR_INSTAGRAM_EXAMPLE = (
+    "Неверный формат ссылки Instagram. Пример: https://instagram.com/name"
+)
+ERR_GENDER_CHOOSE = "Выберите одну из кнопок: Мужской или Женский."
+ERR_AUDIENCE_CHOOSE = (
+    "Выберите: В основном женщины, мужчины или Примерно поровну."
+)
+ERR_AGE_CHOOSE = "Выберите одну из кнопок возраста."
+ERR_BARTER_CHOOSE = "Выберите Да или Нет."
+ERR_PRICE_NUMBER = "Введите число, например 500, 1000, 2000."
+ERR_GEO_MAX_CITIES = "Укажите не более 3 городов через запятую."
 
 
 class BloggerRegistrationStates(StatesGroup):
@@ -103,6 +202,7 @@ class BloggerRegistrationStates(StatesGroup):
     name = State()
     instagram = State()
     city = State()
+    birth_date = State()
     blogger_gender = State()
     topics = State()
     audience_gender = State()
@@ -160,16 +260,14 @@ async def _start_registration_flow_impl(
         await state_store.update_data(nickname=username)
         await messenger_client.send_text(
             chat_id=chat_id,
-            text=(
-                "Прикрепите ссылку на инстаграмм в формате instagram.com/name"
-            ),
+            text=STEP_ASK_INSTAGRAM_FIRST,
             keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(BloggerRegistrationStates.instagram.state)
     else:
         await messenger_client.send_text(
             chat_id=chat_id,
-            text="Введите ваше имя:",
+            text=STEP_ASK_NAME,
             keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(BloggerRegistrationStates.name.state)
@@ -276,7 +374,7 @@ async def handle_name(
     await state_store.update_data(nickname=nickname)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Прикрепите ссылку на инстаграмм в формате instagram.com/name",
+        text=STEP_ASK_INSTAGRAM,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(BloggerRegistrationStates.instagram.state)
@@ -300,21 +398,19 @@ async def handle_instagram(
     if not instagram_url:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Ссылка не может быть пустой. Введите снова:",
+            text=ERR_INSTAGRAM_EMPTY,
         )
         return
     if "instagram.com/" not in instagram_url.lower():
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Неверный формат ссылки. Прикрепите instagram.com/name",
+            text=ERR_INSTAGRAM_FORMAT,
         )
         return
     if not INSTAGRAM_URL_REGEX.match(instagram_url):
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Неверный формат ссылки Instagram. Пример: https://instagram.com/name"
-            ),
+            text=ERR_INSTAGRAM_EXAMPLE,
         )
         return
 
@@ -338,7 +434,7 @@ async def handle_instagram(
     await state_store.update_data(instagram_url=instagram_url)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
+        text=STEP_ASK_CITY,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(BloggerRegistrationStates.city.state)
@@ -370,7 +466,39 @@ async def handle_city(
     await state_store.update_data(city=city)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Укажите ваш пол:",
+        text=STEP_ASK_BIRTH_DATE,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.birth_date.state)
+
+
+@router.message(BloggerRegistrationStates.birth_date)
+async def handle_birth_date(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Store creator birth date and ask for gender."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
+    parsed_date, err = validate_birth_date(text)
+    if err is not None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+    assert parsed_date is not None
+    await state_store.update_data(birth_date=parsed_date.isoformat())
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=STEP_ASK_GENDER,
         keyboard=flow_inline_keyboard(
             rows=[
                 [
@@ -424,15 +552,9 @@ async def handle_blogger_gender_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(blogger_gender=blogger_gender)
-    topics_text = (
-        "О чём ваш контент?\n"
-        "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, "
-        "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, "
-        "стиль, дети, семья, технологии, гаджеты, лайфстайл, другое"
-    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=topics_text,
+        text=STEP_ASK_TOPICS,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(BloggerRegistrationStates.topics.state)
@@ -460,19 +582,13 @@ async def handle_blogger_gender(
     if blogger_gender is None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите одну из кнопок: Мужской или Женский.",
+            text=ERR_GENDER_CHOOSE,
         )
         return
     await state_store.update_data(blogger_gender=blogger_gender)
-    topics_text = (
-        "О чём ваш контент?\n"
-        "Напишите 1–3 тематики через запятую: бизнес, инвестиции, фитнес, "
-        "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, "
-        "стиль, дети, семья, технологии, гаджеты, лайфстайл, другое"
-    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=topics_text,
+        text=STEP_ASK_TOPICS,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(BloggerRegistrationStates.topics.state)
@@ -507,10 +623,7 @@ async def handle_topics(
 
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Кто в основном смотрит ваш контент? "
-            "По наблюдениям или статистике"
-        ),
+        text=STEP_ASK_AUDIENCE_GENDER,
         keyboard=flow_inline_keyboard(
             rows=[
                 [
@@ -583,7 +696,7 @@ async def handle_audience_gender_callback(
     await state_store.update_data(audience_gender=audience_gender)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Основной возраст вашей аудитории?",
+        text=STEP_ASK_AUDIENCE_AGE,
         keyboard=flow_inline_keyboard(
             rows=[
                 [Button(text="до 18", callback_data=CALLBACK_BLOGGER_AGE_0_17)],
@@ -634,15 +747,13 @@ async def handle_gender(
     if key not in gender_map:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Выберите: В основном женщины, мужчины или Примерно поровну."
-            ),
+            text=ERR_AUDIENCE_CHOOSE,
         )
         return
     await state_store.update_data(audience_gender=gender_map[key])
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Основной возраст вашей аудитории?",
+        text=STEP_ASK_AUDIENCE_AGE,
         keyboard=flow_inline_keyboard(
             rows=[
                 [Button(text="до 18", callback_data=CALLBACK_BLOGGER_AGE_0_17)],
@@ -705,7 +816,7 @@ async def handle_age(
     if raw not in _AGE_TEXT_TO_RANGE:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите одну из кнопок возраста.",
+            text=ERR_AGE_CHOOSE,
         )
         return
     min_age, max_age = _AGE_TEXT_TO_RANGE[raw]
@@ -714,11 +825,7 @@ async def handle_age(
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Где находится основная аудитория? "
-            "Укажите до 3 городов через запятую: "
-            "Москва, Казань, Санкт‑Петербург"
-        ),
+        text=STEP_ASK_AUDIENCE_GEO,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(BloggerRegistrationStates.audience_geo.state)
@@ -757,11 +864,7 @@ async def handle_audience_age_callback(
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Где находится основная аудитория? "
-            "Укажите до 3 городов через запятую: "
-            "Москва, Казань, Санкт‑Петербург"
-        ),
+        text=STEP_ASK_AUDIENCE_GEO,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(BloggerRegistrationStates.audience_geo.state)
@@ -794,7 +897,7 @@ async def handle_geo(
     if len(cities) > 3:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Укажите не более 3 городов через запятую.",
+            text=ERR_GEO_MAX_CITIES,
             keyboard=flow_keyboard_remove(),
         )
         return
@@ -802,9 +905,7 @@ async def handle_geo(
     await state_store.update_data(audience_geo=geo)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Сколько стоит 1 UGC‑видео? Укажите цену в рублях: 500, 1000, 2000"
-        ),
+        text=STEP_ASK_PRICE,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(BloggerRegistrationStates.price.state)
@@ -830,7 +931,7 @@ async def handle_price(
     except ValueError:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Введите число, например 500, 1000, 2000.",
+            text=ERR_PRICE_NUMBER,
         )
         return
 
@@ -846,7 +947,7 @@ async def handle_price(
     await state_store.update_data(price=price)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Иногда вы готовы работать с брендами по бартеру?",
+        text=STEP_ASK_BARTER,
         keyboard=flow_inline_keyboard(
             rows=[
                 [Button(text="Да", callback_data=CALLBACK_BLOGGER_BARTER_Y)],
@@ -883,7 +984,7 @@ async def handle_barter_callback(
     await state_store.update_data(barter=barter)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Помимо UGC, как ещё вы готовы работать с брендами?",
+        text=STEP_ASK_WORK_FORMAT,
         keyboard=flow_inline_keyboard(
             rows=[
                 [
@@ -925,13 +1026,13 @@ async def handle_barter(
     else:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите Да или Нет.",
+            text=ERR_BARTER_CHOOSE,
         )
         return
     await state_store.update_data(barter=barter)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Помимо UGC, как ещё вы готовы работать с брендами?",
+        text=STEP_ASK_WORK_FORMAT,
         keyboard=flow_inline_keyboard(
             rows=[
                 [
@@ -1003,6 +1104,10 @@ async def handle_work_format_callback(
 
     try:
         telegram_username = getattr(incoming.user, "username", None)
+        birth_date_raw = data.get("birth_date")
+        birth_date_val = (
+            date.fromisoformat(birth_date_raw) if birth_date_raw else None
+        )
         await blogger_registration_service.save_blogger_before_agreement(
             user_id=user_id,
             instagram_url=data["instagram_url"],
@@ -1018,6 +1123,7 @@ async def handle_work_format_callback(
             blogger_gender=data["blogger_gender"],
             display_name=data.get("nickname"),
             telegram_username=telegram_username,
+            birth_date=birth_date_val,
         )
     except Exception as exc:
         error_str = str(exc)
@@ -1044,7 +1150,7 @@ async def handle_work_format_callback(
 
     agreements_text = format_agreements_message(
         config,
-        intro="Пожалуйста, ознакомьтесь с документами и подтвердите согласие.",
+        intro=AGREEMENTS_INTRO_CREATOR,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1096,6 +1202,10 @@ async def handle_work_format(
         return
     try:
         telegram_username = getattr(incoming.user, "username", None)
+        birth_date_raw = data.get("birth_date")
+        birth_date_val = (
+            date.fromisoformat(birth_date_raw) if birth_date_raw else None
+        )
         await blogger_registration_service.save_blogger_before_agreement(
             user_id=user_id,
             instagram_url=data["instagram_url"],
@@ -1111,6 +1221,7 @@ async def handle_work_format(
             blogger_gender=data["blogger_gender"],
             display_name=data.get("nickname"),
             telegram_username=telegram_username,
+            birth_date=birth_date_val,
         )
     except Exception as exc:
         error_str = str(exc)
@@ -1136,7 +1247,7 @@ async def handle_work_format(
         raise
     agreements_text = format_agreements_message(
         config,
-        intro="Пожалуйста, ознакомьтесь с документами и подтвердите согласие.",
+        intro=AGREEMENTS_INTRO_CREATOR,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1190,17 +1301,9 @@ async def handle_agreements_callback(
         raise
 
     await state_store.clear()
-    profile_created_text = (
-        "Профиль создан 👍\n\n"
-        "Остался последний шаг — подтвердить Instagram‑аккаунт.\n"
-        "Это нужно, чтобы:\n"
-        "— защитить бренды от фейков\n"
-        "— повысить доверие к вашему профилю\n"
-        "— быстрее получать заказы"
-    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=profile_created_text,
+        text=PROFILE_CREATED_TEXT,
         keyboard=blogger_after_registration_keyboard(),
     )
 
@@ -1248,17 +1351,9 @@ async def handle_agreements(
     except Exception:
         raise
     await state_store.clear()
-    profile_created_text = (
-        "Профиль создан 👍\n\n"
-        "Остался последний шаг — подтвердить Instagram‑аккаунт.\n"
-        "Это нужно, чтобы:\n"
-        "— защитить бренды от фейков\n"
-        "— повысить доверие к вашему профилю\n"
-        "— быстрее получать заказы"
-    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=profile_created_text,
+        text=PROFILE_CREATED_TEXT,
         keyboard=blogger_after_registration_keyboard(),
     )
 

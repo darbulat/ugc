@@ -69,6 +69,7 @@ from ugc_bot.bot.handlers.utils import (
 from ugc_bot.bot.validators import (
     normalize_instagram_url,
     validate_audience_geo,
+    validate_birth_date,
     validate_brand,
     validate_city,
     validate_company_activity,
@@ -164,6 +165,11 @@ def _format_profile_text(
             blogger_gender_label = _BLOGGER_GENDER_LABELS.get(
                 blogger.blogger_gender, blogger.blogger_gender.value
             )
+        birth_date_str = (
+            blogger.birth_date.strftime("%d.%m.%Y")
+            if blogger.birth_date is not None
+            else "—"
+        )
         lines.extend(
             [
                 "",
@@ -172,6 +178,7 @@ def _format_profile_text(
                 f"   Подтверждён: {confirmed}",
                 f"   Город: {blogger.city}",
                 f"   Пол: {blogger_gender_label}",
+                f"   Дата рождения: {birth_date_str}",
                 f"   Тематики: {topics}",
                 f"   Целевая аудитория: {gender_label}, "
                 f"{blogger.audience_age_min}–{blogger.audience_age_max} лет",
@@ -213,6 +220,7 @@ _EDIT_FIELDS = [
     ("Instagram", "instagram_url"),
     ("Город", "city"),
     ("Пол", "blogger_gender"),
+    ("Дата рождения", "birth_date"),
     ("Тематики", "topics"),
     ("Пол аудитории", "audience_gender"),
     ("Возраст аудитории", "audience_age"),
@@ -470,6 +478,23 @@ async def _blog_update_blogger_gender(
     )
 
 
+async def _blog_update_birth_date(
+    text: str,
+    user_id: UUID,
+    message: MessageContext,
+    blogger_registration_service: BloggerRegistrationService,
+) -> BloggerProfile | None:
+    """Update birth_date. Returns profile or None."""
+    parsed_date, err = validate_birth_date(text)
+    if err is not None:
+        await message.answer(err, reply_markup=flow_keyboard_remove())
+        return None
+    assert parsed_date is not None
+    return await blogger_registration_service.update_blogger_profile(
+        user_id, birth_date=parsed_date
+    )
+
+
 async def _blog_update_audience_gender(
     text: str,
     user_id: UUID,
@@ -629,6 +654,7 @@ async def _update_blogger_field(
         "instagram_url": _blog_update_instagram,
         "city": _blog_update_city,
         "blogger_gender": _blog_update_blogger_gender,
+        "birth_date": _blog_update_birth_date,
         "topics": _blog_update_topics,
         "audience_gender": _blog_update_audience_gender,
         "audience_age": _blog_update_audience_age,
@@ -1044,6 +1070,9 @@ async def handle_profile_edit_field_callback(
         "instagram_url": "Прикрепите ссылку instagram.com/name:",
         "city": "Из какого вы города?",
         "blogger_gender": "Укажите ваш пол:",
+        "birth_date": (
+            "Укажите дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):"
+        ),
         "topics": "Напишите 1–3 тематики через запятую:",
         "audience_gender": "Кто в основном смотрит ваш контент?",
         "audience_age": "Основной возраст вашей аудитории?",
@@ -1380,6 +1409,9 @@ async def edit_profile_choose_field(
         "instagram_url": "Прикрепите ссылку instagram.com/name:",
         "city": "Из какого вы города?",
         "blogger_gender": "Укажите ваш пол:",
+        "birth_date": (
+            "Укажите дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):"
+        ),
         "topics": "Напишите 1–3 тематики через запятую:",
         "audience_gender": "Кто в основном смотрит ваш контент?",
         "audience_age": "Основной возраст вашей аудитории?",
