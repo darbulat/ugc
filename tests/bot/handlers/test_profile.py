@@ -1,6 +1,6 @@
 """Tests for profile handler."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -1619,6 +1619,77 @@ async def test_edit_profile_enter_value_blogger_gender_invalid(
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
     assert "кнопок" in text or "Мужской" in text
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_birth_date_success(user_repo) -> None:
+    """Enter valid birth date updates profile."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000082a"),
+        external_id="26",
+        username="user",
+    )
+    message = FakeMessage(text="15.05.1995", user=FakeUser(26))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "birth_date",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "26",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    role_service = FakeUserRoleService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
+        max_order_price=10_000.0,
+    )
+    assert reg_service.update_calls
+    assert reg_service.update_calls[0][1].get("birth_date") == date(1995, 5, 15)
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_birth_date_invalid(user_repo) -> None:
+    """Enter invalid birth date gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000082b"),
+        external_id="27",
+        username="user",
+    )
+    message = FakeMessage(text="32.13.2000", user=FakeUser(27))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "birth_date",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "27",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    role_service = FakeUserRoleService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        role_service,
+        max_order_price=10_000.0,
+    )
+    assert not reg_service.update_calls
+    assert message.answers
 
 
 @pytest.mark.asyncio

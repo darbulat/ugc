@@ -1,10 +1,13 @@
 """Tests for bot input validators."""
 
+from datetime import date
+
 from ugc_bot.bot.validators import (
     normalize_instagram_url,
     normalize_url,
     validate_audience_geo,
     validate_barter_description,
+    validate_birth_date,
     validate_brand,
     validate_city,
     validate_company_activity,
@@ -84,6 +87,62 @@ class TestValidateProductLink:
     def test_valid_domain_without_scheme_ok(self) -> None:
         assert validate_product_link("example.com") is None
         assert validate_product_link("сайт.рф") is None
+
+
+class TestValidateBirthDate:
+    """Tests for validate_birth_date."""
+
+    def test_empty_returns_error(self) -> None:
+        d, err = validate_birth_date("")
+        assert d is None
+        assert err is not None
+        assert "формат" in (err or "").lower() or "дату" in (err or "").lower()
+
+    def test_wrong_format_returns_error(self) -> None:
+        d, err = validate_birth_date("15-05-1995")
+        assert d is None
+        assert err is not None
+
+    def test_non_numeric_returns_error(self) -> None:
+        d, err = validate_birth_date("ab.cd.efgh")
+        assert d is None
+        assert err is not None
+
+    def test_invalid_date_returns_error(self) -> None:
+        d, err = validate_birth_date("32.13.2000")
+        assert d is None
+        assert err is not None
+        assert (
+            "некоррект" in (err or "").lower() or "дату" in (err or "").lower()
+        )
+
+    def test_future_date_returns_error(self) -> None:
+        d, err = validate_birth_date("01.01.2030")
+        assert d is None
+        assert err is not None
+        assert "будущ" in (err or "").lower()
+
+    def test_age_too_young_returns_error(self) -> None:
+        d, err = validate_birth_date("25.02.2016")
+        assert d is None
+        assert err is not None
+        assert "10" in (err or "")
+
+    def test_age_too_old_returns_error(self) -> None:
+        d, err = validate_birth_date("01.01.1920")
+        assert d is None
+        assert err is not None
+        assert "100" in (err or "") or "реальную" in (err or "").lower()
+
+    def test_valid_returns_date(self) -> None:
+        d, err = validate_birth_date("15.05.1995")
+        assert err is None
+        assert d == date(1995, 5, 15)
+
+    def test_valid_min_age_ok(self) -> None:
+        d, err = validate_birth_date("01.01.2010")
+        assert err is None
+        assert d == date(2010, 1, 1)
 
 
 class TestValidateGeography:

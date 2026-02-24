@@ -1,6 +1,6 @@
 """Tests for blogger registration service."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -67,10 +67,12 @@ async def test_register_blogger_success() -> None:
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
     )
 
     assert profile.user_id == user_id
     assert profile.confirmed is False
+    assert profile.birth_date == date(1995, 5, 15)
 
 
 @pytest.mark.asyncio
@@ -141,6 +143,7 @@ async def test_register_blogger_duplicate_instagram_url() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
     assert "уже зарегистрирован" in str(exc_info.value)
@@ -172,6 +175,7 @@ async def test_register_blogger_empty_instagram() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -198,6 +202,7 @@ async def test_register_blogger_missing_user() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -227,6 +232,7 @@ async def test_register_blogger_invalid_age() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -256,6 +262,7 @@ async def test_register_blogger_invalid_geo_and_price() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
     with pytest.raises(BloggerRegistrationError):
@@ -272,6 +279,7 @@ async def test_register_blogger_invalid_geo_and_price() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -301,6 +309,7 @@ async def test_register_blogger_non_positive_age_is_rejected() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -334,6 +343,7 @@ async def test_register_blogger_records_metrics_when_enabled() -> None:
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
     )
 
     metrics.record_blogger_registration.assert_called_once_with(str(user_id))
@@ -374,6 +384,7 @@ async def test_register_blogger_calls_referral_and_metrics_when_both_set() -> (
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
     )
 
     mock_referral.create_binding_from_pending.assert_called_once()
@@ -413,6 +424,7 @@ async def test_register_blogger_records_metrics_with_transaction_manager(
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
     )
 
     metrics.record_blogger_registration.assert_called_once_with(str(user_id))
@@ -445,6 +457,7 @@ async def test_register_blogger_with_transaction_manager(
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
     )
     assert profile.user_id == user_id
     assert profile.confirmed is False
@@ -704,6 +717,7 @@ _BLOGGER_PROFILE_OPTIONAL_FIELDS = (
     "instagram_biography",
     "instagram_username",
     "instagram_stats_fetched_at",
+    "birth_date",
 )
 
 
@@ -735,6 +749,7 @@ def _blogger_profile_with_all_optional_fields(
         instagram_biography="Test bio",
         instagram_username="regression_user",
         instagram_stats_fetched_at=now,
+        birth_date=date(1990, 1, 1),
     )
 
 
@@ -848,6 +863,7 @@ async def test_register_blogger_user_not_found_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -876,6 +892,7 @@ async def test_register_blogger_empty_city() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -1016,6 +1033,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
     assert "Instagram" in str(exc_info.value)
 
@@ -1033,6 +1051,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
     assert "City" in str(exc_info.value)
 
@@ -1050,6 +1069,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
     assert "geo" in str(exc_info.value).lower()
 
@@ -1067,6 +1087,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
     assert "age" in str(exc_info.value).lower()
 
@@ -1084,6 +1105,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
     assert (
         "max" in str(exc_info.value).lower()
@@ -1104,6 +1126,7 @@ async def test_register_blogger_validation_errors_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
     assert "Price" in str(exc_info.value)
 
@@ -1172,6 +1195,7 @@ async def test_register_blogger_duplicate_instagram_with_transaction_manager(
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
     assert "уже зарегистрирован" in str(exc_info.value)
 
@@ -1199,6 +1223,7 @@ async def test_save_blogger_before_agreement_user_not_found() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 5, 15),
         )
 
 
@@ -1242,6 +1267,7 @@ async def test_confirm_blogger_agreement_calls_referral_and_metrics() -> None:
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
         blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
     )
     mock_referral = Mock()
     mock_referral.create_binding_from_pending = AsyncMock(return_value=None)

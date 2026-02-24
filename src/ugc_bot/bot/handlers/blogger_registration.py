@@ -1,6 +1,7 @@
 """Blogger registration flow handlers."""
 
 import logging
+from datetime import date
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -60,6 +61,7 @@ from ugc_bot.bot.handlers.utils import (
 from ugc_bot.bot.validators import (
     normalize_instagram_url,
     validate_audience_geo,
+    validate_birth_date,
     validate_city,
     validate_nickname,
     validate_price,
@@ -103,6 +105,7 @@ class BloggerRegistrationStates(StatesGroup):
     name = State()
     instagram = State()
     city = State()
+    birth_date = State()
     blogger_gender = State()
     topics = State()
     audience_gender = State()
@@ -368,6 +371,41 @@ async def handle_city(
         return
 
     await state_store.update_data(city=city)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=(
+            "Укажите дату рождения в формате ДД.ММ.ГГГГ "
+            "(например 15.05.1995):"
+        ),
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.birth_date.state)
+
+
+@router.message(BloggerRegistrationStates.birth_date)
+async def handle_birth_date(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Store creator birth date and ask for gender."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    text = (incoming.text or "").strip()
+    parsed_date, err = validate_birth_date(text)
+    if err is not None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+    assert parsed_date is not None
+    await state_store.update_data(birth_date=parsed_date.isoformat())
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Укажите ваш пол:",
@@ -1003,6 +1041,10 @@ async def handle_work_format_callback(
 
     try:
         telegram_username = getattr(incoming.user, "username", None)
+        birth_date_raw = data.get("birth_date")
+        birth_date_val = (
+            date.fromisoformat(birth_date_raw) if birth_date_raw else None
+        )
         await blogger_registration_service.save_blogger_before_agreement(
             user_id=user_id,
             instagram_url=data["instagram_url"],
@@ -1018,6 +1060,7 @@ async def handle_work_format_callback(
             blogger_gender=data["blogger_gender"],
             display_name=data.get("nickname"),
             telegram_username=telegram_username,
+            birth_date=birth_date_val,
         )
     except Exception as exc:
         error_str = str(exc)
@@ -1096,6 +1139,10 @@ async def handle_work_format(
         return
     try:
         telegram_username = getattr(incoming.user, "username", None)
+        birth_date_raw = data.get("birth_date")
+        birth_date_val = (
+            date.fromisoformat(birth_date_raw) if birth_date_raw else None
+        )
         await blogger_registration_service.save_blogger_before_agreement(
             user_id=user_id,
             instagram_url=data["instagram_url"],
@@ -1111,6 +1158,7 @@ async def handle_work_format(
             blogger_gender=data["blogger_gender"],
             display_name=data.get("nickname"),
             telegram_username=telegram_username,
+            birth_date=birth_date_val,
         )
     except Exception as exc:
         error_str = str(exc)

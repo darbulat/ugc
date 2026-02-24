@@ -1,8 +1,11 @@
 """Input validators for bot handlers.
 
 All functions return str | None: error message on failure, None on success.
+validate_birth_date returns (date | None, str | None): (parsed_date, None) on
+success, (None, error_message) on failure.
 """
 
+from datetime import date
 from urllib.parse import urlparse
 
 # Order creation
@@ -30,6 +33,8 @@ NICKNAME_MAX = 50
 TOPICS_MAX = 10
 AUDIENCE_GEO_MAX = 200
 URL_MAX = 500
+BIRTH_DATE_MIN_AGE = 10
+BIRTH_DATE_MAX_AGE = 100
 
 
 def _digits_only(s: str) -> str:
@@ -171,6 +176,53 @@ def validate_brand(value: str) -> str | None:
     if len(v) > BRAND_MAX:
         return f"Максимум {BRAND_MAX} символов."
     return None
+
+
+def validate_birth_date(value: str) -> tuple[date | None, str | None]:
+    """Validate birth date in DD.MM.YYYY format. Age must be 10-100 years.
+
+    Returns (parsed_date, None) on success, (None, error_message) on failure.
+    """
+    v = (value or "").strip()
+    if not v:
+        return (
+            None,
+            "Введите дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995).",
+        )
+    parts = v.split(".")
+    if len(parts) != 3:
+        return (
+            None,
+            "Неверный формат. Используйте ДД.ММ.ГГГГ (например 15.05.1995).",
+        )
+    try:
+        day = int(parts[0])
+        month = int(parts[1])
+        year = int(parts[2])
+    except ValueError:
+        return (
+            None,
+            "Введите дату цифрами в формате ДД.ММ.ГГГГ (например 15.05.1995).",
+        )
+    try:
+        parsed = date(year, month, day)
+    except ValueError:
+        return None, "Некорректная дата. Проверьте день, месяц и год."
+    today = date.today()
+    if parsed > today:
+        return None, "Дата рождения не может быть в будущем."
+    age = today.year - parsed.year
+    if (today.month, today.day) < (parsed.month, parsed.day):
+        age -= 1
+    if age < BIRTH_DATE_MIN_AGE:
+        return None, f"Возраст должен быть не менее {BIRTH_DATE_MIN_AGE} лет."
+    if age > BIRTH_DATE_MAX_AGE:
+        msg = (
+            f"Укажите реальную дату рождения "
+            f"(возраст до {BIRTH_DATE_MAX_AGE} лет)."
+        )
+        return None, msg
+    return parsed, None
 
 
 def validate_city(value: str | None, required: bool = False) -> str | None:

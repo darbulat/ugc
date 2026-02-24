@@ -1,7 +1,7 @@
 """Service for blogger registration."""
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
@@ -90,6 +90,7 @@ class BloggerRegistrationService:
         blogger_gender: BloggerGender,
         display_name: Optional[str] = None,
         telegram_username: Optional[str] = None,
+        birth_date: Optional[date] = None,
     ) -> BloggerProfile:
         """Create a blogger profile after validating input.
 
@@ -140,6 +141,7 @@ class BloggerRegistrationService:
                 work_format=work_format,
                 updated_at=datetime.now(timezone.utc),
                 blogger_gender=blogger_gender,
+                birth_date=birth_date,
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -197,6 +199,7 @@ class BloggerRegistrationService:
         blogger_gender: BloggerGender,
         display_name: Optional[str] = None,
         telegram_username: Optional[str] = None,
+        birth_date: Optional[date] = None,
     ) -> BloggerProfile:
         """Save blogger profile and update user before consent confirmation.
 
@@ -245,6 +248,7 @@ class BloggerRegistrationService:
                 work_format=work_format,
                 updated_at=datetime.now(timezone.utc),
                 blogger_gender=blogger_gender,
+                birth_date=birth_date,
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -341,6 +345,7 @@ class BloggerRegistrationService:
         barter: Optional[bool] = None,
         work_format: Optional[WorkFormat] = None,
         blogger_gender: Optional[BloggerGender] = None,
+        birth_date: Optional[date] = None,
     ) -> BloggerProfile | None:
         """Update blogger profile. Returns profile or None if not found."""
 
@@ -390,6 +395,9 @@ class BloggerRegistrationService:
                 blogger_gender=blogger_gender
                 if blogger_gender is not None
                 else profile.blogger_gender,
+                birth_date=birth_date
+                if birth_date is not None
+                else profile.birth_date,
             )
             await self.blogger_repo.save(updated, session=session)
             return updated

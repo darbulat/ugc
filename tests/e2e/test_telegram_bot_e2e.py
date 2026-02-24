@@ -161,6 +161,11 @@ async def test_blogger_registration_full_flow(
     text = await send_and_get_reply(
         client, entity, bot_username, "Казань", timeout=15
     )
+    assert text and ("дату рождения" in text.lower() or "дд.мм" in text.lower())
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "15.05.1995", timeout=15
+    )
     assert text and "пол" in text.lower()
 
     text = await send_and_get_reply(

@@ -1,7 +1,7 @@
 """Domain entities for the UGC bot."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -94,6 +94,7 @@ class BloggerProfile:
     instagram_biography: Optional[str] = None
     instagram_username: Optional[str] = None
     instagram_stats_fetched_at: Optional[datetime] = None
+    birth_date: Optional[date] = None
 
 
 @dataclass(frozen=True)
