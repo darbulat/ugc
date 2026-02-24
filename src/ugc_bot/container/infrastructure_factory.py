@@ -96,40 +96,6 @@ def build_instagram_api_client(config: AppConfig):
     )
 
 
-def _build_one_rapid_client(
-    api_key: str,
-    host: str,
-    path: str,
-    param_style: str,
-):
-    """Build one HttpInstagramRapidApiClient if key and host are set."""
-    from ugc_bot.infrastructure.instagram.rapid_api_client import (
-        HttpInstagramRapidApiClient,
-    )
-
-    if not (api_key or "").strip() or not (host or "").strip():
-        return None
-    path = (path or "").strip() or ""
-    param_style = (param_style or "username").strip().lower() or "username"
-    return HttpInstagramRapidApiClient(
-        api_key=api_key.strip(),
-        host=host.strip(),
-        path=path,
-        param_style=param_style,
-    )
-
-
-def build_rapid_api_client(config: AppConfig):
-    """Create Rapid API Instagram client (single provider) if configured."""
-    ig = config.instagram
-    return _build_one_rapid_client(
-        ig.rapidapi_key,
-        ig.rapidapi_instagram_host,
-        ig.rapidapi_instagram_path or "",
-        ig.rapidapi_instagram_param_style or "username",
-    )
-
-
 def build_scrapecreators_profile_client(config: AppConfig):
     """Create ScrapeCreators profile client if API key is set."""
     ig = config.instagram
@@ -146,63 +112,5 @@ def build_scrapecreators_profile_client(config: AppConfig):
 
 
 def build_instagram_stats_provider_client(config: AppConfig):
-    """Create stats provider client (single or multi-provider fallback)."""
-    ig = config.instagram
-    from ugc_bot.infrastructure.instagram.rapid_api_client import (
-        MultiProviderInstagramStatsClient,
-        SingleProviderWrapper,
-    )
-
-    clients_with_ids = []
-    # Provider 1 (built but not added to list; uncomment below to enable)
-    _ = _build_one_rapid_client(
-        ig.rapidapi_key,
-        ig.rapidapi_instagram_host,
-        ig.rapidapi_instagram_path or "",
-        ig.rapidapi_instagram_param_style or "username",
-    )
-    # if c1:
-    #     clients_with_ids.append((c1, "rapid_api"))
-    # Provider 2
-    c2 = _build_one_rapid_client(
-        ig.rapidapi_key_2,
-        ig.rapidapi_instagram_host_2,
-        ig.rapidapi_instagram_path_2 or "",
-        ig.rapidapi_instagram_param_style_2 or "username",
-    )
-    if c2:
-        clients_with_ids.append((c2, "rapid_api_2"))
-    # Provider 3
-    c3 = _build_one_rapid_client(
-        ig.rapidapi_key_3,
-        ig.rapidapi_instagram_host_3,
-        ig.rapidapi_instagram_path_3 or "",
-        ig.rapidapi_instagram_param_style_3 or "username",
-    )
-    if c3:
-        clients_with_ids.append((c3, "rapid_api_3"))
-    # ScrapeCreators API (x-api-key)
-    scrapecreators = build_scrapecreators_profile_client(config)
-    if scrapecreators:
-        clients_with_ids.append((scrapecreators, "scrapecreators"))
-    # Instagram Web Profile API (no key; rate-limited by IP)
-    if ig.instagram_web_profile_enabled:
-        from ugc_bot.infrastructure.instagram.web_profile_client import (
-            InstagramWebProfileClient,
-        )
-
-        web_client = InstagramWebProfileClient(
-            x_ig_app_id=ig.instagram_web_profile_app_id or "",
-        )
-        clients_with_ids.append((web_client, "instagram_web"))
-
-    if not clients_with_ids:
-        return None
-    if len(clients_with_ids) == 1:
-        return SingleProviderWrapper(
-            clients_with_ids[0][0], clients_with_ids[0][1]
-        )
-    return MultiProviderInstagramStatsClient(
-        clients_with_ids,
-        ig.instagram_stats_provider_fallback_delay_seconds,
-    )
+    """Create stats provider client (ScrapeCreators only)."""
+    return build_scrapecreators_profile_client(config)

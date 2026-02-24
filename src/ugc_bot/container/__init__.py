@@ -121,19 +121,15 @@ class Container:
             instagram_api_client,
         )
 
-    def build_rapid_api_client(self):
-        """Create Rapid API Instagram client if configured."""
-        return infrastructure_factory.build_rapid_api_client(self._config)
-
-    def build_instagram_rapid_stats_scheduler_deps(self) -> dict:
-        """Deps for Instagram Rapid API stats scheduler."""
+    def build_instagram_stats_collector_scheduler_deps(self) -> dict:
+        """Deps for Instagram stats collector scheduler."""
         repos = self.build_repos()
         stats_provider_client = (
             infrastructure_factory.build_instagram_stats_provider_client(
                 self._config
             )
         )
-        return service_factory.build_instagram_rapid_stats_scheduler_deps(
+        return service_factory.build_instagram_stats_collector_scheduler_deps(
             self._config,
             repos,
             self._transaction_manager,

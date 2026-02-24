@@ -68,24 +68,12 @@ _FLAT_KEYS = {
         "INSTAGRAM_API_BASE_URL",
         "INSTAGRAM_BUSINESS_ACCOUNT_ID",
         "INSTAGRAM_BUSINESS_ACCESS_TOKEN",
-        "RAPIDAPI_KEY",
-        "RAPIDAPI_INSTAGRAM_HOST",
-        "RAPIDAPI_INSTAGRAM_PATH",
-        "RAPIDAPI_INSTAGRAM_PARAM_STYLE",
-        "RAPIDAPI_KEY_2",
-        "RAPIDAPI_INSTAGRAM_HOST_2",
-        "RAPIDAPI_INSTAGRAM_PATH_2",
-        "RAPIDAPI_INSTAGRAM_PARAM_STYLE_2",
-        "RAPIDAPI_KEY_3",
-        "RAPIDAPI_INSTAGRAM_HOST_3",
-        "RAPIDAPI_INSTAGRAM_PATH_3",
-        "RAPIDAPI_INSTAGRAM_PARAM_STYLE_3",
         "INSTAGRAM_WEB_PROFILE_ENABLED",
         "INSTAGRAM_WEB_PROFILE_APP_ID",
-        "INSTAGRAM_RAPID_STATS_ENABLED",
-        "INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS",
-        "INSTAGRAM_RAPID_STATS_BATCH_SIZE",
-        "INSTAGRAM_RAPID_STATS_DELAY_SECONDS",
+        "INSTAGRAM_STATS_COLLECTOR_ENABLED",
+        "INSTAGRAM_STATS_COLLECTOR_INTERVAL_SECONDS",
+        "INSTAGRAM_STATS_COLLECTOR_BATCH_SIZE",
+        "INSTAGRAM_STATS_COLLECTOR_DELAY_SECONDS",
         "SCRAPECREATORS_API_KEY",
         "SCRAPECREATORS_BASE_URL",
     ],
@@ -307,53 +295,17 @@ class InstagramConfig(BaseSettings):
     instagram_stats_delay_seconds: float = Field(
         default=1.0, alias="INSTAGRAM_STATS_DELAY_SECONDS"
     )
-    rapidapi_key: str = Field(default="", alias="RAPIDAPI_KEY")
-    rapidapi_instagram_host: str = Field(
-        default="", alias="RAPIDAPI_INSTAGRAM_HOST"
+    instagram_stats_collector_enabled: bool = Field(
+        default=True, alias="INSTAGRAM_STATS_COLLECTOR_ENABLED"
     )
-    rapidapi_instagram_path: str = Field(
-        default="", alias="RAPIDAPI_INSTAGRAM_PATH"
+    instagram_stats_collector_interval_seconds: int = Field(
+        default=86400, alias="INSTAGRAM_STATS_COLLECTOR_INTERVAL_SECONDS"
     )
-    rapidapi_instagram_param_style: str = Field(
-        default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE"
+    instagram_stats_collector_batch_size: int = Field(
+        default=50, alias="INSTAGRAM_STATS_COLLECTOR_BATCH_SIZE"
     )
-    rapidapi_key_2: str = Field(default="", alias="RAPIDAPI_KEY_2")
-    rapidapi_instagram_host_2: str = Field(
-        default="", alias="RAPIDAPI_INSTAGRAM_HOST_2"
-    )
-    rapidapi_instagram_path_2: str = Field(
-        default="", alias="RAPIDAPI_INSTAGRAM_PATH_2"
-    )
-    rapidapi_instagram_param_style_2: str = Field(
-        default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE_2"
-    )
-    rapidapi_key_3: str = Field(default="", alias="RAPIDAPI_KEY_3")
-    rapidapi_instagram_host_3: str = Field(
-        default="", alias="RAPIDAPI_INSTAGRAM_HOST_3"
-    )
-    rapidapi_instagram_path_3: str = Field(
-        default="", alias="RAPIDAPI_INSTAGRAM_PATH_3"
-    )
-    rapidapi_instagram_param_style_3: str = Field(
-        default="username", alias="RAPIDAPI_INSTAGRAM_PARAM_STYLE_3"
-    )
-    instagram_web_profile_enabled: bool = Field(
-        default=True, alias="INSTAGRAM_WEB_PROFILE_ENABLED"
-    )
-    instagram_web_profile_app_id: str = Field(
-        default="936619743392459", alias="INSTAGRAM_WEB_PROFILE_APP_ID"
-    )
-    instagram_rapid_stats_enabled: bool = Field(
-        default=True, alias="INSTAGRAM_RAPID_STATS_ENABLED"
-    )
-    instagram_rapid_stats_interval_seconds: int = Field(
-        default=86400, alias="INSTAGRAM_RAPID_STATS_INTERVAL_SECONDS"
-    )
-    instagram_rapid_stats_batch_size: int = Field(
-        default=50, alias="INSTAGRAM_RAPID_STATS_BATCH_SIZE"
-    )
-    instagram_rapid_stats_delay_seconds: float = Field(
-        default=1.0, alias="INSTAGRAM_RAPID_STATS_DELAY_SECONDS"
+    instagram_stats_collector_delay_seconds: float = Field(
+        default=1.0, alias="INSTAGRAM_STATS_COLLECTOR_DELAY_SECONDS"
     )
     instagram_stats_provider_fallback_delay_seconds: float = Field(
         default=2.0,

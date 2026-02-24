@@ -1,4 +1,4 @@
-"""Scheduler: Instagram stats via Rapid API -> instagram_stats table."""
+"""Scheduler: Instagram stats via ScrapeCreators -> instagram_stats table."""
 
 import asyncio
 import logging
@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 async def run_once(service) -> None:
-    """Run a single Rapid API Instagram stats collection cycle."""
-    logger.debug("Starting Instagram Rapid API stats cycle")
+    """Run a single Instagram stats collection cycle (ScrapeCreators)."""
+    logger.debug("Starting Instagram stats cycle")
     updated, errors = await service.run_once()
     logger.info(
-        "Instagram Rapid API stats cycle completed",
+        "Instagram stats cycle completed",
         extra={"updated": updated, "errors": errors},
     )
 
@@ -30,10 +30,10 @@ async def run_loop(
     interval_seconds: int,
     max_iterations: int | None = None,
 ) -> None:
-    """Run periodic Instagram Rapid API stats collection."""
-    install_asyncio_exception_handler("instagram-rapid-stats-scheduler")
+    """Run periodic Instagram stats collection via ScrapeCreators."""
+    install_asyncio_exception_handler("instagram-stats-collector-scheduler")
     iterations = 0
-    logger.info("Instagram Rapid API stats scheduler loop started")
+    logger.info("Instagram stats scheduler loop started")
     try:
         while True:
             iterations += 1
@@ -43,53 +43,50 @@ async def run_loop(
             await asyncio.sleep(interval_seconds)
     finally:
         logger.info(
-            "Instagram Rapid API stats scheduler loop stopped",
+            "Instagram stats scheduler loop stopped",
             extra={"total_iterations": iterations},
         )
 
 
 def main() -> None:  # pragma: no cover - entry point, not unit-tested
-    """Start Instagram Rapid API stats scheduler loop."""
+    """Start Instagram stats scheduler loop (ScrapeCreators)."""
     config = load_config()
     configure_logging(
         config.log.log_level,
         json_format=config.log.log_format.lower() == "json",
     )
-    install_exception_hooks("instagram-rapid-stats-scheduler")
+    install_exception_hooks("instagram-stats-collector-scheduler")
     log_startup_info(
         logger=logger,
-        service_name="Instagram Rapid API stats scheduler",
+        service_name="Instagram stats scheduler",
         config=config,
     )
 
-    if not config.instagram.instagram_rapid_stats_enabled:
-        logger.info("Instagram Rapid API stats scheduler disabled by config")
+    if not config.instagram.instagram_stats_collector_enabled:
+        logger.info("Instagram stats scheduler disabled by config")
         return
 
     if not config.db.database_url:
-        logger.error(
-            "DATABASE_URL is required for Instagram Rapid API stats scheduler"
-        )
+        logger.error("DATABASE_URL is required for Instagram stats scheduler")
         return
 
     ig = config.instagram
-    if not ig.rapidapi_key or not ig.rapidapi_instagram_host:
+    if not (ig.scrapecreators_api_key or "").strip():
         logger.error(
-            "RAPIDAPI_KEY and RAPIDAPI_INSTAGRAM_HOST are required for "
-            "Instagram Rapid API stats scheduler"
+            "SCRAPECREATORS_API_KEY is required for Instagram stats scheduler"
         )
         return
 
     logger.info(
-        "Initializing Instagram Rapid API stats scheduler",
+        "Initializing Instagram stats scheduler (ScrapeCreators)",
         extra={
-            "interval_seconds": ig.instagram_rapid_stats_interval_seconds,
-            "batch_size": ig.instagram_rapid_stats_batch_size,
+            "interval_seconds": ig.instagram_stats_collector_interval_seconds,
+            "batch_size": ig.instagram_stats_collector_batch_size,
         },
     )
     container = Container(config)
-    deps = container.build_instagram_rapid_stats_scheduler_deps()
-    service = deps["instagram_rapid_stats_collector_service"]
+    deps = container.build_instagram_stats_collector_scheduler_deps()
+    service = deps["instagram_stats_collector_service"]
     interval = deps["interval_seconds"]
 
     asyncio.run(

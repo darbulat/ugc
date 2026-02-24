@@ -255,7 +255,7 @@ services:
     command: ["python", "-m", "ugc_bot.instagram_stats_scheduler"]
     restart: unless-stopped
 
-  instagram_rapid_stats_scheduler:
+  instagram_stats_collector_scheduler:
     build: .
     env_file: .env
     environment:
@@ -265,7 +265,7 @@ services:
         condition: service_healthy
       pgbouncer:
         condition: service_started
-    command: ["python", "-m", "ugc_bot.instagram_rapid_stats_scheduler"]
+    command: ["python", "-m", "ugc_bot.instagram_stats_collector_scheduler"]
     restart: unless-stopped
 
   db:

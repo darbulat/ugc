@@ -1,4 +1,4 @@
-"""Collect Instagram stats via Rapid API into instagram_stats table."""
+"""Collect Instagram stats via ScrapeCreators into instagram_stats table."""
 
 import asyncio
 import logging
@@ -126,7 +126,7 @@ def _extract_typed_fields(
 ]:
     """Extract typed fields from raw API response.
 
-    Tries common Rapid API shapes (e.g. data.counts.*, top-level).
+    Tries common API shapes (e.g. data.counts.*, top-level).
     """
     data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
     counts = None
@@ -219,8 +219,8 @@ def _username_from_profile(profile: BloggerProfile) -> Optional[str]:
     return url.split("?")[0].strip() or None
 
 
-class InstagramRapidStatsCollectorService:
-    """Collect Instagram stats via Rapid API into instagram_stats table."""
+class InstagramStatsCollectorService:
+    """Collect Instagram stats via ScrapeCreators into instagram_stats table."""
 
     def __init__(
         self,
@@ -260,7 +260,7 @@ class InstagramRapidStatsCollectorService:
         """
         if not self.stats_provider_client:
             logger.warning(
-                "Rapid API client not configured, skipping stats update"
+                "Stats provider client not configured, skipping stats update"
             )
             return (0, 0)
 
@@ -301,7 +301,7 @@ class InstagramRapidStatsCollectorService:
                 )
             except Exception as exc:
                 logger.warning(
-                    "Failed to fetch Instagram stats from Rapid API",
+                    "Failed to fetch Instagram stats",
                     extra={
                         "user_id": str(profile.user_id),
                         "username": username,
@@ -314,7 +314,7 @@ class InstagramRapidStatsCollectorService:
 
             if not raw or not isinstance(raw, dict):
                 logger.debug(
-                    "No stats data returned from Rapid API",
+                    "No stats data returned",
                     extra={
                         "user_id": str(profile.user_id),
                         "username": username,
@@ -335,7 +335,7 @@ class InstagramRapidStatsCollectorService:
                 media_count=media,
                 instagram_username=parsed_username or username,
                 biography=biography,
-                provider=provider or "rapid_api",
+                provider=provider or "scrapecreators",
                 instagram_id=_extract_instagram_id(raw),
             )
 

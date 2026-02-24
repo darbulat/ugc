@@ -151,108 +151,34 @@ def test_container_build_instagram_api_client_without_token() -> None:
     assert client is None
 
 
-def test_container_build_rapid_api_client_when_configured() -> None:
-    """build_rapid_api_client returns client when key and host are set."""
-    config = AppConfig.model_validate(
-        {
-            "BOT_TOKEN": "test_token",
-            "DATABASE_URL": "sqlite:///:memory:",
-            "RAPIDAPI_KEY": "key",
-            "RAPIDAPI_INSTAGRAM_HOST": "instagram-v2",
-        }
-    )
-    container = Container(config)
-    client = container.build_rapid_api_client()
-    assert client is not None
-
-
-def test_container_build_rapid_api_client_without_key() -> None:
-    """build_rapid_api_client returns None when key or host is empty."""
-    config = AppConfig.model_validate(
-        {
-            "BOT_TOKEN": "test_token",
-            "DATABASE_URL": "sqlite:///:memory:",
-            "RAPIDAPI_KEY": "",
-            "RAPIDAPI_INSTAGRAM_HOST": "host",
-        }
-    )
-    container = Container(config)
-    assert container.build_rapid_api_client() is None
-
-
 def test_container_build_instagram_stats_provider_client_single() -> None:
-    """build_instagram_rapid_stats_scheduler_deps uses provider client."""
+    """build_instagram_stats_collector_scheduler_deps uses ScrapeCreators."""
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "test_token",
             "DATABASE_URL": "sqlite:///:memory:",
-            "RAPIDAPI_KEY": "key",
-            "RAPIDAPI_INSTAGRAM_HOST": "instagram-v2",
+            "SCRAPECREATORS_API_KEY": "sk",
         }
     )
     container = Container(config)
-    deps = container.build_instagram_rapid_stats_scheduler_deps()
-    assert deps.get("instagram_rapid_stats_collector_service") is not None
+    deps = container.build_instagram_stats_collector_scheduler_deps()
+    assert deps.get("instagram_stats_collector_service") is not None
     assert deps.get("interval_seconds") is not None
 
 
 def test_container_build_instagram_stats_provider_client_none() -> None:
-    """When no Rapid API config, scheduler deps still built with None client."""
+    """When no ScrapeCreators config, scheduler deps built with None client."""
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "test_token",
             "DATABASE_URL": "sqlite:///:memory:",
-            "RAPIDAPI_KEY": "",
-            "RAPIDAPI_INSTAGRAM_HOST": "",
+            "SCRAPECREATORS_API_KEY": "",
         }
     )
     container = Container(config)
-    deps = container.build_instagram_rapid_stats_scheduler_deps()
-    assert "instagram_rapid_stats_collector_service" in deps
+    deps = container.build_instagram_stats_collector_scheduler_deps()
+    assert "instagram_stats_collector_service" in deps
     assert deps.get("interval_seconds") is not None
-
-
-def test_container_build_instagram_stats_provider_client_multi() -> None:
-    """With provider 1 and 2 configured, multi-provider client is built."""
-    from ugc_bot.infrastructure.instagram.rapid_api_client import (
-        MultiProviderInstagramStatsClient,
-    )
-
-    config = AppConfig.model_validate(
-        {
-            "BOT_TOKEN": "test_token",
-            "DATABASE_URL": "sqlite:///:memory:",
-            "RAPIDAPI_KEY": "key1",
-            "RAPIDAPI_INSTAGRAM_HOST": "host1",
-            "RAPIDAPI_KEY_2": "key2",
-            "RAPIDAPI_INSTAGRAM_HOST_2": "host2",
-        }
-    )
-    client = infrastructure_factory.build_instagram_stats_provider_client(
-        config
-    )
-    assert client is not None
-    assert isinstance(client, MultiProviderInstagramStatsClient)
-
-
-def test_container_build_instagram_stats_provider_client_web_only() -> None:
-    """With only INSTAGRAM_WEB_PROFILE_ENABLED=true, web client is built."""
-    from ugc_bot.infrastructure.instagram.rapid_api_client import (
-        SingleProviderWrapper,
-    )
-
-    config = AppConfig.model_validate(
-        {
-            "BOT_TOKEN": "test_token",
-            "DATABASE_URL": "sqlite:///:memory:",
-            "INSTAGRAM_WEB_PROFILE_ENABLED": True,
-        }
-    )
-    client = infrastructure_factory.build_instagram_stats_provider_client(
-        config
-    )
-    assert client is not None
-    assert isinstance(client, SingleProviderWrapper)
 
 
 def test_build_scrapecreators_client_none_when_key_empty() -> None:
@@ -286,19 +212,18 @@ def test_container_build_scrapecreators_profile_client_when_key_set() -> None:
     assert isinstance(client, ScrapeCreatorsProfileClient)
 
 
-def test_container_build_instagram_stats_provider_includes_scrapecreators() -> (
+def test_container_build_instagram_stats_provider_returns_scrapecreators() -> (
     None
 ):
-    """With only SCRAPECREATORS_API_KEY set, provider is ScrapeCreators."""
-    from ugc_bot.infrastructure.instagram.rapid_api_client import (
-        SingleProviderWrapper,
+    """build_instagram_stats_provider_client returns ScrapeCreators client."""
+    from ugc_bot.infrastructure.instagram.scrapecreators_client import (
+        ScrapeCreatorsProfileClient,
     )
 
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "test_token",
             "DATABASE_URL": "sqlite:///:memory:",
-            "INSTAGRAM_WEB_PROFILE_ENABLED": False,
             "SCRAPECREATORS_API_KEY": "sk",
         }
     )
@@ -306,7 +231,7 @@ def test_container_build_instagram_stats_provider_includes_scrapecreators() -> (
         config
     )
     assert client is not None
-    assert isinstance(client, SingleProviderWrapper)
+    assert isinstance(client, ScrapeCreatorsProfileClient)
 
 
 def test_container_build_feedback_scheduler_deps() -> None:
@@ -324,8 +249,8 @@ def test_container_build_feedback_scheduler_deps() -> None:
     assert "interval_seconds" not in deps
 
 
-def test_container_build_instagram_rapid_stats_scheduler_deps() -> None:
-    """Rapid stats scheduler deps include service and interval."""
+def test_container_build_instagram_stats_collector_scheduler_deps() -> None:
+    """Stats collector scheduler deps include service and interval."""
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "test_token",
@@ -333,8 +258,8 @@ def test_container_build_instagram_rapid_stats_scheduler_deps() -> None:
         }
     )
     container = Container(config)
-    deps = container.build_instagram_rapid_stats_scheduler_deps()
-    assert "instagram_rapid_stats_collector_service" in deps
+    deps = container.build_instagram_stats_collector_scheduler_deps()
+    assert "instagram_stats_collector_service" in deps
     assert "interval_seconds" in deps
     assert deps["interval_seconds"] == 86400
 

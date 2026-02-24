@@ -1,19 +1,19 @@
-"""Tests for Instagram Rapid API stats collector service."""
+"""Tests for Instagram stats collector service."""
 
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
-from ugc_bot.application.services.instagram_rapid_stats_service import (
-    InstagramRapidStatsCollectorService,
+from ugc_bot.application.services.instagram_stats_collector_service import (
+    InstagramStatsCollectorService,
     _extract_instagram_id,
     _extract_typed_fields,
     _username_from_profile,
 )
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import AudienceGender, WorkFormat
-from ugc_bot.infrastructure.instagram.rapid_api_client import (
+from ugc_bot.infrastructure.instagram.stats_provider_wrappers import (
     SingleProviderWrapper,
 )
 from ugc_bot.infrastructure.memory_repositories import (
@@ -227,7 +227,7 @@ def test_extract_typed_fields_instagram_statistics_api_shape() -> None:
 
 def test_extract_typed_fields_username_from_url_when_no_screenname() -> None:
     """Username parsed from data.url when username/screenName missing."""
-    from ugc_bot.application.services.instagram_rapid_stats_service import (
+    from ugc_bot.application.services.instagram_stats_collector_service import (
         _username_from_url,
     )
 
@@ -361,7 +361,7 @@ async def test_run_once_no_client_returns_zero() -> None:
     """run_once returns (0, 0) when stats provider client is None."""
     blogger_repo = InMemoryBloggerProfileRepository()
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=None,
@@ -379,7 +379,7 @@ async def test_run_once_empty_list_returns_zero() -> None:
     client = SingleProviderWrapper(
         InMemoryInstagramRapidApiClient(), "rapid_api"
     )
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
@@ -429,7 +429,7 @@ async def test_run_once_saves_stats_from_rapid_api() -> None:
         "rapid_api",
     )
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
@@ -497,7 +497,7 @@ async def test_run_once_saves_instagram_id_when_data_user_has_id() -> None:
         "scrapecreators",
     )
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
@@ -560,7 +560,7 @@ async def test_run_once_saves_instagram_id_from_data_id() -> None:
         "scrapecreators",
     )
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
@@ -614,7 +614,7 @@ async def test_run_once_saves_instagram_id_from_top_level_id() -> None:
         "rapid_api",
     )
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
@@ -658,7 +658,7 @@ async def test_run_once_skips_profile_without_username() -> None:
         InMemoryInstagramRapidApiClient(), "rapid_api"
     )
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
@@ -697,7 +697,7 @@ async def test_run_once_client_returns_none_increments_errors() -> None:
         InMemoryInstagramRapidApiClient(profile_by_username={}), "rapid_api"
     )
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
@@ -737,7 +737,7 @@ async def test_run_once_client_raises_increments_errors() -> None:
             raise ValueError("network error")
 
     stats_repo = InMemoryInstagramStatsRepository()
-    service = InstagramRapidStatsCollectorService(
+    service = InstagramStatsCollectorService(
         blogger_repo=blogger_repo,
         instagram_stats_repo=stats_repo,
         stats_provider_client=SingleProviderWrapper(
