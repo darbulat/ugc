@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 
 from tests.helpers.factories import (
+    create_test_advertiser_profile,
     create_test_blogger_profile,
     create_test_order,
     create_test_user,
@@ -45,6 +46,7 @@ from ugc_bot.domain.enums import (
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryInteractionRepository,
     InMemoryOfferDispatchRepository,
@@ -137,6 +139,7 @@ async def test_contact_sent_immediately(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
+        blogger_chat_id=blogger.external_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -166,6 +169,90 @@ async def test_contact_sent_immediately(
     assert interaction is not None
     assert interaction.blogger_id == blogger.user_id
     assert interaction.advertiser_id == advertiser.user_id
+
+
+@pytest.mark.asyncio
+async def test_blogger_receives_advertiser_contacts_when_accepted(
+    fake_tm: object,
+    user_repo,
+    blogger_repo,
+    order_repo,
+    offer_dispatch_repo,
+    interaction_repo,
+    messenger_client,
+) -> None:
+    """Blogger gets advertiser Telegram and phone when accepted into order."""
+
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000750"),
+        external_id="750",
+        username="adv",
+        telegram="advertiser_tg",
+    )
+    await create_test_advertiser_profile(
+        advertiser_repo,
+        advertiser.user_id,
+        phone="+79001234567",
+        brand="Brand",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000751"),
+        external_id="751",
+        username="blogger",
+    )
+    await create_test_blogger_profile(
+        blogger_repo, blogger.user_id, confirmed=True
+    )
+
+    order = await create_test_order(
+        order_repo,
+        advertiser.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000752"),
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+    await offer_dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
+    )
+
+    await _send_contact_immediately(
+        order=order,
+        blogger_id=blogger.user_id,
+        blogger_chat_id=blogger.external_id,
+        response_count=1,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        interaction_service=interaction_service,
+        messenger_client=messenger_client,
+    )
+
+    sent_to_blogger = [
+        s
+        for s in messenger_client.sent_text
+        if s["chat_id"] == blogger.external_id
+    ]
+    assert len(sent_to_blogger) >= 1
+    contact_msg = next(
+        (
+            s["text"]
+            for s in sent_to_blogger
+            if "Контакты заказчика" in s["text"]
+        ),
+        None,
+    )
+    assert contact_msg is not None
+    assert "advertiser_tg" in contact_msg or "Telegram:" in contact_msg
+    assert "+79001234567" in contact_msg or "Телефон:" in contact_msg
 
 
 @pytest.mark.asyncio
@@ -1184,6 +1271,7 @@ async def test_send_contact_order_not_found(
     await _send_contact_immediately(
         order=order,
         blogger_id=UUID("00000000-0000-0000-0000-000000001000"),
+        blogger_chat_id="1",
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1239,6 +1327,7 @@ async def test_send_contact_order_not_active(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
+        blogger_chat_id=blogger.external_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1291,6 +1380,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(
     await _send_contact_immediately(
         order=order,
         blogger_id=UUID("00000000-0000-0000-0000-000000000999"),
+        blogger_chat_id="1",
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1550,6 +1640,7 @@ async def test_send_contact_ugc_plus_placement_format(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
+        blogger_chat_id=blogger.external_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1611,6 +1702,7 @@ async def test_send_contact_empty_instagram_url(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
+        blogger_chat_id=blogger.external_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1675,6 +1767,7 @@ async def test_send_contact_instagram_url_without_http(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
+        blogger_chat_id=blogger.external_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,

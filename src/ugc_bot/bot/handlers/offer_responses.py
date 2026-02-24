@@ -123,6 +123,7 @@ async def _reply_offer_response_result(
         await _send_contact_immediately(
             order=result.order,
             blogger_id=blogger_id,
+            blogger_chat_id=incoming.chat_id,
             response_count=result.response_count,
             user_role_service=user_role_service,
             profile_service=profile_service,
@@ -292,16 +293,24 @@ def _format_ugc_type(order: Order) -> str:
     return "UGC-видео для бренда"
 
 
+BLOGGER_ADVERTISER_CONTACTS_HEADER = "📞 Контакты заказчика для связи:\n\n"
+
+
 async def _send_contact_immediately(
     order: Order,
     blogger_id: UUID,
+    blogger_chat_id: str,
     response_count: int,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     interaction_service: InteractionService | None,
     messenger_client: MessengerClient,
 ) -> None:
-    """Send contact to advertiser after each response (TZ format)."""
+    """Send contact to advertiser after each response (TZ format).
+
+    Also sends advertiser's Telegram and phone to the blogger when they get
+    into the order.
+    """
 
     user = await user_role_service.get_user_by_id(blogger_id)
     profile = await profile_service.get_blogger_profile(blogger_id)
@@ -364,6 +373,31 @@ async def _send_contact_immediately(
                 logger=logger,
                 extra={"order_id": str(order.order_id)},
             )
+
+    # Send advertiser's Telegram and phone to blogger
+    advertiser_profile = await profile_service.get_advertiser_profile(
+        order.advertiser_id
+    )
+    parts = [BLOGGER_ADVERTISER_CONTACTS_HEADER]
+    if advertiser and advertiser.telegram and advertiser.telegram.strip():
+        tg = advertiser.telegram.strip().lstrip("@")
+        parts.append(f"Telegram: @{tg}\n")
+    else:
+        parts.append("Telegram: —\n")
+    if advertiser_profile and advertiser_profile.phone:
+        parts.append(f"Телефон: {advertiser_profile.phone}")
+    else:
+        parts.append("Телефон: —")
+    blogger_contact_text = "".join(parts)
+    await send_with_retry(
+        messenger_client,
+        chat_id=blogger_chat_id,
+        text=blogger_contact_text,
+        retries=_send_retries,
+        delay_seconds=_send_retry_delay_seconds,
+        logger=logger,
+        extra={"order_id": str(order.order_id), "blogger_id": str(blogger_id)},
+    )
 
     # Create interaction for feedback tracking (72 hour timer starts)
     if interaction_service:
