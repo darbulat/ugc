@@ -7,6 +7,33 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+def _apply_httpx_proxies_compat() -> None:
+    """Make httpx.AsyncClient accept 'proxies' for aiograpi compatibility with httpx 0.28+.
+
+    aiograpi passes proxies= to AsyncClient; httpx 0.28 removed it and uses proxy= (singular).
+    """
+    import httpx
+
+    if getattr(httpx.AsyncClient, "_ugc_proxies_patched", False):
+        return
+    _orig_init = httpx.AsyncClient.__init__
+
+    def _patched_init(self: httpx.AsyncClient, *args: Any, **kwargs: Any) -> None:
+        proxies = kwargs.pop("proxies", None)
+        if proxies and "proxy" not in kwargs:
+            if isinstance(proxies, dict):
+                for _scheme, url in proxies.items():
+                    if url:
+                        kwargs["proxy"] = url
+                        break
+            elif isinstance(proxies, str):
+                kwargs["proxy"] = proxies
+        _orig_init(self, *args, **kwargs)
+
+    httpx.AsyncClient.__init__ = _patched_init  # type: ignore[method-assign]
+    httpx.AsyncClient._ugc_proxies_patched = True  # type: ignore[attr-defined]
+
+
 class AiograpiStatsFetcher:
     """Fetches Instagram profile stats via aiograpi (async private API)."""
 
@@ -32,6 +59,7 @@ class AiograpiStatsFetcher:
         """Fetch profile stats for username. Returns raw dict compatible with stats extraction, or None."""
         if not self.is_configured():
             return None
+        _apply_httpx_proxies_compat()
         try:
             from aiograpi import Client
             from aiograpi.exceptions import LoginRequired, UserNotFound

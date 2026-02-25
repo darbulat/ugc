@@ -38,6 +38,30 @@ def load_dotenv_if_available() -> None:
         pass
 
 
+def _apply_httpx_proxies_compat() -> None:
+    """Make httpx.AsyncClient accept 'proxies' for aiograpi compatibility with httpx 0.28+."""
+    import httpx
+
+    if getattr(httpx.AsyncClient, "_ugc_proxies_patched", False):
+        return
+    _orig = httpx.AsyncClient.__init__
+
+    def _patched(self: object, *args: object, **kwargs: object) -> None:
+        proxies = kwargs.pop("proxies", None)  # type: ignore[union-attr]
+        if proxies and "proxy" not in kwargs:
+            if isinstance(proxies, dict):
+                for _s, url in proxies.items():
+                    if url:
+                        kwargs["proxy"] = url
+                        break
+            elif isinstance(proxies, str):
+                kwargs["proxy"] = proxies
+        _orig(self, *args, **kwargs)  # type: ignore[misc]
+
+    httpx.AsyncClient.__init__ = _patched  # type: ignore[method-assign]
+    setattr(httpx.AsyncClient, "_ugc_proxies_patched", True)
+
+
 async def _fetch_user_async(
     username: str,
     instagram_username: str,
@@ -45,6 +69,7 @@ async def _fetch_user_async(
     session_path: Path,
 ) -> dict:
     """Login (reuse or create session), fetch user, persist session. Returns stats dict."""
+    _apply_httpx_proxies_compat()
     from aiograpi import Client
     from aiograpi.exceptions import LoginRequired, UserNotFound
 
