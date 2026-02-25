@@ -3,7 +3,8 @@ FROM python:3.13-slim
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src
 
 # Install PostgreSQL 16 client for backups (match postgres:16-alpine server version;
 # distro's postgresql-client can be PG17 and emit SET transaction_timeout, breaking restore on PG16)
@@ -25,4 +26,3 @@ COPY pyproject.toml alembic.ini /app/
 COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
-RUN pip install --no-cache-dir -e . --no-deps
