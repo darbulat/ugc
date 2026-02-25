@@ -26,5 +26,3 @@ COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
 RUN pip install --no-cache-dir -e . --no-deps
-
-CMD ["python", "-m", "ugc_bot.app"]
