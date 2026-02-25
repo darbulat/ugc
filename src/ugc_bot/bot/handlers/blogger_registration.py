@@ -662,11 +662,13 @@ def _audience_gender_from_callback(data: str) -> AudienceGender | None:
 
 
 @router.callback_query(
-    lambda c: c.data
-    in (
-        CALLBACK_BLOGGER_AUDIENCE_F,
-        CALLBACK_BLOGGER_AUDIENCE_M,
-        CALLBACK_BLOGGER_AUDIENCE_A,
+    lambda c: (
+        c.data
+        in (
+            CALLBACK_BLOGGER_AUDIENCE_F,
+            CALLBACK_BLOGGER_AUDIENCE_M,
+            CALLBACK_BLOGGER_AUDIENCE_A,
+        )
     )
 )
 async def handle_audience_gender_callback(

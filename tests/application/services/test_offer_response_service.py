@@ -6,7 +6,11 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.errors import (
+    OrderCreationError,
+    OrderNotActiveError,
+    OrderNotFoundError,
+)
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
@@ -176,7 +180,7 @@ async def test_offer_response_order_not_found(fake_tm: object) -> None:
         transaction_manager=fake_tm,
     )
 
-    with pytest.raises(OrderCreationError):
+    with pytest.raises(OrderNotFoundError):
         await service.respond(
             order_id=UUID("00000000-0000-0000-0000-000000000820"),
             blogger_id=UUID("00000000-0000-0000-0000-000000000821"),
@@ -211,7 +215,7 @@ async def test_offer_response_requires_active_order(fake_tm: object) -> None:
         )
     )
 
-    with pytest.raises(OrderCreationError):
+    with pytest.raises(OrderNotActiveError):
         await service.respond(
             order_id=UUID("00000000-0000-0000-0000-000000000830"),
             blogger_id=UUID("00000000-0000-0000-0000-000000000832"),
@@ -409,7 +413,7 @@ async def test_offer_response_tx_order_not_found(fake_tm: object) -> None:
         transaction_manager=fake_tm,
     )
 
-    with pytest.raises(OrderCreationError):
+    with pytest.raises(OrderNotFoundError):
         await service.respond_and_finalize(
             order_id=UUID("00000000-0000-0000-0000-000000000870"),
             blogger_id=UUID("00000000-0000-0000-0000-000000000871"),
@@ -444,7 +448,7 @@ async def test_offer_response_tx_requires_active_order(fake_tm: object) -> None:
         )
     )
 
-    with pytest.raises(OrderCreationError):
+    with pytest.raises(OrderNotActiveError):
         await service.respond_and_finalize(
             order_id=UUID("00000000-0000-0000-0000-000000000880"),
             blogger_id=UUID("00000000-0000-0000-0000-000000000882"),

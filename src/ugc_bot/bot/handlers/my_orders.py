@@ -297,10 +297,12 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
 
 
 @router.callback_query(
-    lambda c: c.data
-    and (
-        c.data.startswith(_MY_ORDERS_CALLBACK_PREFIX)
-        or c.data.startswith(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX)
+    lambda c: (
+        c.data
+        and (
+            c.data.startswith(_MY_ORDERS_CALLBACK_PREFIX)
+            or c.data.startswith(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX)
+        )
     )
 )
 async def paginate_orders(

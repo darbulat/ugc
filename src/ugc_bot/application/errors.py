@@ -17,6 +17,14 @@ class OrderCreationError(ValueError):
     """Raised when order creation data is invalid."""
 
 
+class OrderNotFoundError(OrderCreationError):
+    """Raised when an order cannot be found."""
+
+
+class OrderNotActiveError(OrderCreationError):
+    """Raised when an order is not in ACTIVE status."""
+
+
 class InteractionNotFoundError(ValueError):
     """Raised when an interaction cannot be found."""
 

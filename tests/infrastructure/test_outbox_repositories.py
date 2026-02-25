@@ -109,9 +109,9 @@ class TestInMemoryOutboxRepository:
         # Create multiple pending events
         for i in range(5):
             event = OutboxEvent(
-                event_id=UUID(f"00000000-0000-0000-0000-000000000{i+1:03d}"),
+                event_id=UUID(f"00000000-0000-0000-0000-000000000{i + 1:03d}"),
                 event_type="order.activated",
-                aggregate_id=f"order-{i+1}",
+                aggregate_id=f"order-{i + 1}",
                 aggregate_type="order",
                 payload={},
                 status=OutboxEventStatus.PENDING,
@@ -137,9 +137,9 @@ class TestInMemoryOutboxRepository:
         # Create events in reverse chronological order
         for i in [3, 1, 2]:
             event = OutboxEvent(
-                event_id=UUID(f"00000000-0000-0000-0000-000000000{i+1:03d}"),
+                event_id=UUID(f"00000000-0000-0000-0000-000000000{i + 1:03d}"),
                 event_type="order.activated",
-                aggregate_id=f"order-{i+1}",
+                aggregate_id=f"order-{i + 1}",
                 aggregate_type="order",
                 payload={},
                 status=OutboxEventStatus.PENDING,
@@ -507,9 +507,9 @@ class TestInMemoryOutboxRepository:
         old_processed = datetime.now(timezone.utc) - timedelta(days=10)
         for i in range(5):
             event = OutboxEvent(
-                event_id=UUID(f"00000000-0000-0000-0000-00000000000{i+1}"),
+                event_id=UUID(f"00000000-0000-0000-0000-00000000000{i + 1}"),
                 event_type="order.activated",
-                aggregate_id=f"order-{i+1}",
+                aggregate_id=f"order-{i + 1}",
                 aggregate_type="order",
                 payload={},
                 status=OutboxEventStatus.PUBLISHED,

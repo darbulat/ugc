@@ -100,8 +100,7 @@ ADVERTISER_NEW_RESPONSE_WHAT_NEXT = (
 
 # Post-payment success and info blocks (per TZ)
 ADVERTISER_AFTER_PAYMENT_SUCCESS = (
-    "Оплата прошла успешно ✅\n\n"
-    "Подбор креаторов по вашему заказу активирован."
+    "Оплата прошла успешно ✅\n\nПодбор креаторов по вашему заказу активирован."
 )
 ADVERTISER_AFTER_PAYMENT_WHAT_NEXT = (
     "🔄 **Что дальше**\n\n"

@@ -5,7 +5,10 @@ from uuid import UUID
 
 import pytest
 
-from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.errors import (
+    OrderNotActiveError,
+    OrderNotFoundError,
+)
 from ugc_bot.application.ports import BloggerProfileRepository
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
@@ -164,7 +167,7 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
 
 @pytest.mark.asyncio
 async def test_dispatch_raises_when_order_not_found() -> None:
-    """Dispatch raises OrderCreationError when order does not exist."""
+    """Dispatch raises OrderNotFoundError when order does not exist."""
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
@@ -178,7 +181,7 @@ async def test_dispatch_raises_when_order_not_found() -> None:
     )
     missing_order_id = UUID("00000000-0000-0000-0000-000000000605")
 
-    with pytest.raises(OrderCreationError, match="Order not found"):
+    with pytest.raises(OrderNotFoundError, match="Order not found"):
         await service.dispatch(missing_order_id)
 
 
@@ -213,7 +216,7 @@ async def test_dispatch_requires_active_order() -> None:
     )
     await order_repo.save(order)
 
-    with pytest.raises(OrderCreationError):
+    with pytest.raises(OrderNotActiveError):
         await service.dispatch(order.order_id)
 
 

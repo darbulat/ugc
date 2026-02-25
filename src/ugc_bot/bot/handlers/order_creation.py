@@ -394,11 +394,13 @@ async def handle_offer_text(
 
 
 @router.callback_query(
-    lambda c: c.data
-    in (
-        CALLBACK_ORDER_COOP_BARTER,
-        CALLBACK_ORDER_COOP_PAYMENT,
-        CALLBACK_ORDER_COOP_BOTH,
+    lambda c: (
+        c.data
+        in (
+            CALLBACK_ORDER_COOP_BARTER,
+            CALLBACK_ORDER_COOP_PAYMENT,
+            CALLBACK_ORDER_COOP_BOTH,
+        )
     )
 )
 async def handle_cooperation_format_callback(
@@ -876,11 +878,13 @@ def _content_usage_from_callback(data: str) -> str | None:
 
 
 @router.callback_query(
-    lambda c: c.data
-    in (
-        CALLBACK_ORDER_CONTENT_SOCIAL,
-        CALLBACK_ORDER_CONTENT_ADS,
-        CALLBACK_ORDER_CONTENT_BOTH,
+    lambda c: (
+        c.data
+        in (
+            CALLBACK_ORDER_CONTENT_SOCIAL,
+            CALLBACK_ORDER_CONTENT_ADS,
+            CALLBACK_ORDER_CONTENT_BOTH,
+        )
     )
 )
 async def handle_content_usage_callback(

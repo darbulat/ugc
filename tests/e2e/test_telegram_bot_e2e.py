@@ -327,9 +327,9 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
             "Blogger already has profile from previous test; "
             "run e2e_telegram with this test first or in isolation."
         )
-    assert (
-        "креатор" in text or "профиль" in text or "Создать" in text
-    ), f"Expected creator intro, got: {text!r}"
+    assert "креатор" in text or "профиль" in text or "Создать" in text, (
+        f"Expected creator intro, got: {text!r}"
+    )
 
     text = await send_and_get_reply(
         client, entity, bot_username, "Создать профиль", timeout=20
@@ -405,36 +405,36 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         "❌ Только UGC (без размещения)",
         timeout=15,
     )
-    assert (
-        text and "согласи" in text.lower()
-    ), "Expected agreements step before exit"
+    assert text and "согласи" in text.lower(), (
+        "Expected agreements step before exit"
+    )
 
     # Exit: send /start instead of confirming consent (clears FSM state).
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=15
     )
     assert text is not None, "Bot did not reply after /start on agreements step"
-    assert (
-        "прервана" in text or "Мой профиль" in text
-    ), "Expected 'registration interrupted' message"
+    assert "прервана" in text or "Мой профиль" in text, (
+        "Expected 'registration interrupted' message"
+    )
 
     # Return: open My Profile — bot should show agreements again.
     text = await send_and_get_reply(
         client, entity, bot_username, "👤 Мой профиль", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
-    assert (
-        "согласи" in text.lower()
-    ), "Expected agreements again when opening profile without consent"
+    assert "согласи" in text.lower(), (
+        "Expected agreements again when opening profile without consent"
+    )
 
     # Confirm consent and complete registration.
     text = await send_and_get_reply(
         client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
     )
     assert text is not None, "Bot did not reply after confirming consent"
-    assert (
-        "Профиль создан" in text or "подтвердить Instagram" in text
-    ), "Expected profile created or Instagram confirmation step"
+    assert "Профиль создан" in text or "подтвердить Instagram" in text, (
+        "Expected profile created or Instagram confirmation step"
+    )
 
 
 @pytest.mark.e2e_telegram
@@ -508,36 +508,36 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
         "https://exit-return-e2e.example.com",
         timeout=15,
     )
-    assert (
-        text and "согласи" in text.lower()
-    ), "Expected agreements step before exit"
+    assert text and "согласи" in text.lower(), (
+        "Expected agreements step before exit"
+    )
 
     # Exit: send /start instead of confirming consent (clears FSM state).
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=15
     )
     assert text is not None, "Bot did not reply after /start on agreements step"
-    assert (
-        "прервана" in text or "Мой профиль" in text
-    ), "Expected 'registration interrupted' message"
+    assert "прервана" in text or "Мой профиль" in text, (
+        "Expected 'registration interrupted' message"
+    )
 
     # Return: open My Profile — bot should show agreements again.
     text = await send_and_get_reply(
         client, entity, bot_username, "👤 Мой профиль", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
-    assert (
-        "согласи" in text.lower()
-    ), "Expected agreements again when opening profile without consent"
+    assert "согласи" in text.lower(), (
+        "Expected agreements again when opening profile without consent"
+    )
 
     # Confirm consent and complete registration.
     text = await send_and_get_reply(
         client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
     )
     assert text is not None, "Bot did not reply after confirming consent"
-    assert (
-        "разместить заказ" in text or "заказ" in text
-    ), "Expected advertiser menu after profile created"
+    assert "разместить заказ" in text or "заказ" in text, (
+        "Expected advertiser menu after profile created"
+    )
 
 
 @pytest.mark.e2e_telegram

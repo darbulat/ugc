@@ -1180,8 +1180,8 @@ class AdminDashboardService:
             "advertisers": lambda x: x.get("referred_advertisers", 0),
             "new_in_period": lambda x: x.get("new_in_period", 0),
             "manager": lambda x: (
-                (x.get("telegram") or x.get("username") or "").lower()
-            ),
+                x.get("telegram") or x.get("username") or ""
+            ).lower(),
             "code": lambda x: (x.get("referral_code") or "").lower(),
         }
         key_fn = key_map.get(sort_by)

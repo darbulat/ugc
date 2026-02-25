@@ -47,8 +47,9 @@ _COMPLAINT_REASONS = [
 
 
 @router.callback_query(
-    lambda callback: callback.data
-    and callback.data.startswith("complaint_select:")
+    lambda callback: (
+        callback.data and callback.data.startswith("complaint_select:")
+    )
 )
 async def select_complaint_target(
     callback: CallbackQuery,
@@ -283,8 +284,9 @@ async def start_complaint(
 
 
 @router.callback_query(
-    lambda callback: callback.data
-    and callback.data.startswith("complaint_reason:")
+    lambda callback: (
+        callback.data and callback.data.startswith("complaint_reason:")
+    )
 )
 async def handle_complaint_reason(
     callback: CallbackQuery,

@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.errors import (
+    OrderCreationError,
+    OrderNotActiveError,
+    OrderNotFoundError,
+)
 from ugc_bot.application.ports import (
     OfferDispatchRepository,
     OrderRepository,
@@ -93,7 +97,7 @@ class OfferResponseService:
                 order_id, session=session
             )
             if order is None:
-                raise OrderCreationError("Order not found.")
+                raise OrderNotFoundError("Order not found.")
             accepted_count = await self.dispatch_repo.count_accepted_by_order(
                 order_id, session=session
             )
@@ -102,7 +106,7 @@ class OfferResponseService:
                 order_closed_or_inactive
                 and accepted_count < order.bloggers_needed
             ):
-                raise OrderCreationError("Order is not active.")
+                raise OrderNotActiveError("Order is not active.")
             if await self.dispatch_repo.exists_responded(
                 order_id, blogger_id, session=session
             ):

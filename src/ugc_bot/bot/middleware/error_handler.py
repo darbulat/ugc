@@ -30,6 +30,8 @@ from ugc_bot.application.errors import (
     InteractionError,
     InteractionNotFoundError,
     OrderCreationError,
+    OrderNotActiveError,
+    OrderNotFoundError,
     UserNotFoundError,
 )
 from ugc_bot.application.messenger.ports import (
@@ -56,9 +58,13 @@ ERROR_MESSAGES = {
     AdvertiserRegistrationError: {
         "default": "Ошибка регистрации рекламодателя.",
     },
+    OrderNotFoundError: {
+        "default": "Заказ не найден.",
+    },
+    OrderNotActiveError: {
+        "default": "Заказ не активен.",
+    },
     OrderCreationError: {
-        "Order not found.": "Заказ не найден.",
-        "Order is not active.": "Заказ не активен.",
         "You already responded to this order.": "Вы уже откликались на заказ.",
         "Order response limit reached.": "Лимит откликов по заказу достигнут.",
         "Order is not in NEW status.": "Заказ не в статусе NEW.",

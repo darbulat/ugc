@@ -31,7 +31,7 @@ export-requirements:
 	uv export --no-dev --no-emit-project -o requirements.txt
 
 install-dev:
-	uv run pip install -e ".[dev]"
+	uv sync --all-extras
 
 lint:
 	uv run ruff check $(SRC_DIR) $(TEST_DIR)

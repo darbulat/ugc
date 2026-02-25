@@ -1401,7 +1401,7 @@ async def test_my_orders_page_one_shows_forward_button(
         await create_test_order(
             order_repo,
             user.user_id,
-            order_id=UUID(f"00000000-0000-0000-0000-0000000009{10+idx}"),
+            order_id=UUID(f"00000000-0000-0000-0000-0000000009{10 + idx}"),
             price=1000.0 + idx,
             bloggers_needed=3,
             status=OrderStatus.NEW,

@@ -982,10 +982,12 @@ async def handle_profile_my_profile_callback(
 
 
 @router.callback_query(
-    lambda c: c.data
-    in (
-        CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
-        CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
+    lambda c: (
+        c.data
+        in (
+            CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
+            CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
+        )
     )
 )
 async def handle_profile_edit_type_callback(
@@ -1021,9 +1023,11 @@ async def handle_profile_edit_type_callback(
 
 
 @router.callback_query(
-    lambda c: c.data
-    and c.data.startswith(CALLBACK_PROFILE_EDIT_FIELD_PREFIX)
-    and len(c.data or "") > len(CALLBACK_PROFILE_EDIT_FIELD_PREFIX)
+    lambda c: (
+        c.data
+        and c.data.startswith(CALLBACK_PROFILE_EDIT_FIELD_PREFIX)
+        and len(c.data or "") > len(CALLBACK_PROFILE_EDIT_FIELD_PREFIX)
+    )
 )
 async def handle_profile_edit_field_callback(
     callback: CallbackQuery,

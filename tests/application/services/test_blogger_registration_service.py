@@ -771,9 +771,9 @@ async def test_update_blogger_profile_preserves_all_optional_fields() -> None:
     assert saved is not None
     assert saved.city == "Kazan"
     for field in _BLOGGER_PROFILE_OPTIONAL_FIELDS:
-        assert getattr(saved, field) == getattr(
-            profile, field
-        ), f"update_blogger_profile must preserve {field}"
+        assert getattr(saved, field) == getattr(profile, field), (
+            f"update_blogger_profile must preserve {field}"
+        )
 
 
 @pytest.mark.asyncio
@@ -796,9 +796,9 @@ async def test_increment_preserves_all_optional_fields() -> None:
     for field in _BLOGGER_PROFILE_OPTIONAL_FIELDS:
         if field == "wanted_to_change_terms_count":
             continue
-        assert getattr(saved, field) == getattr(
-            profile, field
-        ), f"increment_wanted_to_change_terms_count must preserve {field}"
+        assert getattr(saved, field) == getattr(profile, field), (
+            f"increment_wanted_to_change_terms_count must preserve {field}"
+        )
 
 
 @pytest.mark.asyncio

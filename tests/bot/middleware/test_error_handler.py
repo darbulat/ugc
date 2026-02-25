@@ -23,6 +23,8 @@ from ugc_bot.application.errors import (
     InteractionError,
     InteractionNotFoundError,
     OrderCreationError,
+    OrderNotActiveError,
+    OrderNotFoundError,
     UserNotFoundError,
 )
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
@@ -40,13 +42,13 @@ def _answer_text(answers: list, index: int = 0) -> str:
 
 @pytest.mark.asyncio
 async def test_middleware_handles_order_creation_error() -> None:
-    """Middleware handles OrderCreationError and sends user message."""
+    """Middleware handles OrderNotFoundError and sends user message."""
 
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
     message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, message, {})
 
@@ -152,7 +154,7 @@ async def test_middleware_records_metrics() -> None:
     message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, message, {})
 
@@ -168,7 +170,7 @@ async def test_middleware_without_metrics_collector() -> None:
     message = FakeMessage(user=FakeUser(123))
 
     async def handler(event, data):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, message, {})
 
@@ -199,7 +201,7 @@ async def test_middleware_handles_callback_query() -> None:
     callback = FakeCallback(data="", user=FakeUser(456))
 
     async def handler(event, data):
-        raise OrderCreationError("Order is not active.")
+        raise OrderNotActiveError("Order is not active.")
 
     await middleware(handler, callback, {})
 
@@ -230,8 +232,8 @@ async def test_middleware_error_message_mapping() -> None:
     message = FakeMessage(user=FakeUser(123))
 
     test_cases = [
-        (OrderCreationError("Order not found."), "Заказ не найден"),
-        (OrderCreationError("Order is not active."), "Заказ не активен"),
+        (OrderNotFoundError("Order not found."), "Заказ не найден"),
+        (OrderNotActiveError("Order is not active."), "Заказ не активен"),
         (
             OrderCreationError("You already responded to this order."),
             "Вы уже откликались",
@@ -319,7 +321,7 @@ async def test_middleware_send_error_with_answer_no_show_alert() -> None:
     event = EventWithSimpleAnswer()
 
     async def handler(ev, data):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, event, {})
 
@@ -339,7 +341,7 @@ async def test_middleware_get_user_id_from_message() -> None:
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
 
     async def handler(event, data):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, msg, {})
 
@@ -360,7 +362,7 @@ async def test_middleware_get_user_id_from_callback() -> None:
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
 
     async def handler(event, data):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, callback, {})
 
@@ -441,7 +443,7 @@ async def test_middleware_get_user_id_from_pre_checkout() -> None:
     }
 
     async def handler(event, d):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, query, data)
 
@@ -467,7 +469,7 @@ async def test_middleware_send_error_via_messenger_client_message() -> None:
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
 
     async def handler(event, d):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, msg, data)
 
@@ -493,7 +495,7 @@ async def test_middleware_send_error_via_messenger_client_callback() -> None:
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
 
     async def handler(event, d):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, callback, data)
 
@@ -537,7 +539,7 @@ async def test_middleware_messenger_fallback_to_event_answer() -> None:
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
 
     async def handler(event, d):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, msg, data)
 
@@ -563,7 +565,7 @@ async def test_middleware_event_answer_typeerror_fallback() -> None:
     middleware = ErrorHandlerMiddleware(metrics_collector=None)
 
     async def handler(ev, data):
-        raise OrderCreationError("Order not found.")
+        raise OrderNotFoundError("Order not found.")
 
     await middleware(handler, event, {})
 

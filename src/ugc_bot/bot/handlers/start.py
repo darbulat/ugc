@@ -31,11 +31,11 @@ from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 router = Router()
 
 START_TEXT = (
-    "UMC — сервис для UGC.\n" "Бизнесу — подбор креаторов, креаторам — заказы."
+    "UMC — сервис для UGC.\nБизнесу — подбор креаторов, креаторам — заказы."
 )
 
 SUPPORT_RESPONSE_TEXT = (
-    "Служба поддержки: @usemycontent\n" "Обращайтесь по любым вопросам!"
+    "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
 )
 
 CREATOR_LABEL = "Я креатор"
