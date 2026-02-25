@@ -1,4 +1,7 @@
-"""Collect Instagram stats via ScrapeCreators into instagram_stats table. Falls back to aiograpi when provider returns no data."""
+"""Collect Instagram stats via ScrapeCreators into instagram_stats table.
+
+Falls back to aiograpi when provider returns no data.
+"""
 
 import asyncio
 import logging
@@ -242,7 +245,10 @@ def _username_from_profile(profile: BloggerProfile) -> Optional[str]:
 
 
 class InstagramStatsCollectorService:
-    """Collect Instagram stats via ScrapeCreators into instagram_stats table. Falls back to aiograpi when provider returns no data."""
+    """Collect Instagram stats via ScrapeCreators into instagram_stats table.
+
+    Falls back to aiograpi when provider returns no data.
+    """
 
     def __init__(
         self,
@@ -266,7 +272,8 @@ class InstagramStatsCollectorService:
             delay_seconds: Delay between API requests to respect rate limits.
             stats_update_interval_seconds: (Re)fetch only if no instagram_stats
                 row or fetched_at is older than this many seconds.
-            aiograpi_fetcher: Optional fallback when primary provider returns no data.
+            aiograpi_fetcher: Optional fallback when primary provider
+                returns no data.
         """
         self.blogger_repo = blogger_repo
         self.instagram_stats_repo = instagram_stats_repo
@@ -277,7 +284,7 @@ class InstagramStatsCollectorService:
         self._stats_update_interval_seconds = stats_update_interval_seconds
         self._aiograpi_fetcher = aiograpi_fetcher
 
-    async def run_once(self) -> RunOnceResult:
+    async def run_once(self) -> RunOnceResult:  # noqa: C901
         """Fetch stats for one batch; save to instagram_stats.
 
         Returns:
@@ -363,8 +370,10 @@ class InstagramStatsCollectorService:
 
             if not raw or not isinstance(raw, dict):
                 if self._aiograpi_fetcher:
-                    raw = await self._aiograpi_fetcher.get_profile_stats_by_username(
-                        username
+                    raw = await (
+                        self._aiograpi_fetcher.get_profile_stats_by_username(
+                            username
+                        )
                     )
                     provider = "aiograpi"
                 if not raw or not isinstance(raw, dict):

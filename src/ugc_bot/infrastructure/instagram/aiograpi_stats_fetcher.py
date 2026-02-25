@@ -1,4 +1,7 @@
-"""Fetch Instagram profile stats via aiograpi (async private API). Used as fallback when primary provider returns no data."""
+"""Fetch Instagram profile stats via aiograpi (async private API).
+
+Used as fallback when primary provider returns no data.
+"""
 
 import logging
 from pathlib import Path
@@ -8,9 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 def _apply_httpx_proxies_compat() -> None:
-    """Make httpx.AsyncClient accept 'proxies' for aiograpi compatibility with httpx 0.28+.
+    """Make httpx.AsyncClient accept 'proxies' for aiograpi (httpx 0.28+).
 
-    aiograpi passes proxies= to AsyncClient; httpx 0.28 removed it and uses proxy= (singular).
+    aiograpi passes proxies= to AsyncClient; httpx 0.28 uses proxy= (singular).
     """
     import httpx
 
@@ -18,7 +21,9 @@ def _apply_httpx_proxies_compat() -> None:
         return
     _orig_init = httpx.AsyncClient.__init__
 
-    def _patched_init(self: httpx.AsyncClient, *args: Any, **kwargs: Any) -> None:
+    def _patched_init(
+        self: httpx.AsyncClient, *args: Any, **kwargs: Any
+    ) -> None:
         proxies = kwargs.pop("proxies", None)
         if proxies and "proxy" not in kwargs:
             if isinstance(proxies, dict):
@@ -46,25 +51,35 @@ class AiograpiStatsFetcher:
         self._instagram_username = instagram_username.strip()
         self._instagram_password = instagram_password
         self._session_path = (
-            Path(session_path) if session_path else Path(".instagram_session.json")
+            Path(session_path)
+            if session_path
+            else Path(".instagram_session.json")
         )
 
     def is_configured(self) -> bool:
         """Return True if credentials are set."""
         return bool(self._instagram_username and self._instagram_password)
 
-    async def get_profile_stats_by_username(
+    async def get_profile_stats_by_username(  # noqa: C901
         self, username: str
     ) -> Optional[dict[str, Any]]:
-        """Fetch profile stats for username. Returns raw dict compatible with stats extraction, or None."""
+        """Fetch profile stats for username.
+
+        Returns raw dict compatible with stats extraction, or None.
+        """
         if not self.is_configured():
             return None
         _apply_httpx_proxies_compat()
         try:
-            from aiograpi import Client
-            from aiograpi.exceptions import LoginRequired, UserNotFound
+            from aiograpi import Client  # type: ignore[import-untyped]
+            from aiograpi.exceptions import (  # type: ignore[import-untyped]
+                LoginRequired,
+                UserNotFound,
+            )
         except ImportError:
-            logger.warning("aiograpi not installed, cannot use aiograpi fallback")
+            logger.warning(
+                "aiograpi not installed, cannot use aiograpi fallback"
+            )
             return None
 
         cl = Client()
@@ -88,8 +103,12 @@ class AiograpiStatsFetcher:
             logger.info("Aiograpi session expired, re-logging in...")
             cl = Client()
             try:
-                await cl.login(self._instagram_username, self._instagram_password)
-                user = await cl.user_info_by_username_v1(username.strip().lower())
+                await cl.login(
+                    self._instagram_username, self._instagram_password
+                )
+                user = await cl.user_info_by_username_v1(
+                    username.strip().lower()
+                )
             except Exception as e:
                 logger.warning("Aiograpi re-login or fetch failed: %s", e)
                 return None

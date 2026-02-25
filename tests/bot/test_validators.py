@@ -170,7 +170,8 @@ class TestValidateBirthDate:
         assert "будущ" in (err or "").lower()
 
     def test_age_too_young_returns_error(self) -> None:
-        d, err = validate_birth_date("25.02.2016")
+        # Use a birth date that is always under min age (10) regardless of today
+        d, err = validate_birth_date("25.02.2022")
         assert d is None
         assert err is not None
         assert "10" in (err or "")

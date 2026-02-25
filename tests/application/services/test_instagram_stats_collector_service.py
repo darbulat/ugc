@@ -471,15 +471,13 @@ class _MockAiograpiFetcher:
     def __init__(self, raw: dict):
         self._raw = raw
 
-    async def get_profile_stats_by_username(
-        self, username: str
-    ) -> dict | None:
+    async def get_profile_stats_by_username(self, username: str) -> dict | None:
         return self._raw
 
 
 @pytest.mark.asyncio
-async def test_run_once_uses_aiograpi_fallback_when_provider_returns_no_data() -> None:
-    """When primary provider returns no data, aiograpi fetcher is used and stats saved with provider aiograpi."""
+async def test_run_once_uses_aiograpi_fallback_when_provider_empty() -> None:
+    """When primary returns no data, aiograpi is used and stats saved."""
     user_id = uuid4()
     profile = BloggerProfile(
         user_id=user_id,
