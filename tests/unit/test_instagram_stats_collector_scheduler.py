@@ -6,6 +6,7 @@ import pytest
 
 from ugc_bot.application.services.instagram_stats_collector_service import (
     InstagramStatsCollectorService,
+    RunOnceResult,
 )
 from ugc_bot.instagram_stats_collector_scheduler import run_loop, run_once
 
@@ -13,9 +14,12 @@ from ugc_bot.instagram_stats_collector_scheduler import run_loop, run_once
 @pytest.mark.asyncio
 async def test_run_once_calls_service_run_once() -> None:
     """run_once delegates to service.run_once."""
-    updated, errors = 2, 0
     service = MagicMock(spec=InstagramStatsCollectorService)
-    service.run_once = AsyncMock(return_value=(updated, errors))
+    service.run_once = AsyncMock(
+        return_value=RunOnceResult(
+            updated=2, errors=0, updated_users=[], failed_users=[]
+        )
+    )
 
     await run_once(service)
 
@@ -26,7 +30,11 @@ async def test_run_once_calls_service_run_once() -> None:
 async def test_run_loop_stops_after_max_iterations() -> None:
     """run_loop stops when max_iterations reached."""
     service = MagicMock(spec=InstagramStatsCollectorService)
-    service.run_once = AsyncMock(return_value=(0, 0))
+    service.run_once = AsyncMock(
+        return_value=RunOnceResult(
+            updated=0, errors=0, updated_users=[], failed_users=[]
+        )
+    )
 
     await run_loop(
         service,
@@ -35,6 +43,59 @@ async def test_run_loop_stops_after_max_iterations() -> None:
     )
 
     assert service.run_once.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_once_logs_updated_and_failed_users() -> None:
+    """run_once logs which users were updated and which had problems."""
+    service = MagicMock(spec=InstagramStatsCollectorService)
+    service.run_once = AsyncMock(
+        return_value=RunOnceResult(
+            updated=2,
+            errors=1,
+            updated_users=[
+                {"user_id": "u1", "username": "alice"},
+                {"user_id": "u2", "username": "bob"},
+            ],
+            failed_users=[
+                {
+                    "user_id": "u3",
+                    "username": "charlie",
+                    "reason": "no_stats_data",
+                },
+            ],
+        )
+    )
+
+    with patch(
+        "ugc_bot.instagram_stats_collector_scheduler.logger"
+    ) as mock_logger:
+        await run_once(service)
+
+    mock_logger.info.assert_any_call(
+        "Updated Instagram stats for users: %s",
+        ["alice", "bob"],
+        extra={
+            "updated_users": [
+                {"user_id": "u1", "username": "alice"},
+                {"user_id": "u2", "username": "bob"},
+            ],
+        },
+    )
+    mock_logger.warning.assert_any_call(
+        "Instagram stats update had problems for %d users: %s",
+        1,
+        [("charlie", "no_stats_data")],
+        extra={
+            "failed_users": [
+                {
+                    "user_id": "u3",
+                    "username": "charlie",
+                    "reason": "no_stats_data",
+                },
+            ],
+        },
+    )
 
 
 def test_main_exits_when_stats_collector_disabled() -> None:

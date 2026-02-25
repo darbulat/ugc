@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -16,6 +17,16 @@ from ugc_bot.domain.entities import BloggerProfile, InstagramStats
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RunOnceResult:
+    """Result of a single Instagram stats collection cycle."""
+
+    updated: int
+    errors: int
+    updated_users: list[dict]
+    failed_users: list[dict]
 
 
 def _safe_int(value: Any) -> Optional[int]:
@@ -253,17 +264,19 @@ class InstagramStatsCollectorService:
         self._delay_seconds = delay_seconds
         self._stats_update_interval_seconds = stats_update_interval_seconds
 
-    async def run_once(self) -> tuple[int, int]:
+    async def run_once(self) -> RunOnceResult:
         """Fetch stats for one batch; save to instagram_stats.
 
         Returns:
-            Tuple of (updated_count, error_count).
+            RunOnceResult with updated/error counts and user lists.
         """
         if not self.stats_provider_client:
             logger.warning(
                 "Stats provider client not configured, skipping stats update"
             )
-            return (0, 0)
+            return RunOnceResult(
+                updated=0, errors=0, updated_users=[], failed_users=[]
+            )
 
         now = datetime.now(timezone.utc)
         threshold = now - timedelta(seconds=self._stats_update_interval_seconds)
@@ -281,18 +294,31 @@ class InstagramStatsCollectorService:
             logger.debug(
                 "No confirmed profiles with instagram_user_id to update"
             )
-            return (0, 0)
+            return RunOnceResult(
+                updated=0, errors=0, updated_users=[], failed_users=[]
+            )
 
         updated = 0
         errors = 0
+        updated_users: list[dict] = []
+        failed_users: list[dict] = []
+
         for profile in profiles:
+            user_id_str = str(profile.user_id)
             username = _username_from_profile(profile)
             if not username:
                 logger.debug(
                     "Skipping profile without Instagram username",
-                    extra={"user_id": str(profile.user_id)},
+                    extra={"user_id": user_id_str},
                 )
                 errors += 1
+                failed_users.append(
+                    {
+                        "user_id": user_id_str,
+                        "username": "",
+                        "reason": "no_instagram_username",
+                    }
+                )
                 continue
 
             try:
@@ -306,24 +332,38 @@ class InstagramStatsCollectorService:
                 logger.warning(
                     "Failed to fetch Instagram stats",
                     extra={
-                        "user_id": str(profile.user_id),
+                        "user_id": user_id_str,
                         "username": username,
                         "error": str(exc),
                     },
                     exc_info=exc,
                 )
                 errors += 1
+                failed_users.append(
+                    {
+                        "user_id": user_id_str,
+                        "username": username,
+                        "reason": str(exc),
+                    }
+                )
                 continue
 
             if not raw or not isinstance(raw, dict):
                 logger.debug(
                     "No stats data returned",
                     extra={
-                        "user_id": str(profile.user_id),
+                        "user_id": user_id_str,
                         "username": username,
                     },
                 )
                 errors += 1
+                failed_users.append(
+                    {
+                        "user_id": user_id_str,
+                        "username": username,
+                        "reason": "no_stats_data",
+                    }
+                )
                 continue
 
             followers, follows, media, parsed_username, biography = (
@@ -352,14 +392,20 @@ class InstagramStatsCollectorService:
 
             await with_optional_tx(self.transaction_manager, _save)
             updated += 1
+            updated_users.append({"user_id": user_id_str, "username": username})
             logger.debug(
                 "Saved Instagram stats",
                 extra={
-                    "user_id": str(profile.user_id),
+                    "user_id": user_id_str,
                     "username": username,
                     "followers": followers,
                 },
             )
             await asyncio.sleep(self._delay_seconds)
 
-        return (updated, errors)
+        return RunOnceResult(
+            updated=updated,
+            errors=errors,
+            updated_users=updated_users,
+            failed_users=failed_users,
+        )

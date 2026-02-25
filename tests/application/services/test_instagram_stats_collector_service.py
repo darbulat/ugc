@@ -367,9 +367,9 @@ async def test_run_once_no_client_returns_zero() -> None:
         instagram_stats_repo=stats_repo,
         stats_provider_client=None,
     )
-    updated, errors = await service.run_once()
-    assert updated == 0
-    assert errors == 0
+    result = await service.run_once()
+    assert result.updated == 0
+    assert result.errors == 0
 
 
 @pytest.mark.asyncio
@@ -385,9 +385,9 @@ async def test_run_once_empty_list_returns_zero() -> None:
         instagram_stats_repo=stats_repo,
         stats_provider_client=client,
     )
-    updated, errors = await service.run_once()
-    assert updated == 0
-    assert errors == 0
+    result = await service.run_once()
+    assert result.updated == 0
+    assert result.errors == 0
 
 
 @pytest.mark.asyncio
@@ -438,9 +438,9 @@ async def test_run_once_saves_stats_from_rapid_api() -> None:
         delay_seconds=0.0,
     )
 
-    updated, errors = await service.run_once()
-    assert updated == 1
-    assert errors == 0
+    result = await service.run_once()
+    assert result.updated == 1
+    assert result.errors == 0
 
     saved = await stats_repo.get_by_user_id(user_id)
     assert saved is not None
@@ -506,9 +506,9 @@ async def test_run_once_saves_instagram_id_when_data_user_has_id() -> None:
         delay_seconds=0.0,
     )
 
-    updated, errors = await service.run_once()
-    assert updated == 1
-    assert errors == 0
+    result = await service.run_once()
+    assert result.updated == 1
+    assert result.errors == 0
 
     saved = await stats_repo.get_by_user_id(user_id)
     assert saved is not None
@@ -569,9 +569,9 @@ async def test_run_once_saves_instagram_id_from_data_id() -> None:
         delay_seconds=0.0,
     )
 
-    updated, errors = await service.run_once()
-    assert updated == 1
-    assert errors == 0
+    result = await service.run_once()
+    assert result.updated == 1
+    assert result.errors == 0
 
     saved = await stats_repo.get_by_user_id(user_id)
     assert saved is not None
@@ -623,9 +623,9 @@ async def test_run_once_saves_instagram_id_from_top_level_id() -> None:
         delay_seconds=0.0,
     )
 
-    updated, errors = await service.run_once()
-    assert updated == 1
-    assert errors == 0
+    result = await service.run_once()
+    assert result.updated == 1
+    assert result.errors == 0
 
     saved = await stats_repo.get_by_user_id(user_id)
     assert saved is not None
@@ -665,9 +665,9 @@ async def test_run_once_skips_profile_without_username() -> None:
         stats_provider_client=client,
         delay_seconds=0.0,
     )
-    updated, errors = await service.run_once()
-    assert updated == 0
-    assert errors == 1
+    result = await service.run_once()
+    assert result.updated == 0
+    assert result.errors == 1
     assert await stats_repo.get_by_user_id(user_id) is None
 
 
@@ -704,9 +704,9 @@ async def test_run_once_client_returns_none_increments_errors() -> None:
         stats_provider_client=client,
         delay_seconds=0.0,
     )
-    updated, errors = await service.run_once()
-    assert updated == 0
-    assert errors == 1
+    result = await service.run_once()
+    assert result.updated == 0
+    assert result.errors == 1
 
 
 @pytest.mark.asyncio
@@ -746,9 +746,9 @@ async def test_run_once_client_raises_increments_errors() -> None:
         ),
         delay_seconds=0.0,
     )
-    updated, errors = await service.run_once()
-    assert updated == 0
-    assert errors == 1
+    result = await service.run_once()
+    assert result.updated == 0
+    assert result.errors == 1
 
 
 @pytest.mark.asyncio

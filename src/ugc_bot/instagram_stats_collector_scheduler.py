@@ -18,11 +18,32 @@ logger = logging.getLogger(__name__)
 async def run_once(service) -> None:
     """Run a single Instagram stats collection cycle (ScrapeCreators)."""
     logger.debug("Starting Instagram stats cycle")
-    updated, errors = await service.run_once()
+    result = await service.run_once()
     logger.info(
         "Instagram stats cycle completed",
-        extra={"updated": updated, "errors": errors},
+        extra={
+            "updated": result.updated,
+            "errors": result.errors,
+            "updated_users": result.updated_users,
+            "failed_users": result.failed_users,
+        },
     )
+    if result.updated_users:
+        logger.info(
+            "Updated Instagram stats for users: %s",
+            [u["username"] or u["user_id"] for u in result.updated_users],
+            extra={"updated_users": result.updated_users},
+        )
+    if result.failed_users:
+        logger.warning(
+            "Instagram stats update had problems for %d users: %s",
+            len(result.failed_users),
+            [
+                (u.get("username") or u.get("user_id"), u.get("reason", "?"))
+                for u in result.failed_users
+            ],
+            extra={"failed_users": result.failed_users},
+        )
 
 
 async def run_loop(
