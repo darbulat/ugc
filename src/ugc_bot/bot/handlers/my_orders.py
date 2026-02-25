@@ -424,7 +424,7 @@ async def _render_page(
             buttons_rows.append(
                 [
                     Button(
-                        text="💳 Оплатить",
+                        text=f"💳 Оплатить №{creation_number}",
                         callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{order.order_id}",
                     )
                 ]
