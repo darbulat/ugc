@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from ugc_bot.application.errors import ScrapeCreatorsAPIError
+from ugc_bot.application.ports import InstagramStatsProviderClient
 from ugc_bot.application.services.instagram_stats_collector_service import (
     InstagramStatsCollectorService,
     _extract_instagram_id,
@@ -453,6 +454,88 @@ async def test_run_once_saves_stats_from_rapid_api() -> None:
     assert saved.biography == "Bio"
     assert saved.provider == "rapid_api"
     assert saved.fetched_at is not None
+
+
+class _NoDataProviderClient(InstagramStatsProviderClient):
+    """Provider that always returns no data (for aiograpi fallback test)."""
+
+    async def get_profile_stats_with_provider(
+        self, username: str
+    ) -> tuple[dict | None, str]:
+        return (None, "scrapecreators")
+
+
+class _MockAiograpiFetcher:
+    """Mock aiograpi fetcher that returns given raw dict."""
+
+    def __init__(self, raw: dict):
+        self._raw = raw
+
+    async def get_profile_stats_by_username(
+        self, username: str
+    ) -> dict | None:
+        return self._raw
+
+
+@pytest.mark.asyncio
+async def test_run_once_uses_aiograpi_fallback_when_provider_returns_no_data() -> None:
+    """When primary provider returns no data, aiograpi fetcher is used and stats saved with provider aiograpi."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_123",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    aiograpi_raw = {
+        "data": {
+            "username": "jane",
+            "followers_count": 1500,
+            "follows_count": 200,
+            "media_count": 80,
+            "biography": "Aiograpi bio",
+        },
+        "id": "12345678",
+    }
+    client = _NoDataProviderClient()
+    aiograpi_fetcher = _MockAiograpiFetcher(aiograpi_raw)
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=client,
+        aiograpi_fetcher=aiograpi_fetcher,
+        batch_size=10,
+        delay_seconds=0.0,
+    )
+
+    result = await service.run_once()
+    assert result.updated == 1
+    assert result.errors == 0
+
+    saved = await stats_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.followers_count == 1500
+    assert saved.follows_count == 200
+    assert saved.media_count == 80
+    assert saved.instagram_username == "jane"
+    assert saved.biography == "Aiograpi bio"
+    assert saved.provider == "aiograpi"
+    assert saved.instagram_id == "12345678"
 
 
 @pytest.mark.asyncio

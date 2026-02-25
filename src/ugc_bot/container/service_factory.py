@@ -1,5 +1,6 @@
 """Factory for creating application services."""
 
+from pathlib import Path
 from typing import Any
 
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -160,6 +161,28 @@ def build_instagram_stats_scheduler_deps(
     }
 
 
+def _build_aiograpi_fetcher(config: AppConfig):
+    """Build AiograpiStatsFetcher when config and aiograpi are available."""
+    ig = config.instagram
+    username = (ig.instagram_stats_aiograpi_username or "").strip()
+    password = (ig.instagram_stats_aiograpi_password or "").strip()
+    if not username or not password:
+        return None
+    try:
+        from ugc_bot.infrastructure.instagram.aiograpi_stats_fetcher import (
+            AiograpiStatsFetcher,
+        )
+
+        session_path = (ig.instagram_stats_aiograpi_session_path or "").strip()
+        return AiograpiStatsFetcher(
+            instagram_username=username,
+            instagram_password=password,
+            session_path=Path(session_path) if session_path else None,
+        )
+    except ImportError:
+        return None
+
+
 def build_instagram_stats_collector_scheduler_deps(
     config: AppConfig,
     repos,
@@ -168,6 +191,7 @@ def build_instagram_stats_collector_scheduler_deps(
 ):
     """Build deps for Instagram stats collector scheduler."""
     ig_config = config.instagram
+    aiograpi_fetcher = _build_aiograpi_fetcher(config)
     return {
         "instagram_stats_collector_service": (
             InstagramStatsCollectorService(
@@ -180,6 +204,7 @@ def build_instagram_stats_collector_scheduler_deps(
                 stats_update_interval_seconds=(
                     ig_config.instagram_stats_collector_interval_seconds
                 ),
+                aiograpi_fetcher=aiograpi_fetcher,
             )
         ),
         "interval_seconds": (

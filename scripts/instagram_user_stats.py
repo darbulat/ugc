@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Get Instagram user statistics by username using instagrapi.
+"""Get Instagram user statistics by username using aiograpi.
 
 Requires INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD environment variables
 (or .env file) for API login. Session is saved to avoid repeated logins.
 
 Usage:
-    uv sync --extra instagram  # install instagrapi once
     INSTAGRAM_USERNAME=... INSTAGRAM_PASSWORD=... python scripts/instagram_user_stats.py TARGET_USERNAME
     python scripts/instagram_user_stats.py TARGET_USERNAME --json
 
@@ -13,6 +12,7 @@ Session file .instagram_session.json is in project root and ignored by git.
 """
 
 import argparse
+import asyncio
 import json
 import logging
 import os
@@ -38,15 +38,15 @@ def load_dotenv_if_available() -> None:
         pass
 
 
-def _get_client_and_fetch_user(
+async def _fetch_user_async(
     username: str,
     instagram_username: str,
     instagram_password: str,
     session_path: Path,
 ) -> dict:
     """Login (reuse or create session), fetch user, persist session. Returns stats dict."""
-    from instagrapi import Client
-    from instagrapi.exceptions import LoginRequired, UserNotFound
+    from aiograpi import Client
+    from aiograpi.exceptions import LoginRequired, UserNotFound
 
     cl = Client()
     if session_path.exists():
@@ -57,21 +57,20 @@ def _get_client_and_fetch_user(
             logger.warning("Could not load session: %s", e)
 
     try:
-        cl.login(instagram_username, instagram_password)
+        await cl.login(instagram_username, instagram_password)
     except Exception as e:
         raise RuntimeError(f"Instagram login failed: {e}") from e
 
-    # Use private API only (usernameinfo/) to avoid 429 on public web_profile_info
     try:
-        user = cl.user_info_by_username_v1(username)
+        user = await cl.user_info_by_username_v1(username)
     except UserNotFound as e:
         raise RuntimeError(f"User '{username}' not found") from e
     except LoginRequired as e:
         logger.info("Session expired, re-logging in...")
         cl = Client()
         try:
-            cl.login(instagram_username, instagram_password)
-            user = cl.user_info_by_username_v1(username)
+            await cl.login(instagram_username, instagram_password)
+            user = await cl.user_info_by_username_v1(username)
         except Exception as e2:
             raise RuntimeError(f"Re-login or fetch failed: {e2}") from e2
         cl.dump_settings(str(session_path))
@@ -122,8 +121,10 @@ def get_user_stats(
         RuntimeError: On login or user fetch failure.
     """
     path = session_path or DEFAULT_SESSION_FILE
-    return _get_client_and_fetch_user(
-        username, instagram_username, instagram_password, path
+    return asyncio.run(
+        _fetch_user_async(
+            username, instagram_username, instagram_password, path
+        )
     )
 
 
@@ -132,7 +133,7 @@ def main() -> int:
     load_dotenv_if_available()
 
     parser = argparse.ArgumentParser(
-        description="Get Instagram user statistics by username (instagrapi)."
+        description="Get Instagram user statistics by username (aiograpi)."
     )
     parser.add_argument(
         "username",

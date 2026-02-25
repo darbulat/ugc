@@ -1,10 +1,10 @@
-"""Collect Instagram stats via ScrapeCreators into instagram_stats table."""
+"""Collect Instagram stats via ScrapeCreators into instagram_stats table. Falls back to aiograpi when provider returns no data."""
 
 import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 from ugc_bot.application.errors import ScrapeCreatorsAPIError
 from ugc_bot.application.ports import (
@@ -17,6 +17,16 @@ from ugc_bot.domain.entities import BloggerProfile, InstagramStats
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
+
+
+class AiograpiStatsFetcherProtocol(Protocol):
+    """Protocol for aiograpi fallback fetcher."""
+
+    async def get_profile_stats_by_username(
+        self, username: str
+    ) -> Optional[dict[str, Any]]:
+        """Return raw stats dict or None."""
+        ...
 
 
 @dataclass
@@ -232,7 +242,7 @@ def _username_from_profile(profile: BloggerProfile) -> Optional[str]:
 
 
 class InstagramStatsCollectorService:
-    """Collect Instagram stats via ScrapeCreators into instagram_stats table."""
+    """Collect Instagram stats via ScrapeCreators into instagram_stats table. Falls back to aiograpi when provider returns no data."""
 
     def __init__(
         self,
@@ -243,6 +253,7 @@ class InstagramStatsCollectorService:
         batch_size: int = 50,
         delay_seconds: float = 1.0,
         stats_update_interval_seconds: int = 86400,
+        aiograpi_fetcher: Optional[AiograpiStatsFetcherProtocol] = None,
     ) -> None:
         """Initialize the service.
 
@@ -255,6 +266,7 @@ class InstagramStatsCollectorService:
             delay_seconds: Delay between API requests to respect rate limits.
             stats_update_interval_seconds: (Re)fetch only if no instagram_stats
                 row or fetched_at is older than this many seconds.
+            aiograpi_fetcher: Optional fallback when primary provider returns no data.
         """
         self.blogger_repo = blogger_repo
         self.instagram_stats_repo = instagram_stats_repo
@@ -263,6 +275,7 @@ class InstagramStatsCollectorService:
         self._batch_size = batch_size
         self._delay_seconds = delay_seconds
         self._stats_update_interval_seconds = stats_update_interval_seconds
+        self._aiograpi_fetcher = aiograpi_fetcher
 
     async def run_once(self) -> RunOnceResult:
         """Fetch stats for one batch; save to instagram_stats.
@@ -349,22 +362,28 @@ class InstagramStatsCollectorService:
                 continue
 
             if not raw or not isinstance(raw, dict):
-                logger.debug(
-                    "No stats data returned",
-                    extra={
-                        "user_id": user_id_str,
-                        "username": username,
-                    },
-                )
-                errors += 1
-                failed_users.append(
-                    {
-                        "user_id": user_id_str,
-                        "username": username,
-                        "reason": "no_stats_data",
-                    }
-                )
-                continue
+                if self._aiograpi_fetcher:
+                    raw = await self._aiograpi_fetcher.get_profile_stats_by_username(
+                        username
+                    )
+                    provider = "aiograpi"
+                if not raw or not isinstance(raw, dict):
+                    logger.debug(
+                        "No stats data returned",
+                        extra={
+                            "user_id": user_id_str,
+                            "username": username,
+                        },
+                    )
+                    errors += 1
+                    failed_users.append(
+                        {
+                            "user_id": user_id_str,
+                            "username": username,
+                            "reason": "no_stats_data",
+                        }
+                    )
+                    continue
 
             followers, follows, media, parsed_username, biography = (
                 _extract_typed_fields(raw)
