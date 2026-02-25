@@ -260,6 +260,9 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
+      INSTAGRAM_STATS_AIOGRAPI_SESSION_PATH: /app/instagram_session/.instagram_session.json
+    volumes:
+      - instagram_session_data:/app/instagram_session
     depends_on:
       db:
         condition: service_healthy
@@ -564,6 +567,7 @@ volumes:
   alertmanager_config:
   loki_data:
   backup_data:
+  instagram_session_data:
 
 networks:
   default:

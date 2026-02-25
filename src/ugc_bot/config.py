@@ -318,6 +318,15 @@ class InstagramConfig(BaseSettings):
         default="https://api.scrapecreators.com",
         alias="SCRAPECREATORS_BASE_URL",
     )
+    instagram_stats_aiograpi_username: str = Field(
+        default="", alias="INSTAGRAM_STATS_AIOGRAPI_USERNAME"
+    )
+    instagram_stats_aiograpi_password: str = Field(
+        default="", alias="INSTAGRAM_STATS_AIOGRAPI_PASSWORD"
+    )
+    instagram_stats_aiograpi_session_path: str = Field(
+        default="", alias="INSTAGRAM_STATS_AIOGRAPI_SESSION_PATH"
+    )
 
     @field_validator("scrapecreators_base_url")
     @classmethod
