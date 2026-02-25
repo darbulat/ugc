@@ -43,6 +43,9 @@ dev = [
 telegram-e2e = [
   "telethon>=1.36.0",
 ]
+instagram = [
+  "instagrapi>=2.1.0",
+]
 
  [build-system]
  requires = ["setuptools>=68"]

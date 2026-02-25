@@ -28,3 +28,6 @@ coverage.xml
 
 # Telethon session for E2E tests
 tests/e2e/.telethon_session/
+
+# Instagram session for scripts/instagram_user_stats.py
+.instagram_session.json
