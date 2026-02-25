@@ -8,7 +8,7 @@ from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message, PreCheckoutQuery
+from aiogram.types import CallbackQuery, Message, PreCheckoutQuery
 
 from ugc_bot.application.errors import (  # noqa: F401 - used in except
     OrderCreationError,
@@ -32,7 +32,10 @@ from ugc_bot.application.services.content_moderation_service import (
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import advertiser_after_payment_keyboard
+from ugc_bot.bot.handlers.keyboards import (
+    PAY_ORDER_CALLBACK_PREFIX,
+    advertiser_after_payment_keyboard,
+)
 from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_AFTER_PAYMENT_IMPORTANT,
     ADVERTISER_AFTER_PAYMENT_SUCCESS,
@@ -40,6 +43,7 @@ from ugc_bot.bot.handlers.security_warnings import (
 )
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
+    get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
@@ -200,6 +204,104 @@ async def pay_order(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Неверный формат order_id.",
+        )
+        return
+
+    order = await payment_service.get_order(order_id)
+    if order is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Заказ не найден.",
+        )
+        return
+    if order.advertiser_id != user.user_id:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Заказ не принадлежит рекламодателю.",
+        )
+        return
+    if order.status != OrderStatus.NEW:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Заказ не в статусе NEW.",
+        )
+        return
+
+    contact_price = await contact_pricing_service.get_price(
+        order.bloggers_needed
+    )
+    if contact_price is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Стоимость доступа не настроена. Свяжитесь с поддержкой.",
+        )
+        return
+
+    if not config.bot.telegram_provider_token:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Платежный провайдер не настроен.",
+        )
+        return
+
+    await send_order_invoice(
+        incoming_message=incoming,
+        messenger_client=messenger_client,
+        order_id=order.order_id,
+        offer_text=order.offer_text,
+        price_value=contact_price,
+        config=config,
+    )
+
+
+@router.callback_query(
+    lambda c: (
+        c.data is not None and c.data.startswith(PAY_ORDER_CALLBACK_PREFIX)
+    )
+)
+async def pay_order_callback(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    payment_service: PaymentService,
+    contact_pricing_service: ContactPricingService,
+    config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Send Telegram invoice for an order from 'My orders' list button."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
+        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
+        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
+    )
+    if user is None:
+        return
+
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    if advertiser is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Профиль рекламодателя не заполнен. Команда: /advertiser",
+        )
+        return
+
+    raw = (incoming.data or "").split(PAY_ORDER_CALLBACK_PREFIX, 1)[-1]
+    try:
+        order_id = UUID(raw)
+    except ValueError:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Неверный формат заказа.",
         )
         return
 

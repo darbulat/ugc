@@ -28,6 +28,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_MENU_MY_ORDERS,
     CONFIRM_AGREEMENT_BUTTON_TEXT,
     MY_ORDERS_BUTTON_TEXT,
+    PAY_ORDER_CALLBACK_PREFIX,
     flow_keyboard,
 )
 from ugc_bot.bot.handlers.profile import (
@@ -419,6 +420,15 @@ async def _render_page(
             f"Ссылка на проект: {order.product_link}",
         ]
         lines.append("\n".join(order_lines))
+        if order.status == OrderStatus.NEW:
+            buttons_rows.append(
+                [
+                    Button(
+                        text="💳 Оплатить",
+                        callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{order.order_id}",
+                    )
+                ]
+            )
 
     # Pagination buttons
     nav_buttons: list[Button] = []

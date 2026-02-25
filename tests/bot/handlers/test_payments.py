@@ -12,6 +12,7 @@ from tests.helpers.factories import (
 )
 from tests.helpers.fakes import (
     FakeBot,
+    FakeCallback,
     FakeMessage,
     FakePreCheckoutQuery,
     FakeSuccessfulPayment,
@@ -28,6 +29,7 @@ from ugc_bot.application.services.content_moderation_service import (
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import (
     pay_order,
+    pay_order_callback,
     pre_checkout_query_handler,
     send_order_invoice,
     successful_payment_handler,
@@ -1287,3 +1289,585 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
         == "00000000-0000-0000-0000-000000000538"
     )
     assert "Order not found" in metrics.recorded[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_pay_order_callback_success(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """pay_order_callback sends invoice when order is valid."""
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000540"),
+        external_id="40",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="40",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000541"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+    )
+
+    bot = FakeBot()
+    message = FakeMessage(user=FakeUser(40, "adv", "Adv"), bot=bot)
+    message.chat = type("Chat", (), {"id": 40})()
+    callback = FakeCallback(
+        data=f"pay_order:{order.order_id}",
+        user=FakeUser(40, "adv", "Adv"),
+        message=message,
+        bot=bot,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await pay_order_callback(
+        callback,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(messenger_client.sent_invoices) == 1
+    assert messenger_client.sent_invoices[0]["invoice"].payload == str(
+        order.order_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_pay_order_callback_order_not_new(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """pay_order_callback rejects non-NEW order."""
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000542"),
+        external_id="41",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="41",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000543"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+    )
+
+    message = FakeMessage(user=FakeUser(41, "adv", "Adv"), bot=FakeBot())
+    message.chat = type("Chat", (), {"id": 41})()
+    callback = FakeCallback(
+        data=f"pay_order:{order.order_id}",
+        user=FakeUser(41, "adv", "Adv"),
+        message=message,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await pay_order_callback(
+        callback,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(messenger_client.sent_invoices) == 0
+    assert any("статусе NEW" in s["text"] for s in messenger_client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_pay_order_callback_invalid_uuid(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """pay_order_callback rejects invalid order id in callback data."""
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000544"),
+        external_id="42",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="42",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    message = FakeMessage(user=FakeUser(42, "adv", "Adv"), bot=FakeBot())
+    message.chat = type("Chat", (), {"id": 42})()
+    callback = FakeCallback(
+        data="pay_order:not-a-uuid",
+        user=FakeUser(42, "adv", "Adv"),
+        message=message,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await pay_order_callback(
+        callback,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(messenger_client.sent_invoices) == 0
+    assert any(
+        "Неверный формат" in s["text"] for s in messenger_client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_pay_order_callback_order_not_found(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """pay_order_callback rejects when order does not exist."""
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000545"),
+        external_id="43",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="43",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    message = FakeMessage(user=FakeUser(43, "adv", "Adv"), bot=FakeBot())
+    message.chat = type("Chat", (), {"id": 43})()
+    callback = FakeCallback(
+        data="pay_order:00000000-0000-0000-0000-000000000599",
+        user=FakeUser(43, "adv", "Adv"),
+        message=message,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await pay_order_callback(
+        callback,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(messenger_client.sent_invoices) == 0
+    assert any(
+        "Заказ не найден" in s["text"] for s in messenger_client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_pay_order_callback_no_advertiser_profile(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """pay_order_callback rejects when user has no advertiser profile."""
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000546"),
+        external_id="44",
+        username="adv",
+    )
+    await user_service.set_user(
+        external_id="44",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000547"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+    )
+
+    message = FakeMessage(user=FakeUser(44, "adv", "Adv"), bot=FakeBot())
+    message.chat = type("Chat", (), {"id": 44})()
+    callback = FakeCallback(
+        data=f"pay_order:{order.order_id}",
+        user=FakeUser(44, "adv", "Adv"),
+        message=message,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await pay_order_callback(
+        callback,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(messenger_client.sent_invoices) == 0
+    assert any(
+        "Профиль рекламодателя" in s["text"] for s in messenger_client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_pay_order_callback_wrong_owner(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """pay_order_callback rejects when order belongs to another advertiser."""
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000548"),
+        external_id="45",
+        username="adv1",
+    )
+    other = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000549"),
+        external_id="46",
+        username="adv2",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="45",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv1",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        other.user_id,
+        order_id=UUID("00000000-0000-0000-0000-00000000054a"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+    )
+
+    message = FakeMessage(user=FakeUser(45, "adv1", "Adv1"), bot=FakeBot())
+    message.chat = type("Chat", (), {"id": 45})()
+    callback = FakeCallback(
+        data=f"pay_order:{order.order_id}",
+        user=FakeUser(45, "adv1", "Adv1"),
+        message=message,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await pay_order_callback(
+        callback,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(messenger_client.sent_invoices) == 0
+    assert any(
+        "не принадлежит" in s["text"] for s in messenger_client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_pay_order_callback_no_provider_token(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """pay_order_callback rejects when provider token is not configured."""
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000054b"),
+        external_id="47",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="47",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-00000000054c"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+    )
+
+    message = FakeMessage(user=FakeUser(47, "adv", "Adv"), bot=FakeBot())
+    message.chat = type("Chat", (), {"id": 47})()
+    callback = FakeCallback(
+        data=f"pay_order:{order.order_id}",
+        user=FakeUser(47, "adv", "Adv"),
+        message=message,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "",
+        }
+    )
+
+    await pay_order_callback(
+        callback,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert len(messenger_client.sent_invoices) == 0
+    assert any(
+        "Платежный провайдер" in s["text"] for s in messenger_client.sent_text
+    )

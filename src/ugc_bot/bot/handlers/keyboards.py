@@ -46,6 +46,7 @@ CALLBACK_PROFILE_EDIT_FIELD_PREFIX = "profile:field:"
 CALLBACK_PROFILE_MENU_CREATE_ORDER = "profile:menu:order"
 CALLBACK_PROFILE_MENU_MY_ORDERS = "profile:menu:orders"
 CALLBACK_PROFILE_CONFIRM_INSTAGRAM = "profile:confirm_ig"
+PAY_ORDER_CALLBACK_PREFIX = "pay_order:"
 # Edit choice fields (blogger)
 CALLBACK_PROFILE_AUDIENCE_F = "profile:aud:F"
 CALLBACK_PROFILE_AUDIENCE_M = "profile:aud:M"
