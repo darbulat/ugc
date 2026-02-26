@@ -941,13 +941,17 @@ class OrderAdmin(ModelView, model=OrderModel):
     column_list = [
         OrderModel.order_id,
         OrderModel.advertiser_id,
+        OrderModel.order_type,
         OrderModel.product_link,
         OrderModel.offer_text,
+        OrderModel.barter_description,
         OrderModel.price,
         OrderModel.bloggers_needed,
+        OrderModel.status,
         OrderModel.content_usage,
         OrderModel.deadlines,
         OrderModel.geography,
+        OrderModel.product_photo_file_id,
         OrderModel.min_followers,
         OrderModel.max_followers,
         OrderModel.min_age,
@@ -959,8 +963,9 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.price_filter_delta,
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
-        OrderModel.status,
         OrderModel.created_at,
+        OrderModel.updated_at,
+        OrderModel.completed_at,
     ]
     column_sortable_list = list(column_list)
     column_default_sort = (OrderModel.created_at, True)
@@ -983,6 +988,8 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.required_blogger_gender: "Пол",
         OrderModel.status: "Статус",
         OrderModel.created_at: "Дата создания",
+        OrderModel.updated_at: "Дата обновления",
+        OrderModel.completed_at: "Дата завершения",
         OrderModel.order_type: "Тип заказа",
         OrderModel.barter_description: "Описание бартера",
         OrderModel.product_photo_file_id: "ID фото товара",

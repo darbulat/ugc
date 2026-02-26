@@ -1737,22 +1737,22 @@ class AdminDashboardService:
         )
         card: dict[str, Any] = {
             "order_id": str(order.order_id),
+            "advertiser_id": str(order.advertiser_id),
             "advertiser": advertiser_name,
-            "description": order.offer_text,
             "order_type": order.order_type.value,
+            "product_link": order.product_link,
+            "offer_text": order.offer_text,
+            "barter_description": getattr(order, "barter_description", None),
+            "price": float(order.price),
             "bloggers_needed": int(order.bloggers_needed),
-            "picked_count": int(responses_count),
-            "dispatched_count": int(dispatched_count),
-            "accepted_count": int(accepted_count),
-            "progress": self._progress_ratio(
-                responses_count, order.bloggers_needed
+            "content_usage": getattr(order, "content_usage", None),
+            "deadlines": getattr(order, "deadlines", None),
+            "geography": getattr(order, "geography", None),
+            "product_photo_file_id": getattr(
+                order, "product_photo_file_id", None
             ),
-            "created_at": order.created_at,
-            "completed_at": order.completed_at,
-            "status_label": status_label,
-            "status_age_hours": self._status_age_hours(now, order),
-            "has_problem": open_count > 0,
-            "responses_list": responses_list,
+            "min_followers": getattr(order, "min_followers", None),
+            "max_followers": getattr(order, "max_followers", None),
             "min_age": getattr(order, "min_age", None),
             "max_age": getattr(order, "max_age", None),
             "min_publications": getattr(order, "min_publications", None),
@@ -1768,6 +1768,20 @@ class AdminDashboardService:
             ),
             "filter_by_placement": getattr(order, "filter_by_placement", False),
             "filter_by_barter": getattr(order, "filter_by_barter", False),
+            "picked_count": int(responses_count),
+            "dispatched_count": int(dispatched_count),
+            "accepted_count": int(accepted_count),
+            "progress": self._progress_ratio(
+                responses_count, order.bloggers_needed
+            ),
+            "created_at": order.created_at,
+            "updated_at": getattr(order, "updated_at", None),
+            "completed_at": order.completed_at,
+            "status_label": status_label,
+            "status_age_hours": self._status_age_hours(now, order),
+            "has_problem": open_count > 0,
+            "responses_list": responses_list,
+            "description": order.offer_text,
         }
         if (
             order.status
