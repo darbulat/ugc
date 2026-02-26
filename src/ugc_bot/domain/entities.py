@@ -179,6 +179,8 @@ class Order:
     required_blogger_gender: Optional[BloggerGender] = None
     # Admin-only: filter creators by price / placement / barter when dispatching
     filter_by_price: bool = False
+    # filter_by_price: range [price - delta, price + delta]; delta in admin
+    price_filter_delta: Optional[float] = None
     filter_by_placement: bool = False
     filter_by_barter: bool = False
 

@@ -42,6 +42,7 @@ class _DispatchCriteria:
     max_age_enabled: bool
     gender_enabled: bool
     filter_by_price: bool
+    price_filter_delta: float | None
     filter_by_placement: bool
     filter_by_barter: bool
     need_profile: bool
@@ -80,6 +81,12 @@ def _build_dispatch_criteria(
     max_age_enabled = order.max_age is not None
     gender_enabled = order.required_blogger_gender is not None
     filter_by_price = getattr(order, "filter_by_price", False)
+    price_filter_delta_raw = getattr(order, "price_filter_delta", None)
+    price_filter_delta = (
+        float(price_filter_delta_raw)
+        if price_filter_delta_raw is not None
+        else None
+    )
     filter_by_placement = getattr(order, "filter_by_placement", False)
     filter_by_barter = getattr(order, "filter_by_barter", False)
     need_profile = (
@@ -111,6 +118,7 @@ def _build_dispatch_criteria(
         max_age_enabled=max_age_enabled,
         gender_enabled=gender_enabled,
         filter_by_price=filter_by_price,
+        price_filter_delta=price_filter_delta,
         filter_by_placement=filter_by_placement,
         filter_by_barter=filter_by_barter,
         need_profile=need_profile,
@@ -180,12 +188,16 @@ def _passes_gender_filter(profile: BloggerProfile | None, order: Order) -> bool:
 def _passes_price_filter(
     profile: BloggerProfile | None, order: Order, criteria: _DispatchCriteria
 ) -> bool:
-    """True if creator price <= order price when filter enabled."""
-    if not criteria.filter_by_price:
+    """True if creator price in [order.price - delta, order.price + delta]."""
+    if not criteria.filter_by_price or criteria.price_filter_delta is None:
         return True
     if profile is None:
         return False
-    return float(profile.price) <= order.price
+    delta = criteria.price_filter_delta
+    low = max(0.0, order.price - delta)
+    high = order.price + delta
+    price = float(profile.price)
+    return low <= price <= high
 
 
 def _passes_placement_filter(

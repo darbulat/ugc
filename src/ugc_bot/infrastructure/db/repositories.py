@@ -1282,6 +1282,11 @@ def _to_order_entity(model: OrderModel) -> Order:
         max_publications=getattr(model, "max_publications", None),
         required_blogger_gender=getattr(model, "required_blogger_gender", None),
         filter_by_price=getattr(model, "filter_by_price", False),
+        price_filter_delta=(
+            float(val)
+            if (val := getattr(model, "price_filter_delta", None)) is not None
+            else None
+        ),
         filter_by_placement=getattr(model, "filter_by_placement", False),
         filter_by_barter=getattr(model, "filter_by_barter", False),
     )
@@ -1328,6 +1333,7 @@ def _to_order_model(order: Order) -> OrderModel:
         max_publications=order.max_publications,
         required_blogger_gender=order.required_blogger_gender,
         filter_by_price=order.filter_by_price,
+        price_filter_delta=order.price_filter_delta,
         filter_by_placement=order.filter_by_placement,
         filter_by_barter=order.filter_by_barter,
     )

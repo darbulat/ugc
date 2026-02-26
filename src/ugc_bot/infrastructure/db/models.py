@@ -318,6 +318,9 @@ class OrderModel(Base):
     filter_by_price: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    price_filter_delta: Mapped[Optional[float]] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
     filter_by_placement: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )

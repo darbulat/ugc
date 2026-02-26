@@ -1760,6 +1760,14 @@ class AdminDashboardService:
             "required_blogger_gender": getattr(
                 order, "required_blogger_gender", None
             ),
+            "filter_by_price": getattr(order, "filter_by_price", False),
+            "price_filter_delta": (
+                float(order.price_filter_delta)
+                if getattr(order, "price_filter_delta", None) is not None
+                else None
+            ),
+            "filter_by_placement": getattr(order, "filter_by_placement", False),
+            "filter_by_barter": getattr(order, "filter_by_barter", False),
         }
         if (
             order.status

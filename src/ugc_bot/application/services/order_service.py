@@ -171,6 +171,7 @@ class OrderService:
                 max_publications=None,
                 required_blogger_gender=None,
                 filter_by_price=False,
+                price_filter_delta=None,
                 filter_by_placement=False,
                 filter_by_barter=False,
             )

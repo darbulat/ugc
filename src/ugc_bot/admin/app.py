@@ -956,6 +956,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.max_publications,
         OrderModel.required_blogger_gender,
         OrderModel.filter_by_price,
+        OrderModel.price_filter_delta,
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
         OrderModel.status,
@@ -986,6 +987,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.barter_description: "Описание бартера",
         OrderModel.product_photo_file_id: "ID фото товара",
         OrderModel.filter_by_price: "Фильтр по цене",
+        OrderModel.price_filter_delta: "Дельта цены (диапазон ±)",
         OrderModel.filter_by_placement: "Фильтр по размещению",
         OrderModel.filter_by_barter: "Фильтр по бартеру",
     }
@@ -1009,6 +1011,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.required_blogger_gender,
         OrderModel.product_photo_file_id,
         OrderModel.filter_by_price,
+        OrderModel.price_filter_delta,
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
     ]

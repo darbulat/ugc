@@ -2380,8 +2380,8 @@ async def test_dispatch_uses_instagram_stats_when_repo_provided() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_filter_by_price_excludes_expensive_creator() -> None:
-    """filter_by_price=True: creators with price > order.price excluded."""
+async def test_dispatch_filter_by_price_excludes_out_of_range() -> None:
+    """filter_by_price + delta: creators outside range excluded."""
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
@@ -2399,6 +2399,7 @@ async def test_dispatch_filter_by_price_excludes_expensive_creator() -> None:
         created_at=datetime.now(timezone.utc),
         completed_at=None,
         filter_by_price=True,
+        price_filter_delta=200.0,
     )
     await order_repo.save(order)
     blogger_expensive = User(
@@ -2440,8 +2441,8 @@ async def test_dispatch_filter_by_price_excludes_expensive_creator() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_filter_by_price_includes_cheap_creator() -> None:
-    """filter_by_price=True: creators with price <= order.price included."""
+async def test_dispatch_filter_by_price_includes_in_range() -> None:
+    """filter_by_price + delta: creators inside range included."""
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
@@ -2459,22 +2460,23 @@ async def test_dispatch_filter_by_price_includes_cheap_creator() -> None:
         created_at=datetime.now(timezone.utc),
         completed_at=None,
         filter_by_price=True,
+        price_filter_delta=200.0,
     )
     await order_repo.save(order)
-    blogger_cheap = User(
+    blogger_in_range = User(
         user_id=UUID("00000000-0000-0000-0000-000000000913"),
         external_id="913",
         messenger_type=MessengerType.TELEGRAM,
-        username="blogger_cheap",
+        username="blogger_in_range",
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
     )
-    await user_repo.save(blogger_cheap)
+    await user_repo.save(blogger_in_range)
     await blogger_repo.save(
         BloggerProfile(
-            user_id=blogger_cheap.user_id,
-            instagram_url="https://instagram.com/cheap",
+            user_id=blogger_in_range.user_id,
+            instagram_url="https://instagram.com/in_range",
             confirmed=True,
             city="Moscow",
             topics={"selected": ["tech"]},
@@ -2482,7 +2484,7 @@ async def test_dispatch_filter_by_price_includes_cheap_creator() -> None:
             audience_age_min=18,
             audience_age_max=35,
             audience_geo="Moscow",
-            price=500.0,
+            price=1000.0,
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
@@ -2497,7 +2499,69 @@ async def test_dispatch_filter_by_price_includes_cheap_creator() -> None:
     )
     result = await service.dispatch(order.order_id)
     assert len(result) == 1
-    assert result[0].user_id == blogger_cheap.user_id
+    assert result[0].user_id == blogger_in_range.user_id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_filter_by_price_no_delta_skips_filter() -> None:
+    """filter_by_price with delta=None: price filter not applied."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000915"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000916"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        filter_by_price=True,
+        price_filter_delta=None,
+    )
+    await order_repo.save(order)
+    blogger_any_price = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000917"),
+        external_id="917",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_any",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_any_price)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger_any_price.user_id,
+            instagram_url="https://instagram.com/any",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=5000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    result = await service.dispatch(order.order_id)
+    assert len(result) == 1
+    assert result[0].user_id == blogger_any_price.user_id
 
 
 @pytest.mark.asyncio
@@ -2824,7 +2888,7 @@ async def test_count_eligible_bloggers_returns_zero_when_order_not_found() -> (
 
 
 def test_profile_based_filters_none_with_filter_by_price_fails() -> None:
-    """profile=None and filter_by_price=True -> False."""
+    """profile=None and filter_by_price=True with delta -> False."""
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000961"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000962"),
@@ -2838,6 +2902,7 @@ def test_profile_based_filters_none_with_filter_by_price_fails() -> None:
         created_at=datetime.now(timezone.utc),
         completed_at=None,
         filter_by_price=True,
+        price_filter_delta=100.0,
     )
     criteria = _build_dispatch_criteria(order, has_instagram_stats_repo=False)
     assert _passes_profile_based_filters(None, order, criteria) is False

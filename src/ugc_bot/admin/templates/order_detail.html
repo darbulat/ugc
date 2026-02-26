@@ -78,7 +78,7 @@
           {% endif %}
         </div>
       </div>
-      {% if order.min_age is not none or order.max_age is not none or order.min_publications is not none or order.max_publications is not none or order.required_blogger_gender %}
+      {% if order.min_age is not none or order.max_age is not none or order.min_publications is not none or order.max_publications is not none or order.required_blogger_gender or order.filter_by_price or order.filter_by_placement or order.filter_by_barter %}
       <div class="detail-row">
         <div class="detail-label">Фильтры (админ)</div>
         <div class="detail-value">
@@ -87,6 +87,9 @@
           {% if order.min_publications is not none %}Мин. публикаций: {{ order.min_publications }}{% endif %}
           {% if order.max_publications is not none %}Макс. публикаций: {{ order.max_publications }}{% endif %}
           {% if order.required_blogger_gender %}Пол: {{ order.required_blogger_gender }}{% endif %}
+          {% if order.filter_by_price %}Цена: ± {{ order.price_filter_delta|default("—") }}{% endif %}
+          {% if order.filter_by_placement %}Размещение{% endif %}
+          {% if order.filter_by_barter %}Бартер{% endif %}
         </div>
       </div>
       {% endif %}
