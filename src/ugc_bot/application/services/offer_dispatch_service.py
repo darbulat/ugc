@@ -210,7 +210,7 @@ def _passes_placement_filter(
         return False
     if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
         return profile.work_format == WorkFormat.ADS_IN_ACCOUNT
-    return profile.work_format == WorkFormat.UGC_ONLY
+    return True
 
 
 def _passes_barter_filter(
