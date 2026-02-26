@@ -308,6 +308,8 @@ services:
       POOL_MODE: session
     volumes:
       - ./config/postgres/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    ports:
+      - "26432:6432"
     expose:
       - "6432"
     depends_on:
