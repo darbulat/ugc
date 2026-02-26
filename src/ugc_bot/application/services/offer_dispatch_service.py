@@ -23,7 +23,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.domain.entities import BloggerProfile, Order, User
-from ugc_bot.domain.enums import OrderStatus, UserStatus
+from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -41,6 +41,10 @@ class _DispatchCriteria:
     min_age_enabled: bool
     max_age_enabled: bool
     gender_enabled: bool
+    filter_by_price: bool
+    price_filter_delta: float | None
+    filter_by_placement: bool
+    filter_by_barter: bool
     need_profile: bool
     need_instagram_stats: bool
     today: date
@@ -76,6 +80,15 @@ def _build_dispatch_criteria(
     min_age_enabled = order.min_age is not None
     max_age_enabled = order.max_age is not None
     gender_enabled = order.required_blogger_gender is not None
+    filter_by_price = getattr(order, "filter_by_price", False)
+    price_filter_delta_raw = getattr(order, "price_filter_delta", None)
+    price_filter_delta = (
+        float(price_filter_delta_raw)
+        if price_filter_delta_raw is not None
+        else None
+    )
+    filter_by_placement = getattr(order, "filter_by_placement", False)
+    filter_by_barter = getattr(order, "filter_by_barter", False)
     need_profile = (
         geography_spec is not None
         or min_followers_enabled
@@ -85,6 +98,9 @@ def _build_dispatch_criteria(
         or min_age_enabled
         or max_age_enabled
         or gender_enabled
+        or filter_by_price
+        or filter_by_placement
+        or filter_by_barter
     )
     need_instagram_stats = (
         (min_followers_enabled or max_followers_enabled)
@@ -101,6 +117,10 @@ def _build_dispatch_criteria(
         min_age_enabled=min_age_enabled,
         max_age_enabled=max_age_enabled,
         gender_enabled=gender_enabled,
+        filter_by_price=filter_by_price,
+        price_filter_delta=price_filter_delta,
+        filter_by_placement=filter_by_placement,
+        filter_by_barter=filter_by_barter,
         need_profile=need_profile,
         need_instagram_stats=need_instagram_stats,
         today=date.today(),
@@ -165,6 +185,73 @@ def _passes_gender_filter(profile: BloggerProfile | None, order: Order) -> bool:
     return profile.blogger_gender == order.required_blogger_gender
 
 
+def _passes_price_filter(
+    profile: BloggerProfile | None, order: Order, criteria: _DispatchCriteria
+) -> bool:
+    """True if creator price in [order.price - delta, order.price + delta]."""
+    if not criteria.filter_by_price or criteria.price_filter_delta is None:
+        return True
+    if profile is None:
+        return False
+    delta = criteria.price_filter_delta
+    low = max(0.0, order.price - delta)
+    high = order.price + delta
+    price = float(profile.price)
+    return low <= price <= high
+
+
+def _passes_placement_filter(
+    profile: BloggerProfile | None, order: Order, criteria: _DispatchCriteria
+) -> bool:
+    """True if creator work_format matches order type when filter enabled."""
+    if not criteria.filter_by_placement:
+        return True
+    if profile is None:
+        return False
+    if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
+        return profile.work_format == WorkFormat.ADS_IN_ACCOUNT
+    return True
+
+
+def _passes_barter_filter(
+    profile: BloggerProfile | None, order: Order, criteria: _DispatchCriteria
+) -> bool:
+    """True if creator accepts barter when filter enabled."""
+    if not criteria.filter_by_barter:
+        return True
+    if profile is None:
+        return False
+    return profile.barter is True
+
+
+def _passes_order_filters(
+    profile: BloggerProfile | None, order: Order, criteria: _DispatchCriteria
+) -> bool:
+    """True if profile passes price, placement, and barter filters."""
+    return (
+        _passes_price_filter(profile, order, criteria)
+        and _passes_placement_filter(profile, order, criteria)
+        and _passes_barter_filter(profile, order, criteria)
+    )
+
+
+def _passes_profile_based_filters(
+    profile: BloggerProfile | None, order: Order, criteria: _DispatchCriteria
+) -> bool:
+    """True if profile passes geography, age, gender, and order filters."""
+    if (
+        criteria.geography_spec is not None
+        and profile is not None
+        and not blogger_matches_geography(profile.city, criteria.geography_spec)
+    ):
+        return False
+    if not _passes_age_filters(profile, order, criteria):
+        return False
+    if not _passes_gender_filter(profile, order):
+        return False
+    return _passes_order_filters(profile, order, criteria)
+
+
 @dataclass(slots=True)
 class OfferDispatchService:
     """Select eligible bloggers for offers."""
@@ -201,6 +288,47 @@ class OfferDispatchService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def count_eligible_bloggers(
+        self, order_id: UUID, session: object | None = None
+    ) -> int:
+        """Return number of creators matching the order (any status)."""
+
+        async def _run(sess: object | None) -> int:
+            order = await self.order_repo.get_by_id(order_id, session=sess)
+            (
+                _order,
+                confirmed_ids,
+                already_sent_set,
+                bloggers_with_unfulfilled,
+            ) = await self._get_initial_data_for_order(
+                order_id, order, session=sess
+            )
+            if _order is None or not confirmed_ids:
+                return 0
+            has_stats_repo = self.instagram_stats_repo is not None
+            criteria = _build_dispatch_criteria(
+                _order, has_instagram_stats_repo=has_stats_repo
+            )
+            count = 0
+            seen: set[UUID] = set()
+            for uid in confirmed_ids:
+                user = await self._check_user_eligible(
+                    uid,
+                    _order,
+                    criteria,
+                    already_sent_set,
+                    bloggers_with_unfulfilled,
+                    sess,
+                )
+                if user is not None and user.user_id not in seen:
+                    seen.add(user.user_id)
+                    count += 1
+            return count
+
+        if session is not None:
+            return await _run(session)
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def _validate_and_get_initial_data(
         self, order_id: UUID, session: object | None
     ) -> tuple[
@@ -215,6 +343,26 @@ class OfferDispatchService:
             raise OrderNotFoundError("Order not found.")
         if order.status != OrderStatus.ACTIVE:
             raise OrderNotActiveError("Order is not active.")
+        ord, cids, aset, uful = await self._get_initial_data_for_order(
+            order_id, order, session
+        )
+        assert ord is not None
+        return (ord, cids, aset, uful)
+
+    async def _get_initial_data_for_order(
+        self,
+        order_id: UUID,
+        order: Order | None,
+        session: object | None,
+    ) -> tuple[
+        Order | None,
+        list[UUID],
+        frozenset[UUID],
+        frozenset[UUID],
+    ]:
+        """Load confirmed ids and exclusion sets (no status check)."""
+        if order is None:
+            return None, [], frozenset(), frozenset()
         confirmed_ids = await self.blogger_repo.list_confirmed_user_ids(
             session=session
         )
@@ -288,13 +436,7 @@ class OfferDispatchService:
             )
             if profile is None:
                 return None
-        if (
-            criteria.geography_spec is not None
-            and profile is not None
-            and not blogger_matches_geography(
-                profile.city, criteria.geography_spec
-            )
-        ):
+        if not _passes_profile_based_filters(profile, order, criteria):
             return None
         followers_count, media_count = await self._get_followers_and_media(
             user_id, profile, criteria, session
@@ -302,10 +444,6 @@ class OfferDispatchService:
         if not _passes_follower_filters(followers_count, criteria):
             return None
         if not _passes_publication_filters(media_count, order, criteria):
-            return None
-        if not _passes_age_filters(profile, order, criteria):
-            return None
-        if not _passes_gender_filter(profile, order):
             return None
         return user
 

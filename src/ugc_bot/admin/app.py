@@ -135,11 +135,17 @@ def _build_dashboard_service(
     referral_income_service: ReferralIncomeService | None = None
     if container.session_factory and container.transaction_manager:
         referral_income_service = container.build_referral_income_service()
+    offer_dispatch_service = (
+        container.build_offer_dispatch_service()
+        if container.session_factory
+        else None
+    )
     return AdminDashboardService(
         session_factory=container.session_factory,
         timezone_name=config.admin.admin_dashboard_timezone,
         thresholds=thresholds,
         referral_income_service=referral_income_service,
+        offer_dispatch_service=offer_dispatch_service,
     )
 
 
@@ -935,13 +941,17 @@ class OrderAdmin(ModelView, model=OrderModel):
     column_list = [
         OrderModel.order_id,
         OrderModel.advertiser_id,
+        OrderModel.order_type,
         OrderModel.product_link,
         OrderModel.offer_text,
+        OrderModel.barter_description,
         OrderModel.price,
         OrderModel.bloggers_needed,
+        OrderModel.status,
         OrderModel.content_usage,
         OrderModel.deadlines,
         OrderModel.geography,
+        OrderModel.product_photo_file_id,
         OrderModel.min_followers,
         OrderModel.max_followers,
         OrderModel.min_age,
@@ -949,8 +959,13 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.min_publications,
         OrderModel.max_publications,
         OrderModel.required_blogger_gender,
-        OrderModel.status,
+        OrderModel.filter_by_price,
+        OrderModel.price_filter_delta,
+        OrderModel.filter_by_placement,
+        OrderModel.filter_by_barter,
         OrderModel.created_at,
+        OrderModel.updated_at,
+        OrderModel.completed_at,
     ]
     column_sortable_list = list(column_list)
     column_default_sort = (OrderModel.created_at, True)
@@ -973,9 +988,15 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.required_blogger_gender: "Пол",
         OrderModel.status: "Статус",
         OrderModel.created_at: "Дата создания",
+        OrderModel.updated_at: "Дата обновления",
+        OrderModel.completed_at: "Дата завершения",
         OrderModel.order_type: "Тип заказа",
         OrderModel.barter_description: "Описание бартера",
         OrderModel.product_photo_file_id: "ID фото товара",
+        OrderModel.filter_by_price: "Фильтр по цене",
+        OrderModel.price_filter_delta: "Дельта цены (диапазон ±)",
+        OrderModel.filter_by_placement: "Фильтр по размещению",
+        OrderModel.filter_by_barter: "Фильтр по бартеру",
     }
     form_columns = [
         OrderModel.order_type,
@@ -996,6 +1017,10 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.max_publications,
         OrderModel.required_blogger_gender,
         OrderModel.product_photo_file_id,
+        OrderModel.filter_by_price,
+        OrderModel.price_filter_delta,
+        OrderModel.filter_by_placement,
+        OrderModel.filter_by_barter,
     ]
 
     async def update_model(self, request: Request, pk: str, data: dict):

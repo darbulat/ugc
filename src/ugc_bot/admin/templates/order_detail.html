@@ -4,30 +4,71 @@
   <section class="section">
     <h1>Заказ</h1>
     <div class="card">
+      <h2 class="card__subtitle">Идентификация</h2>
       <div class="detail-row">
         <div class="detail-label">ID заказа</div>
         <div class="detail-value">{{ order.order_id }}</div>
       </div>
       <div class="detail-row">
+        <div class="detail-label">ID заказчика</div>
+        <div class="detail-value">{{ order.advertiser_id }}</div>
+      </div>
+      <div class="detail-row">
         <div class="detail-label">Заказчик</div>
         <div class="detail-value">{{ order.advertiser }}</div>
       </div>
+      <h2 class="card__subtitle">Содержание заказа</h2>
       <div class="detail-row">
-        <div class="detail-label">Описание</div>
-        <div class="detail-value">{{ order.description }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Тип UGC</div>
+        <div class="detail-label">Тип заказа</div>
         <div class="detail-value">{{ order.order_type }}</div>
       </div>
       <div class="detail-row">
-        <div class="detail-label">Креаторов нужно</div>
+        <div class="detail-label">Ссылка на товар</div>
+        <div class="detail-value">{{ order.product_link or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Текст оффера</div>
+        <div class="detail-value">{{ order.offer_text or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Описание бартера</div>
+        <div class="detail-value">{{ order.barter_description or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Цена</div>
+        <div class="detail-value">{{ order.price }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Использование контента</div>
+        <div class="detail-value">{{ order.content_usage or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Сроки</div>
+        <div class="detail-value">{{ order.deadlines or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">География</div>
+        <div class="detail-value">{{ order.geography or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">ID фото товара</div>
+        <div class="detail-value">{{ order.product_photo_file_id or "—" }}</div>
+      </div>
+      <h2 class="card__subtitle">Подбор креаторов</h2>
+      <div class="detail-row">
+        <div class="detail-label">Нужно креаторов</div>
         <div class="detail-value">{{ order.bloggers_needed }}</div>
       </div>
       <div class="detail-row">
         <div class="detail-label">Подобрано</div>
         <div class="detail-value">{{ order.picked_count }} / {{ order.bloggers_needed }}</div>
       </div>
+      {% if order.eligible_creators_count is not none %}
+      <div class="detail-row">
+        <div class="detail-label">Подходящих креаторов</div>
+        <div class="detail-value">{{ order.eligible_creators_count }}</div>
+      </div>
+      {% endif %}
       <div class="detail-row">
         <div class="detail-label">Отправлено уведомлений</div>
         <div class="detail-value">{{ order.dispatched_count }}</div>
@@ -44,14 +85,48 @@
           </div>
         </div>
       </div>
+      <h2 class="card__subtitle">Фильтры (админ)</h2>
       <div class="detail-row">
-        <div class="detail-label">Дата создания</div>
-        <div class="detail-value">{{ order.created_at }}</div>
+        <div class="detail-label">Мин. подписчиков</div>
+        <div class="detail-value">{{ order.min_followers if order.min_followers is not none else "—" }}</div>
       </div>
       <div class="detail-row">
-        <div class="detail-label">Дата завершения</div>
-        <div class="detail-value">{{ order.completed_at }}</div>
+        <div class="detail-label">Макс. подписчиков</div>
+        <div class="detail-value">{{ order.max_followers if order.max_followers is not none else "—" }}</div>
       </div>
+      <div class="detail-row">
+        <div class="detail-label">Мин. возраст</div>
+        <div class="detail-value">{{ order.min_age if order.min_age is not none else "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Макс. возраст</div>
+        <div class="detail-value">{{ order.max_age if order.max_age is not none else "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Мин. публикаций</div>
+        <div class="detail-value">{{ order.min_publications if order.min_publications is not none else "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Макс. публикаций</div>
+        <div class="detail-value">{{ order.max_publications if order.max_publications is not none else "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Пол креатора</div>
+        <div class="detail-value">{{ order.required_blogger_gender or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Фильтр по цене</div>
+        <div class="detail-value">{% if order.filter_by_price %}Да (дельта ± {{ order.price_filter_delta|default("—") }}){% else %}Нет{% endif %}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Фильтр по размещению</div>
+        <div class="detail-value">{% if order.filter_by_placement %}Да{% else %}Нет{% endif %}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Фильтр по бартеру</div>
+        <div class="detail-value">{% if order.filter_by_barter %}Да{% else %}Нет{% endif %}</div>
+      </div>
+      <h2 class="card__subtitle">Статус и даты</h2>
       <div class="detail-row">
         <div class="detail-label">Статус</div>
         <div class="detail-value">
@@ -72,26 +147,26 @@
           {% endif %}
         </div>
       </div>
-      {% if order.min_age is not none or order.max_age is not none or order.min_publications is not none or order.max_publications is not none or order.required_blogger_gender %}
       <div class="detail-row">
-        <div class="detail-label">Фильтры (админ)</div>
-        <div class="detail-value">
-          {% if order.min_age is not none %}Мин. возраст: {{ order.min_age }}{% endif %}
-          {% if order.max_age is not none %}Макс. возраст: {{ order.max_age }}{% endif %}
-          {% if order.min_publications is not none %}Мин. публикаций: {{ order.min_publications }}{% endif %}
-          {% if order.max_publications is not none %}Макс. публикаций: {{ order.max_publications }}{% endif %}
-          {% if order.required_blogger_gender %}Пол: {{ order.required_blogger_gender }}{% endif %}
-        </div>
+        <div class="detail-label">Дата создания</div>
+        <div class="detail-value">{{ order.created_at }}</div>
       </div>
-      {% endif %}
+      <div class="detail-row">
+        <div class="detail-label">Дата обновления</div>
+        <div class="detail-value">{{ order.updated_at or "—" }}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Дата завершения</div>
+        <div class="detail-value">{{ order.completed_at or "—" }}</div>
+      </div>
     </div>
     {% if order.responses_list %}
     <div class="card">
-      <h2>Отклики</h2>
+      <h2>Креаторы, готовые снять UGC</h2>
       <table class="table">
         <thead>
           <tr>
-            <th>Креатор (ID)</th>
+            <th>Креатор</th>
             <th>Дата отклика</th>
             <th>Статус</th>
           </tr>
@@ -99,9 +174,9 @@
         <tbody>
           {% for r in order.responses_list %}
           <tr>
-            <td>{{ r.blogger_id }}</td>
+            <td><a href="/admin/users/{{ r.blogger_id }}">{{ r.blogger_id }}</a></td>
             <td>{{ r.responded_at }}</td>
-            <td>{% if r.in_offer %}<span class="badge badge--ok">Принят</span>{% elif r.accepted %}<span class="badge">В резерве</span>{% else %}<span class="badge">Пропустил</span>{% endif %}</td>
+            <td>{% if r.in_offer %}<span class="badge badge--ok">Принят</span>{% else %}<span class="badge">В резерве</span>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>

@@ -35,6 +35,9 @@ from ugc_bot.infrastructure.db.models import (
 )
 
 if TYPE_CHECKING:
+    from ugc_bot.application.services.offer_dispatch_service import (
+        OfferDispatchService,
+    )
     from ugc_bot.application.services.referral_income_service import (
         ReferralIncomeService,
     )
@@ -112,12 +115,14 @@ class AdminDashboardService:
         timezone_name: str,
         thresholds: DelayThresholds,
         referral_income_service: "ReferralIncomeService | None" = None,
+        offer_dispatch_service: "OfferDispatchService | None" = None,
     ) -> None:
         """Initialize dashboard service dependencies."""
         self._session_factory = session_factory
         self._timezone = ZoneInfo(timezone_name)
         self._thresholds = thresholds
         self._referral_income_service = referral_income_service
+        self._offer_dispatch_service = offer_dispatch_service
 
     async def get_dashboard(
         self,
@@ -1716,6 +1721,7 @@ class AdminDashboardService:
             )
         )
         response_models = resp_list_result.scalars().all()
+        # Only creators who accepted or are in_offer (exclude "Пропустил")
         responses_list = [
             {
                 "blogger_id": str(r.blogger_id),
@@ -1725,29 +1731,30 @@ class AdminDashboardService:
             }
             for r in response_models
             if r.accepted is not None
+            and (getattr(r, "in_offer", True) or r.accepted is True)
         ]
         now = datetime.now(self._timezone)
         status_label = self._order_status_label(
             order, responses_count, open_count
         )
-        return {
+        card: dict[str, Any] = {
             "order_id": str(order.order_id),
+            "advertiser_id": str(order.advertiser_id),
             "advertiser": advertiser_name,
-            "description": order.offer_text,
             "order_type": order.order_type.value,
+            "product_link": order.product_link,
+            "offer_text": order.offer_text,
+            "barter_description": getattr(order, "barter_description", None),
+            "price": float(order.price),
             "bloggers_needed": int(order.bloggers_needed),
-            "picked_count": int(responses_count),
-            "dispatched_count": int(dispatched_count),
-            "accepted_count": int(accepted_count),
-            "progress": self._progress_ratio(
-                responses_count, order.bloggers_needed
+            "content_usage": getattr(order, "content_usage", None),
+            "deadlines": getattr(order, "deadlines", None),
+            "geography": getattr(order, "geography", None),
+            "product_photo_file_id": getattr(
+                order, "product_photo_file_id", None
             ),
-            "created_at": order.created_at,
-            "completed_at": order.completed_at,
-            "status_label": status_label,
-            "status_age_hours": self._status_age_hours(now, order),
-            "has_problem": open_count > 0,
-            "responses_list": responses_list,
+            "min_followers": getattr(order, "min_followers", None),
+            "max_followers": getattr(order, "max_followers", None),
             "min_age": getattr(order, "min_age", None),
             "max_age": getattr(order, "max_age", None),
             "min_publications": getattr(order, "min_publications", None),
@@ -1755,7 +1762,48 @@ class AdminDashboardService:
             "required_blogger_gender": getattr(
                 order, "required_blogger_gender", None
             ),
+            "filter_by_price": getattr(order, "filter_by_price", False),
+            "price_filter_delta": (
+                float(order.price_filter_delta)
+                if getattr(order, "price_filter_delta", None) is not None
+                else None
+            ),
+            "filter_by_placement": getattr(order, "filter_by_placement", False),
+            "filter_by_barter": getattr(order, "filter_by_barter", False),
+            "picked_count": int(responses_count),
+            "dispatched_count": int(dispatched_count),
+            "accepted_count": int(accepted_count),
+            "progress": self._progress_ratio(
+                responses_count, order.bloggers_needed
+            ),
+            "created_at": order.created_at,
+            "updated_at": getattr(order, "updated_at", None),
+            "completed_at": order.completed_at,
+            "status_label": status_label,
+            "status_age_hours": self._status_age_hours(now, order),
+            "has_problem": open_count > 0,
+            "responses_list": responses_list,
+            "description": order.offer_text,
         }
+        if (
+            order.status
+            in (
+                OrderStatus.NEW,
+                OrderStatus.PENDING_MODERATION,
+            )
+            and self._offer_dispatch_service is not None
+        ):
+            try:
+                card[
+                    "eligible_creators_count"
+                ] = await self._offer_dispatch_service.count_eligible_bloggers(
+                    order.order_id, session=session
+                )
+            except Exception:  # noqa: S110
+                card["eligible_creators_count"] = None
+        else:
+            card["eligible_creators_count"] = None
+        return card
 
     async def _count_users_with_profile(
         self,
