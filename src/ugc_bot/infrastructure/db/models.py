@@ -315,6 +315,15 @@ class OrderModel(Base):
     required_blogger_gender: Mapped[Optional[BloggerGender]] = mapped_column(
         _enum_column(BloggerGender), nullable=True
     )
+    filter_by_price: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    filter_by_placement: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    filter_by_barter: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
 
 class ContactPricingModel(Base):

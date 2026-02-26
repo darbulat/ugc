@@ -1281,6 +1281,9 @@ def _to_order_entity(model: OrderModel) -> Order:
         min_publications=getattr(model, "min_publications", None),
         max_publications=getattr(model, "max_publications", None),
         required_blogger_gender=getattr(model, "required_blogger_gender", None),
+        filter_by_price=getattr(model, "filter_by_price", False),
+        filter_by_placement=getattr(model, "filter_by_placement", False),
+        filter_by_barter=getattr(model, "filter_by_barter", False),
     )
 
 
@@ -1324,6 +1327,9 @@ def _to_order_model(order: Order) -> OrderModel:
         min_publications=order.min_publications,
         max_publications=order.max_publications,
         required_blogger_gender=order.required_blogger_gender,
+        filter_by_price=order.filter_by_price,
+        filter_by_placement=order.filter_by_placement,
+        filter_by_barter=order.filter_by_barter,
     )
 
 

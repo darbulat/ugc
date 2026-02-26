@@ -113,3 +113,6 @@ def test_order_mapping_roundtrip() -> None:
 
     assert entity.product_link == order.product_link
     assert entity.bloggers_needed == order.bloggers_needed
+    assert entity.filter_by_price is False
+    assert entity.filter_by_placement is False
+    assert entity.filter_by_barter is False

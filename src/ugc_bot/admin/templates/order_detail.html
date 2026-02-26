@@ -28,6 +28,12 @@
         <div class="detail-label">Подобрано</div>
         <div class="detail-value">{{ order.picked_count }} / {{ order.bloggers_needed }}</div>
       </div>
+      {% if order.eligible_creators_count is not none %}
+      <div class="detail-row">
+        <div class="detail-label">Подходящих креаторов</div>
+        <div class="detail-value">{{ order.eligible_creators_count }}</div>
+      </div>
+      {% endif %}
       <div class="detail-row">
         <div class="detail-label">Отправлено уведомлений</div>
         <div class="detail-value">{{ order.dispatched_count }}</div>

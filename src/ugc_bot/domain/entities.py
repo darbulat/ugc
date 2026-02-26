@@ -177,6 +177,10 @@ class Order:
     min_publications: Optional[int] = None
     max_publications: Optional[int] = None
     required_blogger_gender: Optional[BloggerGender] = None
+    # Admin-only: filter creators by price / placement / barter when dispatching
+    filter_by_price: bool = False
+    filter_by_placement: bool = False
+    filter_by_barter: bool = False
 
 
 @dataclass(frozen=True)

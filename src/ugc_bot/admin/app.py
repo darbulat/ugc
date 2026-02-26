@@ -135,11 +135,17 @@ def _build_dashboard_service(
     referral_income_service: ReferralIncomeService | None = None
     if container.session_factory and container.transaction_manager:
         referral_income_service = container.build_referral_income_service()
+    offer_dispatch_service = (
+        container.build_offer_dispatch_service()
+        if container.session_factory
+        else None
+    )
     return AdminDashboardService(
         session_factory=container.session_factory,
         timezone_name=config.admin.admin_dashboard_timezone,
         thresholds=thresholds,
         referral_income_service=referral_income_service,
+        offer_dispatch_service=offer_dispatch_service,
     )
 
 
@@ -949,6 +955,9 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.min_publications,
         OrderModel.max_publications,
         OrderModel.required_blogger_gender,
+        OrderModel.filter_by_price,
+        OrderModel.filter_by_placement,
+        OrderModel.filter_by_barter,
         OrderModel.status,
         OrderModel.created_at,
     ]
@@ -976,6 +985,9 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.order_type: "Тип заказа",
         OrderModel.barter_description: "Описание бартера",
         OrderModel.product_photo_file_id: "ID фото товара",
+        OrderModel.filter_by_price: "Фильтр по цене",
+        OrderModel.filter_by_placement: "Фильтр по размещению",
+        OrderModel.filter_by_barter: "Фильтр по бартеру",
     }
     form_columns = [
         OrderModel.order_type,
@@ -996,6 +1008,9 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.max_publications,
         OrderModel.required_blogger_gender,
         OrderModel.product_photo_file_id,
+        OrderModel.filter_by_price,
+        OrderModel.filter_by_placement,
+        OrderModel.filter_by_barter,
     ]
 
     async def update_model(self, request: Request, pk: str, data: dict):

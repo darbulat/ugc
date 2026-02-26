@@ -1042,6 +1042,65 @@ async def test_get_order_card_returns_none_when_not_found(service) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_order_card_includes_eligible_creators_count_for_new_order(
+    thresholds,
+) -> None:
+    """get_order_card includes eligible_creators_count for NEW order."""
+    order_id = uuid4()
+    order = _make_order(
+        order_id=order_id,
+        bloggers_needed=5,
+        status=OrderStatus.NEW,
+    )
+    row = (order, 0, 0, "Brand", 0, 0)
+    mock_dispatch = AsyncMock()
+    mock_dispatch.count_eligible_bloggers = AsyncMock(return_value=42)
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(
+            _FakeResult(one_or_none_value=row),
+            _FakeResult(all_rows=[]),
+        ),
+        timezone_name="UTC",
+        thresholds=thresholds,
+        offer_dispatch_service=mock_dispatch,
+    )
+    card = await svc.get_order_card(order_id)
+    assert card is not None
+    assert card["eligible_creators_count"] == 42
+    mock_dispatch.count_eligible_bloggers.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_order_card_eligible_creators_count_none_when_dispatch_raises(
+    thresholds,
+) -> None:
+    """get_order_card sets eligible_creators_count to None when count raises."""
+    order_id = uuid4()
+    order = _make_order(
+        order_id=order_id,
+        bloggers_needed=5,
+        status=OrderStatus.PENDING_MODERATION,
+    )
+    row = (order, 0, 0, "Brand", 0, 0)
+    mock_dispatch = AsyncMock()
+    mock_dispatch.count_eligible_bloggers = AsyncMock(
+        side_effect=RuntimeError("db error")
+    )
+    svc = AdminDashboardService(
+        session_factory=_make_session_factory(
+            _FakeResult(one_or_none_value=row),
+            _FakeResult(all_rows=[]),
+        ),
+        timezone_name="UTC",
+        thresholds=thresholds,
+        offer_dispatch_service=mock_dispatch,
+    )
+    card = await svc.get_order_card(order_id)
+    assert card is not None
+    assert card["eligible_creators_count"] is None
+
+
+@pytest.mark.asyncio
 async def test_list_delayed_orders_includes_reasons(
     service, thresholds
 ) -> None:

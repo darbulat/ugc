@@ -170,6 +170,9 @@ class OrderService:
                 min_publications=None,
                 max_publications=None,
                 required_blogger_gender=None,
+                filter_by_price=False,
+                filter_by_placement=False,
+                filter_by_barter=False,
             )
             await self.order_repo.save(order, session=session)
 
