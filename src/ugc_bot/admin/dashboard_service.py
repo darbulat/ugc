@@ -1721,6 +1721,7 @@ class AdminDashboardService:
             )
         )
         response_models = resp_list_result.scalars().all()
+        # Only creators who accepted or are in_offer (exclude "Пропустил")
         responses_list = [
             {
                 "blogger_id": str(r.blogger_id),
@@ -1730,6 +1731,7 @@ class AdminDashboardService:
             }
             for r in response_models
             if r.accepted is not None
+            and (getattr(r, "in_offer", True) or r.accepted is True)
         ]
         now = datetime.now(self._timezone)
         status_label = self._order_status_label(
