@@ -1290,14 +1290,14 @@ async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_city_success(user_repo) -> None:
-    """Enter valid city updates profile and shows profile."""
+    """Enter valid city (from dictionary) updates profile and shows profile."""
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-00000000081d"),
         external_id="14",
         username="user",
     )
-    message = FakeMessage(text="Kazan", user=FakeUser(14))
+    message = FakeMessage(text="Казань", user=FakeUser(14))
     state = FakeFSMContext()
     state._data = {
         "editing_field": "city",
@@ -1326,7 +1326,7 @@ async def test_edit_profile_enter_value_city_success(user_repo) -> None:
     text = first[0] if isinstance(first, tuple) else first
     assert "Профиль обновлён" in text
     assert reg_service.update_calls
-    assert reg_service.update_calls[0][1].get("city") == "Kazan"
+    assert reg_service.update_calls[0][1].get("city") == "казань"
 
 
 @pytest.mark.asyncio
@@ -2393,7 +2393,7 @@ async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
         external_id="22",
         username="user",
     )
-    message = FakeMessage(text="SPB", user=FakeUser(22))
+    message = FakeMessage(text="Казань", user=FakeUser(22))
     state = FakeFSMContext()
     state._data = {
         "editing_field": "city",

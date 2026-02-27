@@ -75,6 +75,27 @@ from ugc_bot.infrastructure.messenger.telegram.adapter import (
 )
 
 
+def _blogger_registration_config() -> AppConfig:
+    """Minimal config for blogger registration handler tests."""
+    return AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///",
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+            "KAFKA_ENABLED": "false",
+            "FEEDBACK_ENABLED": "false",
+            "ROLE_REMINDER_ENABLED": "false",
+            "REDIS_URL": "redis://",
+            "USE_REDIS_STORAGE": "false",
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+        }
+    )
+
+
 @pytest.mark.asyncio
 async def test_start_registration_requires_user(user_repo) -> None:
     """Require existing user before registration."""
@@ -165,7 +186,9 @@ async def test_instagram_validation_in_handler(user_repo, blogger_repo) -> None:
     message = FakeMessage(text="bad_url", user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await handle_instagram(message, state, registration_service)
+    await handle_instagram(
+        message, state, _blogger_registration_config(), registration_service
+    )
 
     assert message.answers
     assert "Неверный формат" in message.answers[0]
@@ -185,7 +208,9 @@ async def test_instagram_success_in_handler(user_repo, blogger_repo) -> None:
     )
     state = FakeFSMContext()
 
-    await handle_instagram(message, state, registration_service)
+    await handle_instagram(
+        message, state, _blogger_registration_config(), registration_service
+    )
 
     assert state._data["instagram_url"].endswith("test_user")
 
@@ -204,7 +229,9 @@ async def test_instagram_url_normalized_with_query_and_www(
     )
     state = FakeFSMContext()
 
-    await handle_instagram(message, state, registration_service)
+    await handle_instagram(
+        message, state, _blogger_registration_config(), registration_service
+    )
 
     assert state._data["instagram_url"] == "https://instagram.com/norm_user"
 
@@ -582,7 +609,9 @@ async def test_handle_instagram_duplicate_url(user_repo, blogger_repo) -> None:
     )
     state = FakeFSMContext()
 
-    await handle_instagram(message, state, registration_service)
+    await handle_instagram(
+        message, state, _blogger_registration_config(), registration_service
+    )
 
     assert message.answers
     assert "уже зарегистрирован" in message.answers[0]
@@ -665,7 +694,7 @@ async def test_handle_city_empty_rejects(user_repo) -> None:
     message = FakeMessage(text="   ", user=FakeUser(1, "u", "U"))
     state = FakeFSMContext()
 
-    await handle_city(message, state)
+    await handle_city(message, state, _blogger_registration_config())
 
     assert message.answers
     ans = message.answers[0]
@@ -675,13 +704,13 @@ async def test_handle_city_empty_rejects(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_city_valid_stores_and_asks_birth_date() -> None:
-    """handle_city stores city and asks for birth date."""
+    """handle_city stores canonical city and asks for birth date."""
     state = FakeFSMContext()
     message = FakeMessage(text="Москва", user=FakeUser(1, "u", "U"))
 
-    await handle_city(message, state)
+    await handle_city(message, state, _blogger_registration_config())
 
-    assert state._data["city"] == "Москва"
+    assert state._data["city"] == "москва"
     assert state.state == BloggerRegistrationStates.birth_date
     assert message.answers
     ans = message.answers[0]
@@ -1778,7 +1807,9 @@ async def test_handle_instagram_empty_url(user_repo, blogger_repo) -> None:
     message = FakeMessage(text="   ", user=FakeUser(1, "u", "U"))
     state = FakeFSMContext()
 
-    await handle_instagram(message, state, registration_service)
+    await handle_instagram(
+        message, state, _blogger_registration_config(), registration_service
+    )
 
     assert message.answers
     assert "пустой" in message.answers[0].lower()
@@ -1797,7 +1828,9 @@ async def test_handle_instagram_no_instagram_domain(
     )
     state = FakeFSMContext()
 
-    await handle_instagram(message, state, registration_service)
+    await handle_instagram(
+        message, state, _blogger_registration_config(), registration_service
+    )
 
     assert message.answers
     assert "Неверный формат" in message.answers[0]
@@ -1815,7 +1848,9 @@ async def test_handle_instagram_invalid_regex(user_repo, blogger_repo) -> None:
     )
     state = FakeFSMContext()
 
-    await handle_instagram(message, state, registration_service)
+    await handle_instagram(
+        message, state, _blogger_registration_config(), registration_service
+    )
 
     assert message.answers
     ans = message.answers[0]

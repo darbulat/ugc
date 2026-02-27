@@ -4,6 +4,9 @@ from ugc_bot.application.geography import (
     REGION_TO_CITIES,
     GeographySpec,
     blogger_matches_geography,
+    get_canonical_cities_set,
+    get_cities_list_for_miniapp,
+    is_canonical_city,
     normalize_geo_token,
     parse_geography,
 )
@@ -179,6 +182,73 @@ class TestBloggerMatchesGeography:
         """Region with value not in REGION_TO_CITIES does not match."""
         spec = GeographySpec(type="region", values=["unknown_region"])
         assert blogger_matches_geography("Казань", spec) is False
+
+
+class TestGetCitiesListForMiniapp:
+    """Tests for get_cities_list_for_miniapp."""
+
+    def test_returns_list_of_dicts_with_id_and_label(self) -> None:
+        """List items have id and label keys."""
+        cities = get_cities_list_for_miniapp()
+        assert len(cities) > 0
+        for item in cities:
+            assert "id" in item
+            assert "label" in item
+            assert isinstance(item["id"], str)
+            assert isinstance(item["label"], str)
+
+    def test_contains_moscow_and_spb(self) -> None:
+        """List contains Moscow and Saint Petersburg."""
+        cities = get_cities_list_for_miniapp()
+        ids = {c["id"] for c in cities}
+        assert "москва" in ids
+        assert "санкт-петербург" in ids
+        assert "казань" in ids
+
+    def test_sorted_by_label(self) -> None:
+        """List is sorted by label."""
+        cities = get_cities_list_for_miniapp()
+        labels = [c["label"] for c in cities]
+        assert labels == sorted(labels)
+
+    def test_no_duplicate_ids(self) -> None:
+        """No duplicate city ids."""
+        cities = get_cities_list_for_miniapp()
+        ids = [c["id"] for c in cities]
+        assert len(ids) == len(set(ids))
+
+
+class TestIsCanonicalCity:
+    """Tests for is_canonical_city."""
+
+    def test_known_cities_true(self) -> None:
+        """Known cities return True."""
+        assert is_canonical_city("москва") is True
+        assert is_canonical_city("Москва") is True
+        assert is_canonical_city("казань") is True
+        assert is_canonical_city("санкт-петербург") is True
+
+    def test_unknown_returns_false(self) -> None:
+        """Unknown or typo returns False."""
+        assert is_canonical_city("питер") is False
+        assert is_canonical_city("unknown_city") is False
+        assert is_canonical_city("") is False
+
+
+class TestGetCanonicalCitiesSet:
+    """Tests for get_canonical_cities_set."""
+
+    def test_contains_expected_ids(self) -> None:
+        """Set contains region keys and city values from REGION_TO_CITIES."""
+        s = get_canonical_cities_set()
+        assert "москва" in s
+        assert "санкт-петербург" in s
+        assert "татарстан" in s
+        assert "казань" in s
+
+    def test_is_frozenset(self) -> None:
+        """Returns frozenset."""
+        assert isinstance(get_canonical_cities_set(), frozenset)
 
 
 class TestRegionToCitiesCoverage:

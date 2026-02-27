@@ -128,6 +128,52 @@ def _matches_region(
     return False
 
 
+def _canonical_to_label(canonical: str) -> str:
+    """Convert canonical city id (lowercase) to display label (title case)."""
+    if not canonical:
+        return ""
+    parts = re.split(r"[\s\-]+", canonical)
+    return " ".join(p.capitalize() for p in parts)
+
+
+def get_cities_list_for_miniapp() -> list[dict[str, str]]:
+    """
+    Build list of all unique cities from REGION_TO_CITIES for Mini App.
+
+    Returns list of {"id": canonical_name, "label": display_name}, sorted by
+    label. Canonical names are normalized (lowercase, ё→е); labels are
+    title-cased for display (e.g. "санкт-петербург" -> "Санкт-Петербург").
+    """
+    seen: set[str] = set()
+    for key, cities in REGION_TO_CITIES.items():
+        seen.add(key)
+        seen.update(cities)
+    items = [{"id": c, "label": _canonical_to_label(c)} for c in seen]
+    items.sort(key=lambda x: x["label"])
+    return items
+
+
+_CANONICAL_CITIES_SET: frozenset[str] | None = None
+
+
+def get_canonical_cities_set() -> frozenset[str]:
+    """Return set of valid canonical city ids (for validation)."""
+    global _CANONICAL_CITIES_SET
+    if _CANONICAL_CITIES_SET is None:
+        seen: set[str] = set()
+        for key, cities in REGION_TO_CITIES.items():
+            seen.add(key)
+            seen.update(cities)
+        _CANONICAL_CITIES_SET = frozenset(seen)
+    return _CANONICAL_CITIES_SET
+
+
+def is_canonical_city(city: str) -> bool:
+    """Return True if normalized city is in the canonical cities dictionary."""
+    normalized = _normalize_token(city)
+    return normalized in get_canonical_cities_set()
+
+
 def blogger_matches_geography(blogger_city: str, spec: GeographySpec) -> bool:
     """
     Check if blogger city matches order geography.

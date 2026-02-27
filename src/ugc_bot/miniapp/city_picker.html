@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Выбор города</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 12px;
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #000);
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 1.25rem;
+      margin: 0 0 12px 0;
+      font-weight: 600;
+    }
+    #search {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px;
+      border: 1px solid var(--tg-theme-hint-color, #ccc);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #000);
+    }
+    #search::placeholder {
+      color: var(--tg-theme-hint-color, #999);
+    }
+    #list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+    #list li {
+      padding: 14px 12px;
+      border-bottom: 1px solid var(--tg-theme-hint-color, #eee);
+      cursor: pointer;
+      font-size: 16px;
+    }
+    #list li:active {
+      background: var(--tg-theme-button-color, #2481cc);
+      color: var(--tg-theme-button-text-color, #fff);
+    }
+    #list li.no-results {
+      cursor: default;
+      color: var(--tg-theme-hint-color, #999);
+    }
+    #list li.no-results:active {
+      background: transparent;
+      color: var(--tg-theme-hint-color, #999);
+    }
+    .loading { padding: 20px; text-align: center; color: var(--tg-theme-hint-color, #999); }
+    .error { padding: 20px; color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Выберите город</h1>
+  <input type="text" id="search" placeholder="Начните вводить название города" autocomplete="off" />
+  <ul id="list">
+    <li class="loading">Загрузка списка городов…</li>
+  </ul>
+
+  <script>
+    (function() {
+      var MAX_VISIBLE = 100;
+      var searchEl = document.getElementById('search');
+      var listEl = document.getElementById('list');
+
+      function normalizeForSearch(s) {
+        if (!s) return '';
+        return s.toLowerCase().replace(/\s+/g, ' ').trim();
+      }
+
+      function filterCities(cities, query) {
+        if (!query) return cities.slice(0, MAX_VISIBLE);
+        var nq = normalizeForSearch(query);
+        return cities.filter(function(c) {
+          return normalizeForSearch(c.label).indexOf(nq) !== -1 ||
+                 normalizeForSearch(c.id).indexOf(nq) !== -1;
+        }).slice(0, MAX_VISIBLE);
+      }
+
+      function renderList(cities, query) {
+        var filtered = filterCities(cities, query);
+        listEl.innerHTML = '';
+        if (filtered.length === 0) {
+          var li = document.createElement('li');
+          li.className = 'no-results';
+          li.textContent = query ? 'Ничего не найдено' : 'Нет городов';
+          listEl.appendChild(li);
+          return;
+        }
+        filtered.forEach(function(city) {
+          var li = document.createElement('li');
+          li.textContent = city.label;
+          li.dataset.id = city.id;
+          li.addEventListener('click', function() {
+            var id = this.dataset.id;
+            if (!id) return;
+            var tg = window.Telegram && window.Telegram.WebApp;
+            if (tg && typeof tg.sendData === 'function') {
+              tg.sendData(id);
+              if (typeof tg.close === 'function') tg.close();
+            }
+          });
+          listEl.appendChild(li);
+        });
+      }
+
+      function loadCities() {
+        var base = window.location.origin;
+        fetch(base + '/miniapp/cities.json')
+          .then(function(r) { return r.json(); })
+          .then(function(cities) {
+            window._cities = cities;
+            renderList(cities, '');
+            searchEl.placeholder = 'Начните вводить название города';
+            searchEl.disabled = false;
+            searchEl.focus();
+          })
+          .catch(function() {
+            listEl.innerHTML = '<li class="error">Не удалось загрузить список городов. Попробуйте позже.</li>';
+          });
+      }
+
+      searchEl.addEventListener('input', function() {
+        var q = this.value.trim();
+        renderList(window._cities || [], q);
+      });
+
+      if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+      }
+      loadCities();
+    })();
+  </script>
+</body>
+</html>

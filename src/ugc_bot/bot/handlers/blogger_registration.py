@@ -3,11 +3,13 @@
 import logging
 from datetime import date
 
-from aiogram import Router
-from aiogram.filters import Command
+from aiogram import F, Router
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+
+from ugc_bot.application.geography import is_canonical_city, normalize_geo_token
 
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.messenger.dto import Button, IncomingCallback
@@ -42,6 +44,7 @@ from ugc_bot.bot.handlers.keyboards import (
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     blogger_after_registration_keyboard,
+    city_picker_keyboard,
     confirm_agreement_inline_keyboard,
     creator_filled_profile_keyboard,
     creator_start_keyboard,
@@ -384,6 +387,7 @@ async def handle_name(
 async def handle_instagram(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
     blogger_registration_service: BloggerRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -435,19 +439,64 @@ async def handle_instagram(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=STEP_ASK_CITY,
-        keyboard=flow_keyboard_remove(),
+        keyboard=city_picker_keyboard(config.webhook.webhook_base_url),
     )
     await state_store.set_state(BloggerRegistrationStates.city.state)
+
+
+@router.message(
+    F.web_app_data,
+    StateFilter(BloggerRegistrationStates.city),
+)
+async def handle_city_web_app_data(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Store creator city from Mini App selection."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    city = (
+        (message.web_app_data.data or "").strip()
+        if message.web_app_data
+        else ""
+    )
+    if not city or not is_canonical_city(city):
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text="Выберите город из списка.",
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+    state_store = AiogramStateStore(state)
+    await state_store.update_data(city=city)
+    await messenger_client.send_text(
+        chat_id=str(message.chat.id),
+        text=STEP_ASK_BIRTH_DATE,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.birth_date.state)
+
+
+def _canonical_city_from_text(text: str) -> str | None:
+    """Return canonical city id if input matches dictionary, else None."""
+    normalized = normalize_geo_token((text or "").strip())
+    if not normalized:
+        return None
+    return normalized if is_canonical_city(normalized) else None
 
 
 @router.message(BloggerRegistrationStates.city)
 async def handle_city(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Store creator city."""
+    """Store creator city (text input)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -462,8 +511,15 @@ async def handle_city(
             keyboard=flow_keyboard_remove(),
         )
         return
-
-    await state_store.update_data(city=city)
+    canonical = _canonical_city_from_text(city)
+    if canonical is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Выберите город из списка или нажмите «Выбрать город».",
+            keyboard=city_picker_keyboard(config.webhook.webhook_base_url),
+        )
+        return
+    await state_store.update_data(city=canonical)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=STEP_ASK_BIRTH_DATE,

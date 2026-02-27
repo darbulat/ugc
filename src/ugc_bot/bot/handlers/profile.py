@@ -4,12 +4,16 @@ import logging
 import re
 from uuid import UUID
 
-from aiogram import Router
-from aiogram.filters import Command
+from aiogram import F, Router
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
+from ugc_bot.application.geography import (
+    is_canonical_city,
+    normalize_geo_token,
+)
 from ugc_bot.application.messenger.context import MessageContext
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
 from ugc_bot.application.messenger.ports import (
@@ -51,6 +55,7 @@ from ugc_bot.bot.handlers.keyboards import (
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     advertiser_menu_inline_keyboard,
     blogger_profile_view_inline_keyboard,
+    city_picker_keyboard,
     confirm_agreement_inline_keyboard,
     edit_audience_age_inline_keyboard,
     edit_audience_gender_inline_keyboard,
@@ -432,13 +437,20 @@ async def _blog_update_city(
     message: MessageContext,
     blogger_registration_service: BloggerRegistrationService,
 ) -> BloggerProfile | None:
-    """Update city. Returns profile or None."""
+    """Update city. Returns profile or None. Saves only canonical city."""
     err = validate_city(text, required=True)
     if err is not None:
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
+    normalized = normalize_geo_token(text)
+    if not normalized or not is_canonical_city(normalized):
+        await message.answer(
+            "Выберите город из списка или нажмите «Выбрать город».",
+            reply_markup=flow_keyboard_remove(),
+        )
+        return None
     return await blogger_registration_service.update_blogger_profile(
-        user_id, city=text
+        user_id, city=normalized
     )
 
 
@@ -1120,6 +1132,11 @@ async def handle_profile_edit_field_callback(
             prompt,
             reply_markup=edit_work_format_inline_keyboard(),
         )
+    elif field_key == "city" and profile_type == "blogger":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=city_picker_keyboard(config.webhook.webhook_base_url),
+        )
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
     await state.set_state(EditProfileStates.entering_value)
@@ -1460,10 +1477,78 @@ async def edit_profile_choose_field(
             prompt,
             reply_markup=edit_work_format_inline_keyboard(),
         )
+    elif field_key == "city" and profile_type == "blogger":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=city_picker_keyboard(config.webhook.webhook_base_url),
+        )
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
 
     await state.set_state(EditProfileStates.entering_value)
+
+
+@router.message(
+    F.web_app_data,
+    StateFilter(EditProfileStates.entering_value),
+)
+async def handle_city_web_app_data_profile(
+    message: Message,
+    state: FSMContext,
+    profile_service: ProfileService,
+    config: AppConfig,
+    blogger_registration_service: BloggerRegistrationService,
+    user_role_service: UserRoleService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle city selection from Mini App when editing profile."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    data = await state.get_data()
+    if data.get("editing_field") != "city":
+        return
+    city = (
+        (message.web_app_data.data or "").strip()
+        if message.web_app_data
+        else ""
+    )
+    if not city or not is_canonical_city(city):
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text="Выберите город из списка.",
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+    user_id = parse_user_id_from_state(data, key="edit_user_id")
+    if user_id is None:
+        await state.clear()
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text="Сессия истекла. Откройте «Мой профиль» снова.",
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+    updated = await blogger_registration_service.update_blogger_profile(
+        user_id, city=city
+    )
+    await state.clear()
+    incoming = event_adapter.from_message(message)
+    message_ctx = MessageContext(incoming, messenger_client)
+    confirmed = updated.confirmed if updated else True
+    await message_ctx.answer(
+        "Профиль обновлён.",
+        reply_markup=blogger_profile_view_inline_keyboard(confirmed),
+    )
+    await show_profile(
+        message=message_ctx,
+        profile_service=profile_service,
+        state=state,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
 
 
 @router.message(EditProfileStates.entering_value)
