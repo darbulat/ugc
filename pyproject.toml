@@ -52,6 +52,11 @@ telegram-e2e = [
 [tool.pytest.ini_options]
 timeout = 5
 timeout_method = "signal"
+# ResourceWarnings from test teardown order (unclosed loop/DB) are not app bugs.
+filterwarnings = [
+  "ignore:unclosed event loop:ResourceWarning",
+  "ignore:unclosed database:ResourceWarning",
+]
 markers = [
   "integration: requires external services like Postgres",
   "e2e: end-to-end tests with browser (Playwright)",

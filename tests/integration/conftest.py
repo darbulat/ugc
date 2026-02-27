@@ -1,7 +1,5 @@
 """Integration test fixtures for full user flows."""
 
-import asyncio
-from typing import Generator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -27,11 +25,11 @@ def test_database_url(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="session")
 def engine(test_database_url: str):
-    """Create SQLAlchemy engine for tests."""
+    """Create SQLAlchemy engine for tests. Disposed at session teardown."""
     # Import all models to ensure metadata is populated
     from ugc_bot.infrastructure.db import models  # noqa: F401
 
-    engine = create_engine(test_database_url, echo=False)
+    eng = create_engine(test_database_url, echo=False)
 
     # Exclude tables with JSONB (not compatible with SQLite)
     tables_to_exclude = {
@@ -44,28 +42,22 @@ def engine(test_database_url: str):
         for table in Base.metadata.tables.values()
         if table.name not in tables_to_exclude
     ]
-    Base.metadata.create_all(bind=engine, tables=tables_to_create)
-    return engine
+    Base.metadata.create_all(bind=eng, tables=tables_to_create)
+    try:
+        yield eng
+    finally:
+        eng.dispose()
 
 
-@pytest.fixture(scope="function")
-def session_factory(
-    engine, request: pytest.FixtureRequest
-) -> Generator[object, None, None]:
-    """Create session factory for tests."""
-    session_factory = create_session_factory(str(engine.url))
-    async_engine = session_factory.kw["bind"]
-
-    def _dispose_engine() -> None:
-        # Stop aiosqlite worker threads before interpreter shutdown.
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(async_engine.dispose())
-        finally:
-            loop.close()
-
-    request.addfinalizer(_dispose_engine)
-    yield session_factory
+@pytest_asyncio.fixture(scope="function")
+async def session_factory(engine):
+    """Create session factory for tests. Disposes async engine in test loop."""
+    factory = create_session_factory(str(engine.url))
+    async_engine = factory.kw["bind"]
+    try:
+        yield factory
+    finally:
+        await async_engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")

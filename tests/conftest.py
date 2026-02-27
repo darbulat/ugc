@@ -82,6 +82,7 @@ def issue_lock_manager():
 
 
 _TRACKED_ASYNC_ENGINES: list[object] = []
+_TRACKED_SYNC_ENGINES: list[object] = []
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -96,20 +97,30 @@ def _track_and_dispose_async_engines() -> None:
     from ugc_bot.infrastructure.db import session as session_mod
 
     mp = pytest.MonkeyPatch()
-    original_create = session_mod.create_async_db_engine
+    original_create_async = session_mod.create_async_db_engine
+    original_create_sync = session_mod.create_db_engine
 
     def _create_async_db_engine_tracked(*args, **kwargs):  # type: ignore[no-untyped-def]
-        engine = original_create(*args, **kwargs)
+        engine = original_create_async(*args, **kwargs)
         _TRACKED_ASYNC_ENGINES.append(engine)
+        return engine
+
+    def _create_db_engine_tracked(*args, **kwargs):  # type: ignore[no-untyped-def]
+        engine = original_create_sync(*args, **kwargs)
+        _TRACKED_SYNC_ENGINES.append(engine)
         return engine
 
     mp.setattr(
         session_mod, "create_async_db_engine", _create_async_db_engine_tracked
     )
+    mp.setattr(session_mod, "create_db_engine", _create_db_engine_tracked)
     try:
         yield
     finally:
         mp.undo()
+        for sync_engine in list(_TRACKED_SYNC_ENGINES):
+            with contextlib.suppress(Exception):
+                sync_engine.dispose()
         if _TRACKED_ASYNC_ENGINES:
             loop = asyncio.new_event_loop()
             try:
