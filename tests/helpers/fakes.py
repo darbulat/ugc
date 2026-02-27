@@ -223,6 +223,13 @@ class FakeContact:
         self.phone_number = phone_number
 
 
+class FakeWebAppData:
+    """Minimal web_app_data stub for Mini App messages."""
+
+    def __init__(self, data: str) -> None:
+        self.data = data
+
+
 class FakeMessage:
     """Minimal message stub for handler tests."""
 
@@ -235,6 +242,7 @@ class FakeMessage:
         caption: str | None = None,
         message_id: int = 1,
         contact: FakeContact | None = None,
+        web_app_data: FakeWebAppData | None = None,
     ) -> None:
         """Initialize fake message.
 
@@ -245,6 +253,7 @@ class FakeMessage:
             photo: Optional list of FakePhotoSize for photo messages
             caption: Optional caption for photo messages
             contact: Optional contact (e.g. shared phone via request_contact)
+            web_app_data: Optional Web App data (e.g. from Mini App sendData)
         """
         self.text = text
         self.caption = caption
@@ -253,6 +262,7 @@ class FakeMessage:
         self.photo = photo or []
         self.message_id = message_id
         self.contact = contact
+        self.web_app_data = web_app_data
         self.answers: list[str | tuple[str, object | None]] = []
         self.reply_markups: list = []
         self.reply_markup = None

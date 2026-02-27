@@ -14,6 +14,7 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeMessengerClient,
     FakeUser,
+    FakeWebAppData,
 )
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.blogger_registration_service import (
@@ -35,6 +36,7 @@ from ugc_bot.bot.handlers.blogger_registration import (
     handle_blogger_gender,
     handle_blogger_gender_callback,
     handle_city,
+    handle_city_web_app_data,
     handle_gender,
     handle_geo,
     handle_instagram,
@@ -716,6 +718,84 @@ async def test_handle_city_valid_stores_and_asks_birth_date() -> None:
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
     assert "дату рождения" in text.lower() or "дд.мм" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_city_non_canonical_sends_picker_hint() -> None:
+    """handle_city with city not in dictionary sends picker hint."""
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(text="UnknownCity123", user=FakeUser(1, "u", "U"))
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        _blogger_registration_config(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert "city" not in state._data or state._data.get("city") is None
+    assert any(
+        "Выберите город из списка" in s["text"] or "Выбрать город" in s["text"]
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_city_web_app_data_invalid_sends_message() -> None:
+    """handle_city_web_app_data with invalid city sends choose from list."""
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData("invalid-city-xyz"),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city_web_app_data(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert "city" not in state._data or state._data.get("city") is None
+    assert any(
+        "Выберите город из списка" in s["text"] for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_city_web_app_data_valid_stores_and_asks_birth_date() -> (
+    None
+):
+    """handle_city_web_app_data with valid city stores and asks birth date."""
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData("москва"),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city_web_app_data(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state._data["city"] == "москва"
+    assert state.state == BloggerRegistrationStates.birth_date
+    assert any(
+        "дату рождения" in s["text"].lower() or "дд.мм" in s["text"].lower()
+        for s in client.sent_text
+    )
 
 
 @pytest.mark.asyncio

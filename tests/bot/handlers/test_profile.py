@@ -16,6 +16,7 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeMessengerClient,
     FakeUser,
+    FakeWebAppData,
 )
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -46,6 +47,7 @@ from ugc_bot.bot.handlers.profile import (
     edit_profile_choose_type,
     edit_profile_enter_value,
     edit_profile_start,
+    handle_city_web_app_data_profile,
     handle_profile_agree_callback,
     handle_profile_edit_callback,
     handle_profile_edit_choice_callback,
@@ -174,8 +176,9 @@ class FakeBloggerRegistrationService:
 class FakeUserRoleService:
     """Stub for user role service in edit flow."""
 
-    def __init__(self) -> None:
+    def __init__(self, get_user_by_id_returns: User | None = None) -> None:
         self.set_user_calls: list[tuple[str, str, str]] = []
+        self._get_user_by_id_returns = get_user_by_id_returns
 
     async def set_user(
         self,
@@ -186,6 +189,10 @@ class FakeUserRoleService:
         self.set_user_calls.append(
             (external_id, messenger_type.value, username)
         )
+
+    async def get_user_by_id(self, user_id: UUID) -> User | None:
+        """Return configured value for tests (e.g. None to cover error path)."""
+        return self._get_user_by_id_returns
 
 
 class FakeAdvertiserRegistrationService:
@@ -2879,6 +2886,46 @@ async def test_edit_profile_enter_value_advertiser_brand_empty(
 
 
 @pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_brand_too_long(
+    user_repo,
+) -> None:
+    """Edit advertiser brand over max length gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000858"),
+        external_id="73",
+        username="u",
+    )
+    message = FakeMessage(text="A" * 201, user=FakeUser(73))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "brand",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "73",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        _profile_test_config(),
+        FakeBloggerRegistrationService(),
+        adv_service,
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "Максимум" in text and "символ" in text.lower()
+    assert not adv_service.update_calls
+
+
+@pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
     """Edit advertiser site_link updates profile."""
     user = await create_test_user(
@@ -3740,3 +3787,680 @@ async def test_edit_profile_enter_value_advertiser_company_activity_val_error(
     )
     assert message.answers
     assert not adv_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_blogger_city_non_canonical(
+    user_repo,
+) -> None:
+    """Blogger city not in dictionary sends picker hint."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000859"),
+        external_id="74",
+        username="u",
+    )
+    message = FakeMessage(text="UnknownCity123", user=FakeUser(74))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "74",
+        "edit_profile_type": "blogger",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "Выберите город из списка" in text or "Выбрать город" in text
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_blogger_audience_geo_more_than_three(
+    user_repo,
+) -> None:
+    """Blogger audience_geo with more than 3 cities sends error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000085a"),
+        external_id="75",
+        username="u",
+    )
+    message = FakeMessage(
+        text="Москва, Казань, СПб, Сочи",
+        user=FakeUser(75),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "audience_geo",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "75",
+        "edit_profile_type": "blogger",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "не более 3" in text
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_blogger_price_not_a_number(
+    user_repo,
+) -> None:
+    """Blogger price with non-numeric text sends error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000085b"),
+        external_id="76",
+        username="u",
+    )
+    message = FakeMessage(text="abc", user=FakeUser(76))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "price",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "76",
+        "edit_profile_type": "blogger",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "число" in text.lower()
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_show_profile_blogger_confirmed_shows_inline_keyboard(
+    user_repo,
+) -> None:
+    """Show profile with blogger and agreement confirmed shows keyboard."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000085c"),
+        external_id="77",
+        username="u",
+        agreement_confirmed_at=datetime.now(timezone.utc),
+    )
+    message = FakeMessage(user=FakeUser(77))
+    service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    await show_profile(
+        message, service, FakeFSMContext(), _profile_test_config()
+    )
+    assert message.answers
+    assert message.reply_markups
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_agree_callback_get_user_returns_none(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """After confirm, get_user_by_id returns None -> send profile not found."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000085d"),
+        external_id="78",
+        username="u",
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    role_service = FakeUserRoleService(get_user_by_id_returns=None)
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    adv_reg = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+    await state.update_data(user_id=user.user_id)
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AGREE,
+        user=FakeUser(78),
+        message=FakeMessage(user=FakeUser(78)),
+    )
+    await handle_profile_agree_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        user_role_service=role_service,
+        blogger_registration_service=blogger_reg,
+        advertiser_registration_service=adv_reg,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("Профиль не найден" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_callback_advertiser_only_path(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit callback when user has only advertiser shows advertiser fields."""
+    user = await create_test_user(
+        user_repo, external_id="79", username="adv_only"
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT,
+        user=FakeUser(79),
+        message=FakeMessage(user=FakeUser(79)),
+    )
+    await handle_profile_edit_callback(
+        callback,
+        FakeFSMContext(),
+        profile_service=profile_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("Выберите раздел" in s["text"] for s in client.sent_text)
+    assert any("редактирования" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_empty_field_key_returns(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback with prefix-only data returns without sending."""
+    user = await create_test_user(user_repo, external_id="80e", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="80e",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_EDIT_FIELD_PREFIX,
+        user=FakeUser(800),
+        message=FakeMessage(user=FakeUser(800)),
+    )
+    initial_sent = len(client.sent_text)
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == initial_sent
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_audience_gender_keyboard(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback for audience_gender sends gender keyboard."""
+    user = await create_test_user(user_repo, external_id="81a", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="81a",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}audience_gender",
+        user=FakeUser(81),
+        message=FakeMessage(user=FakeUser(81)),
+    )
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "аудитори" in s["text"].lower() or "контент" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_blogger_gender_keyboard(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback for blogger_gender sends gender keyboard."""
+    user = await create_test_user(user_repo, external_id="82b", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="82b",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}blogger_gender",
+        user=FakeUser(82),
+        message=FakeMessage(user=FakeUser(82)),
+    )
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("пол" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_audience_age_keyboard(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback for audience_age sends age keyboard."""
+    user = await create_test_user(user_repo, external_id="83c", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="83c",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}audience_age",
+        user=FakeUser(83),
+        message=FakeMessage(user=FakeUser(83)),
+    )
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("возраст" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_barter_keyboard(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback for barter sends barter keyboard."""
+    user = await create_test_user(user_repo, external_id="84d", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="84d",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}barter",
+        user=FakeUser(84),
+        message=FakeMessage(user=FakeUser(84)),
+    )
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("бартер" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_work_format_keyboard(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback for work_format sends format keyboard."""
+    user = await create_test_user(user_repo, external_id="85e", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="85e",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}work_format",
+        user=FakeUser(85),
+        message=FakeMessage(user=FakeUser(85)),
+    )
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "бренд" in s["text"].lower() or "работа" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_field_callback_city_blogger_sends_picker(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Edit field callback for city (blogger) sends city picker keyboard."""
+    user = await create_test_user(user_repo, external_id="86f", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    config = _profile_test_config()
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="86f",
+        edit_profile_type="blogger",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_EDIT_FIELD_PREFIX}city",
+        user=FakeUser(86),
+        message=FakeMessage(user=FakeUser(86)),
+    )
+    await handle_profile_edit_field_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("город" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_city_web_app_data_profile_success(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """City from Mini App updates blogger profile and shows profile."""
+    user = await create_test_user(user_repo, external_id="87", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        editing_field="city",
+        edit_user_id=user.user_id,
+        edit_external_id="87",
+    )
+    message = FakeMessage(
+        user=FakeUser(87),
+        web_app_data=FakeWebAppData("москва"),
+    )
+    await handle_city_web_app_data_profile(
+        message,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        user_role_service=FakeUserRoleService(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("Профиль обновлён" in s["text"] for s in client.sent_text)
+    assert reg_service.update_calls
+    assert reg_service.update_calls[0][1].get("city") == "москва"
+
+
+@pytest.mark.asyncio
+async def test_handle_city_web_app_data_profile_editing_field_not_city_returns(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """When editing_field is not city, handler returns without sending."""
+    user = await create_test_user(user_repo, external_id="88", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    reg_service = FakeBloggerRegistrationService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        editing_field="nickname",
+        edit_user_id=user.user_id,
+        edit_external_id="88",
+    )
+    message = FakeMessage(
+        user=FakeUser(88),
+        web_app_data=FakeWebAppData("москва"),
+    )
+    await handle_city_web_app_data_profile(
+        message,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        user_role_service=FakeUserRoleService(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == 0
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_handle_city_web_app_data_profile_invalid_city(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Invalid city from Mini App sends choose from list message."""
+    user = await create_test_user(user_repo, external_id="89", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    reg_service = FakeBloggerRegistrationService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        editing_field="city",
+        edit_user_id=user.user_id,
+        edit_external_id="89",
+    )
+    message = FakeMessage(
+        user=FakeUser(89),
+        web_app_data=FakeWebAppData("invalid-city-xyz"),
+    )
+    await handle_city_web_app_data_profile(
+        message,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        user_role_service=FakeUserRoleService(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "Выберите город из списка" in s["text"] for s in client.sent_text
+    )
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_handle_city_web_app_data_profile_user_id_missing(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """When edit_user_id missing in state, send session expired."""
+    user = await create_test_user(user_repo, external_id="90", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    reg_service = FakeBloggerRegistrationService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        editing_field="city",
+        edit_external_id="90",
+    )
+    message = FakeMessage(
+        user=FakeUser(90),
+        web_app_data=FakeWebAppData("москва"),
+    )
+    await handle_city_web_app_data_profile(
+        message,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        user_role_service=FakeUserRoleService(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    assert not reg_service.update_calls
