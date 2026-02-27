@@ -125,7 +125,7 @@ STEP_ASK_INSTAGRAM_FIRST = (
 )
 STEP_ASK_CITY = (
     "Заказчики фильтруют креаторов по городу — для доставки продукта и гео. "
-    "Из какого ты города? Пример: Казань, Москва, Санкт‑Петербург" + _step(3)
+    "Из какого ты города?" + _step(3)
 )
 STEP_ASK_BIRTH_DATE = (
     "Возраст важен заказчикам для целевой аудитории. "
@@ -515,7 +515,8 @@ async def handle_city(
     if canonical is None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите город из списка или нажмите «Выбрать город».",
+            text="Укажите ближайший крупный город или нажмите «Выбрать город»"
+            " и выберите из списка.",
             keyboard=city_picker_keyboard(config.webhook.webhook_base_url),
         )
         return

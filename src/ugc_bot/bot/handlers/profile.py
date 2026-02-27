@@ -445,7 +445,8 @@ async def _blog_update_city(
     normalized = normalize_geo_token(text)
     if not normalized or not is_canonical_city(normalized):
         await message.answer(
-            "Выберите город из списка или нажмите «Выбрать город».",
+            "Укажите ближайший крупный город или нажмите «Выбрать город»"
+            " и выберите из списка.",
             reply_markup=flow_keyboard_remove(),
         )
         return None
