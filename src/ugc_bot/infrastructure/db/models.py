@@ -7,6 +7,7 @@ from typing import Optional
 from uuid import UUID
 
 from geoalchemy2 import Geometry
+from geoalchemy2.elements import WKTElement
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -59,11 +60,15 @@ class _GeometryOrText(TypeDecorator):
         super().__init__(**kwargs)
 
     def process_bind_param(self, value, dialect):
-        """Store WKT string for SQLite; pass through for PostgreSQL."""
+        """SQLite: WKT string; PostgreSQL: WKT string or WKTElement."""
         if value is None:
             return None
-        if dialect.name != "postgresql" and hasattr(value, "desc"):
-            return value.desc
+        if dialect.name != "postgresql":
+            if hasattr(value, "desc"):
+                return value.desc
+            return value
+        if isinstance(value, str):
+            return WKTElement(value, srid=self.srid)
         return value
 
     def process_result_value(self, value, dialect):

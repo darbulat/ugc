@@ -96,7 +96,7 @@ class BloggerProfile:
     instagram_stats_fetched_at: Optional[datetime] = None
     birth_date: Optional[date] = None
     region: Optional[str] = None
-    # WKT MultiPoint (SRID 4326), e.g. "MULTIPOINT(37.6 55.75)"
+    # WKT MultiPoint (SRID 4326), e.g. "MULTIPOINT((37.6 55.75))" (lon lat)
     location_geometry: Optional[str] = None
 
 
@@ -186,7 +186,7 @@ class Order:
     price_filter_delta: Optional[float] = None
     filter_by_placement: bool = False
     filter_by_barter: bool = False
-    # PostGIS Point WKT (SRID 4326); radius_km editable in admin only
+    # WKT Point (SRID 4326), e.g. "POINT(37.6 55.75)" (lon lat)
     location_geometry: Optional[str] = None
     radius_km: Optional[float] = None
 

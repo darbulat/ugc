@@ -1,4 +1,4 @@
-"""PostGIS; blogger_profiles: region, geom; orders: geom point, radius_km."""
+"""PostGIS: region, location_geometry (blogger_profiles, orders); radius_km."""
 
 import sqlalchemy as sa
 from alembic import op
