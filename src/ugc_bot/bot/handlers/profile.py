@@ -445,6 +445,7 @@ async def _blog_update_city(
     user_id: UUID,
     message: MessageContext,
     blogger_registration_service: BloggerRegistrationService,
+    webhook_base_url: str | None = None,
 ) -> BloggerProfile | None:
     """Update city. Returns profile or None. Saves only canonical city."""
     err = validate_city(text, required=True)
@@ -453,10 +454,15 @@ async def _blog_update_city(
         return None
     normalized = normalize_geo_token(text)
     if not normalized or not is_canonical_city_only(normalized):
+        city_keyboard = (
+            city_picker_keyboard(webhook_base_url or "")
+            if webhook_base_url
+            else flow_keyboard_remove()
+        )
         await message.answer(
             "Укажите ближайший крупный город или нажмите «Выбрать город»"
             " и выберите из списка.",
-            reply_markup=flow_keyboard_remove(),
+            reply_markup=city_keyboard,
         )
         return None
     return await blogger_registration_service.update_blogger_profile(
@@ -657,11 +663,20 @@ async def _update_blogger_field_city(
     normalized = normalize_geo_token(text)
     if not normalized or not is_canonical_city_only(normalized):
         updated = await _blog_update_city(
-            text, user_id, message, blogger_registration_service
+            text,
+            user_id,
+            message,
+            blogger_registration_service,
+            config.webhook.webhook_base_url,
         )
         if updated is None:
             await state.clear()
-            await message.answer("Не удалось обновить профиль.")
+            await message.answer(
+                "Не удалось обновить профиль.",
+                reply_markup=city_picker_keyboard(
+                    config.webhook.webhook_base_url
+                ),
+            )
             return False
         await state.clear()
         await message.answer(
@@ -694,7 +709,10 @@ async def _update_blogger_field_city(
     )
     if updated is None:
         await state.clear()
-        await message.answer("Не удалось обновить профиль.")
+        await message.answer(
+            "Не удалось обновить профиль.",
+            reply_markup=city_picker_keyboard(config.webhook.webhook_base_url),
+        )
         return False
     await state.clear()
     await message.answer(
@@ -755,7 +773,9 @@ async def _update_blogger_field(
 
     updaters = {
         "instagram_url": _blog_update_instagram,
-        "city": _blog_update_city,
+        "city": lambda t, u, m, s: _blog_update_city(
+            t, u, m, s, config.webhook.webhook_base_url
+        ),
         "blogger_gender": _blog_update_blogger_gender,
         "birth_date": _blog_update_birth_date,
         "topics": _blog_update_topics,
@@ -778,7 +798,15 @@ async def _update_blogger_field(
     )
     if updated_blogger is None:
         await state.clear()
-        await message.answer("Не удалось обновить профиль.")
+        reply_markup = (
+            city_picker_keyboard(config.webhook.webhook_base_url)
+            if field_key == "city"
+            else None
+        )
+        await message.answer(
+            "Не удалось обновить профиль.",
+            reply_markup=reply_markup,
+        )
         return False
     await state.clear()
     await message.answer(
@@ -1606,18 +1634,19 @@ async def handle_city_web_app_data_profile(
         else ""
     )
     city, region = parse_miniapp_city_id(raw_id)
+    city_keyboard = city_picker_keyboard(config.webhook.webhook_base_url)
     if not city or not is_canonical_city_only(city):
         await messenger_client.send_text(
             chat_id=str(message.chat.id),
             text="Выберите город из списка.",
-            keyboard=flow_keyboard_remove(),
+            keyboard=city_keyboard,
         )
         return
     if region and region not in get_regions_for_city(city):
         await messenger_client.send_text(
             chat_id=str(message.chat.id),
             text="Выберите город из списка.",
-            keyboard=flow_keyboard_remove(),
+            keyboard=city_keyboard,
         )
         return
     user_id = parse_user_id_from_state(data, key="edit_user_id")
