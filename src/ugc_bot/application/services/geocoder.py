@@ -1,6 +1,6 @@
 """Geocoding service: resolve city/address to coordinates (lat, lon)."""
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import httpx
 
@@ -8,6 +8,14 @@ import httpx
 def wkt_multipoint_from_lat_lon(lat: float, lon: float) -> str:
     """Build WKT MULTIPOINT for one point (SRID 4326: lon, lat order)."""
     return f"MULTIPOINT(({lon} {lat}))"
+
+
+def wkt_multipoint_from_coords(coords: List[Tuple[float, float]]) -> str:
+    """Build WKT MULTIPOINT from list of (lat, lon) (SRID 4326: lon, lat)."""
+    if not coords:
+        return ""
+    points = ",".join(f"({lon} {lat})" for lat, lon in coords)
+    return f"MULTIPOINT({points})"
 
 
 def wkt_point_from_lat_lon(lat: float, lon: float) -> str:

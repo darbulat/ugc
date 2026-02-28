@@ -6,6 +6,7 @@ import pytest
 
 from ugc_bot.application.services.geocoder import (
     NominatimGeocoder,
+    wkt_multipoint_from_coords,
     wkt_multipoint_from_lat_lon,
     wkt_point_from_lat_lon,
 )
@@ -17,6 +18,19 @@ def test_wkt_multipoint_from_lat_lon() -> None:
         wkt_multipoint_from_lat_lon(55.75, 37.6) == "MULTIPOINT((37.6 55.75))"
     )
     assert wkt_multipoint_from_lat_lon(0.0, 0.0) == "MULTIPOINT((0.0 0.0))"
+
+
+def test_wkt_multipoint_from_coords() -> None:
+    """WKT MULTIPOINT from list of (lat, lon), deduplicated points."""
+    assert wkt_multipoint_from_coords([]) == ""
+    assert (
+        wkt_multipoint_from_coords([(55.75, 37.6)])
+        == "MULTIPOINT((37.6 55.75))"
+    )
+    assert (
+        wkt_multipoint_from_coords([(55.75, 37.6), (55.83, 49.06)])
+        == "MULTIPOINT((37.6 55.75),(49.06 55.83))"
+    )
 
 
 def test_wkt_point_from_lat_lon() -> None:
