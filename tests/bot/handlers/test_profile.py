@@ -976,6 +976,83 @@ async def test_handle_profile_edit_choice_callback_audience_gender(
     )
 
 
+@pytest.mark.asyncio
+async def test_handle_profile_edit_choice_callback_blogger_gone_clears_state(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """When get_blogger_profile returns None, state is cleared and no update."""
+    user = await create_test_user(
+        user_repo, external_id="77b", username="choice"
+    )
+    profile_service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=False
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=str(user.user_id),
+        edit_external_id="77b",
+        edit_profile_type="blogger",
+        editing_field="audience_gender",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AUDIENCE_F,
+        user=FakeUser(77),
+        message=FakeMessage(user=FakeUser(77)),
+    )
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state.cleared
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_blogger_city_non_canonical_sends_picker(
+    user_repo,
+) -> None:
+    """Editing city with non-canonical name sends picker hint."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084a"),
+        external_id="50",
+        username="user",
+    )
+    message = FakeMessage(text="МаленькийГород", user=FakeUser(50))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "50",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "город" in text.lower() or "выберите" in text.lower()
+
+
 # --- Edit profile flow ---
 
 
