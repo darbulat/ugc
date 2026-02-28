@@ -795,6 +795,18 @@ class ReferralOrderIncomeRowLoader(Protocol):
         ...
 
 
+class GeocoderPort(Protocol):
+    """Port for geocoding city/address to (lat, lon)."""
+
+    async def geocode(
+        self,
+        query: str,
+        region: Optional[str] = None,
+    ) -> Optional[Tuple[float, float]]:
+        """Return (latitude, longitude) for the query, or None if not found."""
+        ...
+
+
 class TransactionManager(Protocol):
     """Protocol for transaction handling used by application services.
 

@@ -34,6 +34,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
     CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
     CALLBACK_PROFILE_MY_PROFILE,
+    CALLBACK_PROFILE_REGION_PREFIX,
     CONFIRM_INSTAGRAM_BUTTON_TEXT,
     MY_PROFILE_BUTTON_TEXT,
     WORK_FORMAT_ADS_BUTTON_TEXT,
@@ -54,6 +55,7 @@ from ugc_bot.bot.handlers.profile import (
     handle_profile_edit_field_callback,
     handle_profile_edit_type_callback,
     handle_profile_my_profile_callback,
+    handle_profile_region_callback,
     show_profile,
 )
 from ugc_bot.config import AppConfig
@@ -1334,6 +1336,47 @@ async def test_edit_profile_enter_value_city_success(user_repo) -> None:
     assert "Профиль обновлён" in text
     assert reg_service.update_calls
     assert reg_service.update_calls[0][1].get("city") == "казань"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_multi_region_shows_region_keyboard(
+    user_repo,
+) -> None:
+    """Enter city in multiple regions shows region picker, state kept."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000081e"),
+        external_id="14",
+        username="user",
+    )
+    message = FakeMessage(text="Железногорск", user=FakeUser(14))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "14",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        _profile_test_config(),
+        reg_service,
+        FakeAdvertiserRegistrationService(),
+        FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert state.cleared is False
+    assert state._data.get("pending_city_edit") == "железногорск"
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "регион" in text.lower()
+    assert not reg_service.update_calls
 
 
 @pytest.mark.asyncio
@@ -4430,6 +4473,46 @@ async def test_handle_city_web_app_data_profile_invalid_city(
 
 
 @pytest.mark.asyncio
+async def test_handle_city_web_app_data_profile_wrong_region_rejects(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Valid city but wrong region from Mini App sends choose from list."""
+    user = await create_test_user(user_repo, external_id="89b", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    reg_service = FakeBloggerRegistrationService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        editing_field="city",
+        edit_user_id=user.user_id,
+        edit_external_id="89b",
+    )
+    message = FakeMessage(
+        user=FakeUser(89),
+        web_app_data=FakeWebAppData("татарстан:москва"),
+    )
+    await handle_city_web_app_data_profile(
+        message,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        user_role_service=FakeUserRoleService(),
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "Выберите город из списка" in s["text"] for s in client.sent_text
+    )
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
 async def test_handle_city_web_app_data_profile_user_id_missing(
     user_repo, blogger_repo, advertiser_repo
 ) -> None:
@@ -4463,4 +4546,115 @@ async def test_handle_city_web_app_data_profile_user_id_missing(
         event_adapter=adapter,
     )
     assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_region_callback_success(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Profile region callback with valid region updates profile."""
+    user = await create_test_user(user_repo, external_id="91", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        pending_city_edit="железногорск",
+        edit_user_id=str(user.user_id),
+        edit_external_id="91",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_REGION_PREFIX}красноярский край",
+        user=FakeUser(91, "u", "U"),
+        message=FakeMessage(user=FakeUser(91)),
+    )
+    await handle_profile_region_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state.cleared is True
+    assert len(reg_service.update_calls) == 1
+    assert reg_service.update_calls[0][1].get("city") == "железногорск"
+    assert reg_service.update_calls[0][1].get("region") == "красноярский край"
+    assert any("Профиль обновлён" in s["text"] for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_region_callback_invalid_region_no_update(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Profile region callback with region not for city does not update."""
+    user = await create_test_user(user_repo, external_id="92", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    reg_service = FakeBloggerRegistrationService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        pending_city_edit="железногорск",
+        edit_user_id=str(user.user_id),
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_REGION_PREFIX}несуществующий регион",
+        user=FakeUser(92),
+        message=FakeMessage(user=FakeUser(92)),
+    )
+    await handle_profile_region_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_region_callback_missing_state_answers_only(
+    user_repo, blogger_repo, advertiser_repo
+) -> None:
+    """Profile region callback with no pending_city_edit does not update."""
+    user = await create_test_user(user_repo, external_id="93", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    reg_service = FakeBloggerRegistrationService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(edit_user_id=str(user.user_id))
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_REGION_PREFIX}красноярский край",
+        user=FakeUser(93),
+        message=FakeMessage(user=FakeUser(93)),
+    )
+    await handle_profile_region_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=_profile_test_config(),
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
     assert not reg_service.update_calls

@@ -120,8 +120,9 @@ def test_miniapp_cities_json_returns_list(client: TestClient) -> None:
     assert len(data) > 0
     assert all("id" in item and "label" in item for item in data)
     ids = [item["id"] for item in data]
-    assert "москва" in ids
-    assert "казань" in ids
+    assert "москва:москва" in ids
+    assert "татарстан:казань" in ids
+    assert all(" (" in item["label"] and ")" in item["label"] for item in data)
 
 
 def test_miniapp_city_picker_returns_404_when_file_missing(

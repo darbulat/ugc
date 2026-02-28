@@ -136,19 +136,70 @@ def _canonical_to_label(canonical: str) -> str:
     return " ".join(p.capitalize() for p in parts)
 
 
+_CITY_TO_REGIONS: dict[str, list[str]] | None = None
+
+
+def _get_city_to_regions() -> dict[str, list[str]]:
+    """Build reverse map: city -> list of region keys where city appears."""
+    global _CITY_TO_REGIONS
+    if _CITY_TO_REGIONS is None:
+        result: dict[str, list[str]] = {}
+        for region_key, cities in REGION_TO_CITIES.items():
+            for city in cities:
+                result.setdefault(city, []).append(region_key)
+        _CITY_TO_REGIONS = result
+    return _CITY_TO_REGIONS
+
+
+def get_regions_for_city(city: str) -> list[str]:
+    """Return region keys that contain this city (for disambiguation)."""
+    normalized = _normalize_token(city)
+    return list(_get_city_to_regions().get(normalized, []))
+
+
+def region_key_to_label(region_key: str) -> str:
+    """Return display label for region key (e.g. for inline buttons)."""
+    return _canonical_to_label(region_key)
+
+
+def parse_miniapp_city_id(raw_id: str) -> tuple[str, str | None]:
+    """
+    Parse Mini App city id into (canonical_city, region_key or None).
+
+    Id format is "region:city" or plain "city". Returns normalized city and
+    region (if present).
+    """
+    if not raw_id or not raw_id.strip():
+        return ("", None)
+    s = raw_id.strip()
+    if ":" in s:
+        parts = s.split(":", 1)
+        region = _normalize_token(parts[0]) or None
+        city = _normalize_token(parts[1]) if len(parts) > 1 else ""
+        return (city, region)
+    return (_normalize_token(s), None)
+
+
 def get_cities_list_for_miniapp() -> list[dict[str, str]]:
     """
-    Build list of all unique cities from REGION_TO_CITIES for Mini App.
+    Build cities list for Mini App; id region:city, label includes region.
 
-    Returns list of {"id": canonical_name, "label": display_name}, sorted by
-    label. Canonical names are normalized (lowercase, ё→е); labels are
-    title-cased for display (e.g. "санкт-петербург" -> "Санкт-Петербург").
+    For cities in multiple regions returns several entries with id "region:city"
+    and label "City (Region)". For cities in one region one entry with same
+    format. Deduplicates (region, city) pairs, sorted by label.
     """
-    seen: set[str] = set()
-    for key, cities in REGION_TO_CITIES.items():
-        seen.add(key)
-        seen.update(cities)
-    items = [{"id": c, "label": _canonical_to_label(c)} for c in seen]
+    seen: set[tuple[str, str]] = set()
+    items: list[dict[str, str]] = []
+    for region_key, cities in REGION_TO_CITIES.items():
+        region_label = _canonical_to_label(region_key)
+        for city in cities:
+            pair = (region_key, city)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            city_label = _canonical_to_label(city)
+            label = f"{city_label} ({region_label})"
+            items.append({"id": f"{region_key}:{city}", "label": label})
     items.sort(key=lambda x: x["label"])
     return items
 

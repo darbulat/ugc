@@ -91,6 +91,7 @@ _FLAT_KEYS = {
     "order": [
         "ALLOWED_BLOGGER_COUNTS",
         "MAX_ORDER_PRICE",
+        "ORDER_RADIUS_KM",
     ],
     "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
 }
@@ -383,6 +384,7 @@ class OrderConfig(BaseSettings):
         default="1,3,5,10", alias="ALLOWED_BLOGGER_COUNTS"
     )
     max_order_price: float = Field(default=10_000.0, alias="MAX_ORDER_PRICE")
+    order_radius_km: float = Field(default=50.0, alias="ORDER_RADIUS_KM")
 
     @field_validator("allowed_blogger_counts")
     @classmethod

@@ -799,6 +799,53 @@ async def test_handle_city_web_app_data_valid_stores_and_asks_birth_date() -> (
 
 
 @pytest.mark.asyncio
+async def test_handle_city_web_app_data_region_city_format_stores_both() -> (
+    None
+):
+    """handle_city_web_app_data with region:city id stores city and region."""
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData("татарстан:казань"),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await handle_city_web_app_data(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state._data["city"] == "казань"
+    assert state._data.get("region") == "татарстан"
+    assert state.state == BloggerRegistrationStates.birth_date
+
+
+@pytest.mark.asyncio
+async def test_handle_city_web_app_data_wrong_region_rejects() -> None:
+    """handle_city_web_app_data with valid city but wrong region sends error."""
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData("татарстан:москва"),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await handle_city_web_app_data(
+        message,
+        state,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "Выберите город из списка" in s["text"] for s in client.sent_text
+    )
+    assert state.state == BloggerRegistrationStates.city.state
+
+
+@pytest.mark.asyncio
 async def test_handle_birth_date_valid_stores_and_asks_gender() -> None:
     """handle_birth_date stores valid date and asks for gender."""
     state = FakeFSMContext()

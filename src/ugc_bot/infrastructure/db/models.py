@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Optional
 from uuid import UUID
 
+from geoalchemy2 import Geometry
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -22,6 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -38,6 +40,36 @@ from ugc_bot.domain.enums import (
     WorkFormat,
 )
 from ugc_bot.infrastructure.db.base import Base
+
+
+class _GeometryOrText(TypeDecorator):
+    """PostgreSQL: Geometry; SQLite: Text (WKT) so tests run without PostGIS."""
+
+    impl = Text
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return Geometry(geometry_type=self.geometry_type, srid=self.srid)
+        return Text()
+
+    def __init__(self, geometry_type: str, srid: int = 4326, **kwargs):
+        self.geometry_type = geometry_type
+        self.srid = srid
+        super().__init__(**kwargs)
+
+    def process_bind_param(self, value, dialect):
+        """Store WKT string for SQLite; pass through for PostgreSQL."""
+        if value is None:
+            return None
+        if dialect.name != "postgresql" and hasattr(value, "desc"):
+            return value.desc
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Return value as-is (string from SQLite, WKB from PostgreSQL)."""
+        return value
+
 
 _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     MessengerType: "messenger_type",
@@ -190,6 +222,11 @@ class BloggerProfileModel(Base):
         DateTime(timezone=True), nullable=True
     )
     birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    region: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    location_geometry: Mapped[Optional[object]] = mapped_column(
+        _GeometryOrText(geometry_type="MULTIPOINT", srid=4326),
+        nullable=True,
+    )
 
 
 class InstagramStatsModel(Base):
@@ -326,6 +363,13 @@ class OrderModel(Base):
     )
     filter_by_barter: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
+    )
+    location_geometry: Mapped[Optional[object]] = mapped_column(
+        _GeometryOrText(geometry_type="POINT", srid=4326),
+        nullable=True,
+    )
+    radius_km: Mapped[Optional[float]] = mapped_column(
+        Numeric(10, 2), nullable=True
     )
 
 

@@ -6,9 +6,12 @@ from ugc_bot.application.geography import (
     blogger_matches_geography,
     get_canonical_cities_set,
     get_cities_list_for_miniapp,
+    get_regions_for_city,
     is_canonical_city,
     normalize_geo_token,
     parse_geography,
+    parse_miniapp_city_id,
+    region_key_to_label,
 )
 
 
@@ -198,12 +201,19 @@ class TestGetCitiesListForMiniapp:
             assert isinstance(item["label"], str)
 
     def test_contains_moscow_and_spb(self) -> None:
-        """List contains Moscow and Saint Petersburg."""
+        """List contains Moscow, SPB, Kazan; id format region:city."""
         cities = get_cities_list_for_miniapp()
         ids = {c["id"] for c in cities}
-        assert "москва" in ids
-        assert "санкт-петербург" in ids
-        assert "казань" in ids
+        assert "москва:москва" in ids
+        assert "татарстан:казань" in ids
+        assert any("санкт-петербург" in i for i in ids)
+
+    def test_label_includes_region(self) -> None:
+        """Each item label is 'City (Region)'."""
+        cities = get_cities_list_for_miniapp()
+        for item in cities:
+            assert " (" in item["label"]
+            assert item["label"].endswith(")")
 
     def test_sorted_by_label(self) -> None:
         """List is sorted by label."""
@@ -212,10 +222,69 @@ class TestGetCitiesListForMiniapp:
         assert labels == sorted(labels)
 
     def test_no_duplicate_ids(self) -> None:
-        """No duplicate city ids."""
+        """No duplicate ids (each region:city pair once)."""
         cities = get_cities_list_for_miniapp()
         ids = [c["id"] for c in cities]
         assert len(ids) == len(set(ids))
+
+
+class TestRegionKeyToLabel:
+    """Tests for region_key_to_label."""
+
+    def test_returns_title_case(self) -> None:
+        """Region key is converted to display label (title case)."""
+        assert region_key_to_label("москва") == "Москва"
+        assert region_key_to_label("красноярский край") == "Красноярский Край"
+        assert region_key_to_label("татарстан") == "Татарстан"
+
+    def test_hyphenated_preserved(self) -> None:
+        """Hyphenated parts get capitalised."""
+        assert "Петербург" in region_key_to_label("санкт-петербург")
+
+    def test_empty_returns_empty(self) -> None:
+        """Empty string returns empty."""
+        assert region_key_to_label("") == ""
+
+
+class TestGetRegionsForCity:
+    """Tests for get_regions_for_city."""
+
+    def test_city_in_one_region(self) -> None:
+        """City in one region returns single-element list."""
+        regions = get_regions_for_city("Москва")
+        assert regions == ["москва"]
+
+    def test_city_in_multiple_regions(self) -> None:
+        """City in multiple regions returns all region keys."""
+        regions = get_regions_for_city("Железногорск")
+        assert len(regions) >= 2
+        assert "красноярский край" in regions
+        assert "курская область" in regions
+
+    def test_unknown_city_returns_empty(self) -> None:
+        """Unknown city returns empty list."""
+        assert get_regions_for_city("НесуществующийГород") == []
+
+
+class TestParseMiniappCityId:
+    """Tests for parse_miniapp_city_id."""
+
+    def test_plain_city_returns_city_and_none_region(self) -> None:
+        """Plain city id returns (city, None)."""
+        assert parse_miniapp_city_id("казань") == ("казань", None)
+        assert parse_miniapp_city_id("  москва  ") == ("москва", None)
+
+    def test_region_city_format_returns_both(self) -> None:
+        """region:city format returns (city, region)."""
+        assert parse_miniapp_city_id("татарстан:казань") == (
+            "казань",
+            "татарстан",
+        )
+
+    def test_empty_returns_empty_tuple(self) -> None:
+        """Empty or whitespace returns ('', None)."""
+        assert parse_miniapp_city_id("") == ("", None)
+        assert parse_miniapp_city_id("   ") == ("", None)
 
 
 class TestIsCanonicalCity:
