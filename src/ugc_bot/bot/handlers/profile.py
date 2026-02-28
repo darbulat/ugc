@@ -666,9 +666,7 @@ async def _update_blogger_field_city(
         await state.clear()
         await message.answer(
             "Профиль обновлён.",
-            reply_markup=blogger_profile_view_inline_keyboard(
-                updated.confirmed
-            ),
+            reply_markup=flow_keyboard_remove(),
         )
         await show_profile(message, profile_service, state, config)
         return True
@@ -701,7 +699,7 @@ async def _update_blogger_field_city(
     await state.clear()
     await message.answer(
         "Профиль обновлён.",
-        reply_markup=blogger_profile_view_inline_keyboard(updated.confirmed),
+        reply_markup=flow_keyboard_remove(),
     )
     await show_profile(message, profile_service, state, config)
     return True
@@ -1631,16 +1629,16 @@ async def handle_city_web_app_data_profile(
             keyboard=flow_keyboard_remove(),
         )
         return
-    updated = await blogger_registration_service.update_blogger_profile(
+    await blogger_registration_service.update_blogger_profile(
         user_id, city=city, region=region
     )
     await state.clear()
     incoming = event_adapter.from_message(message)
     message_ctx = MessageContext(incoming, messenger_client)
-    confirmed = updated.confirmed if updated else True
-    await message_ctx.answer(
-        "Профиль обновлён.",
-        reply_markup=blogger_profile_view_inline_keyboard(confirmed),
+    await messenger_client.send_text(
+        chat_id=str(message.chat.id),
+        text="Профиль обновлён.",
+        keyboard=flow_keyboard_remove(),
     )
     await show_profile(
         message=message_ctx,
