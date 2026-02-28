@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ugc_bot.application.region_cities_data import (
+    REGION_ALIASES,
     REGION_TO_CITIES,
 )
 
@@ -66,8 +67,10 @@ def parse_geography(raw: str | None) -> "GeographySpec | None":
     if not tokens:
         return None
 
-    if len(tokens) == 1 and tokens[0] in REGION_TO_CITIES:
-        return GeographySpec(type="region", values=tokens)
+    if len(tokens) == 1:
+        region_key = REGION_ALIASES.get(tokens[0], tokens[0])
+        if region_key in REGION_TO_CITIES:
+            return GeographySpec(type="region", values=[region_key])
 
     return GeographySpec(type="cities", values=tokens)
 
@@ -106,8 +109,9 @@ def _matches_cities(blogger_city_tokens: list[str], values: list[str]) -> bool:
     """
     for token in blogger_city_tokens:
         for val in values:
-            if val in REGION_TO_CITIES:
-                if _matches_region([token], val):
+            region_key = REGION_ALIASES.get(val, val)
+            if region_key in REGION_TO_CITIES:
+                if _matches_region([token], region_key):
                     return True
             elif token == val:
                 return True
@@ -119,11 +123,12 @@ def _matches_region(
     region_key: str,
 ) -> bool:
     """Return True if any blogger city matches region or its cities."""
-    region_cities = REGION_TO_CITIES.get(region_key)
+    canonical_region = REGION_ALIASES.get(region_key, region_key)
+    region_cities = REGION_TO_CITIES.get(canonical_region)
     if region_cities is None:
         return False
     for token in blogger_city_tokens:
-        if token == region_key or token in region_cities:
+        if token == canonical_region or token in region_cities:
             return True
     return False
 
@@ -215,6 +220,7 @@ def get_canonical_cities_set() -> frozenset[str]:
         for key, cities in REGION_TO_CITIES.items():
             seen.add(key)
             seen.update(cities)
+        seen.update(REGION_ALIASES)
         _CANONICAL_CITIES_SET = frozenset(seen)
     return _CANONICAL_CITIES_SET
 

@@ -108,6 +108,13 @@ class TestParseGeography:
         assert spec.type == "region"
         assert spec.values == ["татарстан"]
 
+    def test_region_alias_sakha_resolves_to_yakutia(self) -> None:
+        """Alias 'Саха' resolves to canonical region 'якутия'."""
+        spec = parse_geography("Саха")
+        assert spec is not None
+        assert spec.type == "region"
+        assert spec.values == ["якутия"]
+
     def test_extra_whitespace_normalized(self) -> None:
         """Extra whitespace is collapsed."""
         spec = parse_geography("  Казань  ,   Москва  ")
