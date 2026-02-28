@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.geography import (
     get_regions_for_city,
-    is_canonical_city,
+    is_canonical_city_only,
     normalize_geo_token,
     parse_miniapp_city_id,
     region_key_to_label,
@@ -471,7 +471,7 @@ async def handle_city_web_app_data(
         else ""
     )
     city, region = parse_miniapp_city_id(raw_id)
-    if not city or not is_canonical_city(city):
+    if not city or not is_canonical_city_only(city):
         await messenger_client.send_text(
             chat_id=str(message.chat.id),
             text="Выберите город из списка.",
@@ -496,11 +496,11 @@ async def handle_city_web_app_data(
 
 
 def _canonical_city_from_text(text: str) -> str | None:
-    """Return canonical city id if input matches dictionary, else None."""
+    """Canonical city id if input is a city (not region); else None."""
     normalized = normalize_geo_token((text or "").strip())
     if not normalized:
         return None
-    return normalized if is_canonical_city(normalized) else None
+    return normalized if is_canonical_city_only(normalized) else None
 
 
 @router.message(BloggerRegistrationStates.city)

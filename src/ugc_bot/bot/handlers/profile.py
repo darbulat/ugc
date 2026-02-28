@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.geography import (
     get_regions_for_city,
-    is_canonical_city,
+    is_canonical_city_only,
     normalize_geo_token,
     parse_miniapp_city_id,
     region_key_to_label,
@@ -452,7 +452,7 @@ async def _blog_update_city(
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     normalized = normalize_geo_token(text)
-    if not normalized or not is_canonical_city(normalized):
+    if not normalized or not is_canonical_city_only(normalized):
         await message.answer(
             "Укажите ближайший крупный город или нажмите «Выбрать город»"
             " и выберите из списка.",
@@ -655,7 +655,7 @@ async def _update_blogger_field_city(
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return False
     normalized = normalize_geo_token(text)
-    if not normalized or not is_canonical_city(normalized):
+    if not normalized or not is_canonical_city_only(normalized):
         updated = await _blog_update_city(
             text, user_id, message, blogger_registration_service
         )
@@ -1606,7 +1606,7 @@ async def handle_city_web_app_data_profile(
         else ""
     )
     city, region = parse_miniapp_city_id(raw_id)
-    if not city or not is_canonical_city(city):
+    if not city or not is_canonical_city_only(city):
         await messenger_client.send_text(
             chat_id=str(message.chat.id),
             text="Выберите город из списка.",

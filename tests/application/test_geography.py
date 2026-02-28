@@ -8,6 +8,7 @@ from ugc_bot.application.geography import (
     get_cities_list_for_miniapp,
     get_regions_for_city,
     is_canonical_city,
+    is_canonical_city_only,
     normalize_geo_token,
     parse_geography,
     parse_miniapp_city_id,
@@ -309,6 +310,27 @@ class TestIsCanonicalCity:
         assert is_canonical_city("питер") is False
         assert is_canonical_city("unknown_city") is False
         assert is_canonical_city("") is False
+
+
+class TestIsCanonicalCityOnly:
+    """Tests for is_canonical_city_only (city names only, not regions)."""
+
+    def test_city_returns_true(self) -> None:
+        """Actual city names return True."""
+        assert is_canonical_city_only("москва") is True
+        assert is_canonical_city_only("якутск") is True
+        assert is_canonical_city_only("казань") is True
+
+    def test_region_returns_false(self) -> None:
+        """Region names must not pass as city."""
+        assert is_canonical_city_only("якутия") is False
+        assert is_canonical_city_only("татарстан") is False
+        assert is_canonical_city_only("саха") is False
+
+    def test_unknown_returns_false(self) -> None:
+        """Unknown value returns False."""
+        assert is_canonical_city_only("питер") is False
+        assert is_canonical_city_only("") is False
 
 
 class TestGetCanonicalCitiesSet:

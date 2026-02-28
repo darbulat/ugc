@@ -231,6 +231,12 @@ def is_canonical_city(city: str) -> bool:
     return normalized in get_canonical_cities_set()
 
 
+def is_canonical_city_only(value: str) -> bool:
+    """True if value is a city from the dictionary, not a region name."""
+    normalized = _normalize_token(value)
+    return normalized in _get_city_to_regions()
+
+
 def blogger_matches_geography(blogger_city: str, spec: GeographySpec) -> bool:
     """
     Check if blogger city matches order geography.
