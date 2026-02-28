@@ -211,7 +211,7 @@ def _build_markup(keyboard: Keyboard | None):
     if not isinstance(keyboard, Keyboard):
         return keyboard
     if keyboard.kind == KeyboardKind.REMOVE:
-        return ReplyKeyboardRemove()
+        return ReplyKeyboardRemove(selective=False)
     if keyboard.kind == KeyboardKind.INLINE:
         inline_rows = [
             [_inline_button(btn) for btn in row] for row in keyboard.rows

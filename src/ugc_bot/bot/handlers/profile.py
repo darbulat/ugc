@@ -1714,7 +1714,7 @@ async def handle_profile_region_callback(
             message_id=incoming.message_id,
             keyboard=None,
         )
-    updated = await blogger_registration_service.update_blogger_profile(
+    await blogger_registration_service.update_blogger_profile(
         user_id, city=city, region=region
     )
     await state.clear()
@@ -1724,10 +1724,9 @@ async def handle_profile_region_callback(
         text=None,
     )
     message_ctx = MessageContext(incoming_msg, messenger_client)
-    confirmed = updated.confirmed if updated else True
     await message_ctx.answer(
         "Профиль обновлён.",
-        reply_markup=blogger_profile_view_inline_keyboard(confirmed),
+        reply_markup=flow_keyboard_remove(),
     )
     await show_profile(
         message=message_ctx,
