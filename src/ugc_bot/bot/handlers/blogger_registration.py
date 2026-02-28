@@ -118,13 +118,8 @@ def _step(n: int) -> str:
     return f"\n\nШаг {n} из {TOTAL_STEPS}"
 
 
-STEP_ASK_NAME = (
-    "Как вас зовут?"
-    + _step(1)
-)
-STEP_ASK_INSTAGRAM = (
-    "Пришлите ссылку в формате instagram.com/name" + _step(2)
-)
+STEP_ASK_NAME = "Как вас зовут?" + _step(1)
+STEP_ASK_INSTAGRAM = "Пришлите ссылку в формате instagram.com/name" + _step(2)
 STEP_ASK_INSTAGRAM_FIRST = (
     "Пришлите ссылку в формате instagram.com/name" + _step(1)
 )
@@ -133,12 +128,10 @@ STEP_ASK_CITY = (
     "офлайн взаимодействия. Из какого вы города?" + _step(3)
 )
 STEP_ASK_BIRTH_DATE = (
-    "Укажите дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):" + _step(4)
+    "Укажите дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):"
+    + _step(4)
 )
-STEP_ASK_GENDER = (
-    "Укажите ваш пол:"
-    + _step(5)
-)
+STEP_ASK_GENDER = "Укажите ваш пол:" + _step(5)
 STEP_ASK_TOPICS = (
     "О чём ваш контент?\n"
     "Напишите 1–5 тематики через запятую: бизнес, инвестиции, фитнес, "
@@ -150,9 +143,7 @@ STEP_ASK_AUDIENCE_GENDER = (
     "Кто в основном смотрит ваш контент? "
     "По наблюдениям или статистике" + _step(7)
 )
-STEP_ASK_AUDIENCE_AGE = (
-    "Основной возраст вашей аудитории?" + _step(8)
-)
+STEP_ASK_AUDIENCE_AGE = "Основной возраст вашей аудитории?" + _step(8)
 STEP_ASK_AUDIENCE_GEO = (
     "В каких городах в основном аудитория? До 3 городов через запятую, "
     "например: Москва, Казань, Санкт‑Петербург" + _step(9)

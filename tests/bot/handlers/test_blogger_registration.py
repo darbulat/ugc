@@ -694,7 +694,7 @@ async def test_start_registration_no_username_asks_name(user_repo) -> None:
 
     ans = message.answers[0]
     text = (ans if isinstance(ans, str) else ans[0]).lower()
-    assert "имя" in text or "обращаться" in text
+    assert "имя" in text or "обращаться" in text or "зовут" in text
     assert state.state == BloggerRegistrationStates.name
 
 
