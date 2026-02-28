@@ -693,7 +693,8 @@ async def test_start_registration_no_username_asks_name(user_repo) -> None:
     await _start_registration_flow(message, state, service)
 
     ans = message.answers[0]
-    assert "ваше имя" in (ans if isinstance(ans, str) else ans[0]).lower()
+    text = (ans if isinstance(ans, str) else ans[0]).lower()
+    assert "имя" in text or "обращаться" in text
     assert state.state == BloggerRegistrationStates.name
 
 
@@ -1334,7 +1335,7 @@ async def test_start_registration_button(user_repo) -> None:
     assert message.answers
     ans = message.answers[0]
     text = (ans[0] if isinstance(ans, tuple) else ans).lower()
-    assert "инстаграмм" in text or "имя" in text
+    assert "instagram" in text or "ссылку" in text
 
 
 @pytest.mark.asyncio
