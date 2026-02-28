@@ -673,9 +673,7 @@ async def _update_blogger_field_city(
             await state.clear()
             await message.answer(
                 "Не удалось обновить профиль.",
-                reply_markup=city_picker_keyboard(
-                    config.webhook.webhook_base_url
-                ),
+                reply_markup=flow_keyboard_remove(),
             )
             return False
         await state.clear()
@@ -711,7 +709,7 @@ async def _update_blogger_field_city(
         await state.clear()
         await message.answer(
             "Не удалось обновить профиль.",
-            reply_markup=city_picker_keyboard(config.webhook.webhook_base_url),
+            reply_markup=flow_keyboard_remove(),
         )
         return False
     await state.clear()
@@ -798,14 +796,9 @@ async def _update_blogger_field(
     )
     if updated_blogger is None:
         await state.clear()
-        reply_markup = (
-            city_picker_keyboard(config.webhook.webhook_base_url)
-            if field_key == "city"
-            else None
-        )
         await message.answer(
             "Не удалось обновить профиль.",
-            reply_markup=reply_markup,
+            reply_markup=flow_keyboard_remove(),
         )
         return False
     await state.clear()
