@@ -60,7 +60,7 @@ class AiograpiStatsFetcher:
         """Return True if credentials are set."""
         return bool(self._instagram_username and self._instagram_password)
 
-    async def get_profile_stats_by_username(  # noqa: C901
+    async def get_profile_stats_by_username(  # noqa: C901, PLR0912
         self, username: str
     ) -> Optional[dict[str, Any]]:
         """Fetch profile stats for username.
@@ -76,6 +76,13 @@ class AiograpiStatsFetcher:
                 LoginRequired,
                 UserNotFound,
             )
+
+            try:
+                from aiograpi.exceptions import (  # type: ignore[import-untyped]
+                    FeedbackRequired,
+                )
+            except ImportError:
+                FeedbackRequired = None  # type: ignore[misc, assignment]
         except ImportError:
             logger.warning(
                 "aiograpi not installed, cannot use aiograpi fallback"
@@ -116,6 +123,15 @@ class AiograpiStatsFetcher:
                 cl.dump_settings(str(self._session_path))
             except OSError as e:
                 logger.debug("Could not save aiograpi session: %s", e)
+        except Exception as e:
+            if FeedbackRequired is not None and isinstance(e, FeedbackRequired):
+                logger.warning(
+                    "Instagram rate limit or feedback required for %s: %s",
+                    username,
+                    e,
+                )
+                return None
+            raise
         else:
             try:
                 cl.dump_settings(str(self._session_path))

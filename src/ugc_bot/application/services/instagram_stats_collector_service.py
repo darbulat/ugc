@@ -18,6 +18,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import BloggerProfile, InstagramStats
 from ugc_bot.infrastructure.db.session import with_optional_tx
+from ugc_bot.infrastructure.instagram.delays import random_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class AiograpiStatsFetcherProtocol(Protocol):
         self, username: str
     ) -> Optional[dict[str, Any]]:
         """Return raw stats dict or None."""
-        ...
+        ...  # pragma: no cover
 
 
 @dataclass
@@ -370,12 +371,32 @@ class InstagramStatsCollectorService:
 
             if not raw or not isinstance(raw, dict):
                 if self._aiograpi_fetcher:
-                    raw = await (
-                        self._aiograpi_fetcher.get_profile_stats_by_username(
+                    try:
+                        fetcher = self._aiograpi_fetcher
+                        raw = await fetcher.get_profile_stats_by_username(
                             username
                         )
-                    )
-                    provider = "aiograpi"
+                        provider = "aiograpi"
+                    except Exception as exc:
+                        logger.warning(
+                            "Aiograpi fallback failed for %s: %s",
+                            username,
+                            exc,
+                            extra={
+                                "user_id": user_id_str,
+                                "username": username,
+                                "error": str(exc),
+                            },
+                        )
+                        errors += 1
+                        failed_users.append(
+                            {
+                                "user_id": user_id_str,
+                                "username": username,
+                                "reason": str(exc),
+                            }
+                        )
+                        continue
                 if not raw or not isinstance(raw, dict):
                     logger.debug(
                         "No stats data returned",
@@ -429,7 +450,7 @@ class InstagramStatsCollectorService:
                     "followers": followers,
                 },
             )
-            await asyncio.sleep(self._delay_seconds)
+            await asyncio.sleep(random_delay_seconds(self._delay_seconds))
 
         return RunOnceResult(
             updated=updated,

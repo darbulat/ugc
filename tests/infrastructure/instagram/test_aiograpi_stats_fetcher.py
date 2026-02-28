@@ -16,6 +16,9 @@ def _make_aiograpi_mocks():
     mock_exceptions = MagicMock()
     mock_exceptions.UserNotFound = type("UserNotFound", (Exception,), {})
     mock_exceptions.LoginRequired = type("LoginRequired", (Exception,), {})
+    mock_exceptions.FeedbackRequired = type(
+        "FeedbackRequired", (Exception,), {}
+    )
     mock_aiograpi = MagicMock()
     mock_aiograpi.exceptions = mock_exceptions
     return mock_aiograpi, mock_exceptions
@@ -149,6 +152,44 @@ async def test_get_profile_stats_user_not_found_returns_none(
         ),
     ):
         result = await fetcher.get_profile_stats_by_username("nonexistent")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_profile_stats_feedback_required_returns_none(
+    tmp_path: Path,
+) -> None:
+    """Returns None when Instagram rate limits (FeedbackRequired)."""
+    mock_aiograpi, mock_exceptions = _make_aiograpi_mocks()
+    session_file = tmp_path / "session.json"
+    session_file.write_text("{}")
+    fetcher = AiograpiStatsFetcher(
+        instagram_username="user",
+        instagram_password="pass",
+        session_path=session_file,
+    )
+    mock_client = MagicMock()
+    mock_client.login = AsyncMock(return_value=None)
+    mock_client.user_info_by_username_v1 = AsyncMock(
+        side_effect=mock_exceptions.FeedbackRequired(
+            "We limit how often you can do certain things..."
+        )
+    )
+    mock_client.load_settings = MagicMock()
+    mock_client.dump_settings = MagicMock()
+    mock_aiograpi.Client = MagicMock(return_value=mock_client)
+
+    with (
+        patch.dict(
+            sys.modules,
+            {"aiograpi": mock_aiograpi, "aiograpi.exceptions": mock_exceptions},
+        ),
+        patch(
+            "ugc_bot.infrastructure.instagram.aiograpi_stats_fetcher._apply_httpx_proxies_compat"
+        ),
+    ):
+        result = await fetcher.get_profile_stats_by_username("gukasimava")
 
     assert result is None
 

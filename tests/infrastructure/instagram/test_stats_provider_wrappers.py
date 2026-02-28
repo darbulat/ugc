@@ -53,7 +53,7 @@ async def test_multi_provider_fallback_on_429() -> None:
 
 @pytest.mark.asyncio
 async def test_multi_provider_sleeps_after_429_before_next() -> None:
-    """After 429, client waits fallback_delay_seconds before next provider."""
+    """After 429, client waits random delay before trying next provider."""
 
     class RateLimitClient(InMemoryInstagramRapidApiClient):
         async def get_profile_stats_by_username(self, username: str):
@@ -77,6 +77,9 @@ async def test_multi_provider_sleeps_after_429_before_next() -> None:
             clients, fallback_delay_seconds=3.0
         )
         data, provider = await multi.get_profile_stats_with_provider("jane")
-    mock_sleep.assert_awaited_once_with(3.0)
+    mock_sleep.assert_awaited_once()
+    (delay,) = mock_sleep.call_args[0]
+    # random_delay_seconds(3.0) is in [3*0.6, 3*1.6] = [1.8, 4.8], min 0.1
+    assert 1.8 <= delay <= 4.8
     assert data == ok_data
     assert provider == "second"

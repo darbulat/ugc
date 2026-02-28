@@ -9,6 +9,7 @@ from ugc_bot.application.ports import (
     InstagramStatsProviderClient,
     RapidApiRateLimitError,
 )
+from ugc_bot.infrastructure.instagram.delays import random_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,8 @@ class MultiProviderInstagramStatsClient(InstagramStatsProviderClient):
                     extra={"provider": provider_id, "username": username},
                 )
                 if self._fallback_delay > 0 and i < len(self._clients) - 1:
-                    await asyncio.sleep(self._fallback_delay)
+                    await asyncio.sleep(
+                        random_delay_seconds(self._fallback_delay)
+                    )
                 continue
         return (None, last_provider)

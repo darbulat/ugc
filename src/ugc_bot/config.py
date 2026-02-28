@@ -305,7 +305,7 @@ class InstagramConfig(BaseSettings):
         default=50, alias="INSTAGRAM_STATS_COLLECTOR_BATCH_SIZE"
     )
     instagram_stats_collector_delay_seconds: float = Field(
-        default=1.0, alias="INSTAGRAM_STATS_COLLECTOR_DELAY_SECONDS"
+        default=3.0, alias="INSTAGRAM_STATS_COLLECTOR_DELAY_SECONDS"
     )
     instagram_stats_provider_fallback_delay_seconds: float = Field(
         default=2.0,

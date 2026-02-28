@@ -475,6 +475,64 @@ class _MockAiograpiFetcher:
         return self._raw
 
 
+class _MockAiograpiFetcherThatRaises:
+    """Mock aiograpi fetcher that raises (e.g. FeedbackRequired)."""
+
+    def __init__(self, exc: Exception):
+        self._exc = exc
+
+    async def get_profile_stats_by_username(self, username: str) -> dict | None:
+        raise self._exc
+
+
+@pytest.mark.asyncio
+async def test_run_once_aiograpi_fallback_exception_recorded_as_failed() -> (
+    None
+):
+    """Aiograpi fallback exception recorded in failed_users (rate limit)."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_123",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    client = _NoDataProviderClient()
+    aiograpi_fetcher = _MockAiograpiFetcherThatRaises(
+        Exception("feedback_required: We limit how often...")
+    )
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=client,
+        aiograpi_fetcher=aiograpi_fetcher,
+        batch_size=10,
+        delay_seconds=0.0,
+    )
+
+    result = await service.run_once()
+    assert result.updated == 0
+    assert result.errors == 1
+    assert len(result.failed_users) == 1
+    assert result.failed_users[0]["username"] == "jane"
+    assert "feedback_required" in result.failed_users[0]["reason"]
+
+
 @pytest.mark.asyncio
 async def test_run_once_uses_aiograpi_fallback_when_provider_empty() -> None:
     """When primary returns no data, aiograpi is used and stats saved."""

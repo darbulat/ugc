@@ -13,6 +13,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.infrastructure.db.session import with_optional_tx
+from ugc_bot.infrastructure.instagram.delays import random_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,6 @@ class InstagramStatsUpdateService:
                     "followers": info.followers_count,
                 },
             )
-            await asyncio.sleep(self._delay_seconds)
+            await asyncio.sleep(random_delay_seconds(self._delay_seconds))
 
         return (updated, errors)

@@ -10,6 +10,7 @@ from ugc_bot.application.ports import (
     InstagramGraphApiClient,
     InstagramProfileInfo,
 )
+from ugc_bot.infrastructure.instagram.delays import random_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +257,9 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                             "attempt": attempt,
                         },
                     )
-                    await asyncio.sleep(self._retry_delay_seconds)
+                    await asyncio.sleep(
+                        random_delay_seconds(self._retry_delay_seconds)
+                    )
                     continue
                 logger.warning(
                     "Instagram API request failed",
@@ -277,7 +280,9 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                             "attempt": attempt,
                         },
                     )
-                    await asyncio.sleep(self._retry_delay_seconds)
+                    await asyncio.sleep(
+                        random_delay_seconds(self._retry_delay_seconds)
+                    )
                     continue
                 logger.warning(
                     "Instagram API request error",
@@ -363,7 +368,9 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                             "attempt": attempt,
                         },
                     )
-                    await asyncio.sleep(self._retry_delay_seconds)
+                    await asyncio.sleep(
+                        random_delay_seconds(self._retry_delay_seconds)
+                    )
                     continue
                 if (
                     exc.response.status_code == 400
@@ -420,7 +427,9 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                             "attempt": attempt,
                         },
                     )
-                    await asyncio.sleep(self._retry_delay_seconds)
+                    await asyncio.sleep(
+                        random_delay_seconds(self._retry_delay_seconds)
+                    )
                     continue
                 logger.warning(  # pragma: no cover - exhausted retries
                     "Instagram API request error",
