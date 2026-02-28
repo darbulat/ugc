@@ -20,6 +20,7 @@
           <th><a href="/admin/users/advertisers?sort=orders_total&order={% if sort == 'orders_total' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов создано</a></th>
           <th><a href="/admin/users/advertisers?sort=orders_completed&order={% if sort == 'orders_completed' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов завершено</a></th>
           <th><a href="/admin/users/advertisers?sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
+          <th>Telegram</th>
         </tr>
       </thead>
       <tbody>
@@ -31,6 +32,7 @@
             <td>{{ advertiser.orders_total }}</td>
             <td>{{ advertiser.orders_completed }}</td>
             <td>{{ advertiser.complaints }}</td>
+            <td>{% if advertiser.telegram %}<a href="https://t.me/{{ advertiser.telegram.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ advertiser.telegram.replace('@', '') }}</a>{% else %}—{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>

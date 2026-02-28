@@ -1351,6 +1351,7 @@ class AdminDashboardService:
                 {
                     "user_id": str(user.user_id),
                     "username": user.username,
+                    "telegram": user.telegram,
                     "instagram": instagram_url,
                     "city": city or "",
                     "created_at": user.created_at,
@@ -1499,6 +1500,7 @@ class AdminDashboardService:
                 {
                     "user_id": str(user.user_id),
                     "name": brand or user.username,
+                    "telegram": user.telegram,
                     "created_at": user.created_at,
                     "orders_total": int(orders_total),
                     "orders_completed": int(orders_completed),
@@ -1569,6 +1571,7 @@ class AdminDashboardService:
                 func.coalesce(
                     AdvertiserProfileModel.brand, UserModel.username
                 ).label("advertiser_name"),
+                UserModel.telegram.label("advertiser_telegram"),
                 func.coalesce(dispatched_subq.c.dispatched_count, 0).label(
                     "dispatched_count"
                 ),
@@ -1642,6 +1645,7 @@ class AdminDashboardService:
                 responses_count,
                 open_count,
                 name,
+                advertiser_telegram=advertiser_telegram,
                 dispatched_count=dispatched_count,
                 accepted_count=accepted_count,
             )
@@ -1650,6 +1654,7 @@ class AdminDashboardService:
                 responses_count,
                 open_count,
                 name,
+                advertiser_telegram,
                 dispatched_count,
                 accepted_count,
             ) in rows
@@ -1974,6 +1979,7 @@ class AdminDashboardService:
         responses: int,
         open_complaints: int,
         advertiser_name: str,
+        advertiser_telegram: str | None = None,
         dispatched_count: int = 0,
         accepted_count: int = 0,
     ) -> dict:
@@ -1984,6 +1990,7 @@ class AdminDashboardService:
         return {
             "order_id": str(order.order_id),
             "advertiser": advertiser_name,
+            "advertiser_telegram": advertiser_telegram,
             "status_label": status_label,
             "picked_count": int(responses),
             "needed_count": int(order.bloggers_needed),

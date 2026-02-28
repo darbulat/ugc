@@ -52,6 +52,7 @@
           <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=responses&order={% if sort == 'responses' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Откликов</a></th>
           <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
           <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=status&order={% if sort == 'status' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Статус</a></th>
+          <th>Telegram</th>
         </tr>
       </thead>
       <tbody>
@@ -66,6 +67,7 @@
             <td>{{ creator.responses }}</td>
             <td>{{ creator.complaints }}</td>
             <td>{{ user_status_labels.get(creator.status, creator.status) }}</td>
+            <td>{% set tg = creator.telegram or creator.username %}{% if tg %}<a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a>{% else %}—{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>

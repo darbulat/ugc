@@ -46,6 +46,7 @@
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Дата создания</a></th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=status_age_hours&order={% if sort == 'status_age_hours' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Время в статусе (ч)</a></th>
           <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=open_complaints&order={% if sort == 'open_complaints' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Проблема</a></th>
+          <th>Telegram заказчика</th>
         </tr>
       </thead>
       <tbody>
@@ -66,6 +67,7 @@
                 <span class="badge badge--ok">Нет</span>
               {% endif %}
             </td>
+            <td>{% set tg = order.advertiser_telegram %}{% if tg %}<a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a>{% else %}—{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>
