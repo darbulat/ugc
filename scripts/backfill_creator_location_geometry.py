@@ -69,12 +69,12 @@ def _parse_city_tokens(city_raw: str | None) -> list[str]:
     return list(dict.fromkeys(tokens))
 
 
-def _cache_key(token: str, country: str, region: str | None) -> str:
+def _cache_key(token: str, country: str | None, region: str | None) -> str:
     """Cache key for (city token, country, region) to avoid mixing results."""
     return "|".join(
         (
             token.strip(),
-            (country or "russia").strip().lower(),
+            (country or "").strip().lower(),
             (region or "").strip().lower(),
         )
     )
@@ -83,7 +83,7 @@ def _cache_key(token: str, country: str, region: str | None) -> str:
 async def _geocode_city_tokens(
     geocoder: NominatimGeocoder,
     tokens: list[str],
-    country: str,
+    country: str | None,
     region: str | None,
     cache: dict[str, tuple[float, float] | None],
 ) -> tuple[list[tuple[float, float]], str | None, str | None]:
@@ -204,7 +204,7 @@ async def run(
 
     for user_id, city, country, region in rows:
         city_str = (city or "").strip()
-        country_str = (country or "russia").strip() or "russia"
+        country_for_profile = (country or "").strip() or None
         region_str = (region or "").strip() or None
         tokens = _parse_city_tokens(city_str)
         if not tokens:
@@ -213,7 +213,11 @@ async def run(
 
         coords, region_from_nominatim, country_from_nominatim = (
             await _geocode_city_tokens(
-                geocoder, tokens, country_str, region_str, geo_cache
+                geocoder,
+                tokens,
+                country_for_profile,
+                region_str,
+                geo_cache,
             )
         )
         if not coords:
