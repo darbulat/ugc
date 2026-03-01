@@ -86,10 +86,16 @@ async def _geocode_city_tokens(
     country: str,
     region: str | None,
     cache: dict[str, tuple[float, float] | None],
-) -> list[tuple[float, float]]:
-    """Geocode each token; accept only populated places/regions, reject streets etc."""
+) -> tuple[list[tuple[float, float]], str | None]:
+    """Geocode each token; accept only populated places/regions.
+
+    Returns (coords, region_from_nominatim). region_from_nominatim is from
+    the first accepted result when addressdetails are available (for saving
+    when profile.region is empty).
+    """
     coords: list[tuple[float, float]] = []
     seen: set[tuple[float, float]] = set()
+    region_from_nominatim: str | None = None
     country_for_query = (country or "russia").strip() or "russia"
     region_for_query = (region or "").strip() or None
     region_norm = (region or "").strip().lower()
@@ -99,6 +105,7 @@ async def _geocode_city_tokens(
         key = _cache_key(token, country, region)
         if key in cache:
             coord = cache[key]
+            detail_region = None
         else:
             details = await geocoder.geocode_with_details(
                 token.strip(),
@@ -109,8 +116,9 @@ async def _geocode_city_tokens(
             if details is None:
                 cache[key] = None
                 coord = None
+                detail_region = None
             else:
-                lat, lon, osm_class, osm_type = details
+                lat, lon, osm_class, osm_type, detail_region = details
                 if _is_place_or_region(osm_class, osm_type):
                     cache[key] = (lat, lon)
                     coord = (lat, lon)
@@ -123,10 +131,13 @@ async def _geocode_city_tokens(
                     )
                     cache[key] = None
                     coord = None
+                    detail_region = None
         if coord is not None and coord not in seen:
             seen.add(coord)
             coords.append(coord)
-    return coords
+            if region_from_nominatim is None and detail_region:
+                region_from_nominatim = detail_region
+    return (coords, region_from_nominatim)
 
 
 async def run(
@@ -187,7 +198,7 @@ async def run(
             logger.debug("Empty tokens for user_id=%s city=%r", user_id, city_str)
             continue
 
-        coords = await _geocode_city_tokens(
+        coords, region_from_nominatim = await _geocode_city_tokens(
             geocoder, tokens, country_str, region_str, geo_cache
         )
         if not coords:
@@ -222,7 +233,10 @@ async def run(
                     logger.warning("Profile not found for user_id=%s", user_id)
                     errors += 1
                     continue
-                updated = replace(profile, location_geometry=wkt)
+                update_kw: dict = {"location_geometry": wkt}
+                if not (profile.region or "").strip() and region_from_nominatim:
+                    update_kw["region"] = region_from_nominatim
+                updated = replace(profile, **update_kw)
                 await blogger_repo.save(updated, session=session)
                 await session.commit()
                 updated_count += 1

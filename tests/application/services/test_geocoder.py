@@ -6,6 +6,7 @@ import pytest
 
 from ugc_bot.application.services.geocoder import (
     NominatimGeocoder,
+    _extract_region_from_address,
     wkt_multipoint_from_coords,
     wkt_multipoint_from_lat_lon,
     wkt_point_from_lat_lon,
@@ -36,6 +37,27 @@ def test_wkt_multipoint_from_coords() -> None:
 def test_wkt_point_from_lat_lon() -> None:
     """WKT POINT uses lon, lat order."""
     assert wkt_point_from_lat_lon(55.75, 37.6) == "POINT(37.6 55.75)"
+
+
+def test_extract_region_from_address() -> None:
+    """Extract region: state, then state_district, then county."""
+    assert _extract_region_from_address(None) is None
+    assert _extract_region_from_address("not a dict") is None
+    assert _extract_region_from_address({}) is None
+    assert _extract_region_from_address({"state": "Tatarstan"}) == "Tatarstan"
+    assert (
+        _extract_region_from_address({"state_district": "Greater London"})
+        == "Greater London"
+    )
+    assert (
+        _extract_region_from_address(
+            {"state": "England", "state_district": "Greater London"}
+        )
+        == "England"
+    )
+    assert (
+        _extract_region_from_address({"county": "Some County"}) == "Some County"
+    )
 
 
 @pytest.mark.asyncio
@@ -249,7 +271,7 @@ async def test_nominatim_geocoder_geocode_with_details_success() -> None:
         client_cls.return_value = mock_client
 
         result = await geocoder.geocode_with_details("Moscow")
-        assert result == (55.7558, 37.6173, "place", "city")
+        assert result == (55.7558, 37.6173, "place", "city", None)
 
 
 @pytest.mark.asyncio
@@ -284,6 +306,39 @@ async def test_geocode_with_details_with_region() -> None:
 
 
 @pytest.mark.asyncio
+async def test_geocode_with_details_returns_region_from_address() -> None:
+    """When response has address.state, 5th element is region from Nominatim."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [
+            {
+                "lat": "55.79",
+                "lon": "49.12",
+                "class": "place",
+                "type": "city",
+                "address": {"state": "Tatarstan", "country": "Russia"},
+            }
+        ]
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        result = await geocoder.geocode_with_details("Kazan")
+        assert result is not None
+        assert result[:4] == (55.79, 49.12, "place", "city")
+        assert result[4] == "Tatarstan"
+
+
+@pytest.mark.asyncio
 async def test_nominatim_geocoder_geocode_with_details_missing_class_type() -> (
     None
 ):
@@ -307,7 +362,7 @@ async def test_nominatim_geocoder_geocode_with_details_missing_class_type() -> (
         client_cls.return_value = mock_client
 
         result = await geocoder.geocode_with_details("Moscow")
-        assert result == (55.75, 37.6, "", "")
+        assert result == (55.75, 37.6, "", "", None)
 
 
 @pytest.mark.asyncio
@@ -337,7 +392,7 @@ async def test_nominatim_geocoder_geocode_with_details_uses_category() -> None:
         client_cls.return_value = mock_client
 
         result = await geocoder.geocode_with_details("Moscow")
-        assert result == (55.75, 37.6, "place", "city")
+        assert result == (55.75, 37.6, "place", "city", None)
 
 
 @pytest.mark.asyncio

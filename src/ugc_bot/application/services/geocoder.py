@@ -23,6 +23,17 @@ def wkt_point_from_lat_lon(lat: float, lon: float) -> str:
     return f"POINT({lon} {lat})"
 
 
+def _extract_region_from_address(address: object) -> Optional[str]:
+    """Extract region from Nominatim address (state/state_district/county)."""
+    if not isinstance(address, dict):
+        return None
+    for key in ("state", "state_district", "county"):
+        val = address.get(key)
+        if val and isinstance(val, str) and val.strip():
+            return val.strip()
+    return None
+
+
 class NominatimGeocoder:
     """Geocoder using OpenStreetMap Nominatim API (no API key)."""
 
@@ -90,11 +101,10 @@ class NominatimGeocoder:
         query: str,
         region: Optional[str] = None,
         country: str = "Russia",
-    ) -> Optional[Tuple[float, float, str, str]]:
-        """Return (lat, lon, osm_class, osm_type) or None.
+    ) -> Optional[Tuple[float, float, str, str, Optional[str]]]:
+        """Return (lat, lon, osm_class, osm_type, region) or None.
 
-        Lets callers filter by place type (e.g. accept cities/regions,
-        reject streets/buildings). OSM class/type from Nominatim JSON.
+        region is from address.state/state_district/county (addressdetails=1).
         """
         if not self._enabled or not (query or "").strip():
             return None
@@ -112,7 +122,12 @@ class NominatimGeocoder:
             ) as client:
                 resp = await client.get(
                     url,
-                    params={"q": q, "format": "json", "limit": 1},
+                    params={
+                        "q": q,
+                        "format": "json",
+                        "limit": 1,
+                        "addressdetails": 1,
+                    },
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -136,4 +151,7 @@ class NominatimGeocoder:
             return None
         osm_class = (first.get("class") or first.get("category") or "").strip()
         osm_type = (first.get("type") or "").strip()
-        return (lat, lon, osm_class, osm_type)
+        region_from_nominatim = _extract_region_from_address(
+            first.get("address")
+        )
+        return (lat, lon, osm_class, osm_type, region_from_nominatim)
