@@ -131,7 +131,10 @@ class NominatimGeocoder:
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
-                headers={"User-Agent": self._user_agent},
+                headers={
+                    "User-Agent": self._user_agent,
+                    "Accept-Language": "en",
+                },
             ) as client:
                 resp = await client.get(
                     url,
