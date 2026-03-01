@@ -1125,6 +1125,7 @@ def _to_blogger_profile_entity(
         location_geometry=_geometry_to_wkt(
             getattr(model, "location_geometry", None)
         ),
+        country=getattr(model, "country", "russia"),
     )
 
 
@@ -1160,6 +1161,7 @@ def _to_blogger_profile_model(
         birth_date=profile.birth_date,
         region=profile.region,
         location_geometry=_wkt_to_geometry_element(profile.location_geometry),
+        country=profile.country,
     )
 
 

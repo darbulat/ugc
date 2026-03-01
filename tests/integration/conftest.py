@@ -365,6 +365,7 @@ def create_test_blogger_profile(session):
             "work_format": WorkFormat.UGC_ONLY,
             "price": 5000.0,
             "updated_at": datetime.now(timezone.utc),
+            "country": "russia",
         }
         defaults.update(kwargs)
         defaults.pop("confirmation_code", None)  # not a BloggerProfile field

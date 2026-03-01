@@ -232,6 +232,9 @@ class BloggerProfileModel(Base):
         _GeometryOrText(geometry_type="MULTIPOINT", srid=4326),
         nullable=True,
     )
+    country: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=text("'russia'")
+    )
 
 
 class InstagramStatsModel(Base):

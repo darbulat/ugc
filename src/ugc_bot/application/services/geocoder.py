@@ -42,15 +42,17 @@ class NominatimGeocoder:
         self,
         query: str,
         region: Optional[str] = None,
+        country: str = "Russia",
     ) -> Optional[Tuple[float, float]]:
         """Return (latitude, longitude) for the query, or None if not found."""
         if not self._enabled or not (query or "").strip():
             return None
         q = query.strip()
+        country_str = (country or "Russia").strip()
         if region and region.strip():
-            q = f"{q}, {region.strip()}, Russia"
+            q = f"{q}, {region.strip()}, {country_str}"
         else:
-            q = f"{q}, Russia"
+            q = f"{q}, {country_str}"
         url = f"{self._base_url}/search"
         try:
             async with httpx.AsyncClient(

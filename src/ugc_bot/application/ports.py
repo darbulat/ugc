@@ -802,6 +802,7 @@ class GeocoderPort(Protocol):
         self,
         query: str,
         region: Optional[str] = None,
+        country: str = "Russia",
     ) -> Optional[Tuple[float, float]]:
         """Return (latitude, longitude) for the query, or None if not found."""
         ...

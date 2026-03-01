@@ -191,6 +191,7 @@ def _format_profile_text(
                 f"   Instagram: {blogger.instagram_url}",
                 f"   Подтверждён: {confirmed}",
                 f"   Город: {blogger.city}",
+                f"   Страна: {blogger.country}",
                 f"   Пол: {blogger_gender_label}",
                 f"   Дата рождения: {birth_date_str}",
                 f"   Тематики: {topics}",

@@ -794,6 +794,7 @@ _BLOGGER_PROFILE_OPTIONAL_FIELDS = (
     "birth_date",
     "region",
     "location_geometry",
+    "country",
 )
 
 
@@ -828,6 +829,7 @@ def _blogger_profile_with_all_optional_fields(
         birth_date=date(1990, 1, 1),
         region="Москва",
         location_geometry="MULTIPOINT((37.6 55.75))",
+        country="russia",
     )
 
 

@@ -167,6 +167,7 @@ async def create_test_blogger_profile(
         work_format=kwargs.get("work_format", WorkFormat.UGC_ONLY),
         updated_at=kwargs.get("updated_at", datetime.now(timezone.utc)),
         blogger_gender=kwargs.get("blogger_gender"),
+        country=kwargs.get("country", "russia"),
     )
     await blogger_repo.save(profile)
     return profile
