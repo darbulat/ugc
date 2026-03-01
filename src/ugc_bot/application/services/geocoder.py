@@ -84,3 +84,56 @@ class NominatimGeocoder:
         if -90 <= lat <= 90 and -180 <= lon <= 180:
             return (lat, lon)
         return None
+
+    async def geocode_with_details(
+        self,
+        query: str,
+        region: Optional[str] = None,
+        country: str = "Russia",
+    ) -> Optional[Tuple[float, float, str, str]]:
+        """Return (lat, lon, osm_class, osm_type) or None.
+
+        Lets callers filter by place type (e.g. accept cities/regions,
+        reject streets/buildings). OSM class/type from Nominatim JSON.
+        """
+        if not self._enabled or not (query or "").strip():
+            return None
+        q = query.strip()
+        country_str = (country or "Russia").strip()
+        if region and region.strip():
+            q = f"{q}, {region.strip()}, {country_str}"
+        else:
+            q = f"{q}, {country_str}"
+        url = f"{self._base_url}/search"
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                headers={"User-Agent": self._user_agent},
+            ) as client:
+                resp = await client.get(
+                    url,
+                    params={"q": q, "format": "json", "limit": 1},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            return None
+        if not data or not isinstance(data, list):
+            return None
+        first = data[0]
+        if not isinstance(first, dict):
+            return None
+        lat_s = first.get("lat")
+        lon_s = first.get("lon")
+        if lat_s is None or lon_s is None:
+            return None
+        try:
+            lat = float(lat_s)
+            lon = float(lon_s)
+        except (TypeError, ValueError):
+            return None
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            return None
+        osm_class = (first.get("class") or first.get("category") or "").strip()
+        osm_type = (first.get("type") or "").strip()
+        return (lat, lon, osm_class, osm_type)

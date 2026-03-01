@@ -36,6 +36,26 @@ NOMINATIM_DELAY_SECONDS = 1.0
 # For Nominatim, Crimea region is queried as Ukraine
 REGION_CRIMEA_NORMALIZED = "республика крым"
 
+# OSM place types we accept: populated places, cities, regions (no streets/buildings)
+_ALLOWED_OSM_PLACE_TYPES: frozenset[tuple[str, str]] = frozenset({
+    ("place", "city"),
+    ("place", "town"),
+    ("place", "village"),
+    ("place", "hamlet"),
+    ("place", "suburb"),
+    ("place", "neighbourhood"),
+    ("place", "locality"),
+    ("place", "isolated_dwelling"),
+    ("place", "country"),
+    ("boundary", "administrative"),
+})
+
+
+def _is_place_or_region(osm_class: str, osm_type: str) -> bool:
+    """True if Nominatim result is a populated place, city or region (not street/building)."""
+    key = (osm_class.strip().lower(), osm_type.strip().lower())
+    return key in _ALLOWED_OSM_PLACE_TYPES
+
 
 def _parse_city_tokens(city_raw: str | None) -> list[str]:
     """Split city into normalized unique tokens (for geocoding)."""
@@ -67,7 +87,7 @@ async def _geocode_city_tokens(
     region: str | None,
     cache: dict[str, tuple[float, float] | None],
 ) -> list[tuple[float, float]]:
-    """Geocode each token with country and region; use cache for repeated calls."""
+    """Geocode each token; accept only populated places/regions, reject streets etc."""
     coords: list[tuple[float, float]] = []
     seen: set[tuple[float, float]] = set()
     country_for_query = (country or "russia").strip() or "russia"
@@ -80,13 +100,29 @@ async def _geocode_city_tokens(
         if key in cache:
             coord = cache[key]
         else:
-            coord = await geocoder.geocode(
+            details = await geocoder.geocode_with_details(
                 token.strip(),
                 region=region_for_query,
                 country=country_for_query,
             )
             await asyncio.sleep(NOMINATIM_DELAY_SECONDS)
-            cache[key] = coord
+            if details is None:
+                cache[key] = None
+                coord = None
+            else:
+                lat, lon, osm_class, osm_type = details
+                if _is_place_or_region(osm_class, osm_type):
+                    cache[key] = (lat, lon)
+                    coord = (lat, lon)
+                else:
+                    logger.warning(
+                        "Skipping non-place result for %r: OSM class=%r type=%r (not saved to DB)",
+                        token.strip(),
+                        osm_class or "(empty)",
+                        osm_type or "(empty)",
+                    )
+                    cache[key] = None
+                    coord = None
         if coord is not None and coord not in seen:
             seen.add(coord)
             coords.append(coord)
