@@ -5,7 +5,9 @@ Parses city string by comma, slash, " и ", newline; for each token (after
 normalization and dedup) geocodes via Nominatim; builds MULTIPOINT from
 (lat, lon) and updates blogger_profiles.location_geometry.
 
-Respects Nominatim usage policy: 1 request per second.
+City -> coordinates are cached in RAM for the script run to avoid
+repeated Nominatim requests for the same city. Respects Nominatim usage
+policy: 1 request per second (only for cache misses).
 """
 
 import argparse
@@ -46,13 +48,19 @@ def _parse_city_tokens(city_raw: str | None) -> list[str]:
 async def _geocode_city_tokens(
     geocoder: NominatimGeocoder,
     tokens: list[str],
+    cache: dict[str, tuple[float, float] | None],
 ) -> list[tuple[float, float]]:
-    """Geocode each token; return list of (lat, lon), deduplicated by coords."""
+    """Geocode each token; use cache to avoid repeated Nominatim calls."""
     coords: list[tuple[float, float]] = []
     seen: set[tuple[float, float]] = set()
     for token in tokens:
-        coord = await geocoder.geocode(token.strip(), region=None)
-        await asyncio.sleep(NOMINATIM_DELAY_SECONDS)
+        key = token.strip()
+        if key in cache:
+            coord = cache[key]
+        else:
+            coord = await geocoder.geocode(key, region=None)
+            await asyncio.sleep(NOMINATIM_DELAY_SECONDS)
+            cache[key] = coord
         if coord is not None and coord not in seen:
             seen.add(coord)
             coords.append(coord)
@@ -101,6 +109,7 @@ async def run(
     updated_count = 0
     skipped_no_coords = 0
     errors = 0
+    geo_cache: dict[str, tuple[float, float] | None] = {}
 
     for user_id, city in rows:
         city_str = (city or "").strip()
@@ -109,7 +118,7 @@ async def run(
             logger.debug("Empty tokens for user_id=%s city=%r", user_id, city_str)
             continue
 
-        coords = await _geocode_city_tokens(geocoder, tokens)
+        coords = await _geocode_city_tokens(geocoder, tokens, geo_cache)
         if not coords:
             skipped_no_coords += 1
             logger.warning(

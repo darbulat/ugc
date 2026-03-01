@@ -314,11 +314,13 @@ def validate_site_link(value: str | None) -> str | None:
 
 
 def validate_nickname(value: str) -> str | None:
-    """Validate blogger nickname."""
+    """Validate blogger nickname. Reject Instagram URLs."""
     v = (value or "").strip()
     err = validate_not_bot_command(v)
     if err is not None:
         return err
+    if "instagram.com" in v.lower():
+        return "Введите имя, а не ссылку на Instagram."
     if len(v) < NICKNAME_MIN:
         return f"Введите минимум {NICKNAME_MIN} символа."
     if len(v) > NICKNAME_MAX:
