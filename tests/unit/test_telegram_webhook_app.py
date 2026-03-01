@@ -111,6 +111,35 @@ def test_webhook_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_miniapp_cities_json_returns_list(client: TestClient) -> None:
+    """GET /miniapp/cities.json returns list of {id, label}."""
+    response = client.get("/miniapp/cities.json")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+    assert all("id" in item and "label" in item for item in data)
+    ids = [item["id"] for item in data]
+    assert "москва:москва" in ids
+    assert "республика татарстан:казань" in ids
+    assert all(" (" in item["label"] and ")" in item["label"] for item in data)
+
+
+def test_miniapp_city_picker_returns_404_when_file_missing(
+    client: TestClient,
+) -> None:
+    """GET /miniapp/city-picker returns 404 when HTML file is missing."""
+    with patch(
+        "ugc_bot.telegram_webhook_app._MINIAPP_DIR", new_callable=MagicMock
+    ) as mock_dir:
+        child = MagicMock()
+        child.is_file.return_value = False
+        mock_dir.__truediv__ = MagicMock(return_value=child)
+        response = client.get("/miniapp/city-picker")
+    assert response.status_code == 404
+    assert response.json().get("detail") == "Mini App not found"
+
+
 def test_webhook_metrics(client: TestClient) -> None:
     """Metrics endpoint returns Prometheus format."""
     response = client.get("/metrics")

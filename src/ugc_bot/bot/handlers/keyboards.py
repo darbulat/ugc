@@ -36,6 +36,7 @@ CALLBACK_BLOGGER_BARTER_Y = "blogger:barter:Y"
 CALLBACK_BLOGGER_BARTER_N = "blogger:barter:N"
 CALLBACK_BLOGGER_WORK_ADS = "blogger:work:ads"
 CALLBACK_BLOGGER_WORK_UGC = "blogger:work:ugc"
+CALLBACK_BLOGGER_REGION_PREFIX = "blogger:region:"
 CALLBACK_ORDER_AGREE = "order:agree"
 CALLBACK_PROFILE_AGREE = "profile:agree"
 CALLBACK_PROFILE_EDIT = "profile:menu:edit"
@@ -62,6 +63,7 @@ CALLBACK_PROFILE_BARTER_Y = "profile:barter:Y"
 CALLBACK_PROFILE_BARTER_N = "profile:barter:N"
 CALLBACK_PROFILE_WORK_ADS = "profile:work:ads"
 CALLBACK_PROFILE_WORK_UGC = "profile:work:ugc"
+CALLBACK_PROFILE_REGION_PREFIX = "profile:region:"
 
 
 def support_keyboard(one_time_keyboard: bool = True) -> Keyboard:
@@ -109,6 +111,23 @@ def flow_keyboard_remove() -> Keyboard:
     """Remove keyboard during flow (no support button)."""
 
     return Keyboard(kind=KeyboardKind.REMOVE)
+
+
+CITY_PICKER_BUTTON_TEXT = "Выбрать город"
+
+
+def city_picker_keyboard(webhook_base_url: str) -> Keyboard:
+    """Reply keyboard with one button that opens Mini App for city selection."""
+    url = (webhook_base_url or "").rstrip("/")
+    if not url:
+        return flow_keyboard_remove()
+    miniapp_url = f"{url}/miniapp/city-picker"
+    return Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=[[Button(text=CITY_PICKER_BUTTON_TEXT, web_app_url=miniapp_url)]],
+        resize=True,
+        one_time=True,
+    )
 
 
 def phone_request_keyboard() -> Keyboard:

@@ -493,6 +493,19 @@ wheels = [
 ]
 
 [[package]]
+name = "geoalchemy2"
+version = "0.18.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b6/93/d791a26d582bf1eca8c376d6c8e63877a951d4de6fbdc3e5e294cd385047/geoalchemy2-0.18.3.tar.gz", hash = "sha256:9e84e6b1394d10c035c3105125171e7002d1debf93ba4ad99851862f495dd39e", size = 239714 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/ae/b5e75df6f8976d9d588d5e8df1bba28f2bc90227363d5366729eba06b6d3/geoalchemy2-0.18.3-py3-none-any.whl", hash = "sha256:3b6ffe3753c2c1657174ed2decbc21da8ab25c68898e81dd603e7255c2823dc6", size = 81105 },
+]
+
+[[package]]
 name = "greenlet"
 version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1479,6 +1492,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "curl-cffi" },
     { name = "fastapi" },
+    { name = "geoalchemy2" },
     { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jinja2" },
@@ -1528,6 +1542,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=46.0.4" },
     { name = "curl-cffi", specifier = ">=0.5.0,<1.0.0" },
     { name = "fastapi", specifier = ">=0.110.0,<1.0.0" },
+    { name = "geoalchemy2", specifier = ">=0.14.0,<1.0.0" },
     { name = "greenlet", marker = "extra == 'dev'", specifier = ">=3.3.0" },
     { name = "httpx", specifier = ">=0.25.0,<1.0.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.25.0,<1.0.0" },

@@ -16,6 +16,7 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.geocoder import NominatimGeocoder
 from ugc_bot.application.services.instagram_stats_collector_service import (
     InstagramStatsCollectorService,
 )
@@ -244,6 +245,7 @@ def build_bot_services(
             referral_service=referral_service,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
+            geocoder=NominatimGeocoder(enabled=True),
         ),
         "advertiser_registration_service": AdvertiserRegistrationService(
             user_repo=repos["user_repo"],
@@ -267,6 +269,7 @@ def build_bot_services(
             max_order_price=config.order.max_order_price,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
+            geocoder=NominatimGeocoder(enabled=True),
         ),
         "offer_dispatch_service": OfferDispatchService(
             user_repo=repos["user_repo"],

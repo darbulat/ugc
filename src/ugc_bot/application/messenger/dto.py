@@ -23,6 +23,7 @@ class Button:
     callback_data: str | None = None
     url: str | None = None
     request_contact: bool = False
+    web_app_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -11,9 +11,11 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
+    GeocoderPort,
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import AudienceGender, BloggerGender, WorkFormat
@@ -52,6 +54,21 @@ def _validate_blogger_input(
     return instagram_url_clean, city_clean, audience_geo_clean
 
 
+async def _resolve_location_geometry(
+    geocoder: Optional[GeocoderPort],
+    city: str,
+    region: Optional[str] = None,
+) -> Optional[str]:
+    """Return WKT MULTIPOINT for city (and region) or None."""
+    if geocoder is None or not city.strip():
+        return None
+    coords = await geocoder.geocode(city.strip(), region=region)
+    if coords is None:
+        return None
+    lat, lon = coords
+    return wkt_multipoint_from_lat_lon(lat, lon)
+
+
 @dataclass(slots=True)
 class BloggerRegistrationService:
     """Register blogger profiles with validation."""
@@ -61,6 +78,7 @@ class BloggerRegistrationService:
     referral_service: Optional[ReferralService] = None
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
+    geocoder: Optional[GeocoderPort] = None
 
     async def get_profile_by_instagram_url(
         self, instagram_url: str
@@ -91,6 +109,7 @@ class BloggerRegistrationService:
         display_name: Optional[str] = None,
         telegram_username: Optional[str] = None,
         birth_date: Optional[date] = None,
+        region: Optional[str] = None,
     ) -> BloggerProfile:
         """Create a blogger profile after validating input.
 
@@ -126,6 +145,9 @@ class BloggerRegistrationService:
                     "Пожалуйста, используйте другой аккаунт."
                 )
 
+            location_geometry = await _resolve_location_geometry(
+                self.geocoder, city_clean, region
+            )
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -142,6 +164,9 @@ class BloggerRegistrationService:
                 updated_at=datetime.now(timezone.utc),
                 blogger_gender=blogger_gender,
                 birth_date=birth_date,
+                region=region,
+                location_geometry=location_geometry,
+                country="russia",
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -200,6 +225,7 @@ class BloggerRegistrationService:
         display_name: Optional[str] = None,
         telegram_username: Optional[str] = None,
         birth_date: Optional[date] = None,
+        region: Optional[str] = None,
     ) -> BloggerProfile:
         """Save blogger profile and update user before consent confirmation.
 
@@ -233,6 +259,9 @@ class BloggerRegistrationService:
                     "Пожалуйста, используйте другой аккаунт."
                 )
 
+            location_geometry = await _resolve_location_geometry(
+                self.geocoder, city_clean, region
+            )
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -249,6 +278,9 @@ class BloggerRegistrationService:
                 updated_at=datetime.now(timezone.utc),
                 blogger_gender=blogger_gender,
                 birth_date=birth_date,
+                region=region,
+                location_geometry=location_geometry,
+                country="russia",
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -336,6 +368,8 @@ class BloggerRegistrationService:
         *,
         instagram_url: Optional[str] = None,
         city: Optional[str] = None,
+        region: Optional[str] = None,
+        location_geometry: Optional[str] = None,
         topics: Optional[dict[str, Any]] = None,
         audience_gender: Optional[AudienceGender] = None,
         audience_age_min: Optional[int] = None,
@@ -365,12 +399,25 @@ class BloggerRegistrationService:
                 instagram_url is not None
                 and new_instagram_url != profile.instagram_url
             )
+            new_city = city.strip() if city is not None else profile.city
+            new_region = region if region is not None else profile.region
+            new_geometry = location_geometry
+            if new_geometry is None and (
+                city is not None or region is not None
+            ):
+                new_geometry = await _resolve_location_geometry(
+                    self.geocoder, new_city, new_region
+                )
+            if new_geometry is None and location_geometry is None:
+                new_geometry = profile.location_geometry
             now = datetime.now(timezone.utc)
             updated = replace(
                 profile,
                 instagram_url=new_instagram_url,
                 confirmed=False if instagram_changed else profile.confirmed,
-                city=city.strip() if city is not None else profile.city,
+                city=new_city,
+                region=new_region,
+                location_geometry=new_geometry,
                 topics=topics if topics is not None else profile.topics,
                 audience_gender=audience_gender
                 if audience_gender is not None

@@ -3,11 +3,19 @@
 import logging
 from datetime import date
 
-from aiogram import Router
-from aiogram.filters import Command
+from aiogram import F, Router
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+
+from ugc_bot.application.geography import (
+    get_regions_for_city,
+    is_canonical_city_only,
+    normalize_geo_token,
+    parse_miniapp_city_id,
+    region_key_to_label,
+)
 
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.messenger.dto import Button, IncomingCallback
@@ -34,6 +42,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_BLOGGER_BARTER_Y,
     CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
+    CALLBACK_BLOGGER_REGION_PREFIX,
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
@@ -42,6 +51,7 @@ from ugc_bot.bot.handlers.keyboards import (
     WORK_FORMAT_ADS_BUTTON_TEXT,
     WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     blogger_after_registration_keyboard,
+    city_picker_keyboard,
     confirm_agreement_inline_keyboard,
     creator_filled_profile_keyboard,
     creator_start_keyboard,
@@ -108,79 +118,64 @@ def _step(n: int) -> str:
     return f"\n\nШаг {n} из {TOTAL_STEPS}"
 
 
-STEP_ASK_NAME = (
-    "Как к тебе обращаться? Введите ваше имя — заказчики будут видеть его "
-    "в анкете." + _step(1)
-)
-STEP_ASK_INSTAGRAM = (
-    "По ссылке на инстаграмм тебя находят заказчики и смотрят контент. "
-    "Прикрепи ссылку в формате instagram.com/name" + _step(2)
-)
+STEP_ASK_NAME = "Как вас зовут?" + _step(1)
+STEP_ASK_INSTAGRAM = "Пришлите ссылку в формате instagram.com/name" + _step(2)
 STEP_ASK_INSTAGRAM_FIRST = (
-    "По ссылке на инстаграмм тебя находят заказчики и смотрят контент. "
-    "Прикрепи ссылку в формате instagram.com/name" + _step(1)
+    "Пришлите ссылку в формате instagram.com/name" + _step(1)
 )
 STEP_ASK_CITY = (
-    "Заказчики фильтруют креаторов по городу — для доставки продукта и гео. "
-    "Из какого ты города? Пример: Казань, Москва, Санкт‑Петербург" + _step(3)
+    "Заказчики подбирают креаторов по городу: для доставки продукта и для "
+    "офлайн взаимодействия. Из какого вы города?" + _step(3)
 )
 STEP_ASK_BIRTH_DATE = (
-    "Возраст важен заказчикам для целевой аудитории. "
-    "Укажи дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):" + _step(4)
+    "Укажите дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):"
+    + _step(4)
 )
-STEP_ASK_GENDER = (
-    "Это помогает подбирать тебе релевантные заказы. Укажи свой пол:" + _step(5)
-)
+STEP_ASK_GENDER = "Укажите ваш пол:" + _step(5)
 STEP_ASK_TOPICS = (
-    "По тематикам заказчики ищут креаторов — так тебе придут подходящие "
-    "офферы. Напиши 1–3 тематики через запятую: бизнес, инвестиции, фитнес, "
-    "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, стиль, "
-    "дети, семья, технологии, гаджеты, лайфстайл, другое" + _step(6)
+    "О чём ваш контент?\n"
+    "Напишите 1–5 тематики через запятую: бизнес, инвестиции, фитнес, "
+    "питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, "
+    "стиль, дети, семья, технологии, гаджеты, лайфстайл, мероприятия, другое"
+    + _step(6)
 )
 STEP_ASK_AUDIENCE_GENDER = (
-    "Брендам важна целевая аудитория. Кто в основном смотрит твой контент? "
+    "Кто в основном смотрит ваш контент? "
     "По наблюдениям или статистике" + _step(7)
 )
-STEP_ASK_AUDIENCE_AGE = (
-    "Ещё один фильтр для заказчиков — подберём тебе релевантные заказы. "
-    "Основной возраст твоей аудитории?" + _step(8)
-)
+STEP_ASK_AUDIENCE_AGE = "Основной возраст вашей аудитории?" + _step(8)
 STEP_ASK_AUDIENCE_GEO = (
-    "География зрителей нужна заказчикам для таргета. "
-    "Где находится основная аудитория? Укажи до 3 городов через запятую: "
-    "Москва, Казань, Санкт‑Петербург" + _step(9)
+    "В каких городах в основном аудитория? До 3 городов через запятую, "
+    "например: Москва, Казань, Санкт‑Петербург" + _step(9)
 )
 STEP_ASK_PRICE = (
-    "Заказчики отбирают по бюджету — честная цена ускоряет сделку. "
-    "Сколько стоит 1 UGC‑видео? Укажи цену в рублях: 500, 1000, 2000"
+    "Заказчики отбирают креаторов по бюджету — указанная цена ускоряет сделку. "
+    "Сколько стоит одно UGC‑видео? Цена в рублях, например: 500, 1000, 2000"
     + _step(10)
 )
 STEP_ASK_BARTER = (
-    "Много заказов с бартером — отметка «Да» увеличивает число офферов. "
-    "Иногда готов работать с брендами по бартеру?" + _step(11)
+    "Много заказов с бартером — ответ «Да» увеличит число офферов. "
+    "Готов иногда работать с брендами по бартеру?" + _step(11)
 )
 STEP_ASK_WORK_FORMAT = (
-    "Чтобы присылали только подходящие форматы. "
     "Помимо UGC, как ещё готов работать с брендами? "
     "Последний шаг перед подбором." + _step(12)
 )
 AGREEMENTS_INTRO_CREATOR = (
-    "Почти готово. Осталось подтвердить документы — и твой профиль попадёт "
-    "в подбор. Заказчики увидят тебя и смогут отправить предложение."
+    "Почти готово. "
+    "Пожалуйста, ознакомьтесь с документами и подтвердите согласие."
 )
 PROFILE_CREATED_TEXT = (
     "Профиль создан 👍\n\n"
-    "Заказчики уже ищут креаторов — полный профиль повышает шансы "
+    "Заказчики уже ищут креаторов — заполненный профиль повышает шансы "
     "получить оффер.\n\n"
-    "Остался последний шаг — подтвердить Instagram‑аккаунт. "
-    "Это нужно, чтобы:\n"
+    "Остался последний шаг — подтвердить Instagram‑аккаунт. Это нужно, чтобы:\n"
     "— защитить бренды от фейков\n"
     "— повысить доверие к твоему профилю\n"
     "— быстрее получать заказы"
 )
 ERR_INSTAGRAM_EMPTY = (
-    "Ссылка не может быть пустой. Давай ещё раз — прикрепи ссылку "
-    "в формате instagram.com/name"
+    "Ссылка не может быть пустой. Пришли ссылку в формате instagram.com/name"
 )
 ERR_INSTAGRAM_FORMAT = "Неверный формат. Нужна ссылка вида instagram.com/name"
 ERR_INSTAGRAM_EXAMPLE = (
@@ -384,6 +379,7 @@ async def handle_name(
 async def handle_instagram(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
     blogger_registration_service: BloggerRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -435,19 +431,72 @@ async def handle_instagram(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=STEP_ASK_CITY,
-        keyboard=flow_keyboard_remove(),
+        keyboard=city_picker_keyboard(config.webhook.webhook_base_url),
     )
     await state_store.set_state(BloggerRegistrationStates.city.state)
+
+
+@router.message(
+    F.web_app_data,
+    StateFilter(BloggerRegistrationStates.city),
+)
+async def handle_city_web_app_data(
+    message: Message,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Store creator city from Mini App selection (id may be region:city)."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    raw_id = (
+        (message.web_app_data.data or "").strip()
+        if message.web_app_data
+        else ""
+    )
+    city, region = parse_miniapp_city_id(raw_id)
+    if not city or not is_canonical_city_only(city):
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text="Выберите город из списка.",
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+    if region and region not in get_regions_for_city(city):
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text="Выберите город из списка.",
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+    state_store = AiogramStateStore(state)
+    await state_store.update_data(city=city, region=region)
+    await messenger_client.send_text(
+        chat_id=str(message.chat.id),
+        text=STEP_ASK_BIRTH_DATE,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.birth_date.state)
+
+
+def _canonical_city_from_text(text: str) -> str | None:
+    """Canonical city id if input is a city (not region); else None."""
+    normalized = normalize_geo_token((text or "").strip())
+    if not normalized:
+        return None
+    return normalized if is_canonical_city_only(normalized) else None
 
 
 @router.message(BloggerRegistrationStates.city)
 async def handle_city(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Store creator city."""
+    """Store creator city (text input)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -462,8 +511,72 @@ async def handle_city(
             keyboard=flow_keyboard_remove(),
         )
         return
+    canonical = _canonical_city_from_text(city)
+    if canonical is None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Укажите ближайший крупный город или нажмите «Выбрать город»"
+            " и выберите из списка.",
+            keyboard=city_picker_keyboard(config.webhook.webhook_base_url),
+        )
+        return
+    regions = get_regions_for_city(canonical)
+    if len(regions) > 1:
+        await state_store.update_data(city=canonical)
+        region_buttons = [
+            [
+                Button(
+                    text=region_key_to_label(r),
+                    callback_data=f"{CALLBACK_BLOGGER_REGION_PREFIX}{r}",
+                )
+            ]
+            for r in regions
+        ]
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Этот город есть в нескольких регионах. Выберите регион:",
+            keyboard=flow_inline_keyboard(region_buttons),
+        )
+        return
+    await state_store.update_data(
+        city=canonical, region=(regions[0] if regions else None)
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=STEP_ASK_BIRTH_DATE,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.birth_date.state)
 
-    await state_store.update_data(city=city)
+
+@router.callback_query(
+    lambda c: c.data and c.data.startswith(CALLBACK_BLOGGER_REGION_PREFIX),
+    StateFilter(BloggerRegistrationStates.city),
+)
+async def handle_city_region_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Store selected region for city (when city is in multiple regions)."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    state_store = AiogramStateStore(state)
+    data = await state_store.get_data()
+    city = data.get("city")
+    if not city:
+        await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        return
+    region = (callback.data or "").removeprefix(CALLBACK_BLOGGER_REGION_PREFIX)
+    if region not in get_regions_for_city(city):
+        await messenger_client.answer_callback(callback_id=incoming.callback_id)
+        return
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await state_store.update_data(region=region)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=STEP_ASK_BIRTH_DATE,
@@ -1126,6 +1239,7 @@ async def handle_work_format_callback(
             display_name=data.get("nickname"),
             telegram_username=telegram_username,
             birth_date=birth_date_val,
+            region=data.get("region"),
         )
     except Exception as exc:
         error_str = str(exc)
@@ -1224,6 +1338,7 @@ async def handle_work_format(
             display_name=data.get("nickname"),
             telegram_username=telegram_username,
             birth_date=birth_date_val,
+            region=data.get("region"),
         )
     except Exception as exc:
         error_str = str(exc)

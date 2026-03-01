@@ -95,6 +95,10 @@ class BloggerProfile:
     instagram_username: Optional[str] = None
     instagram_stats_fetched_at: Optional[datetime] = None
     birth_date: Optional[date] = None
+    region: Optional[str] = None
+    # WKT MultiPoint (SRID 4326), e.g. "MULTIPOINT((37.6 55.75))" (lon lat)
+    location_geometry: Optional[str] = None
+    country: str = "russia"
 
 
 @dataclass(frozen=True)
@@ -183,6 +187,9 @@ class Order:
     price_filter_delta: Optional[float] = None
     filter_by_placement: bool = False
     filter_by_barter: bool = False
+    # WKT Point (SRID 4326), e.g. "POINT(37.6 55.75)" (lon lat)
+    location_geometry: Optional[str] = None
+    radius_km: Optional[float] = None
 
 
 @dataclass(frozen=True)

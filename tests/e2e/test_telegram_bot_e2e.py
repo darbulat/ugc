@@ -146,7 +146,7 @@ async def test_blogger_registration_full_flow(
         client, entity, bot_username, "Создать профиль", timeout=20
     )
     assert text is not None
-    if "имя" in text.lower():
+    if "имя" in text.lower() or "зовут" in text.lower():
         text = await _send_and_wait(client, entity, bot_username, "E2E Креатор")
         assert text and "инстаграмм" in text.lower()
     text = await send_and_get_reply(
@@ -335,7 +335,7 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         client, entity, bot_username, "Создать профиль", timeout=20
     )
     assert text is not None
-    if "имя" in text.lower():
+    if "имя" in text.lower() or "зовут" in text.lower():
         text = await _send_and_wait(
             client, entity, bot_username, f"E2E ExitReturn {suffix}"
         )
@@ -352,6 +352,11 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
 
     text = await send_and_get_reply(
         client, entity, bot_username, "Казань", timeout=15
+    )
+    assert text and ("дату рождения" in text.lower() or "дд.мм" in text.lower())
+
+    text = await send_and_get_reply(
+        client, entity, bot_username, "15.05.1995", timeout=15
     )
     assert text and "пол" in text.lower()
 

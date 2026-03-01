@@ -9,10 +9,12 @@ from uuid import UUID, uuid4
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
+    GeocoderPort,
     OrderRepository,
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.application.services.geocoder import wkt_point_from_lat_lon
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -65,6 +67,7 @@ class OrderService:
     max_order_price: float
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
+    geocoder: Optional[GeocoderPort] = None
 
     async def is_new_advertiser(self, advertiser_id: UUID) -> bool:
         """Return True when advertiser has no previous orders."""
@@ -145,6 +148,13 @@ class OrderService:
                 )
             )
 
+            geography_clean = (geography or "").strip() or None
+            order_location_geometry = None
+            if geography_clean and self.geocoder:
+                coords = await self.geocoder.geocode(geography_clean)
+                if coords is not None:
+                    lat, lon = coords
+                    order_location_geometry = wkt_point_from_lat_lon(lat, lon)
             order = Order(
                 order_id=uuid4(),
                 advertiser_id=advertiser_id,
@@ -159,7 +169,7 @@ class OrderService:
                 completed_at=None,
                 content_usage=(content_usage or "").strip() or None,
                 deadlines=(deadlines or "").strip() or None,
-                geography=(geography or "").strip() or None,
+                geography=geography_clean,
                 product_photo_file_id=(
                     (product_photo_file_id or "").strip() or None
                 ),
@@ -174,6 +184,8 @@ class OrderService:
                 price_filter_delta=None,
                 filter_by_placement=False,
                 filter_by_barter=False,
+                location_geometry=order_location_geometry,
+                radius_km=None,
             )
             await self.order_repo.save(order, session=session)
 

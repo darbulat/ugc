@@ -80,6 +80,7 @@ def test_blogger_profile_mapping_roundtrip() -> None:
         work_format=WorkFormat.UGC_ONLY,
         updated_at=datetime.now(timezone.utc),
         blogger_gender=BloggerGender.MALE,
+        country="russia",
     )
 
     model = _to_blogger_profile_model(profile)
@@ -89,6 +90,7 @@ def test_blogger_profile_mapping_roundtrip() -> None:
     assert entity.audience_gender == profile.audience_gender
     assert entity.blogger_gender == profile.blogger_gender
     assert entity.price == profile.price
+    assert entity.country == profile.country
 
 
 def test_order_mapping_roundtrip() -> None:

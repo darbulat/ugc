@@ -16,6 +16,7 @@ from aiogram.types import (
     KeyboardButton,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    WebAppInfo,
 )
 
 from ugc_bot.application.messenger.dto import (
@@ -210,23 +211,33 @@ def _build_markup(keyboard: Keyboard | None):
     if not isinstance(keyboard, Keyboard):
         return keyboard
     if keyboard.kind == KeyboardKind.REMOVE:
-        return ReplyKeyboardRemove()
+        return ReplyKeyboardRemove(selective=False)
     if keyboard.kind == KeyboardKind.INLINE:
         inline_rows = [
             [_inline_button(btn) for btn in row] for row in keyboard.rows
         ]
         return InlineKeyboardMarkup(inline_keyboard=inline_rows)
     if keyboard.kind == KeyboardKind.REPLY:
-        reply_rows = [
-            [
-                KeyboardButton(
-                    text=btn.text,
-                    request_contact=btn.request_contact,
-                )
-                for btn in row
-            ]
-            for row in keyboard.rows
-        ]
+        reply_rows = []
+        for row in keyboard.rows:
+            row_buttons = []
+            for btn in row:
+                web_app_url = getattr(btn, "web_app_url", None)
+                if web_app_url:
+                    row_buttons.append(
+                        KeyboardButton(
+                            text=btn.text,
+                            web_app=WebAppInfo(url=web_app_url),
+                        )
+                    )
+                else:
+                    row_buttons.append(
+                        KeyboardButton(
+                            text=btn.text,
+                            request_contact=btn.request_contact,
+                        )
+                    )
+            reply_rows.append(row_buttons)
         return ReplyKeyboardMarkup(
             keyboard=reply_rows,
             resize_keyboard=keyboard.resize,

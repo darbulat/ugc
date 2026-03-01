@@ -346,6 +346,11 @@ class TestValidateNickname:
     def test_over_max_returns_error(self) -> None:
         assert validate_nickname("A" * 51) is not None
 
+    def test_instagram_url_rejected(self) -> None:
+        """Nickname must not be an Instagram URL."""
+        assert validate_nickname("https://instagram.com/user") is not None
+        assert validate_nickname("instagram.com/name") is not None
+
 
 class TestValidateTopics:
     """Tests for validate_topics."""

@@ -2,9 +2,22 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+from typing import (
+    cast as typing_cast,
+)
 from uuid import UUID
 
+from geoalchemy2 import shape
+from geoalchemy2.elements import WKBElement, WKTElement
 from sqlalchemy import (
     String,
     and_,
@@ -84,6 +97,29 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
     UserReferralPendingModel,
 )
+
+
+def _geometry_to_wkt(geom: object | None) -> Optional[str]:
+    """Convert GeoAlchemy2 geometry column value to WKT string."""
+    if geom is None:
+        return None
+    if isinstance(geom, str):
+        return geom
+    try:
+        return shape.to_shape(
+            typing_cast(Union[WKBElement, WKTElement], geom)
+        ).wkt
+    except Exception:
+        return None
+
+
+def _wkt_to_geometry_element(
+    wkt: Optional[str], srid: int = 4326
+) -> object | None:
+    """Convert WKT string to GeoAlchemy2 WKTElement for insert/update."""
+    if not wkt or not wkt.strip():
+        return None
+    return WKTElement(wkt, srid=srid)
 
 
 def _require_session(session: AsyncSession | None) -> AsyncSession:
@@ -1085,6 +1121,11 @@ def _to_blogger_profile_entity(
             model, "instagram_stats_fetched_at", None
         ),
         birth_date=getattr(model, "birth_date", None),
+        region=getattr(model, "region", None),
+        location_geometry=_geometry_to_wkt(
+            getattr(model, "location_geometry", None)
+        ),
+        country=getattr(model, "country", "russia"),
     )
 
 
@@ -1118,6 +1159,9 @@ def _to_blogger_profile_model(
         instagram_username=profile.instagram_username,
         instagram_stats_fetched_at=profile.instagram_stats_fetched_at,
         birth_date=profile.birth_date,
+        region=profile.region,
+        location_geometry=_wkt_to_geometry_element(profile.location_geometry),
+        country=profile.country,
     )
 
 
@@ -1289,6 +1333,14 @@ def _to_order_entity(model: OrderModel) -> Order:
         ),
         filter_by_placement=getattr(model, "filter_by_placement", False),
         filter_by_barter=getattr(model, "filter_by_barter", False),
+        location_geometry=_geometry_to_wkt(
+            getattr(model, "location_geometry", None)
+        ),
+        radius_km=(
+            float(val)
+            if (val := getattr(model, "radius_km", None)) is not None
+            else None
+        ),
     )
 
 
@@ -1336,6 +1388,8 @@ def _to_order_model(order: Order) -> OrderModel:
         price_filter_delta=order.price_filter_delta,
         filter_by_placement=order.filter_by_placement,
         filter_by_barter=order.filter_by_barter,
+        location_geometry=_wkt_to_geometry_element(order.location_geometry),
+        radius_km=order.radius_km,
     )
 
 

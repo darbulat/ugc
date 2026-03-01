@@ -67,6 +67,8 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserReferralBindingRepository,
     SqlAlchemyUserReferralPendingRepository,
     SqlAlchemyUserRepository,
+    _geometry_to_wkt,
+    _wkt_to_geometry_element,
 )
 
 
@@ -1911,6 +1913,59 @@ async def test_user_repository_get_by_referral_code() -> None:
     )
     assert user is not None
     assert user.referral_code == "refcode1"
+
+
+def test_geometry_to_wkt_none_returns_none() -> None:
+    """_geometry_to_wkt(None) returns None."""
+    assert _geometry_to_wkt(None) is None
+
+
+def test_geometry_to_wkt_str_returns_str() -> None:
+    """_geometry_to_wkt with str returns as-is."""
+    assert _geometry_to_wkt("POINT(1 2)") == "POINT(1 2)"
+
+
+def test_geometry_to_wkt_wkt_element_returns_wkt_or_none() -> None:
+    """_geometry_to_wkt with WKTElement returns wkt via shape.to_shape."""
+    from unittest.mock import MagicMock, patch
+
+    from geoalchemy2.elements import WKTElement
+
+    el = WKTElement("POINT(37.6 55.75)", srid=4326)
+    with patch("ugc_bot.infrastructure.db.repositories.shape") as mock_shape:
+        mock_shape.to_shape.return_value = MagicMock(wkt="POINT (37.6 55.75)")
+        result = _geometry_to_wkt(el)
+    assert result == "POINT (37.6 55.75)"
+
+
+def test_geometry_to_wkt_invalid_returns_none() -> None:
+    """_geometry_to_wkt with invalid object returns None."""
+    assert _geometry_to_wkt(object()) is None
+
+
+def test_wkt_to_geometry_element_empty_returns_none() -> None:
+    """_wkt_to_geometry_element with empty or whitespace returns None."""
+    assert _wkt_to_geometry_element("") is None
+    assert _wkt_to_geometry_element("   ") is None
+    assert _wkt_to_geometry_element(None) is None
+
+
+def test_wkt_to_geometry_element_valid_returns_element() -> None:
+    """_wkt_to_geometry_element with valid WKT returns WKTElement."""
+    from geoalchemy2.elements import WKTElement
+
+    result = _wkt_to_geometry_element("POINT(1 2)")
+    assert result is not None
+    assert isinstance(result, WKTElement)
+
+
+@pytest.mark.asyncio
+async def test_user_repository_get_by_telegram_empty_returns_none() -> None:
+    """get_by_telegram with empty or whitespace returns None."""
+    repo = SqlAlchemyUserRepository(session_factory=_session_factory(None))
+    session = _repo_session(repo)
+    assert await repo.get_by_telegram("", session=session) is None
+    assert await repo.get_by_telegram("  ", session=session) is None
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ import pytest
 from tests.helpers.factories import create_test_advertiser
 from tests.helpers.services import build_order_service
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.domain.enums import OrderType, UserStatus
 
 
@@ -32,6 +33,78 @@ async def test_create_order_success(
     )
 
     assert await order_repo.get_by_id(order.order_id) is not None
+    assert order.location_geometry is None
+    assert order.radius_km is None
+
+
+@pytest.mark.asyncio
+async def test_create_order_with_geocoder_sets_location_geometry(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Geocoder sets order.location_geometry when geography is provided."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+
+    class FakeGeocoder:
+        async def geocode(self, query, region=None):
+            return (55.75, 37.6) if query else None
+
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
+        geocoder=FakeGeocoder(),
+    )
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        geography="Moscow",
+    )
+    assert order.location_geometry == "POINT(37.6 55.75)"
+    assert order.geography == "Moscow"
+
+
+@pytest.mark.asyncio
+async def test_create_order_with_geocoder_returns_none_leaves_geometry_empty(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Geocoder returns None: order has no location_geometry."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+
+    class FakeGeocoder:
+        async def geocode(self, query, region=None):
+            return None
+
+    service = OrderService(
+        user_repo=user_repo,
+        advertiser_repo=advertiser_repo,
+        order_repo=order_repo,
+        allowed_blogger_counts=frozenset({1, 3, 5, 10}),
+        max_order_price=10_000.0,
+        geocoder=FakeGeocoder(),
+    )
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        geography="UnknownPlace",
+    )
+    assert order.location_geometry is None
+    assert order.geography == "UnknownPlace"
 
 
 @pytest.mark.asyncio
