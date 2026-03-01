@@ -15,11 +15,12 @@ import sys
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ugc_bot.application.geography import resolve_region_from_city_field
 from ugc_bot.config import load_config
 from ugc_bot.infrastructure.db.models import BloggerProfileModel
-from ugc_bot.infrastructure.db.session import create_session_factory
+from ugc_bot.infrastructure.db.session import create_async_db_engine
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +37,14 @@ async def run(dry_run: bool, only_empty_region: bool) -> int:
         format="%(levelname)s %(name)s %(message)s",
     )
 
-    session_factory = create_session_factory(
+    engine = create_async_db_engine(
         config.db.database_url,
         pool_size=config.db.pool_size,
         max_overflow=config.db.max_overflow,
         pool_timeout=config.db.pool_timeout,
+    )
+    session_factory = async_sessionmaker(
+        bind=engine, expire_on_commit=False
     )
 
     async with session_factory() as session:
@@ -100,39 +104,39 @@ async def run(dry_run: bool, only_empty_region: bool) -> int:
             )
             continue
 
-        async with session_factory() as session:
-            try:
-                stmt = (
-                    update(BloggerProfileModel)
-                    .where(BloggerProfileModel.user_id == user_id)
-                    .values(
-                        region=region_key,
-                        updated_at=datetime.now(timezone.utc),
-                    )
+        try:
+            stmt = (
+                update(BloggerProfileModel)
+                .where(BloggerProfileModel.user_id == user_id)
+                .values(
+                    region=region_key,
+                    updated_at=datetime.now(timezone.utc),
                 )
-                result = await session.execute(stmt)
-                await session.commit()
-                if result.rowcount == 0:
-                    logger.warning(
-                        "No row updated for user_id=%s (profile missing?)",
-                        user_id,
-                    )
-                    errors += 1
-                    continue
-                updated_count += 1
-                logger.info(
-                    "Set region for user_id=%s city=%r -> region=%s",
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(stmt)
+                rowcount = result.rowcount
+            if rowcount == 0:
+                logger.warning(
+                    "No row updated for user_id=%s (profile missing?)",
                     user_id,
-                    city_str,
-                    region_key,
-                )
-            except Exception as e:
-                logger.exception(
-                    "Failed to update user_id=%s: %s",
-                    user_id,
-                    e,
                 )
                 errors += 1
+                continue
+            updated_count += 1
+            logger.info(
+                "Set region for user_id=%s city=%r -> region=%s",
+                user_id,
+                city_str,
+                region_key,
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to update user_id=%s: %s",
+                user_id,
+                e,
+            )
+            errors += 1
 
     print(
         f"Processed {len(rows)}: updated={updated_count}, "
