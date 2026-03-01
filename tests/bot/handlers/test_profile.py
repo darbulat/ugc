@@ -4571,7 +4571,7 @@ async def test_handle_city_web_app_data_profile_wrong_region_rejects(
     )
     message = FakeMessage(
         user=FakeUser(89),
-        web_app_data=FakeWebAppData("татарстан:москва"),
+        web_app_data=FakeWebAppData("республика татарстан:москва"),
     )
     await handle_city_web_app_data_profile(
         message,

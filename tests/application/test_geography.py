@@ -94,7 +94,7 @@ class TestParseGeography:
         spec = parse_geography("Татарстан")
         assert spec is not None
         assert spec.type == "region"
-        assert spec.values == ["татарстан"]
+        assert spec.values == ["республика татарстан"]
 
     def test_multiple_regions_yield_cities_spec(self) -> None:
         """Multiple regions (or mix) yield type cities with all tokens."""
@@ -108,14 +108,14 @@ class TestParseGeography:
         spec = parse_geography("ТАТАРСТАН")
         assert spec is not None
         assert spec.type == "region"
-        assert spec.values == ["татарстан"]
+        assert spec.values == ["республика татарстан"]
 
     def test_region_alias_sakha_resolves_to_yakutia(self) -> None:
-        """Alias 'Саха' resolves to canonical region 'якутия'."""
+        """Alias 'Саха' resolves to canonical region 'республика якутия'."""
         spec = parse_geography("Саха")
         assert spec is not None
         assert spec.type == "region"
-        assert spec.values == ["якутия"]
+        assert spec.values == ["республика якутия"]
 
     def test_extra_whitespace_normalized(self) -> None:
         """Extra whitespace is collapsed."""
@@ -214,7 +214,7 @@ class TestGetCitiesListForMiniapp:
         cities = get_cities_list_for_miniapp()
         ids = {c["id"] for c in cities}
         assert "москва:москва" in ids
-        assert "татарстан:казань" in ids
+        assert "республика татарстан:казань" in ids
         assert any("санкт-петербург" in i for i in ids)
 
     def test_label_includes_region(self) -> None:
@@ -244,7 +244,10 @@ class TestRegionKeyToLabel:
         """Region key is converted to display label (title case)."""
         assert region_key_to_label("москва") == "Москва"
         assert region_key_to_label("красноярский край") == "Красноярский Край"
-        assert region_key_to_label("татарстан") == "Татарстан"
+        assert (
+            region_key_to_label("республика татарстан")
+            == "Республика Татарстан"
+        )
 
     def test_hyphenated_preserved(self) -> None:
         """Hyphenated parts get capitalised."""
@@ -288,7 +291,7 @@ class TestResolveRegionFromCityField:
         """City and matching region in field use explicit region."""
         region_key, status = resolve_region_from_city_field("Казань, Татарстан")
         assert status == "ok"
-        assert region_key == "татарстан"
+        assert region_key == "республика татарстан"
 
     def test_region_before_city_returns_ok(self) -> None:
         """Region then city in field uses that region."""
@@ -334,9 +337,9 @@ class TestParseMiniappCityId:
 
     def test_region_city_format_returns_both(self) -> None:
         """region:city format returns (city, region)."""
-        assert parse_miniapp_city_id("татарстан:казань") == (
+        assert parse_miniapp_city_id("республика татарстан:казань") == (
             "казань",
-            "татарстан",
+            "республика татарстан",
         )
 
     def test_empty_returns_empty_tuple(self) -> None:
@@ -373,8 +376,8 @@ class TestIsCanonicalCityOnly:
 
     def test_region_returns_false(self) -> None:
         """Region names must not pass as city."""
-        assert is_canonical_city_only("якутия") is False
-        assert is_canonical_city_only("татарстан") is False
+        assert is_canonical_city_only("республика якутия") is False
+        assert is_canonical_city_only("республика татарстан") is False
         assert is_canonical_city_only("саха") is False
 
     def test_unknown_returns_false(self) -> None:
@@ -391,7 +394,7 @@ class TestGetCanonicalCitiesSet:
         s = get_canonical_cities_set()
         assert "москва" in s
         assert "санкт-петербург" in s
-        assert "татарстан" in s
+        assert "республика татарстан" in s
         assert "казань" in s
 
     def test_is_frozenset(self) -> None:

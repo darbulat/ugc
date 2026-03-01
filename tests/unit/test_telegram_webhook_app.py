@@ -121,7 +121,7 @@ def test_miniapp_cities_json_returns_list(client: TestClient) -> None:
     assert all("id" in item and "label" in item for item in data)
     ids = [item["id"] for item in data]
     assert "москва:москва" in ids
-    assert "татарстан:казань" in ids
+    assert "республика татарстан:казань" in ids
     assert all(" (" in item["label"] and ")" in item["label"] for item in data)
 
 

@@ -921,7 +921,7 @@ async def test_handle_city_web_app_data_region_city_format_stores_both() -> (
     await state.set_state(BloggerRegistrationStates.city.state)
     message = FakeMessage(
         user=FakeUser(1, "u", "U"),
-        web_app_data=FakeWebAppData("татарстан:казань"),
+        web_app_data=FakeWebAppData("республика татарстан:казань"),
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -932,7 +932,7 @@ async def test_handle_city_web_app_data_region_city_format_stores_both() -> (
         event_adapter=adapter,
     )
     assert state._data["city"] == "казань"
-    assert state._data.get("region") == "татарстан"
+    assert state._data.get("region") == "республика татарстан"
     assert state.state == BloggerRegistrationStates.birth_date
 
 
@@ -943,7 +943,7 @@ async def test_handle_city_web_app_data_wrong_region_rejects() -> None:
     await state.set_state(BloggerRegistrationStates.city.state)
     message = FakeMessage(
         user=FakeUser(1, "u", "U"),
-        web_app_data=FakeWebAppData("татарстан:москва"),
+        web_app_data=FakeWebAppData("республика татарстан:москва"),
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()

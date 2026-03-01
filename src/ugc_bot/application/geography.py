@@ -130,6 +130,8 @@ def _matches_region(
     for token in blogger_city_tokens:
         if token == canonical_region or token in region_cities:
             return True
+        if REGION_ALIASES.get(token, token) == canonical_region:
+            return True
     return False
 
 
