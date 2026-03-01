@@ -2,12 +2,13 @@
 """Backfill location_geometry for blogger_profiles from city field.
 
 Parses city string by comma, slash, " и ", newline; for each token (after
-normalization and dedup) geocodes via Nominatim using profile.country;
-builds MULTIPOINT from (lat, lon) and updates blogger_profiles.location_geometry.
+normalization and dedup) geocodes via Nominatim using profile.region and
+profile.country; builds MULTIPOINT from (lat, lon) and updates
+blogger_profiles.location_geometry.
 
-(City, country) -> coordinates are cached in RAM for the script run to avoid
-repeated Nominatim requests. Respects Nominatim usage policy: 1 request per
-second (only for cache misses).
+(City, country, region) -> coordinates are cached in RAM for the script run
+to avoid repeated Nominatim requests. Respects Nominatim usage policy: 1
+request per second (only for cache misses).
 """
 
 import argparse
@@ -32,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 NOMINATIM_DELAY_SECONDS = 1.0
 
+# For Nominatim, Crimea region is queried as Ukraine
+REGION_CRIMEA_NORMALIZED = "республика крым"
+
 
 def _parse_city_tokens(city_raw: str | None) -> list[str]:
     """Split city into normalized unique tokens (for geocoding)."""
@@ -45,28 +49,41 @@ def _parse_city_tokens(city_raw: str | None) -> list[str]:
     return list(dict.fromkeys(tokens))
 
 
-def _cache_key(token: str, country: str) -> str:
-    """Cache key for (city token, country) to avoid mixing countries."""
-    return f"{token.strip()}|{(country or 'russia').strip().lower()}"
+def _cache_key(token: str, country: str, region: str | None) -> str:
+    """Cache key for (city token, country, region) to avoid mixing results."""
+    return "|".join(
+        (
+            token.strip(),
+            (country or "russia").strip().lower(),
+            (region or "").strip().lower(),
+        )
+    )
 
 
 async def _geocode_city_tokens(
     geocoder: NominatimGeocoder,
     tokens: list[str],
     country: str,
+    region: str | None,
     cache: dict[str, tuple[float, float] | None],
 ) -> list[tuple[float, float]]:
-    """Geocode each token with country; use cache to avoid repeated Nominatim calls."""
+    """Geocode each token with country and region; use cache for repeated calls."""
     coords: list[tuple[float, float]] = []
     seen: set[tuple[float, float]] = set()
     country_for_query = (country or "russia").strip() or "russia"
+    region_for_query = (region or "").strip() or None
+    region_norm = (region or "").strip().lower()
+    if region_norm == REGION_CRIMEA_NORMALIZED:
+        country_for_query = "Ukraine"
     for token in tokens:
-        key = _cache_key(token, country)
+        key = _cache_key(token, country, region)
         if key in cache:
             coord = cache[key]
         else:
             coord = await geocoder.geocode(
-                token.strip(), region=None, country=country_for_query
+                token.strip(),
+                region=region_for_query,
+                country=country_for_query,
             )
             await asyncio.sleep(NOMINATIM_DELAY_SECONDS)
             cache[key] = coord
@@ -106,6 +123,7 @@ async def run(
             BloggerProfileModel.user_id,
             BloggerProfileModel.city,
             BloggerProfileModel.country,
+            BloggerProfileModel.region,
         ).where(
             BloggerProfileModel.city.isnot(None),
             BloggerProfileModel.city != "",
@@ -124,16 +142,17 @@ async def run(
     errors = 0
     geo_cache: dict[str, tuple[float, float] | None] = {}
 
-    for user_id, city, country in rows:
+    for user_id, city, country, region in rows:
         city_str = (city or "").strip()
         country_str = (country or "russia").strip() or "russia"
+        region_str = (region or "").strip() or None
         tokens = _parse_city_tokens(city_str)
         if not tokens:
             logger.debug("Empty tokens for user_id=%s city=%r", user_id, city_str)
             continue
 
         coords = await _geocode_city_tokens(
-            geocoder, tokens, country_str, geo_cache
+            geocoder, tokens, country_str, region_str, geo_cache
         )
         if not coords:
             skipped_no_coords += 1
