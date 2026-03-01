@@ -12,13 +12,12 @@ import asyncio
 import logging
 import sys
 
-from dataclasses import replace
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ugc_bot.application.geography import resolve_region_from_city_field
 from ugc_bot.config import load_config
-from ugc_bot.container import repository_factory
 from ugc_bot.infrastructure.db.models import BloggerProfileModel
 from ugc_bot.infrastructure.db.session import create_session_factory
 
@@ -43,8 +42,6 @@ async def run(dry_run: bool, only_empty_region: bool) -> int:
         max_overflow=config.db.max_overflow,
         pool_timeout=config.db.pool_timeout,
     )
-    repos = repository_factory.build_repos(session_factory)
-    blogger_repo = repos["blogger_repo"]
 
     async with session_factory() as session:
         stmt = select(
@@ -105,16 +102,23 @@ async def run(dry_run: bool, only_empty_region: bool) -> int:
 
         async with session_factory() as session:
             try:
-                profile = await blogger_repo.get_by_user_id(
-                    user_id, session=session
+                stmt = (
+                    update(BloggerProfileModel)
+                    .where(BloggerProfileModel.user_id == user_id)
+                    .values(
+                        region=region_key,
+                        updated_at=datetime.now(timezone.utc),
+                    )
                 )
-                if profile is None:
-                    logger.warning("Profile not found for user_id=%s", user_id)
+                result = await session.execute(stmt)
+                await session.commit()
+                if result.rowcount == 0:
+                    logger.warning(
+                        "No row updated for user_id=%s (profile missing?)",
+                        user_id,
+                    )
                     errors += 1
                     continue
-                updated = replace(profile, region=region_key)
-                await blogger_repo.save(updated, session=session)
-                await session.commit()
                 updated_count += 1
                 logger.info(
                     "Set region for user_id=%s city=%r -> region=%s",
