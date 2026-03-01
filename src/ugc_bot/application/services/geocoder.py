@@ -34,6 +34,16 @@ def _extract_region_from_address(address: object) -> Optional[str]:
     return None
 
 
+def _extract_country_from_address(address: object) -> Optional[str]:
+    """Extract country from Nominatim address dict."""
+    if not isinstance(address, dict):
+        return None
+    val = address.get("country")
+    if val and isinstance(val, str) and val.strip():
+        return val.strip()
+    return None
+
+
 class NominatimGeocoder:
     """Geocoder using OpenStreetMap Nominatim API (no API key)."""
 
@@ -100,20 +110,23 @@ class NominatimGeocoder:
         self,
         query: str,
         region: Optional[str] = None,
-        country: str = "Russia",
-    ) -> Optional[Tuple[float, float, str, str, Optional[str]]]:
-        """Return (lat, lon, osm_class, osm_type, region) or None.
+        country: Optional[str] = None,
+    ) -> Optional[Tuple[float, float, str, str, Optional[str], Optional[str]]]:
+        """Return (lat, lon, osm_class, osm_type, region, country) or None.
 
-        region is from address.state/state_district/county (addressdetails=1).
+        region/country from address (addressdetails=1). No default country:
+        when country is empty, query is sent without country.
         """
         if not self._enabled or not (query or "").strip():
             return None
         q = query.strip()
-        country_str = (country or "Russia").strip()
+        parts: list[str] = [q]
         if region and region.strip():
-            q = f"{q}, {region.strip()}, {country_str}"
-        else:
-            q = f"{q}, {country_str}"
+            parts.append(region.strip())
+        country_str = (country or "").strip()
+        if country_str:
+            parts.append(country_str)
+        q = ", ".join(parts)
         url = f"{self._base_url}/search"
         try:
             async with httpx.AsyncClient(
@@ -151,7 +164,14 @@ class NominatimGeocoder:
             return None
         osm_class = (first.get("class") or first.get("category") or "").strip()
         osm_type = (first.get("type") or "").strip()
-        region_from_nominatim = _extract_region_from_address(
-            first.get("address")
+        address = first.get("address")
+        region_from_nominatim = _extract_region_from_address(address)
+        country_from_nominatim = _extract_country_from_address(address)
+        return (
+            lat,
+            lon,
+            osm_class,
+            osm_type,
+            region_from_nominatim,
+            country_from_nominatim,
         )
-        return (lat, lon, osm_class, osm_type, region_from_nominatim)
