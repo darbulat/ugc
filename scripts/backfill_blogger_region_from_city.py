@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Backfill blogger_profiles.region from city field.
+
+Uses region_cities_data and geography: parses city string (may contain
+"City", "Region, City" or "City, Region"), resolves to one region and saves
+to profile.region. Logs user_id and city when city is in multiple regions
+or when city is unrecognized.
+"""
+
+import argparse
+import asyncio
+import logging
+import sys
+
+from dataclasses import replace
+
+from sqlalchemy import select
+
+from ugc_bot.application.geography import resolve_region_from_city_field
+from ugc_bot.config import load_config
+from ugc_bot.container import repository_factory
+from ugc_bot.infrastructure.db.models import BloggerProfileModel
+from ugc_bot.infrastructure.db.session import create_session_factory
+
+logger = logging.getLogger(__name__)
+
+
+async def run(dry_run: bool, only_empty_region: bool) -> int:
+    """Backfill region for blogger profiles from city."""
+    config = load_config()
+    if not config.db.database_url:
+        print("DATABASE_URL is required.", file=sys.stderr)
+        return 1
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s %(message)s",
+    )
+
+    session_factory = create_session_factory(
+        config.db.database_url,
+        pool_size=config.db.pool_size,
+        max_overflow=config.db.max_overflow,
+        pool_timeout=config.db.pool_timeout,
+    )
+    repos = repository_factory.build_repos(session_factory)
+    blogger_repo = repos["blogger_repo"]
+
+    async with session_factory() as session:
+        stmt = select(
+            BloggerProfileModel.user_id,
+            BloggerProfileModel.city,
+            BloggerProfileModel.region,
+        ).where(
+            BloggerProfileModel.city.isnot(None),
+            BloggerProfileModel.city != "",
+        )
+        if only_empty_region:
+            stmt = stmt.where(BloggerProfileModel.region.is_(None))
+        result = await session.execute(stmt)
+        rows = list(result.all())
+
+    if not rows:
+        print("No blogger profiles to process.")
+        return 0
+
+    updated_count = 0
+    multi_region_count = 0
+    unrecognized_count = 0
+    errors = 0
+
+    for user_id, city, existing_region in rows:
+        city_str = (city or "").strip()
+        region_key, status = resolve_region_from_city_field(city_str)
+
+        if status == "multiple":
+            multi_region_count += 1
+            logger.warning(
+                "City in multiple regions: user_id=%s city=%r",
+                user_id,
+                city_str,
+            )
+            continue
+
+        if status == "unrecognized":
+            unrecognized_count += 1
+            logger.warning(
+                "Unrecognized city: user_id=%s city=%r",
+                user_id,
+                city_str,
+            )
+            continue
+
+        assert status == "ok" and region_key is not None
+
+        if dry_run:
+            updated_count += 1
+            logger.info(
+                "Would set region for user_id=%s city=%r -> region=%s",
+                user_id,
+                city_str,
+                region_key,
+            )
+            continue
+
+        async with session_factory() as session:
+            try:
+                profile = await blogger_repo.get_by_user_id(
+                    user_id, session=session
+                )
+                if profile is None:
+                    logger.warning("Profile not found for user_id=%s", user_id)
+                    errors += 1
+                    continue
+                updated = replace(profile, region=region_key)
+                await blogger_repo.save(updated, session=session)
+                await session.commit()
+                updated_count += 1
+                logger.info(
+                    "Set region for user_id=%s city=%r -> region=%s",
+                    user_id,
+                    city_str,
+                    region_key,
+                )
+            except Exception as e:
+                logger.exception(
+                    "Failed to update user_id=%s: %s",
+                    user_id,
+                    e,
+                )
+                errors += 1
+
+    print(
+        f"Processed {len(rows)}: updated={updated_count}, "
+        f"multi_region_logged={multi_region_count}, "
+        f"unrecognized_logged={unrecognized_count}, errors={errors} "
+        f"(dry_run={dry_run}, only_empty_region={only_empty_region})"
+    )
+    if dry_run and updated_count > 0:
+        print("Run without --dry-run to apply changes.")
+    return 0 if errors == 0 else 1
+
+
+def main() -> int:
+    """Entry point."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Fill blogger_profiles.region from city using region_cities_data. "
+            "Logs user_id and city for multi-region and unrecognized cities."
+        )
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only report what would be updated.",
+    )
+    parser.add_argument(
+        "--only-empty-region",
+        action="store_true",
+        help="Only update profiles where region is NULL.",
+    )
+    args = parser.parse_args()
+    return asyncio.run(
+        run(dry_run=args.dry_run, only_empty_region=args.only_empty_region)
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())

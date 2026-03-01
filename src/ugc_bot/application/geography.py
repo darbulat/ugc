@@ -237,6 +237,56 @@ def is_canonical_city_only(value: str) -> bool:
     return normalized in _get_city_to_regions()
 
 
+def resolve_region_from_city_field(
+    city_raw: str | None,
+) -> tuple[str | None, Literal["ok", "multiple", "unrecognized"]]:
+    """
+    Parse blogger profile city field (may contain "City", "Region, City" or
+    "City, Region") and resolve to a single region key for profile.region.
+
+    Returns (region_key, status):
+    - ("region_key", "ok"): one region resolved; store region_key.
+    - (None, "multiple"): city is in several regions; caller should log.
+    - (None, "unrecognized"): unrecognized city; caller should log.
+    """
+    if not city_raw or not city_raw.strip():
+        return (None, "unrecognized")
+    tokens = [
+        _normalize_token(p)
+        for p in GEO_TOKEN_SPLIT_RE.split(city_raw)
+        if _normalize_token(p)
+    ]
+    if not tokens:
+        return (None, "unrecognized")
+
+    def is_region(t: str) -> bool:
+        canonical = REGION_ALIASES.get(t, t)
+        return canonical in REGION_TO_CITIES
+
+    def is_city(t: str) -> bool:
+        return bool(get_regions_for_city(t))
+
+    city_tokens = [t for t in tokens if is_city(t)]
+    region_tokens = [t for t in tokens if is_region(t)]
+
+    primary_city = city_tokens[0] if city_tokens else None
+    if not primary_city:
+        return (None, "unrecognized")
+
+    for r in region_tokens:
+        canonical_region = REGION_ALIASES.get(r, r)
+        cities_in_region = REGION_TO_CITIES.get(canonical_region, [])
+        if primary_city in cities_in_region:
+            return (canonical_region, "ok")
+
+    regions = get_regions_for_city(primary_city)
+    if len(regions) == 1:
+        return (regions[0], "ok")
+    if len(regions) > 1:
+        return (None, "multiple")
+    return (None, "unrecognized")
+
+
 def blogger_matches_geography(blogger_city: str, spec: GeographySpec) -> bool:
     """
     Check if blogger city matches order geography.

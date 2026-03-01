@@ -13,6 +13,7 @@ from ugc_bot.application.geography import (
     parse_geography,
     parse_miniapp_city_id,
     region_key_to_label,
+    resolve_region_from_city_field,
 )
 
 
@@ -272,6 +273,55 @@ class TestGetRegionsForCity:
     def test_unknown_city_returns_empty(self) -> None:
         """Unknown city returns empty list."""
         assert get_regions_for_city("НесуществующийГород") == []
+
+
+class TestResolveRegionFromCityField:
+    """Tests for resolve_region_from_city_field."""
+
+    def test_plain_city_one_region_returns_ok(self) -> None:
+        """Single city in one region returns (region, 'ok')."""
+        region_key, status = resolve_region_from_city_field("Москва")
+        assert status == "ok"
+        assert region_key == "москва"
+
+    def test_city_with_region_token_returns_ok(self) -> None:
+        """City and matching region in field use explicit region."""
+        region_key, status = resolve_region_from_city_field("Казань, Татарстан")
+        assert status == "ok"
+        assert region_key == "татарстан"
+
+    def test_region_before_city_returns_ok(self) -> None:
+        """Region then city in field uses that region."""
+        region_key, status = resolve_region_from_city_field(
+            "Московская область, Балашиха"
+        )
+        assert status == "ok"
+        assert region_key == "московская область"
+
+    def test_city_in_multiple_regions_returns_multiple(self) -> None:
+        """City in several regions returns (None, 'multiple')."""
+        region_key, status = resolve_region_from_city_field("Железногорск")
+        assert status == "multiple"
+        assert region_key is None
+
+    def test_unrecognized_city_returns_unrecognized(self) -> None:
+        """Unknown city returns (None, 'unrecognized')."""
+        region_key, status = resolve_region_from_city_field(
+            "НесуществующийГород"
+        )
+        assert status == "unrecognized"
+        assert region_key is None
+
+    def test_empty_or_whitespace_returns_unrecognized(self) -> None:
+        """Empty or whitespace returns (None, 'unrecognized')."""
+        assert resolve_region_from_city_field("") == (None, "unrecognized")
+        assert resolve_region_from_city_field("   ") == (None, "unrecognized")
+
+    def test_only_region_token_returns_unrecognized(self) -> None:
+        """Only region name (no city) is treated as unrecognized city."""
+        region_key, status = resolve_region_from_city_field("Татарстан")
+        assert status == "unrecognized"
+        assert region_key is None
 
 
 class TestParseMiniappCityId:
