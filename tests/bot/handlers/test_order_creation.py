@@ -951,7 +951,7 @@ async def test_handle_geography_empty(
     assert message.answers
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
-    assert "географию" in text.lower()
+    assert "один вариант" in text.lower() and "город" in text.lower()
 
 
 @pytest.mark.asyncio

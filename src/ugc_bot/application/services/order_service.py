@@ -194,7 +194,6 @@ class OrderService:
                 filter_by_placement=False,
                 filter_by_barter=False,
                 location_geometry=order_location_geometry,
-                radius_km=None,
             )
             await self.order_repo.save(order, session=session)
 

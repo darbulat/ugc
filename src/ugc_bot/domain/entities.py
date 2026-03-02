@@ -189,7 +189,6 @@ class Order:
     filter_by_barter: bool = False
     # WKT MULTIPOLYGON (SRID 4326) for countries/regions/cities from geography.
     location_geometry: Optional[str] = None
-    radius_km: Optional[float] = None
 
 
 @dataclass(frozen=True)

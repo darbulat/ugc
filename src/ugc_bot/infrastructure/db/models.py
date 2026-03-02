@@ -376,9 +376,6 @@ class OrderModel(Base):
         _GeometryOrText(geometry_type="MULTIPOLYGON", srid=4326),
         nullable=True,
     )
-    radius_km: Mapped[Optional[float]] = mapped_column(
-        Numeric(10, 2), nullable=True
-    )
 
 
 class ContactPricingModel(Base):

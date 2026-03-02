@@ -363,6 +363,19 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
                     )
             except AttributeError:
                 pass
+            except Exception as e:  # e.g. WKT parse error from GeoAlchemy2
+                wkt_preview = (
+                    (location_geometry_wkt or "")[:100]
+                    if location_geometry_wkt
+                    else ""
+                )
+                logger.warning(
+                    "Invalid order location_geometry WKT, returning no "
+                    "bloggers: %s",
+                    e,
+                    extra={"wkt_preview": wkt_preview},
+                )
+                return []
         exec_result = await db_session.execute(stmt)
         results = exec_result.scalars()
         return list(results)
@@ -1370,11 +1383,6 @@ def _to_order_entity(model: OrderModel) -> Order:
         location_geometry=_geometry_to_wkt(
             getattr(model, "location_geometry", None)
         ),
-        radius_km=(
-            float(val)
-            if (val := getattr(model, "radius_km", None)) is not None
-            else None
-        ),
     )
 
 
@@ -1423,7 +1431,6 @@ def _to_order_model(order: Order) -> OrderModel:
         filter_by_placement=order.filter_by_placement,
         filter_by_barter=order.filter_by_barter,
         location_geometry=_wkt_to_geometry_element(order.location_geometry),
-        radius_km=order.radius_km,
     )
 
 

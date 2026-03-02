@@ -173,7 +173,10 @@ def validate_geography(value: str) -> str | None:
     if err is not None:
         return err
     if not v:
-        return "Укажите географию. Примеры: Казань, Москва / РФ"
+        return (
+            "Укажите один вариант: город, регион или страна. "
+            "Примеры: Казань, Москва, Татарстан, РФ"
+        )
     if len(v) > GEOGRAPHY_MAX:
         return f"Текст слишком длинный (максимум {GEOGRAPHY_MAX} символов)."
     return None

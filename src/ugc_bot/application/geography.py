@@ -1,9 +1,7 @@
 """Geography parsing and matching for order-to-blogger filtering.
 
-Order.geography stores the advertiser's answer to:
-"В каких городах или регионах может находиться креатор? Можно указать
-от 1 до 10 городов, регионы или написать «РФ». Нужно для бартерных
-заказов и доставки продукта."
+Order.geography stores the advertiser's answer: one of city, region, or
+country (e.g. Казань, Москва, Татарстан, РФ). For barter and delivery.
 """
 
 import re

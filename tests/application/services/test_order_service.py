@@ -34,7 +34,6 @@ async def test_create_order_success(
 
     assert await order_repo.get_by_id(order.order_id) is not None
     assert order.location_geometry is None
-    assert order.radius_km is None
 
 
 @pytest.mark.asyncio
