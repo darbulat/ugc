@@ -2,8 +2,10 @@
 
 from ugc_bot.application.geography import (
     REGION_TO_CITIES,
+    GeographySpec,
     get_canonical_cities_set,
     get_cities_list_for_miniapp,
+    get_geometry_queries_from_spec,
     get_regions_for_city,
     is_canonical_city,
     is_canonical_city_only,
@@ -51,76 +53,85 @@ class TestParseGeography:
             assert spec.type == "world"
             assert spec.values == []
 
-    def test_country_phrases(self) -> None:
-        """Country phrases yield type country."""
-        for phrase in ["РФ", "Россия", "RUSSIA", "вся россия"]:
-            spec = parse_geography(phrase)
-            assert spec is not None
-            assert spec.type == "country"
-            assert spec.values == []
+    def test_any_non_world_yields_places(self) -> None:
+        """Any input that is not world phrase yields type places (no dicts)."""
+        spec = parse_geography("РФ")
+        assert spec is not None
+        assert spec.type == "places"
+        assert spec.values == ["рф"]
 
-    def test_single_city(self) -> None:
-        """Single city yields type cities with one value."""
         spec = parse_geography("Казань")
         assert spec is not None
-        assert spec.type == "cities"
+        assert spec.type == "places"
         assert spec.values == ["казань"]
 
-    def test_multiple_cities_comma(self) -> None:
-        """Multiple cities separated by comma."""
-        spec = parse_geography("Казань, Москва")
+        spec = parse_geography("Berlin")
         assert spec is not None
-        assert spec.type == "cities"
-        assert set(spec.values) == {"казань", "москва"}
+        assert spec.type == "places"
+        assert spec.values == ["berlin"]
 
-    def test_multiple_cities_slash(self) -> None:
-        """Multiple cities separated by slash."""
-        spec = parse_geography("Москва / СПб")
+        spec = parse_geography("USA")
         assert spec is not None
-        assert spec.type == "cities"
-        assert set(spec.values) == {"москва", "спб"}
+        assert spec.type == "places"
+        assert spec.values == ["usa"]
 
-    def test_multiple_cities_and(self) -> None:
-        """Multiple cities with ' и '."""
-        spec = parse_geography("Казань и Москва")
-        assert spec is not None
-        assert spec.type == "cities"
-        assert set(spec.values) == {"казань", "москва"}
-
-    def test_region_single_token(self) -> None:
-        """Single token that is a known region yields type region."""
         spec = parse_geography("Татарстан")
         assert spec is not None
-        assert spec.type == "region"
-        assert spec.values == ["республика татарстан"]
+        assert spec.type == "places"
+        assert spec.values == ["татарстан"]
 
-    def test_multiple_regions_yield_cities_spec(self) -> None:
-        """Multiple regions (or mix) yield type cities with all tokens."""
-        spec = parse_geography("Татарстан, Бурятия")
+    def test_multiple_places_comma(self) -> None:
+        """Multiple places separated by comma."""
+        spec = parse_geography("Казань, Москва")
         assert spec is not None
-        assert spec.type == "cities"
-        assert set(spec.values) == {"татарстан", "бурятия"}
+        assert spec.type == "places"
+        assert set(spec.values) == {"казань", "москва"}
 
-    def test_region_case_insensitive(self) -> None:
-        """Region name is case-insensitive."""
-        spec = parse_geography("ТАТАРСТАН")
+    def test_multiple_places_slash(self) -> None:
+        """Multiple places separated by slash."""
+        spec = parse_geography("Москва / СПб")
         assert spec is not None
-        assert spec.type == "region"
-        assert spec.values == ["республика татарстан"]
+        assert spec.type == "places"
+        assert set(spec.values) == {"москва", "спб"}
 
-    def test_region_alias_sakha_resolves_to_yakutia(self) -> None:
-        """Alias 'Саха' resolves to canonical region 'республика якутия'."""
-        spec = parse_geography("Саха")
+    def test_multiple_places_and(self) -> None:
+        """Multiple places with ' и '."""
+        spec = parse_geography("Казань и Москва")
         assert spec is not None
-        assert spec.type == "region"
-        assert spec.values == ["республика якутия"]
+        assert spec.type == "places"
+        assert set(spec.values) == {"казань", "москва"}
 
     def test_extra_whitespace_normalized(self) -> None:
         """Extra whitespace is collapsed."""
         spec = parse_geography("  Казань  ,   Москва  ")
         assert spec is not None
-        assert spec.type == "cities"
+        assert spec.type == "places"
         assert set(spec.values) == {"казань", "москва"}
+
+
+class TestGetGeometryQueriesFromSpec:
+    """Tests for get_geometry_queries_from_spec (world/places only)."""
+
+    def test_world_returns_empty(self) -> None:
+        """World spec returns no queries."""
+        assert (
+            get_geometry_queries_from_spec(
+                GeographySpec(type="world", values=[])
+            )
+            == []
+        )
+
+    def test_places_returns_global_queries(self) -> None:
+        """Places spec returns (query, None, '') for each value."""
+        assert get_geometry_queries_from_spec(
+            GeographySpec(type="places", values=["berlin", "paris"])
+        ) == [("berlin", None, ""), ("paris", None, "")]
+
+    def test_places_single_value(self) -> None:
+        """Single place returns one tuple."""
+        assert get_geometry_queries_from_spec(
+            GeographySpec(type="places", values=["казань"])
+        ) == [("казань", None, "")]
 
 
 class TestGetCitiesListForMiniapp:

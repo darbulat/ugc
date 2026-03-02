@@ -1,7 +1,7 @@
 """Geography parsing and matching for order-to-blogger filtering.
 
-Order.geography stores the advertiser's answer: one of city, region, or
-country (e.g. Казань, Москва, Татарстан, РФ). For barter and delivery.
+Order.geography: free-text place(s) or "whole world". No in-code dictionaries
+for countries/regions; geocoder (Nominatim) is the single source of truth.
 """
 
 import re
@@ -13,13 +13,10 @@ from ugc_bot.application.region_cities_data import (
     REGION_TO_CITIES,
 )
 
-GeographyType = Literal["world", "country", "region", "cities"]
+GeographyType = Literal["world", "places"]
 
 WORLD_PHRASES = frozenset(
     {"весь мир", "мир", "world", "вся планета", "планета", "глобально"}
-)
-COUNTRY_PHRASES = frozenset(
-    {"рф", "россия", "russia", "вся россия", "вся рф", "по всей россии"}
 )
 
 GEO_TOKEN_SPLIT_RE = re.compile(r"[,/]+|\s+и\s+|\n+")
@@ -40,10 +37,11 @@ def normalize_geo_token(value: str) -> str:
 
 def parse_geography(raw: str | None) -> "GeographySpec | None":
     """
-    Parse Order.geography (advertiser: cities/regions/РФ) into a spec.
+    Parse Order.geography into a spec: "world" or list of place tokens.
 
-    Returns None for empty/whitespace input. Otherwise returns GeographySpec
-    with type world | country | region | cities and normalized values.
+    No dictionary lookup. Whole-world phrases -> type world. Everything else
+    -> split by separators, normalize, type places. Geocoder resolves later.
+    Returns None for empty/whitespace input.
     """
     if raw is None:
         return None
@@ -52,25 +50,15 @@ def parse_geography(raw: str | None) -> "GeographySpec | None":
         return None
 
     normalized_full = _normalize_token(text)
-
     if normalized_full in WORLD_PHRASES:
         return GeographySpec(type="world", values=[])
 
-    if normalized_full in COUNTRY_PHRASES:
-        return GeographySpec(type="country", values=[])
-
     parts = GEO_TOKEN_SPLIT_RE.split(text)
     tokens = [_normalize_token(p) for p in parts if _normalize_token(p)]
-
     if not tokens:
         return None
 
-    if len(tokens) == 1:
-        region_key = REGION_ALIASES.get(tokens[0], tokens[0])
-        if region_key in REGION_TO_CITIES:
-            return GeographySpec(type="region", values=[region_key])
-
-    return GeographySpec(type="cities", values=tokens)
+    return GeographySpec(type="places", values=tokens)
 
 
 @dataclass(frozen=True)
@@ -120,19 +108,13 @@ def get_geometry_queries_from_spec(
 ) -> list[tuple[str, str | None, str]]:
     """Build list of (query, region, country) for geocoder to resolve polygons.
 
-    Returns empty list for world. For country/region/cities returns tuples
-    suitable for Nominatim polygon lookup (query, region_or_None, country).
+    World -> empty list. Places -> each value as (query, None, "") for
+    global Nominatim search (no country hint).
     """
     if spec.type == "world":
         return []
-    if spec.type == "country":
-        return [("Russia", None, "")]
-    if spec.type == "region" and spec.values:
-        region_key = spec.values[0]
-        query = _canonical_to_label(region_key)
-        return [(query, None, "Russia")] if query else []
-    if spec.type == "cities" and spec.values:
-        return [(val, None, "Russia") for val in spec.values]
+    if spec.type == "places" and spec.values:
+        return [(val, None, "") for val in spec.values]
     return []
 
 

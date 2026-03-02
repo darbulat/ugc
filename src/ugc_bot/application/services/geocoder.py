@@ -259,15 +259,16 @@ class NominatimGeocoder:
         """Return (osm_type_letter, osm_id) for lookup, or None.
 
         osm_type_letter is one of N (node), W (way), R (relation).
+        When country is None or empty, query is sent without country (global).
         """
         if not self._enabled or not (query or "").strip():
             return None
-        q = query.strip()
-        country_str = (country or "Russia").strip()
+        parts: List[str] = [query.strip()]
         if region and region.strip():
-            q = f"{q}, {region.strip()}, {country_str}"
-        else:
-            q = f"{q}, {country_str}"
+            parts.append(region.strip())
+        if country and country.strip():
+            parts.append(country.strip())
+        q = ", ".join(parts)
         url = f"{self._base_url}/search"
         try:
             async with httpx.AsyncClient(
@@ -352,17 +353,18 @@ class NominatimGeocoder:
     ) -> Optional[str]:
         """Resolve multiple (query, region, country) to one MULTIPOLYGON WKT.
 
-        Each tuple is (query, region_or_None, country). Returns combined WKT
-        or None if no polygon could be resolved.
+        Each tuple is (query, region_or_None, country). Empty country means
+        global Nominatim search. None country defaults to Russia.
         """
         wkt_parts: List[str] = []
         for query, region, country in queries:
             if not (query or "").strip():
                 continue
+            country_param = country if country is not None else "Russia"
             wkt = await self.get_polygon_wkt(
                 query.strip(),
                 region,
-                country or "Russia",
+                country_param,
             )
             if wkt:
                 wkt_parts.append(wkt)
