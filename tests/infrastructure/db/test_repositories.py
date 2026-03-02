@@ -2167,17 +2167,14 @@ def test_geometry_to_wkt_str_returns_str() -> None:
     assert _geometry_to_wkt("POINT(1 2)") == "POINT(1 2)"
 
 
-def test_geometry_to_wkt_wkt_element_returns_wkt_or_none() -> None:
-    """_geometry_to_wkt with WKTElement returns wkt via shape.to_shape."""
-    from unittest.mock import MagicMock, patch
-
+def test_geometry_to_wkt_wkt_element_returns_wkt() -> None:
+    """_geometry_to_wkt with WKTElement returns WKT via shape.to_shape."""
     from geoalchemy2.elements import WKTElement
 
     el = WKTElement("POINT(37.6 55.75)", srid=4326)
-    with patch("ugc_bot.infrastructure.db.repositories.shape") as mock_shape:
-        mock_shape.to_shape.return_value = MagicMock(wkt="POINT (37.6 55.75)")
-        result = _geometry_to_wkt(el)
-    assert result == "POINT (37.6 55.75)"
+    result = _geometry_to_wkt(el)
+    assert result is not None
+    assert "37.6" in result and "55.75" in result
 
 
 def test_geometry_to_wkt_invalid_returns_none() -> None:

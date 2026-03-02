@@ -1,5 +1,6 @@
 """SQLAlchemy repository implementations."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import (
@@ -99,18 +100,27 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralPendingModel,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _geometry_to_wkt(geom: object | None) -> Optional[str]:
-    """Convert GeoAlchemy2 geometry column value to WKT string."""
+    """Convert GeoAlchemy2 geometry column value to WKT string.
+
+    Requires geoalchemy2[shapely] for WKBElement/WKTElement from PostgreSQL.
+    """
     if geom is None:
         return None
     if isinstance(geom, str):
-        return geom
+        return geom if geom.strip() else None
     try:
         return shape.to_shape(
             typing_cast(Union[WKBElement, WKTElement], geom)
         ).wkt
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Failed to convert geometry to WKT",
+            extra={"geom_type": type(geom).__name__, "error": str(exc)},
+        )
         return None
 
 
