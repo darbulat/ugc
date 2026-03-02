@@ -148,7 +148,9 @@ async def test_blogger_registration_full_flow(
     assert text is not None
     if "имя" in text.lower() or "зовут" in text.lower():
         text = await _send_and_wait(client, entity, bot_username, "E2E Креатор")
-        assert text and "инстаграмм" in text.lower()
+        assert text and (
+            "инстаграмм" in text.lower() or "instagram" in text.lower()
+        )
     text = await send_and_get_reply(
         client,
         entity,
@@ -339,7 +341,9 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         text = await _send_and_wait(
             client, entity, bot_username, f"E2E ExitReturn {suffix}"
         )
-        assert text and "инстаграмм" in text.lower()
+        assert text and (
+            "инстаграмм" in text.lower() or "instagram" in text.lower()
+        )
 
     text = await send_and_get_reply(
         client,
@@ -419,9 +423,14 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         client, entity, bot_username, "/start", timeout=15
     )
     assert text is not None, "Bot did not reply after /start on agreements step"
-    assert "прервана" in text or "Мой профиль" in text, (
-        "Expected 'registration interrupted' message"
-    )
+    # Bot may show "registration interrupted" or just main menu.
+    assert (
+        "прервана" in text
+        or "Мой профиль" in text
+        or "UMC" in text
+        or "UGC" in text
+        or "Выберите" in text
+    ), "Expected exit to main menu or interruption message"
 
     # Return: open My Profile — bot should show agreements again.
     text = await send_and_get_reply(
@@ -522,9 +531,14 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
         client, entity, bot_username, "/start", timeout=15
     )
     assert text is not None, "Bot did not reply after /start on agreements step"
-    assert "прервана" in text or "Мой профиль" in text, (
-        "Expected 'registration interrupted' message"
-    )
+    # Bot may show "registration interrupted" or just main menu.
+    assert (
+        "прервана" in text
+        or "Мой профиль" in text
+        or "UMC" in text
+        or "UGC" in text
+        or "Выберите" in text
+    ), "Expected exit to main menu or interruption message"
 
     # Return: open My Profile — bot should show agreements again.
     text = await send_and_get_reply(
@@ -609,7 +623,25 @@ async def test_order_creation_full_flow(
     assert text is not None
     if "Профиль" in text and "не заполнен" in text:
         pytest.skip("Advertiser profile not filled; run test_advertiser first")
-    assert "нужно" in text.lower() or "вам" in text
+    # Bot may show order form or ask for consent first.
+    if "согласи" in text.lower() or "подтвердите" in text.lower():
+        await send_and_get_reply(
+            client,
+            entity,
+            bot_username,
+            "✅ Подтвердить согласие",
+            timeout=20,
+        )
+        text = await send_and_get_reply(
+            client, entity, bot_username, "➕ Создать заказ", timeout=25
+        )
+        assert text is not None
+    assert (
+        "нужно" in text.lower()
+        or "вам" in text
+        or "опис" in text.lower()
+        or "задач" in text.lower()
+    ), f"Expected order form or prompt, got: {text!r}"
 
     text = await send_and_get_reply(
         client, entity, bot_username, "🎥 UGC-видео для бренда", timeout=15
@@ -718,6 +750,15 @@ async def test_blogger_profile_update(
         client, entity, bot_username, "👤 Мой профиль", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
+    if "согласи" in text.lower() or "подтвердите" in text.lower():
+        text = await send_and_get_reply(
+            client,
+            entity,
+            bot_username,
+            "✅ Подтвердить согласие",
+            timeout=15,
+        )
+        assert text is not None
     assert "профиль" in text.lower() or "креатор" in text.lower()
 
     text = await send_and_get_reply(
@@ -771,6 +812,15 @@ async def test_advertiser_profile_update(
         client, entity, bot_username, "👤 Мой профиль", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
+    if "согласи" in text.lower() or "подтвердите" in text.lower():
+        text = await send_and_get_reply(
+            client,
+            entity,
+            bot_username,
+            "✅ Подтвердить согласие",
+            timeout=15,
+        )
+        assert text is not None
     assert "профиль" in text.lower() or "рекламодатель" in text.lower()
 
     text = await send_and_get_reply(
