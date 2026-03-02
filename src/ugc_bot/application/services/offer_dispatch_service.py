@@ -2,16 +2,11 @@
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
 from uuid import UUID
 
 from ugc_bot.application.errors import (
     OrderNotActiveError,
     OrderNotFoundError,
-)
-from ugc_bot.application.geography import (
-    blogger_matches_geography,
-    parse_geography,
 )
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
@@ -31,7 +26,6 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 class _DispatchCriteria:
     """Parsed filter criteria for offer dispatch."""
 
-    geography_spec: Any  # GeographySpec | None
     min_followers: int
     max_followers: int
     min_followers_enabled: bool
@@ -64,9 +58,6 @@ def _build_dispatch_criteria(
     order: Order, *, has_instagram_stats_repo: bool = False
 ) -> _DispatchCriteria:
     """Build parsed filter criteria from order for dispatch loop."""
-    geography_spec = (
-        parse_geography(order.geography) if order.geography else None
-    )
     min_followers = (
         order.min_followers if order.min_followers is not None else 0
     )
@@ -90,8 +81,7 @@ def _build_dispatch_criteria(
     filter_by_placement = getattr(order, "filter_by_placement", False)
     filter_by_barter = getattr(order, "filter_by_barter", False)
     need_profile = (
-        geography_spec is not None
-        or min_followers_enabled
+        min_followers_enabled
         or max_followers_enabled
         or min_publications_enabled
         or max_publications_enabled
@@ -107,7 +97,6 @@ def _build_dispatch_criteria(
         or (min_publications_enabled or max_publications_enabled)
     ) and has_instagram_stats_repo
     return _DispatchCriteria(
-        geography_spec=geography_spec,
         min_followers=min_followers,
         max_followers=max_followers,
         min_followers_enabled=min_followers_enabled,
@@ -238,13 +227,7 @@ def _passes_order_filters(
 def _passes_profile_based_filters(
     profile: BloggerProfile | None, order: Order, criteria: _DispatchCriteria
 ) -> bool:
-    """True if profile passes geography, age, gender, and order filters."""
-    if (
-        criteria.geography_spec is not None
-        and profile is not None
-        and not blogger_matches_geography(profile.city, criteria.geography_spec)
-    ):
-        return False
+    """True if profile passes age, gender, and order filters."""
     if not _passes_age_filters(profile, order, criteria):
         return False
     if not _passes_gender_filter(profile, order):
@@ -364,7 +347,8 @@ class OfferDispatchService:
         if order is None:
             return None, [], frozenset(), frozenset()
         confirmed_ids = await self.blogger_repo.list_confirmed_user_ids(
-            session=session
+            session=session,
+            location_geometry_wkt=order.location_geometry,
         )
         if not confirmed_ids:
             return order, [], frozenset(), frozenset()

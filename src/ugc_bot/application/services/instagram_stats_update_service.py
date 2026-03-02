@@ -123,6 +123,16 @@ class InstagramStatsUpdateService:
                 session: object | None,
                 profile_to_save: BloggerProfile = updated_profile,
             ) -> None:
+                # Preserve geometry when entity has None (stats-only update).
+                if profile_to_save.location_geometry is None:
+                    current = await self.blogger_repo.get_by_user_id(
+                        profile_to_save.user_id, session=session
+                    )
+                    if current is not None and current.location_geometry:
+                        profile_to_save = replace(
+                            profile_to_save,
+                            location_geometry=current.location_geometry,
+                        )
                 await self.blogger_repo.save(profile_to_save, session=session)
 
             await with_optional_tx(self.transaction_manager, _save)

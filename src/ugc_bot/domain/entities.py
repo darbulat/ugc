@@ -187,9 +187,8 @@ class Order:
     price_filter_delta: Optional[float] = None
     filter_by_placement: bool = False
     filter_by_barter: bool = False
-    # WKT Point (SRID 4326), e.g. "POINT(37.6 55.75)" (lon lat)
+    # WKT MULTIPOLYGON (SRID 4326) for countries/regions/cities from geography.
     location_geometry: Optional[str] = None
-    radius_km: Optional[float] = None
 
 
 @dataclass(frozen=True)

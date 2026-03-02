@@ -373,11 +373,8 @@ class OrderModel(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     location_geometry: Mapped[Optional[object]] = mapped_column(
-        _GeometryOrText(geometry_type="POINT", srid=4326),
+        _GeometryOrText(geometry_type="MULTIPOLYGON", srid=4326),
         nullable=True,
-    )
-    radius_km: Mapped[Optional[float]] = mapped_column(
-        Numeric(10, 2), nullable=True
     )
 
 

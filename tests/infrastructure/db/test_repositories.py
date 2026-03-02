@@ -12,6 +12,7 @@ from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
     Complaint,
+    InstagramStats,
     InstagramVerificationCode,
     Interaction,
     Order,
@@ -24,6 +25,7 @@ from ugc_bot.domain.entities import (
 )
 from ugc_bot.domain.enums import (
     AudienceGender,
+    BloggerGender,
     ComplaintStatus,
     InteractionStatus,
     MessengerType,
@@ -40,6 +42,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
     ContactPricingModel,
+    InstagramStatsModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     OfferDispatchModel,
@@ -56,6 +59,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBloggerProfileRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
+    SqlAlchemyInstagramStatsRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyNpsRepository,
@@ -403,6 +407,37 @@ async def test_blogger_profile_repository_get() -> None:
     )
     assert profile is not None
     assert profile.instagram_url.endswith("test")
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_repository_get_with_string_blogger_gender() -> (
+    None
+):
+    """get_by_user_id maps blogger_gender string to enum (e.g. from SQLite)."""
+    user_id = UUID("00000000-0000-0000-0000-000000000115")
+    updated_at = datetime.now(timezone.utc)
+    model = SimpleNamespace(
+        user_id=user_id,
+        instagram_url="https://instagram.com/g",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=updated_at,
+        blogger_gender="m",  # DB stores enum value
+    )
+    repo = SqlAlchemyBloggerProfileRepository(
+        session_factory=_session_factory(model)
+    )
+    profile = await repo.get_by_user_id(user_id, session=_repo_session(repo))
+    assert profile is not None
+    assert profile.blogger_gender == BloggerGender.MALE
 
 
 @pytest.mark.asyncio
@@ -1578,6 +1613,188 @@ async def test_blogger_repository_list_confirmed_user_ids() -> None:
 
 
 @pytest.mark.asyncio
+async def test_blogger_repository_list_confirmed_user_ids_with_geometry() -> (
+    None
+):
+    """list_confirmed_user_ids with location_geometry_wkt uses PostGIS."""
+    user_id_1 = UUID("00000000-0000-0000-0000-000000000221")
+    session = FakeAsyncSessionCompat([user_id_1])
+    session.sync_session = SimpleNamespace(
+        get_bind=lambda: SimpleNamespace(
+            dialect=SimpleNamespace(name="postgresql")
+        )
+    )
+    with patch(
+        "ugc_bot.infrastructure.db.repositories.AsyncSession",
+        FakeAsyncSessionCompat,
+    ):
+        repo = SqlAlchemyBloggerProfileRepository(
+            session_factory=lambda: session  # type: ignore[return-value]
+        )
+        result = await repo.list_confirmed_user_ids(
+            session=session,
+            location_geometry_wkt="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+        )
+    assert result == [user_id_1]
+
+
+@pytest.mark.asyncio
+async def test_blogger_repo_list_confirmed_ids_geometry_attr_err_skipped() -> (
+    None
+):
+    """When get_bind raises AttributeError, geometry filter skipped."""
+    user_id_1 = UUID("00000000-0000-0000-0000-000000000222")
+    session = FakeAsyncSessionCompat([user_id_1])
+
+    def get_bind_raises():  # noqa: B902
+        raise AttributeError("no bind")
+
+    session.sync_session = SimpleNamespace(get_bind=get_bind_raises)
+    with patch(
+        "ugc_bot.infrastructure.db.repositories.AsyncSession",
+        FakeAsyncSessionCompat,
+    ):
+        repo = SqlAlchemyBloggerProfileRepository(
+            session_factory=lambda: session  # type: ignore[return-value]
+        )
+        result = await repo.list_confirmed_user_ids(
+            session=session,
+            location_geometry_wkt="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+        )
+    assert result == [user_id_1]
+
+
+@pytest.mark.asyncio
+async def test_blogger_repo_list_confirmed_with_instagram_id_no_filter() -> (
+    None
+):
+    """list_confirmed_with_instagram_id without stats_older_than."""
+    user_id_1 = UUID("00000000-0000-0000-0000-000000000223")
+    model = BloggerProfileModel(
+        user_id=user_id_1,
+        instagram_url="https://instagram.com/u2",
+        confirmed=True,
+        city="moscow",
+        region="moscow",
+        country="russia",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=Decimal("1000"),
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        instagram_user_id="456",
+        instagram_stats_fetched_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyBloggerProfileRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_confirmed_with_instagram_id(
+        limit=10,
+        session=_repo_session(repo),
+    )
+    assert len(result) == 1
+    assert result[0].user_id == user_id_1
+
+
+@pytest.mark.asyncio
+async def test_blogger_repo_list_confirmed_instagram_stats_older_than() -> None:
+    """list_confirmed_with_instagram_id with stats_older_than (outerjoin)."""
+    older_than = datetime.now(timezone.utc) - timedelta(days=1)
+    user_id_1 = UUID("00000000-0000-0000-0000-000000000222")
+    model = BloggerProfileModel(
+        user_id=user_id_1,
+        instagram_url="https://instagram.com/u",
+        confirmed=True,
+        city="moscow",
+        region="moscow",
+        country="russia",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=Decimal("1000"),
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        instagram_user_id="123",
+        instagram_stats_fetched_at=older_than - timedelta(hours=1),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyBloggerProfileRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_confirmed_with_instagram_id(
+        limit=10,
+        stats_older_than=older_than,
+        session=_repo_session(repo),
+    )
+    assert len(result) == 1
+    assert result[0].user_id == user_id_1
+
+
+@pytest.mark.asyncio
+async def test_instagram_stats_repository_get_by_user_id() -> None:
+    """Instagram stats repository get_by_user_id returns entity."""
+    user_id = UUID("00000000-0000-0000-0000-000000000223")
+    model = InstagramStatsModel(
+        user_id=user_id,
+        raw_response={"followers": 100},
+        fetched_at=datetime.now(timezone.utc),
+        followers_count=100,
+        follows_count=50,
+        media_count=10,
+        instagram_username="user",
+        biography="Bio",
+        provider="rapid_api",
+        instagram_id="ig123",
+    )
+    repo = SqlAlchemyInstagramStatsRepository(
+        session_factory=_session_factory(model)
+    )
+    stats = await repo.get_by_user_id(user_id, session=_repo_session(repo))
+    assert stats is not None
+    assert stats.user_id == user_id
+    assert stats.followers_count == 100
+    assert stats.instagram_username == "user"
+
+
+@pytest.mark.asyncio
+async def test_instagram_stats_repository_save() -> None:
+    """Instagram stats repository save merges model."""
+    session = FakeSession(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, sess):  # type: ignore[no-untyped-def]
+            self._session = sess
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyInstagramStatsRepository(
+        session_factory=FakeAsyncSessionMaker(session)
+    )
+    stats = InstagramStats(
+        user_id=UUID("00000000-0000-0000-0000-000000000224"),
+        raw_response={"data": {}},
+        fetched_at=datetime.now(timezone.utc),
+        followers_count=200,
+        follows_count=100,
+        media_count=20,
+        instagram_username="saved",
+        biography="",
+        provider="rapid_api",
+        instagram_id=None,
+    )
+    await repo.save(stats, session=session)
+    assert session.merged is not None
+    assert getattr(session.merged, "user_id", None) == stats.user_id
+
+
+@pytest.mark.asyncio
 async def test_interaction_repository_list_by_order() -> None:
     """list_by_order returns interactions for order."""
     order_id = UUID("00000000-0000-0000-0000-000000000221")
@@ -1631,6 +1848,31 @@ async def test_interaction_repository_save() -> None:
     )
     await repo.save(interaction, session=session)
     assert session.merged is not None
+
+
+@pytest.mark.asyncio
+async def test_interaction_repository_get_by_id() -> None:
+    """get_by_id returns interaction when found."""
+    interaction_id = UUID("00000000-0000-0000-0000-000000000229")
+    model = InteractionModel(
+        interaction_id=interaction_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000230"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000000231"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000232"),
+        status=InteractionStatus.PENDING,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyInteractionRepository(
+        session_factory=_session_factory(model)
+    )
+    interaction = await repo.get_by_id(
+        interaction_id, session=_repo_session(repo)
+    )
+    assert interaction is not None
+    assert interaction.interaction_id == interaction_id
+    assert interaction.status == InteractionStatus.PENDING
 
 
 @pytest.mark.asyncio
@@ -1925,17 +2167,14 @@ def test_geometry_to_wkt_str_returns_str() -> None:
     assert _geometry_to_wkt("POINT(1 2)") == "POINT(1 2)"
 
 
-def test_geometry_to_wkt_wkt_element_returns_wkt_or_none() -> None:
-    """_geometry_to_wkt with WKTElement returns wkt via shape.to_shape."""
-    from unittest.mock import MagicMock, patch
-
+def test_geometry_to_wkt_wkt_element_returns_wkt() -> None:
+    """_geometry_to_wkt with WKTElement returns WKT via shape.to_shape."""
     from geoalchemy2.elements import WKTElement
 
     el = WKTElement("POINT(37.6 55.75)", srid=4326)
-    with patch("ugc_bot.infrastructure.db.repositories.shape") as mock_shape:
-        mock_shape.to_shape.return_value = MagicMock(wkt="POINT (37.6 55.75)")
-        result = _geometry_to_wkt(el)
-    assert result == "POINT (37.6 55.75)"
+    result = _geometry_to_wkt(el)
+    assert result is not None
+    assert "37.6" in result and "55.75" in result
 
 
 def test_geometry_to_wkt_invalid_returns_none() -> None:

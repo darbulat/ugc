@@ -16,6 +16,7 @@ from ugc_bot.admin.app import (
     UserAdmin,
     _get_order_moderation_deps,
     _get_services,
+    _update_order_location_geometry_after_geography_change,
     create_admin_app,
 )
 from ugc_bot.application.services.offer_dispatch_service import (
@@ -1219,6 +1220,129 @@ async def test_order_admin_update_model_activation_exception_handled() -> None:
 
     assert result is not None
     mock_outbox_publisher.publish_order_activation.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_order_admin_geography_change_updates_location_geometry() -> None:
+    """Geography in form data triggers location_geometry update via geocoder."""
+    order_id = UUID("00000000-0000-0000-0000-000000000080")
+    old_order = OrderModel(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000081"),
+        order_type="ugc_only",
+        product_link="https://example.com/product",
+        offer_text="Test",
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=old_order)
+
+    admin = OrderAdmin()
+    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"status": OrderStatus.ACTIVE, "geography": "Москва"}
+
+    with (
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._update_order_location_geometry_after_geography_change",
+            new_callable=AsyncMock,
+        ) as mock_update_geom,
+    ):
+        await admin.update_model(request, str(order_id), data)
+
+    mock_update_geom.assert_called_once_with(order_id, "Москва")
+
+
+@pytest.mark.asyncio
+async def test_update_order_location_geometry_no_container() -> None:
+    """When container is None, function returns without updating."""
+    with patch("ugc_bot.admin.app._get_admin_container", return_value=None):
+        await _update_order_location_geometry_after_geography_change(
+            UUID("00000000-0000-0000-0000-000000000099"), "Москва"
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_order_location_geometry_with_geocoder() -> None:
+    """Resolve geography to WKT and save order with new location_geometry."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import OrderType
+
+    order_id = UUID("00000000-0000-0000-0000-00000000009a")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-00000000009b"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/product",
+        offer_text="Test",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        geography="Казань",
+        location_geometry=None,
+    )
+
+    mock_order_repo = MagicMock()
+    mock_order_repo.get_by_id = AsyncMock(return_value=order)
+    mock_order_repo.save = AsyncMock()
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_outbox_deps = MagicMock(return_value=(None, None))
+    mock_container.build_repos = MagicMock(
+        return_value={"order_repo": mock_order_repo}
+    )
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(MagicMock(), MagicMock(), mock_order_repo),
+        ),
+        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
+    ):
+        mock_geocoder = MagicMock()
+        mock_geocoder.get_multipolygon_wkt_for_queries = AsyncMock(
+            return_value="MULTIPOLYGON(((1 2, 3 4, 5 6, 1 2)))"
+        )
+        mock_geocoder_cls.return_value = mock_geocoder
+
+        await _update_order_location_geometry_after_geography_change(
+            order_id, "Казань"
+        )
+
+    mock_order_repo.get_by_id.assert_called_once_with(
+        order_id, session=mock_session
+    )
+    mock_order_repo.save.assert_called_once()
+    saved_order = mock_order_repo.save.call_args[0][0]
+    assert (
+        saved_order.location_geometry == "MULTIPOLYGON(((1 2, 3 4, 5 6, 1 2)))"
+    )
 
 
 def test_enum_aware_admin_edit_form_data_skip_existing() -> None:

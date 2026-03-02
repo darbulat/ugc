@@ -1,6 +1,7 @@
 """SQLAdmin application setup."""
 
 import asyncio
+import dataclasses
 import logging
 from enum import Enum
 from pathlib import Path
@@ -23,11 +24,16 @@ from ugc_bot.admin.dashboard_service import (
     DelayThresholds,
     PeriodKey,
 )
+from ugc_bot.application.geography import (
+    get_geometry_queries_from_spec,
+    parse_geography,
+)
 from ugc_bot.application.ports import OrderRepository
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.geocoder import NominatimGeocoder
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.referral_income_service import (
@@ -89,6 +95,50 @@ def _get_order_moderation_deps(
     outbox_publisher, _ = container.build_outbox_deps()
     order_repo = container.build_repos()["order_repo"]
     return (content_moderation, outbox_publisher, order_repo)
+
+
+async def _update_order_location_geometry_after_geography_change(
+    order_id: UUID, geography_raw: Any
+) -> None:
+    """Resolve location_geometry from new geography and save order.
+
+    When admin updates order geography, we need to recompute location_geometry
+    via geocoder so that offer dispatch uses the correct geometry filter.
+    """
+    container = _get_admin_container()
+    if not container:
+        return
+    geography_clean = (geography_raw or "").strip() or None
+    new_geometry: str | None = None
+    if geography_clean:
+        geocoder = NominatimGeocoder(enabled=True)
+        spec = parse_geography(geography_clean)
+        if spec is not None:
+            queries = get_geometry_queries_from_spec(spec)
+            if queries:
+                new_geometry = await geocoder.get_multipolygon_wkt_for_queries(
+                    queries
+                )
+    _, _, order_repo = _get_order_moderation_deps(container)
+    tm = container.transaction_manager
+    if not tm:
+        return
+    try:
+        async with tm.transaction() as session:
+            order = await order_repo.get_by_id(order_id, session=session)
+            if order is None:
+                return
+            updated = dataclasses.replace(order, location_geometry=new_geometry)
+            await order_repo.save(updated, session=session)
+        logger.info(
+            "Updated order location_geometry after geography change in admin",
+            extra={"order_id": str(order_id)},
+        )
+    except Exception:
+        logger.exception(
+            "Failed to update order location_geometry after geography change",
+            extra={"order_id": str(order_id)},
+        )
 
 
 T = TypeVar("T")
@@ -1059,6 +1109,11 @@ class OrderAdmin(ModelView, model=OrderModel):
                     )
 
         result = await super().update_model(request, pk, data)
+
+        if "geography" in data:
+            await _update_order_location_geometry_after_geography_change(
+                pk_uuid, data.get("geography")
+            )
 
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
         new_status = obj.status if obj else None

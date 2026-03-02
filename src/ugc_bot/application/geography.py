@@ -1,9 +1,7 @@
 """Geography parsing and matching for order-to-blogger filtering.
 
-Order.geography stores the advertiser's answer to:
-"В каких городах или регионах может находиться креатор? Можно указать
-от 1 до 10 городов, регионы или написать «РФ». Нужно для бартерных
-заказов и доставки продукта."
+Order.geography: free-text place(s) or "whole world". No in-code dictionaries
+for countries/regions; geocoder (Nominatim) is the single source of truth.
 """
 
 import re
@@ -15,13 +13,10 @@ from ugc_bot.application.region_cities_data import (
     REGION_TO_CITIES,
 )
 
-GeographyType = Literal["world", "country", "region", "cities"]
+GeographyType = Literal["world", "places"]
 
 WORLD_PHRASES = frozenset(
     {"весь мир", "мир", "world", "вся планета", "планета", "глобально"}
-)
-COUNTRY_PHRASES = frozenset(
-    {"рф", "россия", "russia", "вся россия", "вся рф", "по всей россии"}
 )
 
 GEO_TOKEN_SPLIT_RE = re.compile(r"[,/]+|\s+и\s+|\n+")
@@ -42,10 +37,11 @@ def normalize_geo_token(value: str) -> str:
 
 def parse_geography(raw: str | None) -> "GeographySpec | None":
     """
-    Parse Order.geography (advertiser: cities/regions/РФ) into a spec.
+    Parse Order.geography into a spec: "world" or list of place tokens.
 
-    Returns None for empty/whitespace input. Otherwise returns GeographySpec
-    with type world | country | region | cities and normalized values.
+    No dictionary lookup. Whole-world phrases -> type world. Everything else
+    -> split by separators, normalize, type places. Geocoder resolves later.
+    Returns None for empty/whitespace input.
     """
     if raw is None:
         return None
@@ -54,25 +50,15 @@ def parse_geography(raw: str | None) -> "GeographySpec | None":
         return None
 
     normalized_full = _normalize_token(text)
-
     if normalized_full in WORLD_PHRASES:
         return GeographySpec(type="world", values=[])
 
-    if normalized_full in COUNTRY_PHRASES:
-        return GeographySpec(type="country", values=[])
-
     parts = GEO_TOKEN_SPLIT_RE.split(text)
     tokens = [_normalize_token(p) for p in parts if _normalize_token(p)]
-
     if not tokens:
         return None
 
-    if len(tokens) == 1:
-        region_key = REGION_ALIASES.get(tokens[0], tokens[0])
-        if region_key in REGION_TO_CITIES:
-            return GeographySpec(type="region", values=[region_key])
-
-    return GeographySpec(type="cities", values=tokens)
+    return GeographySpec(type="places", values=tokens)
 
 
 @dataclass(frozen=True)
@@ -81,58 +67,6 @@ class GeographySpec:
 
     type: GeographyType
     values: list[str]
-
-
-def _parse_city_tokens(city_raw: str | None) -> list[str]:
-    """
-    Split city string into normalized tokens.
-
-    Field city may contain several cities (e.g. comma or " и " separated).
-    Returns list of normalized tokens for matching against order geography.
-    """
-    text = (city_raw or "").strip()
-    if not text:
-        return []
-    return [
-        _normalize_token(p)
-        for p in GEO_TOKEN_SPLIT_RE.split(text)
-        if _normalize_token(p)
-    ]
-
-
-def _matches_cities(blogger_city_tokens: list[str], values: list[str]) -> bool:
-    """
-    Return True if any blogger city matches any value.
-
-    values may contain both city names and region names (from REGION_TO_CITIES).
-    For a region, match if blogger's city is in that region's city list.
-    """
-    for token in blogger_city_tokens:
-        for val in values:
-            region_key = REGION_ALIASES.get(val, val)
-            if region_key in REGION_TO_CITIES:
-                if _matches_region([token], region_key):
-                    return True
-            elif token == val:
-                return True
-    return False
-
-
-def _matches_region(
-    blogger_city_tokens: list[str],
-    region_key: str,
-) -> bool:
-    """Return True if any blogger city matches region or its cities."""
-    canonical_region = REGION_ALIASES.get(region_key, region_key)
-    region_cities = REGION_TO_CITIES.get(canonical_region)
-    if region_cities is None:
-        return False
-    for token in blogger_city_tokens:
-        if token == canonical_region or token in region_cities:
-            return True
-        if REGION_ALIASES.get(token, token) == canonical_region:
-            return True
-    return False
 
 
 def _canonical_to_label(canonical: str) -> str:
@@ -167,6 +101,21 @@ def get_regions_for_city(city: str) -> list[str]:
 def region_key_to_label(region_key: str) -> str:
     """Return display label for region key (e.g. for inline buttons)."""
     return _canonical_to_label(region_key)
+
+
+def get_geometry_queries_from_spec(
+    spec: "GeographySpec",
+) -> list[tuple[str, str | None, str]]:
+    """Build list of (query, region, country) for geocoder to resolve polygons.
+
+    World -> empty list. Places -> each value as (query, None, "") for
+    global Nominatim search (no country hint).
+    """
+    if spec.type == "world":
+        return []
+    if spec.type == "places" and spec.values:
+        return [(val, None, "") for val in spec.values]
+    return []
 
 
 def parse_miniapp_city_id(raw_id: str) -> tuple[str, str | None]:
@@ -287,29 +236,3 @@ def resolve_region_from_city_field(
     if len(regions) > 1:
         return (None, "multiple")
     return (None, "unrecognized")
-
-
-def blogger_matches_geography(blogger_city: str, spec: GeographySpec) -> bool:
-    """
-    Check if blogger city matches order geography.
-
-    blogger_city may contain several cities (comma or " и " separated).
-    If any of them matches Order.geography, returns True.
-    Uses normalization (lower, ё→е). For region type uses REGION_TO_CITIES.
-    """
-    if spec.type == "world" or spec.type == "country":
-        return True
-
-    city_tokens = _parse_city_tokens(blogger_city)
-    if not city_tokens:
-        return False
-
-    if spec.type == "cities":
-        return _matches_cities(city_tokens, spec.values)
-
-    if spec.type == "region":
-        if not spec.values:
-            return False
-        return _matches_region(city_tokens, spec.values[0])
-
-    return False

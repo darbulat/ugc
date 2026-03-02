@@ -1,6 +1,7 @@
 """Tests for offer dispatch service."""
 
 from datetime import date, datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 import pytest
@@ -528,97 +529,6 @@ async def test_dispatch_no_profiles_returns_empty() -> None:
 
     result = await service.dispatch(order.order_id)
     assert result == []
-
-
-@pytest.mark.asyncio
-async def test_dispatch_filters_by_geography_city() -> None:
-    """With order geography 'Казань', only bloggers from Казань are returned."""
-    user_repo = InMemoryUserRepository()
-    blogger_repo = InMemoryBloggerProfileRepository()
-    order_repo = InMemoryOrderRepository()
-    offer_dispatch_repo = InMemoryOfferDispatchRepository()
-    service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=blogger_repo,
-        order_repo=order_repo,
-        offer_dispatch_repo=offer_dispatch_repo,
-        interaction_repo=InMemoryInteractionRepository(),
-    )
-
-    order = Order(
-        order_id=UUID("00000000-0000-0000-0000-000000000670"),
-        advertiser_id=UUID("00000000-0000-0000-0000-000000000671"),
-        order_type=OrderType.UGC_ONLY,
-        product_link="https://example.com",
-        offer_text="Offer",
-        barter_description=None,
-        price=1000.0,
-        bloggers_needed=2,
-        status=OrderStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc),
-        completed_at=None,
-        geography="Казань",
-    )
-    await order_repo.save(order)
-
-    kazan_blogger = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000672"),
-        external_id="kazan",
-        messenger_type=MessengerType.TELEGRAM,
-        username="kazan_blogger",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    moscow_blogger = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000673"),
-        external_id="moscow",
-        messenger_type=MessengerType.TELEGRAM,
-        username="moscow_blogger",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    await user_repo.save(kazan_blogger)
-    await user_repo.save(moscow_blogger)
-    await blogger_repo.save(
-        BloggerProfile(
-            user_id=kazan_blogger.user_id,
-            instagram_url="https://instagram.com/kazan",
-            confirmed=True,
-            city="Казань",
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Казань",
-            price=1000.0,
-            barter=False,
-            work_format=WorkFormat.UGC_ONLY,
-            updated_at=datetime.now(timezone.utc),
-        )
-    )
-    await blogger_repo.save(
-        BloggerProfile(
-            user_id=moscow_blogger.user_id,
-            instagram_url="https://instagram.com/moscow",
-            confirmed=True,
-            city="Москва",
-            topics={"selected": ["tech"]},
-            audience_gender=AudienceGender.ALL,
-            audience_age_min=18,
-            audience_age_max=35,
-            audience_geo="Москва",
-            price=1000.0,
-            barter=False,
-            work_format=WorkFormat.UGC_ONLY,
-            updated_at=datetime.now(timezone.utc),
-        )
-    )
-
-    result = await service.dispatch(order.order_id)
-    assert len(result) == 1
-    assert result[0].user_id == kazan_blogger.user_id
 
 
 @pytest.mark.asyncio
@@ -1547,7 +1457,9 @@ class _BloggerRepoNoneProfile(BloggerProfileRepository):
         self._user_id = user_id
 
     async def list_confirmed_user_ids(
-        self, session: object | None = None
+        self,
+        session: object | None = None,
+        location_geometry_wkt: Optional[str] = None,
     ) -> list[UUID]:
         return [self._user_id]
 
@@ -2863,6 +2775,12 @@ async def test_count_eligible_bloggers_returns_count_for_new_order() -> None:
     )
     count = await service.count_eligible_bloggers(order.order_id)
     assert count == 1
+
+    # With explicit session (branch session is not None)
+    count_with_session = await service.count_eligible_bloggers(
+        order.order_id, session=object()
+    )
+    assert count_with_session == 1
 
 
 @pytest.mark.asyncio

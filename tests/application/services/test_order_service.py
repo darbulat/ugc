@@ -34,7 +34,6 @@ async def test_create_order_success(
 
     assert await order_repo.get_by_id(order.order_id) is not None
     assert order.location_geometry is None
-    assert order.radius_km is None
 
 
 @pytest.mark.asyncio
@@ -46,9 +45,17 @@ async def test_create_order_with_geocoder_sets_location_geometry(
         user_repo, advertiser_repo, status=UserStatus.ACTIVE
     )
 
+    multipolygon_wkt = (
+        "MULTIPOLYGON(((37.6 55.75, 37.7 55.75, 37.7 55.76, 37.6 55.76, "
+        "37.6 55.75)))"
+    )
+
     class FakeGeocoder:
-        async def geocode(self, query, region=None):
+        async def geocode(self, query, region=None, country="Russia"):
             return (55.75, 37.6) if query else None
+
+        async def get_multipolygon_wkt_for_queries(self, queries):
+            return multipolygon_wkt if queries else None
 
     service = OrderService(
         user_repo=user_repo,
@@ -68,7 +75,7 @@ async def test_create_order_with_geocoder_sets_location_geometry(
         bloggers_needed=3,
         geography="Moscow",
     )
-    assert order.location_geometry == "POINT(37.6 55.75)"
+    assert order.location_geometry == multipolygon_wkt
     assert order.geography == "Moscow"
 
 
@@ -82,7 +89,10 @@ async def test_create_order_with_geocoder_returns_none_leaves_geometry_empty(
     )
 
     class FakeGeocoder:
-        async def geocode(self, query, region=None):
+        async def geocode(self, query, region=None, country="Russia"):
+            return None
+
+        async def get_multipolygon_wkt_for_queries(self, queries):
             return None
 
     service = OrderService(
