@@ -83,58 +83,6 @@ class GeographySpec:
     values: list[str]
 
 
-def _parse_city_tokens(city_raw: str | None) -> list[str]:
-    """
-    Split city string into normalized tokens.
-
-    Field city may contain several cities (e.g. comma or " и " separated).
-    Returns list of normalized tokens for matching against order geography.
-    """
-    text = (city_raw or "").strip()
-    if not text:
-        return []
-    return [
-        _normalize_token(p)
-        for p in GEO_TOKEN_SPLIT_RE.split(text)
-        if _normalize_token(p)
-    ]
-
-
-def _matches_cities(blogger_city_tokens: list[str], values: list[str]) -> bool:
-    """
-    Return True if any blogger city matches any value.
-
-    values may contain both city names and region names (from REGION_TO_CITIES).
-    For a region, match if blogger's city is in that region's city list.
-    """
-    for token in blogger_city_tokens:
-        for val in values:
-            region_key = REGION_ALIASES.get(val, val)
-            if region_key in REGION_TO_CITIES:
-                if _matches_region([token], region_key):
-                    return True
-            elif token == val:
-                return True
-    return False
-
-
-def _matches_region(
-    blogger_city_tokens: list[str],
-    region_key: str,
-) -> bool:
-    """Return True if any blogger city matches region or its cities."""
-    canonical_region = REGION_ALIASES.get(region_key, region_key)
-    region_cities = REGION_TO_CITIES.get(canonical_region)
-    if region_cities is None:
-        return False
-    for token in blogger_city_tokens:
-        if token == canonical_region or token in region_cities:
-            return True
-        if REGION_ALIASES.get(token, token) == canonical_region:
-            return True
-    return False
-
-
 def _canonical_to_label(canonical: str) -> str:
     """Convert canonical city id (lowercase) to display label (title case)."""
     if not canonical:
@@ -308,29 +256,3 @@ def resolve_region_from_city_field(
     if len(regions) > 1:
         return (None, "multiple")
     return (None, "unrecognized")
-
-
-def blogger_matches_geography(blogger_city: str, spec: GeographySpec) -> bool:
-    """
-    Check if blogger city matches order geography.
-
-    blogger_city may contain several cities (comma or " и " separated).
-    If any of them matches Order.geography, returns True.
-    Uses normalization (lower, ё→е). For region type uses REGION_TO_CITIES.
-    """
-    if spec.type == "world" or spec.type == "country":
-        return True
-
-    city_tokens = _parse_city_tokens(blogger_city)
-    if not city_tokens:
-        return False
-
-    if spec.type == "cities":
-        return _matches_cities(city_tokens, spec.values)
-
-    if spec.type == "region":
-        if not spec.values:
-            return False
-        return _matches_region(city_tokens, spec.values[0])
-
-    return False
