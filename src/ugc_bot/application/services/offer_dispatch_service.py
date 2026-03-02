@@ -364,7 +364,8 @@ class OfferDispatchService:
         if order is None:
             return None, [], frozenset(), frozenset()
         confirmed_ids = await self.blogger_repo.list_confirmed_user_ids(
-            session=session
+            session=session,
+            location_geometry_wkt=order.location_geometry,
         )
         if not confirmed_ids:
             return order, [], frozenset(), frozenset()

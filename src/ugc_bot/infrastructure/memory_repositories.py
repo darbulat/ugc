@@ -306,10 +306,14 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
         self.profiles[profile.user_id] = profile
 
     async def list_confirmed_user_ids(
-        self, session: object | None = None
+        self,
+        session: object | None = None,
+        location_geometry_wkt: Optional[str] = None,
     ) -> list[UUID]:
-        """List confirmed blogger user ids."""
+        """List confirmed blogger user ids.
 
+        location_geometry_wkt is ignored (no spatial filter in memory).
+        """
         return [
             profile.user_id
             for profile in self.profiles.values()

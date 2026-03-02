@@ -18,6 +18,7 @@ from uuid import UUID
 
 from geoalchemy2 import shape
 from geoalchemy2.elements import WKBElement, WKTElement
+from geoalchemy2.functions import ST_Intersects
 from sqlalchemy import (
     String,
     and_,
@@ -318,18 +319,41 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         await db_session.merge(model)
 
     async def list_confirmed_user_ids(
-        self, session: object | None = None
+        self,
+        session: object | None = None,
+        location_geometry_wkt: Optional[str] = None,
     ) -> list[UUID]:
-        """List confirmed blogger user ids."""
+        """List confirmed blogger user ids.
 
+        When location_geometry_wkt is set (PostgreSQL only), only return
+        bloggers whose location_geometry intersects the order geometry.
+        """
         db_session = _require_session(
             session if isinstance(session, AsyncSession) else None
         )
-        exec_result = await db_session.execute(
-            select(BloggerProfileModel.user_id).where(
-                BloggerProfileModel.confirmed.is_(True)
-            )
+        stmt = select(BloggerProfileModel.user_id).where(
+            BloggerProfileModel.confirmed.is_(True)
         )
+        if location_geometry_wkt and location_geometry_wkt.strip():
+            try:
+                bind = db_session.sync_session.get_bind()
+                if (
+                    getattr(bind, "dialect", None)
+                    and getattr(bind.dialect, "name", None) == "postgresql"
+                ):
+                    order_geom = WKTElement(
+                        location_geometry_wkt.strip(), srid=4326
+                    )
+                    stmt = stmt.where(
+                        BloggerProfileModel.location_geometry.isnot(None),
+                        ST_Intersects(
+                            BloggerProfileModel.location_geometry,
+                            order_geom,
+                        ),
+                    )
+            except AttributeError:
+                pass
+        exec_result = await db_session.execute(stmt)
         results = exec_result.scalars()
         return list(results)
 

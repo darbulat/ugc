@@ -1,6 +1,7 @@
 """Tests for offer dispatch service."""
 
 from datetime import date, datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 import pytest
@@ -1547,7 +1548,9 @@ class _BloggerRepoNoneProfile(BloggerProfileRepository):
         self._user_id = user_id
 
     async def list_confirmed_user_ids(
-        self, session: object | None = None
+        self,
+        session: object | None = None,
+        location_geometry_wkt: Optional[str] = None,
     ) -> list[UUID]:
         return [self._user_id]
 

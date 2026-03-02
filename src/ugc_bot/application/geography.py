@@ -169,6 +169,27 @@ def region_key_to_label(region_key: str) -> str:
     return _canonical_to_label(region_key)
 
 
+def get_geometry_queries_from_spec(
+    spec: "GeographySpec",
+) -> list[tuple[str, str | None, str]]:
+    """Build list of (query, region, country) for geocoder to resolve polygons.
+
+    Returns empty list for world. For country/region/cities returns tuples
+    suitable for Nominatim polygon lookup (query, region_or_None, country).
+    """
+    if spec.type == "world":
+        return []
+    if spec.type == "country":
+        return [("Russia", None, "")]
+    if spec.type == "region" and spec.values:
+        region_key = spec.values[0]
+        query = _canonical_to_label(region_key)
+        return [(query, None, "Russia")] if query else []
+    if spec.type == "cities" and spec.values:
+        return [(val, None, "Russia") for val in spec.values]
+    return []
+
+
 def parse_miniapp_city_id(raw_id: str) -> tuple[str, str | None]:
     """
     Parse Mini App city id into (canonical_city, region_key or None).

@@ -8,8 +8,10 @@ from ugc_bot.application.services.geocoder import (
     NominatimGeocoder,
     _extract_country_from_address,
     _extract_region_from_address,
+    _geojson_geometry_to_wkt,
     wkt_multipoint_from_coords,
     wkt_multipoint_from_lat_lon,
+    wkt_multipolygon_from_polygon_wkts,
     wkt_point_from_lat_lon,
 )
 
@@ -38,6 +40,90 @@ def test_wkt_multipoint_from_coords() -> None:
 def test_wkt_point_from_lat_lon() -> None:
     """WKT POINT uses lon, lat order."""
     assert wkt_point_from_lat_lon(55.75, 37.6) == "POINT(37.6 55.75)"
+
+
+def test_geojson_geometry_to_wkt_polygon() -> None:
+    """_geojson_geometry_to_wkt converts Polygon to WKT."""
+    geojson = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [37.6, 55.75],
+                [37.7, 55.75],
+                [37.7, 55.76],
+                [37.6, 55.76],
+                [37.6, 55.75],
+            ]
+        ],
+    }
+    assert _geojson_geometry_to_wkt(geojson) == (
+        "POLYGON((37.6 55.75, 37.7 55.75, 37.7 55.76, 37.6 55.76, 37.6 55.75))"
+    )
+
+
+def test_geojson_geometry_to_wkt_multipolygon() -> None:
+    """_geojson_geometry_to_wkt converts MultiPolygon to WKT."""
+    geojson = {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [
+                [
+                    [37.6, 55.75],
+                    [37.7, 55.75],
+                    [37.7, 55.76],
+                    [37.6, 55.76],
+                    [37.6, 55.75],
+                ]
+            ],
+        ],
+    }
+    expected = (
+        "MULTIPOLYGON(((37.6 55.75, 37.7 55.75, 37.7 55.76, "
+        "37.6 55.76, 37.6 55.75)))"
+    )
+    assert _geojson_geometry_to_wkt(geojson) == expected
+
+
+def test_geojson_geometry_to_wkt_point_returns_none() -> None:
+    """_geojson_geometry_to_wkt returns None for Point (not supported)."""
+    geom = {"type": "Point", "coordinates": [37.6, 55.75]}
+    assert _geojson_geometry_to_wkt(geom) is None
+
+
+def test_geojson_geometry_to_wkt_invalid_returns_none() -> None:
+    """_geojson_geometry_to_wkt returns None for invalid input."""
+    assert _geojson_geometry_to_wkt(None) is None
+    assert _geojson_geometry_to_wkt({}) is None
+    assert (
+        _geojson_geometry_to_wkt({"type": "Polygon", "coordinates": []}) is None
+    )
+    assert (
+        _geojson_geometry_to_wkt({"type": "Polygon", "coordinates": [[]]})
+        is None
+    )
+
+
+def test_wkt_multipolygon_from_polygon_wkts_empty() -> None:
+    """wkt_multipolygon_from_polygon_wkts returns None for empty list."""
+    assert wkt_multipolygon_from_polygon_wkts([]) is None
+
+
+def test_wkt_multipolygon_from_polygon_wkts_single_polygon() -> None:
+    """wkt_multipolygon_from_polygon_wkts: one POLYGON -> MULTIPOLYGON."""
+    wkt = "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))"
+    assert wkt_multipolygon_from_polygon_wkts([wkt]) == (
+        "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
+    )
+
+
+def test_wkt_multipolygon_from_polygon_wkts_multiple() -> None:
+    """wkt_multipolygon_from_polygon_wkts merges several POLYGONs."""
+    a = "POLYGON((0 0, 1 0, 1 1, 0 0))"
+    b = "POLYGON((2 2, 3 2, 3 3, 2 2))"
+    result = wkt_multipolygon_from_polygon_wkts([a, b])
+    assert result is not None
+    assert "((0 0, 1 0, 1 1, 0 0))" in result
+    assert "((2 2, 3 2, 3 3, 2 2))" in result
 
 
 def test_extract_region_from_address() -> None:
@@ -585,3 +671,181 @@ async def test_geocode_with_details_invalid_lat_lon_returns_none() -> None:
         client_cls.return_value = mock_client
 
         assert await geocoder.geocode_with_details("W") is None
+
+
+@pytest.mark.asyncio
+async def test_search_osm_id_success() -> None:
+    """_search_osm_id returns (type_letter, osm_id) from search response."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [
+            {
+                "lat": "55.75",
+                "lon": "37.6",
+                "osm_type": "relation",
+                "osm_id": 123,
+            }
+        ]
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        result = await geocoder._search_osm_id("Moscow")
+        assert result == ("R", 123)
+
+
+@pytest.mark.asyncio
+async def test_search_osm_id_returns_none_when_disabled() -> None:
+    """_search_osm_id returns None when geocoder disabled."""
+    geocoder = NominatimGeocoder(enabled=False)
+    assert await geocoder._search_osm_id("Moscow") is None
+
+
+@pytest.mark.asyncio
+async def test_get_polygon_wkt_success() -> None:
+    """get_polygon_wkt returns WKT when search and lookup succeed."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        def get_side_effect(*args, **kwargs):
+            params = kwargs.get("params", {})
+            if "osm_ids" in params:
+                return MagicMock(
+                    json=lambda: {
+                        "features": [
+                            {
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": [
+                                        [
+                                            [37.6, 55.75],
+                                            [37.7, 55.75],
+                                            [37.7, 55.76],
+                                            [37.6, 55.76],
+                                            [37.6, 55.75],
+                                        ]
+                                    ],
+                                }
+                            }
+                        ]
+                    },
+                    raise_for_status=MagicMock(),
+                )
+            return MagicMock(
+                json=lambda: [{"osm_type": "relation", "osm_id": 123}],
+                raise_for_status=MagicMock(),
+            )
+
+        mock_client.get = AsyncMock(side_effect=get_side_effect)
+        client_cls.return_value = mock_client
+
+        result = await geocoder.get_polygon_wkt("Moscow")
+        assert result is not None
+        assert "37.6 55.75" in result
+        assert "POLYGON" in result
+
+
+@pytest.mark.asyncio
+async def test_get_polygon_wkt_search_returns_none() -> None:
+    """get_polygon_wkt returns None when search returns no osm_id."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = []
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder.get_polygon_wkt("Unknown") is None
+
+
+@pytest.mark.asyncio
+async def test_get_multipolygon_wkt_for_queries_empty_returns_none() -> None:
+    """get_multipolygon_wkt_for_queries returns None for empty queries."""
+    geocoder = NominatimGeocoder(enabled=True)
+    assert await geocoder.get_multipolygon_wkt_for_queries([]) is None
+
+
+@pytest.mark.asyncio
+async def test_get_multipolygon_wkt_for_queries_skips_empty_query() -> None:
+    """get_multipolygon_wkt_for_queries skips empty query strings."""
+    geocoder = NominatimGeocoder(enabled=True)
+    result = await geocoder.get_multipolygon_wkt_for_queries(
+        [("", None, "Russia"), ("  ", None, "Russia")]
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_multipolygon_wkt_for_queries_combines_polygons() -> None:
+    """get_multipolygon_wkt_for_queries returns combined WKT for two queries."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    call_count = 0
+
+    def get_side_effect(*args, **kwargs):
+        nonlocal call_count
+        params = kwargs.get("params", {})
+        if "osm_ids" in params:
+            call_count += 1
+            coords = (
+                [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+                if call_count == 1
+                else [[[2, 2], [3, 2], [3, 3], [2, 2]]]
+            )
+            return MagicMock(
+                json=lambda: {
+                    "features": [
+                        {"geometry": {"type": "Polygon", "coordinates": coords}}
+                    ]
+                },
+                raise_for_status=MagicMock(),
+            )
+        return MagicMock(
+            json=lambda: [{"osm_type": "relation", "osm_id": call_count}],
+            raise_for_status=MagicMock(),
+        )
+
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = AsyncMock(side_effect=get_side_effect)
+        client_cls.return_value = mock_client
+
+        result = await geocoder.get_multipolygon_wkt_for_queries(
+            [("City1", None, "Russia"), ("City2", None, "Russia")]
+        )
+        assert result is not None
+        assert "MULTIPOLYGON" in result
+        assert "0 0" in result
+        assert "2 2" in result

@@ -7,6 +7,10 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.geography import (
+    get_geometry_queries_from_spec,
+    parse_geography,
+)
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     GeocoderPort,
@@ -14,7 +18,6 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
-from ugc_bot.application.services.geocoder import wkt_point_from_lat_lon
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -151,10 +154,16 @@ class OrderService:
             geography_clean = (geography or "").strip() or None
             order_location_geometry = None
             if geography_clean and self.geocoder:
-                coords = await self.geocoder.geocode(geography_clean)
-                if coords is not None:
-                    lat, lon = coords
-                    order_location_geometry = wkt_point_from_lat_lon(lat, lon)
+                spec = parse_geography(geography_clean)
+                if spec is not None:
+                    queries = get_geometry_queries_from_spec(spec)
+                    if queries:
+                        geocoder = self.geocoder
+                        order_location_geometry = (
+                            await geocoder.get_multipolygon_wkt_for_queries(
+                                queries
+                            )
+                        )
             order = Order(
                 order_id=uuid4(),
                 advertiser_id=advertiser_id,

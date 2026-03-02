@@ -1,8 +1,79 @@
 """Geocoding service: resolve city/address to coordinates (lat, lon)."""
 
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import httpx
+
+
+def _geojson_geometry_to_wkt(geojson: dict[str, Any]) -> Optional[str]:
+    """Convert GeoJSON geometry to WKT (SRID 4326, lon lat order).
+
+    Supports Polygon and MultiPolygon. Returns None for Point or invalid input.
+    """
+    if not isinstance(geojson, dict):
+        return None
+    geom_type = geojson.get("type")
+    coords = geojson.get("coordinates")
+    if not coords:
+        return None
+    if geom_type == "Polygon":
+        # coordinates: [exterior_ring, ...hole_rings]; ring = [[lon, lat], ...]
+        rings = coords
+        if not rings or not rings[0]:
+            return None
+        exterior = rings[0]
+        pts = ", ".join(f"{c[0]} {c[1]}" for c in exterior)
+        return f"POLYGON(({pts}))"
+    if geom_type == "MultiPolygon":
+        # MultiPolygon: list of [exterior_ring, holes]; ring = [[lon, lat], ...]
+        polygons = []
+        for poly in coords:
+            if not poly or not poly[0]:
+                continue
+            exterior = poly[0]
+            pts = ", ".join(f"{c[0]} {c[1]}" for c in exterior)
+            polygons.append(f"(({pts}))")
+        if not polygons:
+            return None
+        return "MULTIPOLYGON(" + ",".join(polygons) + ")"
+    return None
+
+
+def _extract_one_polygon_from_wkt(s: str, parts: List[str]) -> None:
+    """Append polygon part(s) from one WKT string to parts list."""
+    s = s.strip().upper()
+    if s.startswith("POLYGON(("):
+        # POLYGON((x y, ...)) -> need "((x y, ...))" for MULTIPOLYGON
+        # s[9:-2] is "x y, ..." (drop the "))" at end)
+        coords = s[9:-2].strip()
+        if coords:
+            parts.append("((" + coords + "))")
+    elif s.startswith("MULTIPOLYGON("):
+        inner = s[13:-1].strip()
+        depth = 0
+        start = -1
+        for i, ch in enumerate(inner):
+            if ch == "(":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    parts.append(inner[start : i + 1])
+
+
+def wkt_multipolygon_from_polygon_wkts(wkt_list: List[str]) -> Optional[str]:
+    """Merge POLYGON/MULTIPOLYGON WKT strings into one MULTIPOLYGON WKT."""
+    if not wkt_list:
+        return None
+    parts: List[str] = []
+    for wkt in wkt_list:
+        if wkt and wkt.strip():
+            _extract_one_polygon_from_wkt(wkt, parts)
+    if not parts:
+        return None
+    return "MULTIPOLYGON(" + ",".join(parts) + ")"
 
 
 def wkt_multipoint_from_lat_lon(lat: float, lon: float) -> str:
@@ -178,3 +249,121 @@ class NominatimGeocoder:
             region_from_nominatim,
             country_from_nominatim,
         )
+
+    async def _search_osm_id(
+        self,
+        query: str,
+        region: Optional[str] = None,
+        country: str = "Russia",
+    ) -> Optional[Tuple[str, int]]:
+        """Return (osm_type_letter, osm_id) for lookup, or None.
+
+        osm_type_letter is one of N (node), W (way), R (relation).
+        """
+        if not self._enabled or not (query or "").strip():
+            return None
+        q = query.strip()
+        country_str = (country or "Russia").strip()
+        if region and region.strip():
+            q = f"{q}, {region.strip()}, {country_str}"
+        else:
+            q = f"{q}, {country_str}"
+        url = f"{self._base_url}/search"
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                headers={"User-Agent": self._user_agent},
+            ) as client:
+                resp = await client.get(
+                    url,
+                    params={"q": q, "format": "json", "limit": 1},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            return None
+        if not data or not isinstance(data, list):
+            return None
+        first = data[0]
+        if not isinstance(first, dict):
+            return None
+        osm_type = (first.get("osm_type") or "").strip().upper()
+        osm_id_raw = first.get("osm_id")
+        if osm_id_raw is None:
+            return None
+        try:
+            osm_id = int(osm_id_raw)
+        except (TypeError, ValueError):
+            return None
+        type_letter = osm_type[0] if osm_type else "R"
+        if type_letter not in ("N", "W", "R"):
+            type_letter = "R"
+        return (type_letter, osm_id)
+
+    async def get_polygon_wkt(
+        self,
+        query: str,
+        region: Optional[str] = None,
+        country: str = "Russia",
+    ) -> Optional[str]:
+        """Return WKT POLYGON or MULTIPOLYGON for the place, or None.
+
+        Uses Nominatim search + lookup with polygon_geojson=1.
+        """
+        osm = await self._search_osm_id(query, region, country)
+        if not osm:
+            return None
+        type_letter, osm_id = osm
+        osm_ids_param = f"{type_letter}{osm_id}"
+        url = f"{self._base_url}/lookup"
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                headers={"User-Agent": self._user_agent},
+            ) as client:
+                resp = await client.get(
+                    url,
+                    params={
+                        "osm_ids": osm_ids_param,
+                        "polygon_geojson": 1,
+                        "format": "geojson",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        features = data.get("features")
+        if not features or not isinstance(features, list):
+            return None
+        first = features[0]
+        if not isinstance(first, dict):
+            return None
+        geometry = first.get("geometry")
+        if not isinstance(geometry, dict):
+            return None
+        return _geojson_geometry_to_wkt(geometry)
+
+    async def get_multipolygon_wkt_for_queries(
+        self,
+        queries: List[Tuple[str, Optional[str], str]],
+    ) -> Optional[str]:
+        """Resolve multiple (query, region, country) to one MULTIPOLYGON WKT.
+
+        Each tuple is (query, region_or_None, country). Returns combined WKT
+        or None if no polygon could be resolved.
+        """
+        wkt_parts: List[str] = []
+        for query, region, country in queries:
+            if not (query or "").strip():
+                continue
+            wkt = await self.get_polygon_wkt(
+                query.strip(),
+                region,
+                country or "Russia",
+            )
+            if wkt:
+                wkt_parts.append(wkt)
+        return wkt_multipolygon_from_polygon_wkts(wkt_parts)

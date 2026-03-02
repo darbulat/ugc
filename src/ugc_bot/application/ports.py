@@ -129,9 +129,15 @@ class BloggerProfileRepository(ABC):
 
     @abstractmethod
     async def list_confirmed_user_ids(
-        self, session: object | None = None
+        self,
+        session: object | None = None,
+        location_geometry_wkt: Optional[str] = None,
     ) -> list[UUID]:
-        """List user ids with confirmed blogger profiles."""
+        """List user ids with confirmed blogger profiles.
+
+        When location_geometry_wkt is set (MULTIPOLYGON WKT), only return
+        bloggers whose location_geometry intersects the given geometry.
+        """
 
     @abstractmethod
     async def list_confirmed_with_instagram_id(
@@ -796,7 +802,7 @@ class ReferralOrderIncomeRowLoader(Protocol):
 
 
 class GeocoderPort(Protocol):
-    """Port for geocoding city/address to (lat, lon)."""
+    """Port for geocoding city/address to (lat, lon) and resolving polygons."""
 
     async def geocode(
         self,
@@ -805,6 +811,13 @@ class GeocoderPort(Protocol):
         country: str = "Russia",
     ) -> Optional[Tuple[float, float]]:
         """Return (latitude, longitude) for the query, or None if not found."""
+        ...
+
+    async def get_multipolygon_wkt_for_queries(
+        self,
+        queries: List[Tuple[str, Optional[str], str]],
+    ) -> Optional[str]:
+        """Resolve (query, region, country) list to one MULTIPOLYGON WKT."""
         ...
 
 
