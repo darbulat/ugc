@@ -35,6 +35,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
     CALLBACK_PROFILE_MY_PROFILE,
     CALLBACK_PROFILE_REGION_PREFIX,
+    CALLBACK_PROFILE_WORK_ADS,
 )
 from ugc_bot.bot.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
@@ -481,6 +482,35 @@ async def test_show_profile_blogger_keyboard_confirmed(
 
 
 @pytest.mark.asyncio
+async def test_show_profile_advertiser_only_agreement_not_confirmed(
+    user_repo, config, bot_texts_service
+) -> None:
+    """Advertiser-only, no agreement: show agreement, set advertiser state."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000816"),
+        external_id="1",
+        username="adv",
+        agreement_confirmed_at=None,
+    )
+    message = FakeMessage(user=FakeUser(1))
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    state = FakeFSMContext()
+    await show_profile(
+        message,
+        service,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
+    assert message.answers
+    assert "согласи" in str(message.answers[0]).lower()
+    assert state.state == _ADVERTISER_AGREEMENTS_STATE
+
+
+@pytest.mark.asyncio
 async def test_show_profile_advertiser_keyboard(
     user_repo, config, bot_texts_service
 ) -> None:
@@ -877,6 +907,45 @@ async def test_handle_profile_my_profile_callback_shows_agreement(
 
 
 @pytest.mark.asyncio
+async def test_handle_profile_my_profile_callback_advertiser_only_confirmed(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
+) -> None:
+    """My profile: only advertiser, agreement confirmed -> advertiser menu."""
+    user = await create_test_user(
+        user_repo,
+        external_id="75",
+        username="adv_only",
+        agreement_confirmed_at=datetime.now(timezone.utc),
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MY_PROFILE,
+        user=FakeUser(75),
+        message=FakeMessage(user=FakeUser(75)),
+    )
+    state = FakeFSMContext()
+    await handle_profile_my_profile_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) >= 1
+    assert any(
+        "Создать заказ" in s["text"] or "профиль" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
 async def test_handle_profile_edit_type_callback_blogger(
     user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
@@ -1084,6 +1153,97 @@ async def test_handle_profile_edit_choice_callback_blogger_gone_clears_state(
         event_adapter=adapter,
     )
     assert state.cleared
+
+
+@pytest.mark.asyncio
+async def test_edit_choice_callback_advertiser_type_returns_early(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
+) -> None:
+    """Edit choice for advertiser type returns early, no blogger update."""
+    user = await create_test_user(
+        user_repo, external_id="77c", username="choice"
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="77c",
+        edit_profile_type="advertiser",
+        editing_field="audience_gender",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AUDIENCE_F,
+        user=FakeUser(77),
+        message=FakeMessage(user=FakeUser(77)),
+    )
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_choice_callback_work_format_success(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
+) -> None:
+    """Edit choice callback for work_format updates profile via choice_map."""
+    user = await create_test_user(user_repo, external_id="77d", username="wf")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="77d",
+        edit_profile_type="blogger",
+        editing_field="work_format",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_WORK_ADS,
+        user=FakeUser(77),
+        message=FakeMessage(user=FakeUser(77)),
+    )
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "обновлён" in s["text"] or "профиль" in s["text"].lower()
+        for s in client.sent_text
+    )
 
 
 @pytest.mark.asyncio
@@ -3424,6 +3584,49 @@ async def test_edit_profile_enter_value_advertiser_phone_invalid(
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
     assert "цифр" in text or "корректный" in text.lower()
+    assert not adv_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_company_activity_too_long(
+    user_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Advertiser company_activity over max length gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084c"),
+        external_id="62",
+        username="u",
+    )
+    message = FakeMessage(text="A" * 501, user=FakeUser(62))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "company_activity",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "62",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "Максимум" in text and "символ" in text.lower()
     assert not adv_service.update_calls
 
 

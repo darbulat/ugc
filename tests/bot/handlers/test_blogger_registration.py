@@ -23,8 +23,12 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.blogger_registration import (
     BloggerRegistrationStates,
+    _audience_gender_from_callback,
+    _blogger_gender_from_callback,
+    _canonical_city_from_text,
     _parse_age_range,
     _start_registration_flow,
+    _work_format_from_callback,
     choose_creator_role,
     handle_age,
     handle_agreements,
@@ -53,12 +57,16 @@ from ugc_bot.bot.handlers.blogger_registration import (
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_BLOGGER_AGE_18_24,
     CALLBACK_BLOGGER_AGREE,
+    CALLBACK_BLOGGER_AUDIENCE_A,
+    CALLBACK_BLOGGER_AUDIENCE_F,
     CALLBACK_BLOGGER_AUDIENCE_M,
     CALLBACK_BLOGGER_BARTER_N,
     CALLBACK_BLOGGER_BARTER_Y,
+    CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
     CALLBACK_BLOGGER_REGION_PREFIX,
     CALLBACK_BLOGGER_WORK_ADS,
+    CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
 )
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
@@ -195,6 +203,65 @@ async def test_start_registration_paused_user(
 
     assert message.answers
     assert "паузе" in message.answers[0]
+
+
+def test_canonical_city_from_text_returns_canonical() -> None:
+    """_canonical_city_from_text returns city id for known canonical city."""
+    assert _canonical_city_from_text("Москва") == "москва"
+    assert _canonical_city_from_text("  Казань  ") == "казань"
+
+
+def test_canonical_city_from_text_returns_none() -> None:
+    """_canonical_city_from_text returns None for non-city or empty."""
+    assert _canonical_city_from_text("") is None
+    assert _canonical_city_from_text("  ") is None
+    assert _canonical_city_from_text("НесуществующийГород") is None
+
+
+def test_blogger_gender_from_callback() -> None:
+    """_blogger_gender_from_callback maps callback data to enum or None."""
+    assert (
+        _blogger_gender_from_callback(CALLBACK_BLOGGER_GENDER_M)
+        == BloggerGender.MALE
+    )
+    assert (
+        _blogger_gender_from_callback(CALLBACK_BLOGGER_GENDER_F)
+        == BloggerGender.FEMALE
+    )
+    assert _blogger_gender_from_callback("") is None
+    assert _blogger_gender_from_callback("blogger:gender:X") is None
+
+
+def test_audience_gender_from_callback() -> None:
+    """_audience_gender_from_callback maps callback data to enum or None."""
+    assert (
+        _audience_gender_from_callback(CALLBACK_BLOGGER_AUDIENCE_F)
+        == AudienceGender.FEMALE
+    )
+    assert (
+        _audience_gender_from_callback(CALLBACK_BLOGGER_AUDIENCE_M)
+        == AudienceGender.MALE
+    )
+    assert (
+        _audience_gender_from_callback(CALLBACK_BLOGGER_AUDIENCE_A)
+        == AudienceGender.ALL
+    )
+    assert _audience_gender_from_callback("") is None
+    assert _audience_gender_from_callback("blogger:aud:X") is None
+
+
+def test_work_format_from_callback() -> None:
+    """_work_format_from_callback maps callback data to enum or None."""
+    assert (
+        _work_format_from_callback(CALLBACK_BLOGGER_WORK_ADS)
+        == WorkFormat.ADS_IN_ACCOUNT
+    )
+    assert (
+        _work_format_from_callback(CALLBACK_BLOGGER_WORK_UGC)
+        == WorkFormat.UGC_ONLY
+    )
+    assert _work_format_from_callback("") is None
+    assert _work_format_from_callback("blogger:work:other") is None
 
 
 @pytest.mark.asyncio

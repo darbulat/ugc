@@ -885,6 +885,33 @@ async def test_handle_nps_comment_session_expired(
 
 
 @pytest.mark.asyncio
+async def test_handle_nps_comment_from_user_none(
+    user_repo, interaction_repo, nps_service
+) -> None:
+    """NPS comment when message has no from_user returns without error."""
+
+    from ugc_bot.bot.handlers.feedback import handle_nps_comment
+
+    user_service = UserRoleService(user_repo=user_repo)
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000051"),
+        external_id="1051",
+        username="blogger",
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "nps_user_id": "00000000-0000-0000-0000-000000000051",
+        "nps_score": 4,
+    }
+    msg = FakeMessage(text="Comment", user=FakeUser(1051))
+    msg.from_user = None
+    await handle_nps_comment(msg, state, user_service, nps_service)
+
+    assert not msg.answers
+
+
+@pytest.mark.asyncio
 async def test_handle_nps_comment_invalid_user_id(
     user_repo, interaction_repo, nps_service
 ) -> None:
@@ -2190,6 +2217,119 @@ async def test_handle_no_deal_other_text_user_not_in_repo_clears_state(
 
     assert state.cleared is True
     assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_from_user_none(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+) -> None:
+    """handle_issue_description with no from_user returns without error."""
+
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id="00000000-0000-0000-0000-000000000999",
+        feedback_kind="adv",
+    )
+    message = FakeMessage(text="text", user=FakeUser(1))
+    message.from_user = None
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+
+    assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_send_empty_parts_asks_description(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+) -> None:
+    """Send button with no description/photos shows add description message."""
+
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        _ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001134"),
+        external_id="1134",
+        username="adv",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001135"),
+        external_id="1135",
+        username="blogger",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001136"),
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001137"),
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(interaction.interaction_id),
+        feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1134))
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+    )
+
+    assert any(
+        "описание" in str(a).lower() or "фото" in str(a).lower()
+        for a in message.answers
+    )
 
 
 @pytest.mark.asyncio
