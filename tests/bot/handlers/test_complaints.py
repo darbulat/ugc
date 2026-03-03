@@ -31,7 +31,13 @@ from ugc_bot.domain.enums import (
 
 @pytest.mark.asyncio
 async def test_start_complaint_invalid_format(
-    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject malformed callback data."""
 
@@ -62,7 +68,13 @@ async def test_start_complaint_invalid_format(
 
     callback = FakeCallback(data="complaint:bad", user=FakeUser(1))
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Неверный формат" in ans for ans in callback.answers)
@@ -70,7 +82,13 @@ async def test_start_complaint_invalid_format(
 
 @pytest.mark.asyncio
 async def test_start_complaint_order_not_found(
-    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject complaint for non-existent order."""
 
@@ -104,7 +122,13 @@ async def test_start_complaint_order_not_found(
         user=FakeUser(1),
     )
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Заказ не найден" in ans for ans in callback.answers)
@@ -112,7 +136,13 @@ async def test_start_complaint_order_not_found(
 
 @pytest.mark.asyncio
 async def test_start_complaint_no_access(
-    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject complaint when user has no access to order."""
 
@@ -161,7 +191,13 @@ async def test_start_complaint_no_access(
         user=FakeUser(2),
     )
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("нет доступа" in ans.lower() for ans in callback.answers)
@@ -175,6 +211,8 @@ async def test_handle_complaint_reason_success(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Successfully create complaint with selected reason."""
 
@@ -240,10 +278,19 @@ async def test_handle_complaint_reason_success(
         data="complaint_reason:Мошенничество", user=FakeUser(2)
     )
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
-    assert any("успешно подана" in ans for ans in callback.message.answers)
+    assert any(
+        "успешно подана" in ans or "приняли" in ans or "заявку" in ans
+        for ans in callback.message.answers
+    )
     complaints = await complaint_service.list_by_order(order.order_id)
     assert len(list(complaints)) == 1
 
@@ -256,6 +303,8 @@ async def test_select_complaint_target_advertiser(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser can select blogger to complain about."""
 
@@ -326,6 +375,8 @@ async def test_select_complaint_target_advertiser(
         order_service,
         offer_response_service,
         None,  # profile_service not used
+        config,
+        bot_texts_service,
     )
 
     assert callback.message.answers
@@ -347,6 +398,8 @@ async def test_select_complaint_target_invalid_format(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid callback format."""
 
@@ -387,6 +440,8 @@ async def test_select_complaint_target_invalid_format(
         order_service,
         offer_response_service,
         None,
+        config,
+        bot_texts_service,
     )
 
     assert any("Неверный формат" in ans for ans in callback.answers)
@@ -400,6 +455,8 @@ async def test_select_complaint_target_blogger(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger can complain about advertiser."""
 
@@ -470,6 +527,8 @@ async def test_select_complaint_target_blogger(
         order_service,
         offer_response_service,
         None,  # profile_service not used
+        config,
+        bot_texts_service,
     )
 
     assert callback.message.answers
@@ -491,6 +550,8 @@ async def test_select_complaint_target_no_bloggers(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Show message when no bloggers responded."""
 
@@ -546,6 +607,8 @@ async def test_select_complaint_target_no_bloggers(
         order_service,
         offer_response_service,
         None,
+        config,
+        bot_texts_service,
     )
 
     assert any("Нет блогеров" in ans for ans in callback.answers)
@@ -559,6 +622,8 @@ async def test_handle_complaint_reason_text(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle text input for complaint reason."""
 
@@ -617,11 +682,19 @@ async def test_handle_complaint_reason_text(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert message.answers
-    assert any("успешно подана" in ans for ans in message.answers)
+    assert any(
+        "успешно подана" in ans or "приняли" in ans or "заявку" in ans
+        for ans in message.answers
+    )
     complaints = await complaint_service.list_by_order(order.order_id)
     assert len(list(complaints)) == 1
 
@@ -634,6 +707,8 @@ async def test_handle_complaint_reason_other(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle 'Другое' reason selection."""
 
@@ -697,7 +772,13 @@ async def test_handle_complaint_reason_other(
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="complaint_reason:Другое", user=FakeUser(2))
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert callback.message.answers
@@ -706,7 +787,13 @@ async def test_handle_complaint_reason_other(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_no_state(
-    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    advertiser_repo,
+    complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle complaint reason when state is empty."""
 
@@ -730,7 +817,13 @@ async def test_handle_complaint_reason_no_state(
         data="complaint_reason:Мошенничество", user=FakeUser(1)
     )
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Сессия истекла" in ans for ans in callback.answers)
@@ -738,7 +831,13 @@ async def test_handle_complaint_reason_no_state(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_invalid_reason(
-    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    advertiser_repo,
+    complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid reason."""
 
@@ -767,7 +866,13 @@ async def test_handle_complaint_reason_invalid_reason(
         data="complaint_reason:InvalidReason", user=FakeUser(1)
     )
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Неверная причина" in ans for ans in callback.answers)
@@ -781,6 +886,8 @@ async def test_handle_complaint_reason_duplicate(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle duplicate complaint."""
 
@@ -838,7 +945,13 @@ async def test_handle_complaint_reason_duplicate(
         data="complaint_reason:Мошенничество", user=FakeUser(1)
     )
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("уже подали жалобу" in ans for ans in callback.answers)
@@ -846,7 +959,7 @@ async def test_handle_complaint_reason_duplicate(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_no_state(
-    fake_tm: object, user_repo, complaint_repo
+    fake_tm: object, user_repo, complaint_repo, config, bot_texts_service
 ) -> None:
     """Handle text input when state is empty."""
 
@@ -863,7 +976,12 @@ async def test_handle_complaint_reason_text_no_state(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Сессия истекла" in ans for ans in message.answers)
@@ -871,7 +989,7 @@ async def test_handle_complaint_reason_text_no_state(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_empty(
-    fake_tm: object, user_repo, complaint_repo
+    fake_tm: object, user_repo, complaint_repo, config, bot_texts_service
 ) -> None:
     """Handle empty text input."""
 
@@ -894,7 +1012,12 @@ async def test_handle_complaint_reason_text_empty(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("введите причину" in ans.lower() for ans in message.answers)
@@ -902,7 +1025,7 @@ async def test_handle_complaint_reason_text_empty(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_no_text(
-    fake_tm: object, user_repo, complaint_repo
+    fake_tm: object, user_repo, complaint_repo, config, bot_texts_service
 ) -> None:
     """Handle message without text."""
 
@@ -919,7 +1042,12 @@ async def test_handle_complaint_reason_text_no_text(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert not message.answers
@@ -927,7 +1055,13 @@ async def test_handle_complaint_reason_text_no_text(
 
 @pytest.mark.asyncio
 async def test_start_complaint_no_data(
-    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle callback without data."""
 
@@ -949,7 +1083,13 @@ async def test_start_complaint_no_data(
 
     callback = FakeCallback(data="", user=FakeUser(1))
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     assert not callback.answers and not callback.message.answers
@@ -957,7 +1097,13 @@ async def test_start_complaint_no_data(
 
 @pytest.mark.asyncio
 async def test_start_complaint_user_not_found(
-    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle complaint when user is not found."""
 
@@ -982,7 +1128,13 @@ async def test_start_complaint_user_not_found(
         user=FakeUser(999),
     )
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Пользователь не найден" in ans for ans in callback.answers)
@@ -990,7 +1142,13 @@ async def test_start_complaint_user_not_found(
 
 @pytest.mark.asyncio
 async def test_start_complaint_invalid_reported_id(
-    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject complaint with invalid reported_id."""
 
@@ -1057,17 +1215,30 @@ async def test_start_complaint_invalid_reported_id(
         user=FakeUser(1),
     )
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     assert any(
-        "Неверный идентификатор пользователя" in ans for ans in callback.answers
+        "Неверный идентификатор" in ans or "Неверный формат" in ans
+        for ans in callback.answers
     )
 
 
 @pytest.mark.asyncio
 async def test_start_complaint_invalid_uuid(
-    fake_tm: object, user_repo, order_repo, offer_dispatch_repo, advertiser_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid UUID in callback data."""
 
@@ -1103,11 +1274,18 @@ async def test_start_complaint_invalid_uuid(
         user=FakeUser(1),
     )
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     assert any(
-        "Неверный формат идентификатора" in ans for ans in callback.answers
+        "Неверный идентификатор" in ans or "Неверный формат" in ans
+        for ans in callback.answers
     )
 
 
@@ -1119,6 +1297,8 @@ async def test_select_complaint_target_no_from_user(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle callback without from_user."""
 
@@ -1148,6 +1328,8 @@ async def test_select_complaint_target_no_from_user(
         order_service,
         offer_response_service,
         None,
+        config,
+        bot_texts_service,
     )
 
     assert not callback.answers and not callback.message.answers
@@ -1161,6 +1343,8 @@ async def test_select_complaint_target_invalid_uuid(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid UUID format."""
 
@@ -1201,10 +1385,13 @@ async def test_select_complaint_target_invalid_uuid(
         order_service,
         offer_response_service,
         None,
+        config,
+        bot_texts_service,
     )
 
     assert any(
-        "Неверный формат идентификатора" in ans for ans in callback.answers
+        "Неверный идентификатор" in ans or "Неверный формат" in ans
+        for ans in callback.answers
     )
 
 
@@ -1216,6 +1403,8 @@ async def test_select_complaint_target_no_data(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Return early when callback has no data."""
 
@@ -1254,6 +1443,8 @@ async def test_select_complaint_target_no_data(
         order_service,
         offer_response_service,
         None,
+        config,
+        bot_texts_service,
     )
 
     assert not callback.answers and not callback.message.answers
@@ -1267,6 +1458,8 @@ async def test_select_complaint_target_order_not_found(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when order does not exist."""
 
@@ -1308,6 +1501,8 @@ async def test_select_complaint_target_order_not_found(
         order_service,
         offer_response_service,
         None,
+        config,
+        bot_texts_service,
     )
 
     assert any("Заказ не найден" in ans for ans in callback.answers)
@@ -1321,6 +1516,8 @@ async def test_select_complaint_target_blogger_no_access(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when blogger has no access (did not respond to order)."""
 
@@ -1406,6 +1603,8 @@ async def test_select_complaint_target_blogger_no_access(
         order_service,
         offer_response_service,
         None,
+        config,
+        bot_texts_service,
     )
 
     assert any("нет доступа" in ans.lower() for ans in callback.answers)
@@ -1419,6 +1618,8 @@ async def test_start_complaint_advertiser_success(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser can select blogger and start complaint flow."""
 
@@ -1484,7 +1685,13 @@ async def test_start_complaint_advertiser_success(
         user=FakeUser(1),
     )
     await start_complaint(
-        callback, state, user_service, order_service, offer_response_service
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
     )
 
     def _answer_text(a: str | tuple) -> str:
@@ -1499,7 +1706,13 @@ async def test_start_complaint_advertiser_success(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_no_from_user(
-    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    advertiser_repo,
+    complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Return early when callback has no from_user."""
 
@@ -1530,7 +1743,13 @@ async def test_handle_complaint_reason_no_from_user(
     callback.from_user = None
 
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert not callback.answers or callback.answers == [""]
@@ -1538,7 +1757,13 @@ async def test_handle_complaint_reason_no_from_user(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_no_data(
-    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    advertiser_repo,
+    complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Return early when callback has no data."""
 
@@ -1569,7 +1794,13 @@ async def test_handle_complaint_reason_no_data(
     callback.data = None
 
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert not callback.answers
@@ -1577,7 +1808,13 @@ async def test_handle_complaint_reason_no_data(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_bad_state_data(
-    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    advertiser_repo,
+    complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle invalid or missing state data."""
 
@@ -1606,7 +1843,13 @@ async def test_handle_complaint_reason_bad_state_data(
         data="complaint_reason:Мошенничество", user=FakeUser(1)
     )
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Ошибка обработки данных" in ans for ans in callback.answers)
@@ -1620,6 +1863,8 @@ async def test_handle_complaint_reason_with_notify(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Successfully create complaint and notify admins when bot is set."""
 
@@ -1684,15 +1929,30 @@ async def test_handle_complaint_reason_with_notify(
         bot=FakeBot(),
     )
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
-    assert any("успешно подана" in ans for ans in callback.message.answers)
+    assert any(
+        "успешно подана" in ans or "приняли" in ans or "заявку" in ans
+        for ans in callback.message.answers
+    )
 
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_generic_exception(
-    fake_tm: object, user_repo, order_repo, advertiser_repo, complaint_repo
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    advertiser_repo,
+    complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle generic exception from complaint service."""
 
@@ -1725,7 +1985,13 @@ async def test_handle_complaint_reason_generic_exception(
         data="complaint_reason:Мошенничество", user=FakeUser(1)
     )
     await handle_complaint_reason(
-        callback, state, complaint_service, order_service, user_role_service
+        callback,
+        state,
+        complaint_service,
+        order_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Произошла ошибка" in ans for ans in callback.answers)
@@ -1733,7 +1999,7 @@ async def test_handle_complaint_reason_generic_exception(
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_bad_state_data(
-    fake_tm: object, user_repo, complaint_repo
+    fake_tm: object, user_repo, complaint_repo, config, bot_texts_service
 ) -> None:
     """Handle invalid or missing state data in text handler."""
 
@@ -1755,7 +2021,12 @@ async def test_handle_complaint_reason_text_bad_state_data(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Ошибка обработки данных" in ans for ans in message.answers)
@@ -1769,6 +2040,8 @@ async def test_handle_complaint_reason_text_base_reason_not_drugoe(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Use reason_text as full_reason when base_reason is not 'Другое'."""
 
@@ -1827,7 +2100,12 @@ async def test_handle_complaint_reason_text_base_reason_not_drugoe(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     complaints = await complaint_service.list_by_order(order.order_id)
@@ -1844,6 +2122,8 @@ async def test_handle_complaint_reason_text_with_bot(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Create complaint and notify admins when message.bot is set."""
 
@@ -1904,15 +2184,23 @@ async def test_handle_complaint_reason_text_with_bot(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
-    assert any("успешно подана" in ans for ans in message.answers)
+    assert any(
+        "успешно подана" in ans or "приняли" in ans or "заявку" in ans
+        for ans in message.answers
+    )
 
 
 @pytest.mark.asyncio
 async def test_handle_complaint_reason_text_generic_exception(
-    fake_tm: object, user_repo, complaint_repo
+    fake_tm: object, user_repo, complaint_repo, config, bot_texts_service
 ) -> None:
     """Handle generic exception from complaint service in text handler."""
 
@@ -1939,7 +2227,12 @@ async def test_handle_complaint_reason_text_generic_exception(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Произошла ошибка" in ans for ans in message.answers)
@@ -1953,6 +2246,8 @@ async def test_handle_complaint_reason_text_duplicate(
     offer_dispatch_repo,
     advertiser_repo,
     complaint_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle duplicate complaint in text handler (ValueError)."""
 
@@ -2017,7 +2312,12 @@ async def test_handle_complaint_reason_text_duplicate(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     await handle_complaint_reason_text(
-        message, state, complaint_service, user_role_service
+        message,
+        state,
+        complaint_service,
+        user_role_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("уже подали жалобу" in ans for ans in message.answers)

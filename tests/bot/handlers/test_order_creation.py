@@ -386,6 +386,7 @@ async def test_order_creation_flow_new_advertiser(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
     assert bot.invoices
@@ -490,6 +491,7 @@ async def test_order_creation_flow_with_barter(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
     assert bot.invoices
@@ -842,6 +844,7 @@ async def test_order_creation_flow_coop_both(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
 
@@ -967,7 +970,7 @@ async def test_handle_deadlines_invalid() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_geography_empty(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Reject empty geography."""
 
@@ -998,7 +1001,12 @@ async def test_handle_geography_empty(
     message = FakeMessage(text="   ", user=FakeUser(1))
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert message.answers
@@ -1009,7 +1017,7 @@ async def test_handle_geography_empty(
 
 @pytest.mark.asyncio
 async def test_handle_geography_invalid_order_type(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Handle invalid order_type in state (fallback to UGC_ONLY)."""
 
@@ -1052,7 +1060,12 @@ async def test_handle_geography_invalid_order_type(
     )
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert len(order_repo.orders) == 1
@@ -1151,6 +1164,7 @@ async def test_order_creation_flow_ugc_plus_placement(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
 
@@ -1163,7 +1177,7 @@ async def test_order_creation_flow_ugc_plus_placement(
 
 @pytest.mark.asyncio
 async def test_handle_geography_session_expired(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Show session expired when user_id is missing from state."""
 
@@ -1193,7 +1207,12 @@ async def test_handle_geography_session_expired(
     message = FakeMessage(text="Москва", user=FakeUser(1))
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert message.answers
@@ -1202,7 +1221,7 @@ async def test_handle_geography_session_expired(
 
 @pytest.mark.asyncio
 async def test_handle_geography_contact_price_not_configured(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Show error when contact pricing is not configured for bloggers count."""
 
@@ -1240,7 +1259,12 @@ async def test_handle_geography_contact_price_not_configured(
     message = FakeMessage(text="Москва", user=FakeUser(14, "adv", "Adv"))
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert len(order_repo.orders) == 1

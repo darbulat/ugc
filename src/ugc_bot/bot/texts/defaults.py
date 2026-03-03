@@ -294,6 +294,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "msg_no_access_order": "У вас нет доступа к этому заказу.",
         "msg_choose_complaint_reason": "Выберите причину жалобы:",
+        "msg_complaint_no_bloggers": "Нет блогеров для жалобы.",
         "msg_invalid_user_id": "Неверный идентификатор пользователя.",
         "msg_invalid_reason": "Неверная причина.",
         "msg_data_error": "Ошибка обработки данных.",
@@ -302,6 +303,60 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_enter_complaint_reason": "Пожалуйста, введите причину жалобы.",
         # Messages: offer responses
         "msg_order_closed": "Заказ уже закрыт.",
+        "msg_order_closed_full": (
+            "❗ Заказ уже закрыт\n\n"
+            "Спасибо за отклик — все креаторы по этому заказу уже подобраны.\n\n"
+            "Мы обязательно пришлём новые заказы, как только они появятся.\n\n"
+            "Следите за уведомлениями в боте 🙌"
+        ),
+        "msg_blogger_after_response_what_next": (
+            "⏳ Что дальше\n\n"
+            "💬 Ожидайте сообщение от заказчика — он получил ссылку на Instagram "
+            "и напишет первым\n"
+            "📩 Проверьте запросы в Direct\n"
+            "👀 Для демонстрации используйте превью с водяным знаком\n"
+            "💸 Получите оплату после согласования превью\n"
+            "🎥 Финальный UGC-ролик отправляйте только после оплаты\n"
+            "❗ Если заказчик не меняет условия оффера, отказ после отклика\n"
+            " может привести к ограничению аккаунта\n"
+            "🤝 Платформа не участвует в переговорах и оплате."
+        ),
+        "msg_offer_accepted": "Отклик принят! Ожидайте связи от рекламодателя.",
+        "msg_offer_order_filled": (
+            "Заказ уже укомплектован. Мы сохранили ваш отклик — "
+            "если кто-то откажется, с вами могут связаться."
+        ),
+        "msg_advertiser_after_payment_success": (
+            "Оплата прошла успешно ✅\n\nПодбор креаторов по вашему заказу активирован."
+        ),
+        "msg_advertiser_after_payment_what_next": (
+            "🔄 **Что дальше**\n\n"
+            "📩 Креаторы получают ваш оффер\n"
+            "🔗 Вы будете получать отклики со ссылками на их профили\n"
+            "💬 Вы самостоятельно связываетесь с выбранными креаторами"
+        ),
+        "msg_advertiser_after_payment_important": (
+            "⚠️ **Важно**\n\n"
+            "🧷 Условия оффера не рекомендуется изменять после публикации\n"
+            "🔄 Если условия меняются, креатор может отказаться от сотрудничества\n"
+            "🤝 Платформа не является стороной сделки\n"
+            "💸 Оплата креаторам производится вами напрямую\n"
+            "👀 Оплачивайте после просмотра превью с водяным знаком\n"
+            "🚫 Платформа не несёт ответственности за креаторов"
+        ),
+        "msg_phone_request": (
+            "Укажите номер телефона для связи по заказу.\n"
+            "Нажмите кнопку ниже или введите номер вручную "
+            "(пример: 89001110777)."
+        ),
+        "msg_instagram_confirmed": (
+            "Instagram подтверждён ✅. Бренды могут отправлять предложения."
+        ),
+        "msg_instagram_mismatch": (
+            "Указанный в профиле Instagram не совпадает с аккаунтом, "
+            "с которого вы отправили код. Откройте «Мой профиль», "
+            "отредактируйте профиль блогера и укажите корректный Instagram."
+        ),
         "msg_too_many_requests": "Слишком много запросов. Попробуйте позже.",
         "msg_invalid_order_id_short": "Неверный идентификатор заказа.",
         # Messages: admin / moderation
@@ -601,6 +656,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_choose_blogger_complain": "Choose blogger to complain about:",
         "msg_no_access_order": "You don't have access to this order.",
         "msg_choose_complaint_reason": "Choose complaint reason:",
+        "msg_complaint_no_bloggers": "No bloggers to complain about.",
         "msg_invalid_user_id": "Invalid user ID.",
         "msg_invalid_reason": "Invalid reason.",
         "msg_data_error": "Data processing error.",
@@ -608,6 +664,58 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_error_try_later": "An error occurred. Try again later.",
         "msg_enter_complaint_reason": "Please enter the complaint reason.",
         "msg_order_closed": "Order already closed.",
+        "msg_order_closed_full": (
+            "❗ Order already closed\n\n"
+            "Thanks for responding — all creators for this order have been matched.\n\n"
+            "We'll send new orders as soon as they appear.\n\n"
+            "Watch for notifications in the bot 🙌"
+        ),
+        "msg_blogger_after_response_what_next": (
+            "⏳ What's next\n\n"
+            "💬 Wait for the advertiser to message — they have your Instagram link "
+            "and will reach out first\n"
+            "📩 Check Direct requests\n"
+            "👀 Use watermarked previews for demos\n"
+            "💸 Get payment after approving the preview\n"
+            "🎥 Send final UGC only after payment\n"
+            "❗ Refusing after responding may lead to account limits\n"
+            "🤝 The platform is not involved in negotiations or payment."
+        ),
+        "msg_offer_accepted": "Response accepted! Wait for the advertiser to contact you.",
+        "msg_offer_order_filled": (
+            "Order is already filled. We saved your response — "
+            "if someone drops out, we may contact you."
+        ),
+        "msg_advertiser_after_payment_success": (
+            "Payment successful ✅\n\nCreator matching for your order is now active."
+        ),
+        "msg_advertiser_after_payment_what_next": (
+            "🔄 **What's next**\n\n"
+            "📩 Creators receive your offer\n"
+            "🔗 You'll get responses with links to their profiles\n"
+            "💬 You contact selected creators yourself"
+        ),
+        "msg_advertiser_after_payment_important": (
+            "⚠️ **Important**\n\n"
+            "🧷 Don't change offer terms after publishing\n"
+            "🔄 If terms change, the creator may decline\n"
+            "🤝 The platform is not a party to the deal\n"
+            "💸 You pay creators directly\n"
+            "👀 Pay after viewing watermarked preview\n"
+            "🚫 The platform is not responsible for creators"
+        ),
+        "msg_phone_request": (
+            "Enter phone number for order contact.\n"
+            "Tap the button below or enter the number manually (e.g. 89001110777)."
+        ),
+        "msg_instagram_confirmed": (
+            "Instagram verified ✅. Brands can send you offers."
+        ),
+        "msg_instagram_mismatch": (
+            "The Instagram in your profile doesn't match the account "
+            "you sent the code from. Open «My profile», edit the blogger profile "
+            "and set the correct Instagram."
+        ),
         "msg_too_many_requests": "Too many requests. Try again later.",
         "msg_invalid_order_id_short": "Invalid order ID.",
         "msg_order_activated": "Order activated, sent to bloggers.",

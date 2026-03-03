@@ -36,7 +36,6 @@ from ugc_bot.bot.handlers.profile import _BLOGGER_AGREEMENTS_STATE
 from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_CONTACTS_WARNING,
     ADVERTISER_NEW_RESPONSE_WHAT_NEXT,
-    BLOGGER_AFTER_RESPONSE_WHAT_NEXT,
 )
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
@@ -52,22 +51,21 @@ logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
 
-ORDER_CLOSED_MESSAGE = (
-    "❗ Заказ уже закрыт\n\n"
-    "Спасибо за отклик — все креаторы по этому заказу уже подобраны.\n\n"
-    "Мы обязательно пришлём новые заказы, как только они появятся.\n\n"
-    "Следите за уведомлениями в боте 🙌"
-)
-
 
 async def _send_order_closed_and_remove_keyboard(
     incoming: IncomingCallback,
     messenger_client: MessengerClient,
+    bot_texts_service: BotTextsService,
+    locale: str,
 ) -> None:
     """Answer callback, remove offer keyboard, and send order-closed message."""
+    msg_closed = await bot_texts_service.get("msg_order_closed", locale)
+    msg_closed_full = await bot_texts_service.get(
+        "msg_order_closed_full", locale
+    )
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
-        text="Заказ уже закрыт.",
+        text=msg_closed,
     )
     if incoming.message_id:
         with contextlib.suppress(Exception):
@@ -78,7 +76,7 @@ async def _send_order_closed_and_remove_keyboard(
             )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=ORDER_CLOSED_MESSAGE,
+        text=msg_closed_full,
     )
 
 
@@ -90,15 +88,14 @@ async def _reply_offer_response_result(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     interaction_service: InteractionService,
+    bot_texts_service: BotTextsService,
+    locale: str,
 ) -> None:
     """Answer callback, remove keyboard; if accepted, send link and contact."""
     if result.accepted:
-        text = "Отклик принят! Ожидайте связи от рекламодателя."
+        text = await bot_texts_service.get("msg_offer_accepted", locale)
     else:
-        text = (
-            "Заказ уже укомплектован. Мы сохранили ваш отклик — "
-            "если кто-то откажется, с вами могут связаться."
-        )
+        text = await bot_texts_service.get("msg_offer_order_filled", locale)
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
         text=text,
@@ -115,8 +112,11 @@ async def _reply_offer_response_result(
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=result.order.product_link
             )
+        msg_what_next = await bot_texts_service.get(
+            "msg_blogger_after_response_what_next", locale
+        )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=BLOGGER_AFTER_RESPONSE_WHAT_NEXT
+            chat_id=incoming.chat_id, text=msg_what_next
         )
         await _send_contact_immediately(
             order=result.order,
@@ -214,28 +214,41 @@ async def handle_offer_response(
     )
     if user is None:
         return
+    locale = config.market.default_locale
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
+        msg_profile_fill = await bot_texts_service.get(
+            "msg_creator_profile_fill", locale
+        )
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Профиль блогера не заполнен. Команда: /creator",
+            text=msg_profile_fill,
         )
         return
     if not blogger_profile.confirmed:
+        msg_instagram_first = await bot_texts_service.get(
+            "msg_confirm_instagram_first", locale
+        )
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Подтвердите Instagram перед откликом.",
+            text=msg_instagram_first,
         )
         return
 
     if getattr(user, "agreement_confirmed_at", None) is None:
+        msg_confirm_first = await bot_texts_service.get(
+            "msg_confirm_agreement_first", locale
+        )
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Сначала подтвердите согласие.",
+            text=msg_confirm_first,
+        )
+        msg_confirm_intro = await bot_texts_service.get(
+            "msg_confirm_agreement", locale
         )
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+            intro=msg_confirm_intro,
         )
         confirm_btn = await bot_texts_service.get(
             "btn_confirm_agreement", config.market.default_locale
@@ -253,9 +266,12 @@ async def handle_offer_response(
         return
 
     if not await offer_response_rate_limiter.allow_async(user.external_id):
+        msg_too_many = await bot_texts_service.get(
+            "msg_too_many_requests", locale
+        )
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Слишком много запросов. Попробуйте позже.",
+            text=msg_too_many,
         )
         return
 
@@ -274,7 +290,9 @@ async def handle_offer_response(
             order_id, user.user_id
         )
     except OrderCreationError:
-        await _send_order_closed_and_remove_keyboard(incoming, messenger_client)
+        await _send_order_closed_and_remove_keyboard(
+            incoming, messenger_client, bot_texts_service, locale
+        )
         return
 
     await _reply_offer_response_result(
@@ -285,6 +303,8 @@ async def handle_offer_response(
         user_role_service,
         profile_service,
         interaction_service,
+        bot_texts_service,
+        locale,
     )
 
 

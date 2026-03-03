@@ -952,7 +952,7 @@ async def test_successful_payment_user_not_found(
 
 @pytest.mark.asyncio
 async def test_send_order_invoice_bot_none_returns_early(
-    messenger_client, event_adapter
+    messenger_client, event_adapter, bot_texts_service
 ) -> None:
     """send_order_invoice returns when message.bot is None."""
     message = FakeMessage(text="/pay", user=FakeUser(1), bot=None)
@@ -972,13 +972,14 @@ async def test_send_order_invoice_bot_none_returns_early(
         "Offer",
         1000.0,
         config,
+        bot_texts_service,
     )
     assert not message.answers
 
 
 @pytest.mark.asyncio
 async def test_send_order_invoice_no_chat_id_returns_early(
-    messenger_client,
+    messenger_client, bot_texts_service
 ) -> None:
     """send_order_invoice returns without sending when chat_id is falsy."""
     from ugc_bot.application.messenger.dto import IncomingMessage, IncomingUser
@@ -1005,13 +1006,14 @@ async def test_send_order_invoice_no_chat_id_returns_early(
         "Offer",
         1000.0,
         config,
+        bot_texts_service,
     )
     assert len(messenger_client.sent_text) == 0
 
 
 @pytest.mark.asyncio
 async def test_send_order_invoice_price_too_large(
-    messenger_client, event_adapter
+    messenger_client, event_adapter, bot_texts_service
 ) -> None:
     """send_order_invoice rejects price over 100M."""
     bot = FakeBot()
@@ -1032,6 +1034,7 @@ async def test_send_order_invoice_price_too_large(
         "Offer",
         150_000_000.0,
         config,
+        bot_texts_service,
     )
     assert "слишком большая" in message.answers[0]
 
@@ -1089,7 +1092,7 @@ async def test_successful_payment_handler_no_payment_returns(
 
 @pytest.mark.asyncio
 async def test_send_order_invoice_invalid_price(
-    messenger_client, event_adapter
+    messenger_client, event_adapter, bot_texts_service
 ) -> None:
     """send_order_invoice rejects invalid price (InvalidOperation)."""
 
@@ -1115,6 +1118,7 @@ async def test_send_order_invoice_invalid_price(
         "Offer",
         BadPrice(),
         config,
+        bot_texts_service,
     )
     assert message.answers
     assert "Некорректная сумма" in message.answers[0]
@@ -1129,7 +1133,7 @@ class FakeBotRaisingInvoice(FakeBot):
 
 @pytest.mark.asyncio
 async def test_send_order_invoice_send_fails(
-    event_adapter,
+    event_adapter, bot_texts_service
 ) -> None:
     """send_order_invoice handles send_invoice exception."""
 
@@ -1162,6 +1166,7 @@ async def test_send_order_invoice_send_fails(
         "Offer",
         1000.0,
         config,
+        bot_texts_service,
     )
     assert message.answers
     assert "Не удалось создать счет" in message.answers[0]

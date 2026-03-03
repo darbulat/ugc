@@ -135,22 +135,29 @@ async def start_order_creation(
     if user is None:
         return
 
+    locale = config.market.default_locale
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_advertiser_profile_fill", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Профиль рекламодателя не заполнен. Команда: /advertiser",
+            text=msg_fill,
         )
         return
 
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
+        msg_confirm_intro = await bot_texts_service.get(
+            "msg_confirm_agreement", locale
+        )
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+            intro=msg_confirm_intro,
         )
         agree_texts = await bot_texts_service.get_many(
-            ["btn_confirm_agreement"], config.market.default_locale
+            ["btn_confirm_agreement"], locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -167,9 +174,10 @@ async def start_order_creation(
         return
 
     await state_store.update_data(user_id=user.user_id)
+    msg_what_need = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Что вам нужно?",
+        text=msg_what_need,
         keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
@@ -205,21 +213,28 @@ async def start_order_creation_from_profile_callback(
     )
     if user is None:
         return
+    locale = config.market.default_locale
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_advertiser_profile_fill", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Профиль рекламодателя не заполнен. Команда: /advertiser",
+            text=msg_fill,
         )
         return
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
+        msg_confirm_intro = await bot_texts_service.get(
+            "msg_confirm_agreement", locale
+        )
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+            intro=msg_confirm_intro,
         )
         agree_texts = await bot_texts_service.get_many(
-            ["btn_confirm_agreement"], config.market.default_locale
+            ["btn_confirm_agreement"], locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -235,9 +250,10 @@ async def start_order_creation_from_profile_callback(
         await state_store.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
     await state_store.update_data(user_id=user.user_id)
+    msg_what_need = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Что вам нужно?",
+        text=msg_what_need,
         keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
@@ -1028,6 +1044,7 @@ async def handle_geography(
     state: FSMContext,
     order_service: OrderService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     contact_pricing_service: ContactPricingService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -1099,9 +1116,12 @@ async def handle_geography(
     )
     contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
+        msg_pricing = await bot_texts_service.get(
+            "msg_pricing_not_configured", config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Стоимость доступа не настроена. Свяжитесь с поддержкой.",
+            text=msg_pricing,
         )
         return
     await send_order_invoice(
@@ -1111,4 +1131,5 @@ async def handle_geography(
         offer_text=order.offer_text,
         price_value=contact_price,
         config=config,
+        bot_texts_service=bot_texts_service,
     )

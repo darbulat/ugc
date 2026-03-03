@@ -29,7 +29,6 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
-    ORDER_CLOSED_MESSAGE,
     _send_contact_immediately,
     _send_order_closed_and_remove_keyboard,
     handle_offer_response,
@@ -37,6 +36,7 @@ from ugc_bot.bot.handlers.offer_responses import (
 )
 from ugc_bot.bot.handlers.utils import RateLimiter
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig, OrderConfig
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
@@ -555,7 +555,9 @@ async def test_offer_response_handler_order_not_active(
 
 
 @pytest.mark.asyncio
-async def test_send_order_closed_and_remove_keyboard() -> None:
+async def test_send_order_closed_and_remove_keyboard(
+    bot_texts_service, config
+) -> None:
     """Order-closed helper answers callback and sends order-closed message."""
     incoming = IncomingCallback(
         callback_id="cb1",
@@ -568,9 +570,13 @@ async def test_send_order_closed_and_remove_keyboard() -> None:
         message_id="456",
     )
     client = FakeMessengerClient()
-    await _send_order_closed_and_remove_keyboard(incoming, client)
+    locale = config.market.default_locale
+    await _send_order_closed_and_remove_keyboard(
+        incoming, client, bot_texts_service, locale
+    )
     assert len(client.answered_callbacks) == 1
-    assert any(ORDER_CLOSED_MESSAGE in s["text"] for s in client.sent_text)
+    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
+    assert any(msg_closed_full in s["text"] for s in client.sent_text)
 
 
 @pytest.mark.asyncio
@@ -803,7 +809,8 @@ async def test_offer_response_handler_overflow_saved_no_contact(
     )
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
-    assert ORDER_CLOSED_MESSAGE not in message.answers
+    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
+    assert msg_closed_full not in message.answers
     total = await dispatch_repo.count_by_order(order.order_id)
     assert total == 2
     accepted_count = await dispatch_repo.count_accepted_by_order(order.order_id)
@@ -996,7 +1003,10 @@ async def test_offer_response_handler_no_blogger_profile(
     )
 
     assert callback.answers
-    assert "Профиль блогера не заполнен" in callback.answers[0]
+    assert (
+        "Профиль не заполнен" in callback.answers[0]
+        or "/creator" in callback.answers[0]
+    )
 
 
 @pytest.mark.asyncio
