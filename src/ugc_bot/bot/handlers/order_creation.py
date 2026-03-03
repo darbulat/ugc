@@ -313,6 +313,8 @@ async def handle_order_agree_callback(
 async def handle_order_type_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -339,12 +341,11 @@ async def handle_order_type_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(order_type=order_type.value)
+    locale = config.market.default_locale
+    msg_task = await bot_texts_service.get("msg_order_task_description", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Кратко опишите задачу для креаторов.\n"
-            "Что снять и в каком формате. Пример: Видео с распаковкой."
-        ),
+        text=msg_task,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.offer_text.state)
@@ -354,6 +355,8 @@ async def handle_order_type_callback(
 async def handle_order_type(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -369,20 +372,23 @@ async def handle_order_type(
     elif text == ORDER_TYPE_UGC_PLUS_PLACEMENT:
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
+        locale = config.market.default_locale
+        msg_choose = await bot_texts_service.get(
+            "msg_choose_from_keyboard", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите один из вариантов на клавиатуре.",
+            text=msg_choose,
             keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
         )
         return
 
     await state_store.update_data(order_type=order_type.value)
+    locale = config.market.default_locale
+    msg_task = await bot_texts_service.get("msg_order_task_description", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Кратко опишите задачу для креаторов.\n"
-            "Что снять и в каком формате. Пример: Видео с распаковкой."
-        ),
+        text=msg_task,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.offer_text.state)
@@ -392,6 +398,8 @@ async def handle_order_type(
 async def handle_offer_text(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -412,9 +420,11 @@ async def handle_offer_text(
         return
 
     await state_store.update_data(offer_text=offer_text)
+    locale = config.market.default_locale
+    msg_coop = await bot_texts_service.get("msg_coop_format", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Какой формат сотрудничества вам подходит?",
+        text=msg_coop,
         keyboard=flow_inline_keyboard(rows=cooperation_format_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.cooperation_format.state)
@@ -433,6 +443,8 @@ async def handle_offer_text(
 async def handle_cooperation_format_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -461,12 +473,13 @@ async def handle_cooperation_format_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(cooperation_format=text)
+    locale = config.market.default_locale
+    msg_budget = await bot_texts_service.get("msg_order_budget", locale)
+    msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     if text == COOP_PAYMENT:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"
-            ),
+            text=msg_budget,
             keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(OrderCreationStates.price.state)
@@ -474,10 +487,7 @@ async def handle_cooperation_format_callback(
     if text == COOP_BARTER:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Что вы предлагаете по бартеру?\n"
-                "Продукт бренда (опишите коротко) + доставка"
-            ),
+            text=msg_barter,
             keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(
@@ -487,7 +497,7 @@ async def handle_cooperation_format_callback(
     # Бартер + оплата
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=("Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"),
+        text=msg_budget,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.price.state)
@@ -497,6 +507,8 @@ async def handle_cooperation_format_callback(
 async def handle_cooperation_format(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -508,19 +520,24 @@ async def handle_cooperation_format(
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
     if text not in (COOP_BARTER, COOP_PAYMENT, COOP_BOTH):
+        locale = config.market.default_locale
+        msg_choose = await bot_texts_service.get(
+            "msg_choose_from_keyboard", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите один из вариантов на клавиатуре.",
+            text=msg_choose,
             keyboard=flow_inline_keyboard(rows=cooperation_format_keyboard()),
         )
         return
     await state_store.update_data(cooperation_format=text)
+    locale = config.market.default_locale
+    msg_budget = await bot_texts_service.get("msg_order_budget", locale)
+    msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     if text == COOP_PAYMENT:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"
-            ),
+            text=msg_budget,
             keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(OrderCreationStates.price.state)
@@ -528,10 +545,7 @@ async def handle_cooperation_format(
     if text == COOP_BARTER:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Что вы предлагаете по бартеру?\n"
-                "Продукт бренда (опишите коротко) + доставка"
-            ),
+            text=msg_barter,
             keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(
@@ -540,7 +554,7 @@ async def handle_cooperation_format(
         return
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=("Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"),
+        text=msg_budget,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.price.state)
@@ -550,6 +564,8 @@ async def handle_cooperation_format(
 async def handle_price(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     max_order_price: float,
     currency_symbol: str,
     allowed_blogger_counts: frozenset[int],
@@ -566,8 +582,10 @@ async def handle_price(
     try:
         price = float(raw)
     except ValueError:
+        locale = config.market.default_locale
+        msg_enter = await bot_texts_service.get("msg_enter_number", locale)
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text="Введите число, например 1500."
+            chat_id=incoming.chat_id, text=msg_enter
         )
         return
 
@@ -582,13 +600,13 @@ async def handle_price(
 
     await state_store.update_data(price=price)
     data = await state_store.get_data()
+    locale = config.market.default_locale
+    msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
+    msg_how_many = await bot_texts_service.get("msg_how_many_creators", locale)
     if data.get("cooperation_format") == COOP_BOTH:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Что вы предлагаете по бартеру?\n"
-                "Продукт бренда (опишите коротко) + доставка"
-            ),
+            text=msg_barter,
             keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(
@@ -597,7 +615,7 @@ async def handle_price(
         return
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Сколько креаторов вам нужно?",
+        text=msg_how_many,
         keyboard=flow_inline_keyboard(
             rows=bloggers_needed_keyboard(allowed_blogger_counts)
         ),
@@ -609,6 +627,8 @@ async def handle_price(
 async def handle_barter_description(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -631,9 +651,11 @@ async def handle_barter_description(
         )
         return
     await state_store.update_data(barter_description=barter_description or None)
+    locale = config.market.default_locale
+    msg_how_many = await bot_texts_service.get("msg_how_many_creators", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Сколько креаторов вам нужно?",
+        text=msg_how_many,
         keyboard=flow_inline_keyboard(
             rows=bloggers_needed_keyboard(allowed_blogger_counts)
         ),
@@ -657,6 +679,8 @@ def _parse_bloggers_callback_data(data: str) -> int | None:
 async def handle_bloggers_needed_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -680,9 +704,11 @@ async def handle_bloggers_needed_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(bloggers_needed=bloggers_needed)
+    locale = config.market.default_locale
+    msg_product = await bot_texts_service.get("msg_product_link", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Введите ссылку на продукт (для откликнувшихся креаторов):",
+        text=msg_product,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.product_link.state)
@@ -692,6 +718,8 @@ async def handle_bloggers_needed_callback(
 async def handle_bloggers_needed(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -705,10 +733,13 @@ async def handle_bloggers_needed(
     raw = (incoming.text or "").strip()
     valid_strs = {str(c) for c in allowed_blogger_counts}
     if raw not in valid_strs:
+        locale = config.market.default_locale
         counts_str = ", ".join(str(c) for c in sorted(allowed_blogger_counts))
+        msg_choose = await bot_texts_service.get("msg_choose_count", locale)
+        text = msg_choose.format(counts=counts_str)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=f"Выберите одно из значений: {counts_str}.",
+            text=text,
             keyboard=flow_inline_keyboard(
                 rows=bloggers_needed_keyboard(allowed_blogger_counts)
             ),
@@ -717,9 +748,11 @@ async def handle_bloggers_needed(
 
     bloggers_needed = int(raw)
     await state_store.update_data(bloggers_needed=bloggers_needed)
+    locale = config.market.default_locale
+    msg_product = await bot_texts_service.get("msg_product_link", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Введите ссылку на продукт (для откликнувшихся креаторов):",
+        text=msg_product,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.product_link.state)
@@ -729,6 +762,8 @@ async def handle_bloggers_needed(
 async def handle_product_link(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -749,13 +784,13 @@ async def handle_product_link(
         return
 
     await state_store.update_data(product_link=normalize_url(product_link))
+    locale = config.market.default_locale
+    msg_photo_intro = await bot_texts_service.get(
+        "msg_order_photo_intro", locale
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Прикрепите фото (по желанию).\n"
-            "Фотография поможет креатору быстрее понять заказ и повысит отклик "
-            "на ваше предложение"
-        ),
+        text=msg_photo_intro,
         keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.order_photo.state)
@@ -767,6 +802,8 @@ async def handle_product_link(
 async def handle_order_photo_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -784,11 +821,14 @@ async def handle_order_photo_callback(
     data = incoming.data or ""
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    locale = config.market.default_locale
+    msg_where = await bot_texts_service.get("msg_where_use_ugc", locale)
+    msg_send_photo = await bot_texts_service.get("msg_send_photo", locale)
     if data == CALLBACK_ORDER_PHOTO_SKIP:
         await state_store.update_data(product_photo_file_id=None)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Где вы планируете использовать UGC-видео?",
+            text=msg_where,
             keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
@@ -796,7 +836,7 @@ async def handle_order_photo_callback(
     if data == CALLBACK_ORDER_PHOTO_ADD:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Отправьте фото продукта:",
+            text=msg_send_photo,
             keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
         )
 
@@ -805,6 +845,8 @@ async def handle_order_photo_callback(
 async def handle_order_photo(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -815,11 +857,17 @@ async def handle_order_photo(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
+    locale = config.market.default_locale
+    msg_where = await bot_texts_service.get("msg_where_use_ugc", locale)
+    msg_send_photo = await bot_texts_service.get("msg_send_photo", locale)
+    msg_photo_choose = await bot_texts_service.get(
+        "msg_order_photo_choose", locale
+    )
     if text == ORDER_PHOTO_SKIP:
         await state_store.update_data(product_photo_file_id=None)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Где вы планируете использовать UGC-видео?",
+            text=msg_where,
             keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
@@ -827,7 +875,7 @@ async def handle_order_photo(
     if text == ORDER_PHOTO_ADD:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Отправьте фото продукта:",
+            text=msg_send_photo,
             keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
         )
         return
@@ -837,7 +885,7 @@ async def handle_order_photo(
         await state_store.update_data(product_photo_file_id=file_id)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Где вы планируете использовать UGC-видео?",
+            text=msg_where,
             keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
@@ -845,10 +893,7 @@ async def handle_order_photo(
 
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Выберите «Добавить фото» или «Пропустить» на клавиатуре, "
-            "либо отправьте фото продукта."
-        ),
+        text=msg_photo_choose,
         keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
     )
 
@@ -857,6 +902,8 @@ async def handle_order_photo(
 async def handle_content_usage(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -867,27 +914,28 @@ async def handle_content_usage(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
+    locale = config.market.default_locale
     if text not in (
         CONTENT_USAGE_SOCIAL,
         CONTENT_USAGE_ADS,
         CONTENT_USAGE_BOTH,
     ):
+        msg_choose = await bot_texts_service.get(
+            "msg_choose_from_keyboard", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите один из вариантов на клавиатуре.",
+            text=msg_choose,
             keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
         )
         return
 
     content_usage_offer = CONTENT_USAGE_TO_OFFER.get(text, text)
     await state_store.update_data(content_usage=content_usage_offer)
+    msg_deadline = await bot_texts_service.get("msg_order_deadline", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "В какие сроки вам нужен контент? "
-            "Укажите, через сколько дней после согласования "
-            "вы ожидаете превью."
-        ),
+        text=msg_deadline,
         keyboard=flow_inline_keyboard(rows=deadlines_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.deadlines.state)
@@ -918,6 +966,8 @@ def _content_usage_from_callback(data: str) -> str | None:
 async def handle_content_usage_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -940,13 +990,11 @@ async def handle_content_usage_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(content_usage=content_usage_offer)
+    locale = config.market.default_locale
+    msg_deadline = await bot_texts_service.get("msg_order_deadline", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "В какие сроки вам нужен контент? "
-            "Укажите, через сколько дней после согласования "
-            "вы ожидаете превью."
-        ),
+        text=msg_deadline,
         keyboard=flow_inline_keyboard(rows=deadlines_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.deadlines.state)
@@ -968,6 +1016,8 @@ def _deadlines_offer_from_callback(data: str) -> str | None:
 async def handle_deadlines_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -990,13 +1040,11 @@ async def handle_deadlines_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(deadlines=deadlines_offer)
+    locale = config.market.default_locale
+    msg_geo = await bot_texts_service.get("msg_order_geo", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "В каком городе, регионе или стране может находиться креатор? "
-            "Укажите один вариант: например, Казань, Москва, Татарстан или РФ. "
-            "Нужно для бартерных заказов и доставки продукта."
-        ),
+        text=msg_geo,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.geography.state)
@@ -1006,6 +1054,8 @@ async def handle_deadlines_callback(
 async def handle_deadlines(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1016,23 +1066,24 @@ async def handle_deadlines(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
+    locale = config.market.default_locale
     if text not in (DEADLINES_3, DEADLINES_7, DEADLINES_14):
+        msg_choose = await bot_texts_service.get(
+            "msg_choose_from_keyboard", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите один из вариантов на клавиатуре.",
+            text=msg_choose,
             keyboard=flow_inline_keyboard(rows=deadlines_keyboard()),
         )
         return
 
     deadlines_offer = DEADLINES_TO_OFFER.get(text, text)
     await state_store.update_data(deadlines=deadlines_offer)
+    msg_geo = await bot_texts_service.get("msg_order_geo", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "В каком городе, регионе или стране может находиться креатор? "
-            "Укажите один вариант: например, Казань, Москва, Татарстан или РФ. "
-            "Нужно для бартерных заказов и доставки продукта."
-        ),
+        text=msg_geo,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(OrderCreationStates.geography.state)

@@ -125,24 +125,28 @@ async def show_my_orders(  # noqa: C901, PLR0912
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     blogger = await profile_service.get_blogger_profile(user.user_id)
 
+    locale = config.market.default_locale
     if advertiser is None and blogger is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_fill_profile_orders", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Заполните профиль (/advertiser или /creator), "
-                "чтобы видеть заказы."
-            ),
+            text=msg_fill,
         )
         return
 
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
+        msg_confirm_intro = await bot_texts_service.get(
+            "msg_confirm_agreement", locale
+        )
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+            intro=msg_confirm_intro,
         )
         confirm_btn = await bot_texts_service.get(
-            "btn_confirm_agreement", config.market.default_locale
+            "btn_confirm_agreement", locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -176,9 +180,10 @@ async def show_my_orders(  # noqa: C901, PLR0912
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
             )
         else:
+            msg_no_orders = await bot_texts_service.get("msg_no_orders", locale)
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
-                text="У вас пока нет заказов. /create_order",
+                text=msg_no_orders,
             )
 
     if blogger is not None:
@@ -202,9 +207,12 @@ async def show_my_orders(  # noqa: C901, PLR0912
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
             )
         else:
+            msg_no_blogger = await bot_texts_service.get(
+                "msg_no_blogger_orders", locale
+            )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
-                text="Вы пока не откликались. Предложения приходят в бот.",
+                text=msg_no_blogger,
             )
 
 
@@ -237,25 +245,29 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
     )
     if user is None:
         return
+    locale = config.market.default_locale
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     blogger = await profile_service.get_blogger_profile(user.user_id)
     if advertiser is None and blogger is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_fill_profile_orders", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Заполните профиль (/advertiser или /creator), "
-                "чтобы видеть заказы."
-            ),
+            text=msg_fill,
         )
         return
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
+        msg_confirm_intro = await bot_texts_service.get(
+            "msg_confirm_agreement", locale
+        )
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+            intro=msg_confirm_intro,
         )
         confirm_btn = await bot_texts_service.get(
-            "btn_confirm_agreement", config.market.default_locale
+            "btn_confirm_agreement", locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -288,9 +300,10 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
             )
         else:
+            msg_no_orders = await bot_texts_service.get("msg_no_orders", locale)
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
-                text="У вас пока нет заказов. /create_order",
+                text=msg_no_orders,
             )
     if blogger is not None:
         responses = await offer_response_service.list_by_blogger(user.user_id)
@@ -313,9 +326,12 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
             )
         else:
+            msg_no_blogger = await bot_texts_service.get(
+                "msg_no_blogger_orders", locale
+            )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
-                text="Вы пока не откликались. Предложения приходят в бот.",
+                text=msg_no_blogger,
             )
 
 

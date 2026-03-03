@@ -278,6 +278,36 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_choose_count": "Выберите одно из значений: {counts}.",
         "msg_where_use_ugc": "Где вы планируете использовать UGC-видео?",
         "msg_send_photo": "Отправьте фото продукта:",
+        "msg_order_task_description": (
+            "Кратко опишите задачу для креаторов.\n"
+            "Что снять и в каком формате. Пример: Видео с распаковкой."
+        ),
+        "msg_order_budget": (
+            "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"
+        ),
+        "msg_order_barter_ask": (
+            "Что вы предлагаете по бартеру?\n"
+            "Продукт бренда (опишите коротко) + доставка"
+        ),
+        "msg_order_photo_intro": (
+            "Прикрепите фото (по желанию).\n"
+            "Фотография поможет креатору быстрее понять заказ и повысит отклик "
+            "на ваше предложение"
+        ),
+        "msg_order_photo_choose": (
+            "Выберите «Добавить фото» или «Пропустить» на клавиатуре, "
+            "либо отправьте фото продукта."
+        ),
+        "msg_order_deadline": (
+            "В какие сроки вам нужен контент? "
+            "Укажите, через сколько дней после согласования "
+            "вы ожидаете превью."
+        ),
+        "msg_order_geo": (
+            "В каком городе, регионе или стране может находиться креатор? "
+            "Укажите один вариант: например, Казань, Москва, Татарстан или РФ. "
+            "Нужно для бартерных заказов и доставки продукта."
+        ),
         # Messages: Instagram
         "msg_profile_empty_creator": (
             "Профиль не заполнен. «Создать профиль» или /creator"
@@ -646,6 +676,33 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_choose_count": "Choose one of: {counts}.",
         "msg_where_use_ugc": "Where will you use the UGC video?",
         "msg_send_photo": "Send product photo:",
+        "msg_order_task_description": (
+            "Briefly describe the task for creators.\n"
+            "What to shoot and in what format. Example: Unboxing video."
+        ),
+        "msg_order_budget": (
+            "Budget per 1 UGC video? Enter price (e.g. 500, 1000, 2000)"
+        ),
+        "msg_order_barter_ask": (
+            "What do you offer as barter?\n"
+            "Brand product (short description) + delivery"
+        ),
+        "msg_order_photo_intro": (
+            "Attach a photo (optional).\n"
+            "A photo helps the creator understand the order faster and boosts response."
+        ),
+        "msg_order_photo_choose": (
+            "Choose «Add photo» or «Skip» on the keyboard, or send a product photo."
+        ),
+        "msg_order_deadline": (
+            "When do you need the content? "
+            "Specify how many days after agreement you expect the preview."
+        ),
+        "msg_order_geo": (
+            "In which city, region or country can the creator be located? "
+            "Specify one option, e.g. London, UK or Worldwide. "
+            "Used for barter orders and product delivery."
+        ),
         "msg_profile_empty_creator": "Profile not filled. «Create profile» or /creator",
         "msg_instagram_already_confirmed": "Your Instagram is already verified",
         "msg_invalid_format": "Invalid format.",

@@ -210,17 +210,23 @@ async def _notify_user_verification_success(
 
         locale = getattr(config.market, "default_locale", "ru") or "ru"
         locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
-        keys = ["btn_confirm_instagram", "btn_my_profile"]
+        keys = [
+            "btn_confirm_instagram",
+            "btn_my_profile",
+            "msg_instagram_confirmed",
+        ]
         texts = {k: locale_texts.get(k, "") for k in keys}
         bot = Bot(token=config.bot.bot_token)
         messenger_client = TelegramMessengerClient(bot)
         try:
+            msg_confirmed = locale_texts.get(
+                "msg_instagram_confirmed",
+                "Instagram подтверждён ✅. "
+                "Бренды могут отправлять предложения.",
+            )
             await messenger_client.send_text(
                 chat_id=user.external_id,
-                text=(
-                    "Instagram подтверждён ✅. "
-                    "Бренды могут отправлять предложения."
-                ),
+                text=msg_confirmed,
                 keyboard=blogger_menu_keyboard(texts, confirmed=confirmed),
             )
         finally:
@@ -268,19 +274,27 @@ async def _notify_user_verification_mismatch(
 
         locale = getattr(config.market, "default_locale", "ru") or "ru"
         locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
-        keys = ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"]
+        keys = [
+            "btn_edit_profile",
+            "btn_confirm_instagram",
+            "btn_my_profile",
+            "msg_instagram_mismatch",
+        ]
         texts = {k: locale_texts.get(k, "") for k in keys}
         bot = Bot(token=config.bot.bot_token)
         messenger_client = TelegramMessengerClient(bot)
         try:
+            default_mismatch = (
+                "Указанный в профиле Instagram не совпадает с аккаунтом, "
+                "с которого вы отправили код. Откройте «Мой профиль», "
+                "отредактируйте профиль блогера и укажите корректный Instagram."
+            )
+            msg_mismatch = locale_texts.get(
+                "msg_instagram_mismatch", default_mismatch
+            )
             await messenger_client.send_text(
                 chat_id=user.external_id,
-                text=(
-                    "Указанный в профиле Instagram не совпадает с аккаунтом, "
-                    "с которого вы отправили код. Откройте «Мой профиль», "
-                    "отредактируйте профиль блогера и укажите корректный "
-                    "Instagram."
-                ),
+                text=msg_mismatch,
                 keyboard=blogger_profile_view_keyboard(texts, confirmed=False),
             )
         finally:

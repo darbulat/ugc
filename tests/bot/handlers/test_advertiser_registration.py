@@ -446,7 +446,9 @@ async def test_handle_name_requires_value(
 
 
 @pytest.mark.asyncio
-async def test_handle_brand_success(user_repo) -> None:
+async def test_handle_brand_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Store brand and ask for company activity."""
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -466,7 +468,9 @@ async def test_handle_brand_success(user_repo) -> None:
         city="Казань",
     )
 
-    await handle_brand(message, state)
+    await handle_brand(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -694,7 +698,9 @@ async def test_handle_phone_with_contact_success_asks_city(
 
 
 @pytest.mark.asyncio
-async def test_handle_city_success_asks_brand(user_repo) -> None:
+async def test_handle_city_success_asks_brand(
+    user_repo, config, bot_texts_service
+) -> None:
     """Valid city leads to brand prompt."""
 
     message = FakeMessage(text="Казань", user=FakeUser(1, "adv", "Adv"))
@@ -702,7 +708,9 @@ async def test_handle_city_success_asks_brand(user_repo) -> None:
     state.state = "AdvertiserRegistrationStates:city"
     await state.update_data(name="Test", phone="+79001234567")
 
-    await handle_city(message, state)
+    await handle_city(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first_ans = message.answers[0]
@@ -713,7 +721,9 @@ async def test_handle_city_success_asks_brand(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_invalid_sends_error(user_repo) -> None:
+async def test_handle_city_invalid_sends_error(
+    user_repo, config, bot_texts_service
+) -> None:
     """handle_city with too long city sends validation error via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -725,6 +735,8 @@ async def test_handle_city_invalid_sends_error(user_repo) -> None:
     await handle_city(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -734,7 +746,7 @@ async def test_handle_city_invalid_sends_error(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_company_activity_success_asks_site_link(
-    user_repo,
+    user_repo, config, bot_texts_service
 ) -> None:
     """Valid company activity leads to site link prompt."""
 
@@ -757,7 +769,9 @@ async def test_handle_company_activity_success_asks_site_link(
         brand="My Brand",
     )
 
-    await handle_company_activity(message, state)
+    await handle_company_activity(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -766,7 +780,9 @@ async def test_handle_company_activity_success_asks_site_link(
 
 
 @pytest.mark.asyncio
-async def test_handle_company_activity_invalid_sends_error(user_repo) -> None:
+async def test_handle_company_activity_invalid_sends_error(
+    user_repo, config, bot_texts_service
+) -> None:
     """handle_company_activity with too long text sends error via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -790,6 +806,8 @@ async def test_handle_company_activity_invalid_sends_error(user_repo) -> None:
     await handle_company_activity(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -798,7 +816,9 @@ async def test_handle_company_activity_invalid_sends_error(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_brand_requires_value(user_repo) -> None:
+async def test_handle_brand_requires_value(
+    user_repo, config, bot_texts_service
+) -> None:
     """Require non-empty brand."""
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -814,7 +834,9 @@ async def test_handle_brand_requires_value(user_repo) -> None:
         user_id=user.user_id, name="N", phone="+79001234567"
     )
 
-    await handle_brand(message, state)
+    await handle_brand(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -822,7 +844,9 @@ async def test_handle_brand_requires_value(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_brand_invalid_sends_error(user_repo) -> None:
+async def test_handle_brand_invalid_sends_error(
+    user_repo, config, bot_texts_service
+) -> None:
     """handle_brand with too short brand sends validation error via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -842,6 +866,8 @@ async def test_handle_brand_invalid_sends_error(user_repo) -> None:
     await handle_brand(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )

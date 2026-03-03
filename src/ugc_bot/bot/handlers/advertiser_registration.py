@@ -142,11 +142,12 @@ async def _ask_name_for_chat(
     chat_id: str,
     messenger_client: MessengerClient,
     state_store: AiogramStateStore,
+    name_prompt: str,
 ) -> None:
     """Send name prompt and set state to name."""
     await messenger_client.send_text(
         chat_id=chat_id,
-        text="Как вас зовут?",
+        text=name_prompt,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(AdvertiserRegistrationStates.name.state)
@@ -176,18 +177,18 @@ async def _advertiser_start_impl(
     await state_store.update_data(user_id=user_id)
     if username and len(username.strip()) >= 2:
         await state_store.update_data(name=username)
+        phone_prompt = texts.get("msg_phone_request", "")
         await messenger_client.send_text(
             chat_id=chat_id,
-            text=(
-                "Укажите номер телефона для связи по заказу.\n"
-                "Нажмите кнопку ниже или введите номер вручную "
-                "(пример: 89001110777)."
-            ),
+            text=phone_prompt,
             keyboard=phone_request_keyboard(texts),
         )
         await state_store.set_state(AdvertiserRegistrationStates.phone.state)
     else:
-        await _ask_name_for_chat(chat_id, messenger_client, state_store)
+        name_prompt = texts.get("msg_whats_your_name", "Как вас зовут?")
+        await _ask_name_for_chat(
+            chat_id, messenger_client, state_store, name_prompt
+        )
 
 
 @router.message(TextEqualsKey("btn_advertiser_start"))
@@ -226,6 +227,9 @@ async def handle_advertiser_start(
             "btn_edit_profile",
             "btn_support",
             "btn_phone_request",
+            "msg_choose_action",
+            "msg_whats_your_name",
+            "msg_phone_request",
         ],
         locale,
     )
@@ -278,6 +282,8 @@ async def handle_advertiser_start_callback(
             "btn_support",
             "btn_phone_request",
             "msg_choose_action",
+            "msg_whats_your_name",
+            "msg_phone_request",
         ],
         locale,
     )
@@ -317,16 +323,14 @@ async def handle_name(
         return
 
     await state_store.update_data(name=name)
+    locale = config.market.default_locale
     texts = await bot_texts_service.get_many(
-        ["btn_phone_request"], config.market.default_locale
+        ["btn_phone_request", "msg_phone_request"], locale
     )
+    phone_prompt = texts.get("msg_phone_request", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=(
-            "Укажите номер телефона для связи по заказу.\n"
-            "Нажмите кнопку ниже или введите номер вручную "
-            "(пример: 89001110777)."
-        ),
+        text=phone_prompt,
         keyboard=phone_request_keyboard(texts),
     )
     await state_store.set_state(AdvertiserRegistrationStates.phone.state)
@@ -361,9 +365,11 @@ async def handle_phone(
         return
 
     await state_store.update_data(phone=phone)
+    locale = config.market.default_locale
+    msg_city = await bot_texts_service.get("msg_what_city", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург",
+        text=msg_city,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(AdvertiserRegistrationStates.city.state)
@@ -373,6 +379,8 @@ async def handle_phone(
 async def handle_city(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -392,9 +400,11 @@ async def handle_city(
         )
         return
     await state_store.update_data(city=city)
+    locale = config.market.default_locale
+    msg_brand = await bot_texts_service.get("msg_brand_name", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Название вашего бренда / компании / бизнеса:",
+        text=msg_brand,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(AdvertiserRegistrationStates.brand.state)
@@ -404,6 +414,8 @@ async def handle_city(
 async def handle_brand(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -424,9 +436,11 @@ async def handle_brand(
         return
 
     await state_store.update_data(brand=brand)
+    locale = config.market.default_locale
+    msg_activity = await bot_texts_service.get("msg_company_activity", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Чем занимается ваша компания?",
+        text=msg_activity,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(
@@ -438,6 +452,8 @@ async def handle_brand(
 async def handle_company_activity(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -457,9 +473,11 @@ async def handle_company_activity(
         )
         return
     await state_store.update_data(company_activity=company_activity)
+    locale = config.market.default_locale
+    msg_link = await bot_texts_service.get("msg_brand_link", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Ссылка на сайт, продукт или соцсети бренда:",
+        text=msg_link,
         keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(AdvertiserRegistrationStates.site_link.state)
@@ -497,9 +515,11 @@ async def handle_site_link(
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
+        locale = config.market.default_locale
+        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Сессия истекла. Начните заново.",
+            text=msg_expired,
         )
         await state_store.clear()
         return
@@ -552,21 +572,22 @@ async def handle_agreements_confirm(
     ).strip()
     if (incoming.text or "").strip() != confirm_text:
         await state_store.clear()
+        msg_aborted = await bot_texts_service.get(
+            "msg_registration_aborted", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Регистрация прервана. Чтобы завершить, откройте «Мой профиль» "
-                "и подтвердите согласие."
-            ),
+            text=msg_aborted,
             keyboard=flow_keyboard_remove(),
         )
         return
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
+        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Сессия истекла. Начните заново.",
+            text=msg_expired,
         )
         await state_store.clear()
         return
@@ -587,7 +608,7 @@ async def handle_agreements_confirm(
     msg_done = await bot_texts_service.get("msg_after_registration", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=msg_done or "Теперь вы можете разместить заказ.",
+        text=msg_done,
         keyboard=advertiser_menu_keyboard(texts),
     )
 
@@ -619,9 +640,11 @@ async def handle_advertiser_agreements_callback(
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+        locale = config.market.default_locale
+        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Сессия истекла. Начните заново.",
+            text=msg_expired,
         )
         await state_store.clear()
         return
@@ -647,6 +670,6 @@ async def handle_advertiser_agreements_callback(
     msg_done = await bot_texts_service.get("msg_after_registration", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=msg_done or "Теперь вы можете разместить заказ.",
+        text=msg_done,
         keyboard=advertiser_menu_keyboard(texts),
     )
