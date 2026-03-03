@@ -13,7 +13,7 @@ from ugc_bot.bot.handlers.start import support_button
 
 @pytest.mark.asyncio
 async def test_support_button_sends_support_text_and_menu(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """Support button sends support text and main menu keyboard."""
 
@@ -31,6 +31,8 @@ async def test_support_button_sends_support_text_and_menu(
         user_role_service=service,
         profile_service=profile_service,
         state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -46,7 +48,7 @@ async def test_support_button_sends_support_text_and_menu(
 
 @pytest.mark.asyncio
 async def test_support_button_clears_state_when_in_fsm(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """Support button clears FSM state and shows support."""
 
@@ -64,6 +66,8 @@ async def test_support_button_clears_state_when_in_fsm(
         user_role_service=service,
         profile_service=profile_service,
         state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert state.cleared is True

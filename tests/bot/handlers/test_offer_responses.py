@@ -356,6 +356,8 @@ async def test_offer_response_handler_success(
     messenger_client,
     event_adapter,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger can respond to offer."""
 
@@ -406,7 +408,8 @@ async def test_offer_response_handler_success(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -428,6 +431,8 @@ async def test_offer_response_handler_blocked_user(
     offer_dispatch_repo,
     interaction_repo,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject blocked bloggers early."""
 
@@ -464,7 +469,8 @@ async def test_offer_response_handler_blocked_user(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -475,6 +481,8 @@ async def test_offer_response_handler_blocked_user(
 async def test_offer_response_handler_order_not_active(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject responses for inactive orders."""
 
@@ -569,6 +577,8 @@ async def test_send_order_closed_and_remove_keyboard() -> None:
 async def test_offer_response_handler_order_not_found(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject responses for unknown order."""
 
@@ -623,6 +633,8 @@ async def test_offer_response_handler_order_not_found(
 async def test_offer_response_handler_already_responded(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject duplicate responses."""
 
@@ -702,6 +714,8 @@ async def test_offer_response_handler_already_responded(
 async def test_offer_response_handler_overflow_saved_no_contact(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Overflow saved, overflow message shown; no contact to advertiser."""
 
@@ -778,7 +792,8 @@ async def test_offer_response_handler_overflow_saved_no_contact(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -799,6 +814,8 @@ async def test_offer_response_handler_overflow_saved_no_contact(
 async def test_offer_response_handler_no_from_user(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle callback without from_user."""
 
@@ -828,7 +845,8 @@ async def test_offer_response_handler_no_from_user(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert not callback.answers
@@ -838,6 +856,8 @@ async def test_offer_response_handler_no_from_user(
 async def test_offer_response_handler_user_not_found(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when user is missing."""
 
@@ -866,7 +886,8 @@ async def test_offer_response_handler_user_not_found(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -877,6 +898,8 @@ async def test_offer_response_handler_user_not_found(
 async def test_offer_response_handler_paused_user(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject paused bloggers."""
 
@@ -915,7 +938,8 @@ async def test_offer_response_handler_paused_user(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -926,6 +950,8 @@ async def test_offer_response_handler_paused_user(
 async def test_offer_response_handler_no_blogger_profile(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when blogger profile is missing."""
 
@@ -965,7 +991,8 @@ async def test_offer_response_handler_no_blogger_profile(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -976,6 +1003,8 @@ async def test_offer_response_handler_no_blogger_profile(
 async def test_offer_response_handler_unconfirmed_profile(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when Instagram is not confirmed."""
 
@@ -1018,7 +1047,8 @@ async def test_offer_response_handler_unconfirmed_profile(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -1036,6 +1066,8 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
     messenger_client,
     event_adapter,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger with confirmed profile but no agreement sees agreement screen."""
 
@@ -1085,7 +1117,8 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1102,6 +1135,8 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
 async def test_offer_response_handler_invalid_uuid(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid UUID in callback data."""
 
@@ -1144,7 +1179,8 @@ async def test_offer_response_handler_invalid_uuid(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -1155,6 +1191,8 @@ async def test_offer_response_handler_invalid_uuid(
 async def test_offer_response_handler_exception(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle exceptions gracefully."""
 
@@ -1230,7 +1268,8 @@ async def test_offer_response_handler_exception(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -1452,6 +1491,8 @@ async def test_offer_response_handler_rate_limited(
     offer_dispatch_repo,
     interaction_repo,
     strict_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when rate limit exceeded."""
 
@@ -1512,7 +1553,8 @@ async def test_offer_response_handler_rate_limited(
             response_service,
             interaction_service,
             strict_rate_limiter,
-            _offer_responses_config(),
+            config,
+            bot_texts_service=bot_texts_service,
         )
 
     assert any("Слишком много запросов" in ans for ans in callback.answers)
@@ -1529,6 +1571,8 @@ async def test_offer_response_sends_product_link_and_what_next(
     messenger_client,
     event_adapter,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Response succeeds: product_link and WHAT_NEXT sent."""
 
@@ -1578,7 +1622,8 @@ async def test_offer_response_sends_product_link_and_what_next(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

@@ -437,8 +437,9 @@ async def handle_role_choice(
     profile_getter: Callable[[UUID], Awaitable[object | None]],
     choose_action_text: str,
     intro_text: str,
-    menu_keyboard: Callable[[], Keyboard],
-    start_keyboard: Callable[[], Keyboard],
+    menu_keyboard: Callable[[dict[str, str]], Keyboard],
+    start_keyboard: Callable[[dict[str, str]], Keyboard],
+    texts: dict[str, str],
 ) -> None:
     """Handle role selection: persist role, show menu or intro.
 
@@ -471,13 +472,13 @@ async def handle_role_choice(
         await messenger_client.send_text(
             chat_id=message.chat_id,
             text=choose_action_text,
-            keyboard=menu_keyboard(),
+            keyboard=menu_keyboard(texts),
         )
     else:
         await messenger_client.send_text(
             chat_id=message.chat_id,
             text=intro_text,
-            keyboard=start_keyboard(),
+            keyboard=start_keyboard(texts),
         )
 
 

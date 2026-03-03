@@ -22,10 +22,7 @@ from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import (
-    CALLBACK_PROFILE_MENU_MY_ORDERS,
-    MY_ORDERS_BUTTON_TEXT,
-)
+from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_MENU_MY_ORDERS
 from ugc_bot.bot.handlers.my_orders import (
     _MY_ORDERS_BLOGGER_CALLBACK_PREFIX,
     _format_date,
@@ -37,9 +34,12 @@ from ugc_bot.bot.handlers.my_orders import (
     show_my_orders_from_profile_callback,
 )
 from ugc_bot.bot.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType
+
+_TEXTS_RU = DEFAULT_TEXTS["ru"]
 
 
 def _my_orders_config() -> AppConfig:
@@ -61,6 +61,8 @@ async def test_show_my_orders_returns_early_when_no_from_user(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """show_my_orders returns without answering when from_user is None."""
 
@@ -84,7 +86,8 @@ async def test_show_my_orders_returns_early_when_no_from_user(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
     assert not message.answers
 
@@ -99,6 +102,8 @@ async def test_show_my_orders_from_profile_callback_advertiser_no_orders(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile inline 'My orders' opens orders list; no orders shows hint."""
     user_service = UserRoleService(user_repo=user_repo)
@@ -134,7 +139,8 @@ async def test_show_my_orders_from_profile_callback_advertiser_no_orders(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -154,6 +160,8 @@ async def test_show_my_orders_from_profile_callback_agreement_required(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'My orders' when agreement not confirmed shows agreement."""
     user = await create_test_user(
@@ -189,7 +197,8 @@ async def test_show_my_orders_from_profile_callback_agreement_required(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -208,6 +217,8 @@ async def test_show_my_orders_from_profile_callback_advertiser_with_orders(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'My orders' with advertiser that has orders shows list."""
     user = await create_test_user(
@@ -247,7 +258,8 @@ async def test_show_my_orders_from_profile_callback_advertiser_with_orders(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -265,6 +277,8 @@ async def test_show_my_orders_from_profile_callback_blogger_with_responses(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'My orders' with blogger that responded shows list."""
     adv_user = await create_test_user(
@@ -309,7 +323,8 @@ async def test_show_my_orders_from_profile_callback_blogger_with_responses(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -327,6 +342,8 @@ async def test_paginate_orders_blogger_no_profile(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """paginate_orders blogger branch when blogger profile missing."""
     await create_test_user(
@@ -359,6 +376,7 @@ async def test_paginate_orders_blogger_no_profile(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -376,6 +394,8 @@ async def test_paginate_orders_blogger_page2(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """paginate_orders blogger branch page 2 renders nav buttons."""
     adv_user = await create_test_user(
@@ -426,6 +446,7 @@ async def test_paginate_orders_blogger_page2(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -441,6 +462,8 @@ async def test_show_my_orders_user_not_found(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Show hint when user is not in DB (get_user returns None)."""
 
@@ -464,7 +487,8 @@ async def test_show_my_orders_user_not_found(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
@@ -478,6 +502,8 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Show hint when neither advertiser nor blogger profile exists."""
 
@@ -500,7 +526,7 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
         username="adv",
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(1))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -508,7 +534,8 @@ async def test_my_orders_no_advertiser_nor_blogger_profile(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -524,6 +551,8 @@ async def test_show_my_orders_shows_agreement_when_not_confirmed(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user has profile but agreement not confirmed, show agreement."""
 
@@ -549,7 +578,9 @@ async def test_show_my_orders_shows_agreement_when_not_confirmed(
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(99, "user"))
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser(99, "user")
+    )
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -557,7 +588,8 @@ async def test_show_my_orders_shows_agreement_when_not_confirmed(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -577,6 +609,8 @@ async def test_show_my_orders_shows_agreement_when_blogger_not_confirmed(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user has only blogger profile and no agreement, show agreement."""
 
@@ -603,7 +637,7 @@ async def test_show_my_orders_shows_agreement_when_blogger_not_confirmed(
     await create_test_blogger_profile(blogger_repo, user.user_id)
 
     message = FakeMessage(
-        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(98, "blogger_user")
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser(98, "blogger_user")
     )
     await show_my_orders(
         message,
@@ -612,7 +646,8 @@ async def test_show_my_orders_shows_agreement_when_blogger_not_confirmed(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -629,6 +664,8 @@ async def test_my_orders_blogger_no_responses(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger with no responses sees hint."""
 
@@ -652,7 +689,7 @@ async def test_my_orders_blogger_no_responses(
     )
     await create_test_blogger_profile(blogger_repo, user.user_id)
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(5))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(5))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -660,7 +697,8 @@ async def test_my_orders_blogger_no_responses(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -675,6 +713,8 @@ async def test_my_orders_blogger_with_responses(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger sees orders they responded to."""
 
@@ -719,7 +759,7 @@ async def test_my_orders_blogger_with_responses(
         order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(6))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(6))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -727,7 +767,8 @@ async def test_my_orders_blogger_with_responses(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -748,6 +789,8 @@ async def test_my_orders_empty(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Show hint when no orders exist."""
 
@@ -780,7 +823,8 @@ async def test_my_orders_empty(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -795,6 +839,8 @@ async def test_my_orders_list(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """List existing orders."""
 
@@ -829,7 +875,7 @@ async def test_my_orders_list(
         status=OrderStatus.NEW,
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(1))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -837,7 +883,8 @@ async def test_my_orders_list(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -864,6 +911,8 @@ async def test_my_orders_both_profiles_with_orders(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Both profiles: two messages with advertiser and blogger orders."""
 
@@ -913,7 +962,7 @@ async def test_my_orders_both_profiles_with_orders(
         other_order.order_id, user.user_id, accepted=True, in_offer=True
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(10))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(10))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -921,7 +970,8 @@ async def test_my_orders_both_profiles_with_orders(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert len(message.answers) == 2
@@ -949,6 +999,8 @@ async def test_my_orders_both_profiles_both_empty(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """User with both profiles but no orders gets two hint messages."""
 
@@ -974,7 +1026,7 @@ async def test_my_orders_both_profiles_both_empty(
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await create_test_blogger_profile(blogger_repo, user.user_id)
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(11))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(11))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -982,7 +1034,8 @@ async def test_my_orders_both_profiles_both_empty(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert len(message.answers) == 2
@@ -1008,6 +1061,8 @@ async def test_my_orders_both_profiles_advertiser_only(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Both profiles: advertiser has orders, blogger has none — list + hint."""
 
@@ -1041,7 +1096,7 @@ async def test_my_orders_both_profiles_advertiser_only(
         status=OrderStatus.NEW,
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(12))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(12))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -1049,7 +1104,8 @@ async def test_my_orders_both_profiles_advertiser_only(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert len(message.answers) == 2
@@ -1076,6 +1132,8 @@ async def test_my_orders_both_profiles_blogger_only(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Both profiles: blogger has responses, advertiser none — hint + list."""
 
@@ -1121,7 +1179,7 @@ async def test_my_orders_both_profiles_blogger_only(
         order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(13))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(13))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -1129,7 +1187,8 @@ async def test_my_orders_both_profiles_blogger_only(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert len(message.answers) == 2
@@ -1156,6 +1215,8 @@ async def test_paginate_orders_returns_early_when_no_from_user(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """paginate_orders returns without answering when from_user is None."""
 
@@ -1180,6 +1241,7 @@ async def test_paginate_orders_returns_early_when_no_from_user(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
     )
     assert not callback.answers or callback.answers == [""]
 
@@ -1192,6 +1254,8 @@ async def test_paginate_orders_user_not_found(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """paginate_orders answers when user is not found."""
 
@@ -1216,6 +1280,7 @@ async def test_paginate_orders_user_not_found(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
     )
     assert callback.answers
     assert "не найден" in callback.answers[0]
@@ -1229,6 +1294,8 @@ async def test_paginate_orders_no_advertiser_profile(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """paginate_orders answers when advertiser profile is missing."""
 
@@ -1250,7 +1317,7 @@ async def test_paginate_orders_no_advertiser_profile(
         external_id="1",
         username="adv",
     )
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(1))
     callback = FakeCallback(
         data="my_orders:1", user=FakeUser(1), message=message
     )
@@ -1260,6 +1327,7 @@ async def test_paginate_orders_no_advertiser_profile(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
     )
     assert callback.answers
     assert "Профиль рекламодателя не заполнен" in callback.answers[0]
@@ -1275,6 +1343,8 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """paginate_orders does not call edit_text when message has no edit_text."""
 
@@ -1313,6 +1383,7 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1328,6 +1399,8 @@ async def test_paginate_orders_invalid_page_uses_one(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """paginate_orders with invalid page string falls back to page 1."""
 
@@ -1350,7 +1423,7 @@ async def test_paginate_orders_invalid_page_uses_one(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(1))
     callback = FakeCallback(
         data="my_orders:not_a_number", user=FakeUser(1), message=message
     )
@@ -1360,6 +1433,7 @@ async def test_paginate_orders_invalid_page_uses_one(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
     )
     await callback.answer()
     assert message.answers or callback.answers
@@ -1375,6 +1449,8 @@ async def test_my_orders_page_one_shows_forward_button(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Page 1 with multiple pages shows 'Вперед' (covers forward nav)."""
 
@@ -1406,7 +1482,7 @@ async def test_my_orders_page_one_shows_forward_button(
             bloggers_needed=3,
             status=OrderStatus.NEW,
         )
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(1))
     callback = FakeCallback(
         data="my_orders:1", user=FakeUser(1), message=message
     )
@@ -1416,6 +1492,7 @@ async def test_my_orders_page_one_shows_forward_button(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1447,6 +1524,8 @@ async def test_my_orders_pagination(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Paginate orders list."""
 
@@ -1480,7 +1559,7 @@ async def test_my_orders_pagination(
             status=OrderStatus.NEW,
         )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(1))
     callback = FakeCallback(
         data="my_orders:2", user=FakeUser(1), message=message
     )
@@ -1490,6 +1569,7 @@ async def test_my_orders_pagination(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1511,6 +1591,8 @@ async def test_my_orders_with_complaint_button(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Show complaint button for closed orders with responses."""
 
@@ -1559,7 +1641,7 @@ async def test_my_orders_with_complaint_button(
         order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(1))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(1))
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -1567,7 +1649,8 @@ async def test_my_orders_with_complaint_button(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -1589,6 +1672,8 @@ async def test_paginate_orders_blogger(
     offer_dispatch_repo,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Paginate blogger's responded orders (my_orders_blogger:page)."""
 
@@ -1633,7 +1718,7 @@ async def test_paginate_orders_blogger(
         order.order_id, blogger_user.user_id, accepted=True, in_offer=True
     )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser(11))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_orders"], user=FakeUser(11))
     callback = FakeCallback(
         data="my_orders_blogger:1", user=FakeUser(11), message=message
     )
@@ -1643,6 +1728,7 @@ async def test_paginate_orders_blogger(
         profile_service,
         order_service,
         offer_response_service,
+        currency_symbol="₽",
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1770,6 +1856,8 @@ async def test_my_orders_shows_active_status_and_matched_count(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Active order shows 'Активен' and dynamic matched count 2/10."""
 
@@ -1824,7 +1912,7 @@ async def test_my_orders_shows_active_status_and_matched_count(
     )
 
     message = FakeMessage(
-        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_active")
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser("adv_active")
     )
     await show_my_orders(
         message,
@@ -1833,7 +1921,8 @@ async def test_my_orders_shows_active_status_and_matched_count(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -1856,6 +1945,8 @@ async def test_my_orders_shows_completed_status_and_completion_date(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Completed order shows 'Завершён' and completion date."""
 
@@ -1902,7 +1993,9 @@ async def test_my_orders_shows_completed_status_and_completion_date(
             order.order_id, blogger.user_id, accepted=True, in_offer=True
         )
 
-    message = FakeMessage(text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_done"))
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser("adv_done")
+    )
     await show_my_orders(
         message,
         FakeFSMContext(),
@@ -1910,7 +2003,8 @@ async def test_my_orders_shows_completed_status_and_completion_date(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -1932,6 +2026,8 @@ async def test_my_orders_advertiser_shows_barter(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser order list shows barter when barter_description is set."""
 
@@ -1966,7 +2062,7 @@ async def test_my_orders_advertiser_shows_barter(
     )
 
     message = FakeMessage(
-        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("adv_barter")
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser("adv_barter")
     )
     await show_my_orders(
         message,
@@ -1975,7 +2071,8 @@ async def test_my_orders_advertiser_shows_barter(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -1996,6 +2093,8 @@ async def test_my_orders_blogger_shows_barter(
     order_repo,
     blogger_repo,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger order list shows barter when barter_description is set."""
 
@@ -2042,7 +2141,7 @@ async def test_my_orders_blogger_shows_barter(
     )
 
     message = FakeMessage(
-        text=MY_ORDERS_BUTTON_TEXT, user=FakeUser("blogger_b")
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser("blogger_b")
     )
     await show_my_orders(
         message,
@@ -2051,7 +2150,8 @@ async def test_my_orders_blogger_shows_barter(
         profile_service,
         order_service,
         offer_response_service,
-        _my_orders_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers

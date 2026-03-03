@@ -529,6 +529,22 @@ class ContactPricingRepository(ABC):
         """Fetch pricing by bloggers count."""
 
 
+class BotTextsRepository(ABC):
+    """Port for localized bot text persistence (key, locale -> value)."""
+
+    @abstractmethod
+    async def get(
+        self, key: str, locale: str, session: object | None = None
+    ) -> Optional[str]:
+        """Fetch text value for key and locale. Returns None if not found."""
+
+    @abstractmethod
+    async def get_all(
+        self, session: object | None = None
+    ) -> List[Tuple[str, str, str]]:
+        """Fetch all texts as (key, locale, value). Preload at startup."""
+
+
 class OrderActivationPublisher(ABC):
     """Port for publishing order activation events."""
 

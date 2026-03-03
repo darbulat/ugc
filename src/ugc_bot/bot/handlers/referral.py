@@ -94,16 +94,18 @@ def _referral_stats_text(
     income_total: float,
     paid_total: float,
     balance: float,
+    currency_symbol: str = "₽",
 ) -> str:
     """Format referral stats message."""
     return (
         "📊 Реферальная статистика\n\n"
         f"Приведено креаторов: {creators_count}\n"
         f"Выполнено заказов: {orders_count}\n\n"
-        f"Доход за текущий месяц: {income_current_month:.2f} ₽\n"
-        f"Накоплено (всего): {income_total:.2f} ₽\n"
-        f"Выплачено: {paid_total:.2f} ₽\n"
-        f"Текущий баланс: {balance:.2f} ₽"
+        f"Доход за текущий месяц: {income_current_month:.2f} "
+        f"{currency_symbol}\n"
+        f"Накоплено (всего): {income_total:.2f} {currency_symbol}\n"
+        f"Выплачено: {paid_total:.2f} {currency_symbol}\n"
+        f"Текущий баланс: {balance:.2f} {currency_symbol}"
     )
 
 
@@ -175,6 +177,7 @@ async def referral_command(
         income_total=stats.income_total,
         paid_total=stats.paid_total,
         balance=balance,
+        currency_symbol=config.market.currency_symbol,
     )
     is_own_view = target.user_id == user.user_id
     bot_username = (config.referral.referral_bot_username or "").strip()
@@ -272,7 +275,7 @@ async def payout_button_callback(
             f"Пользователь: {user.username or '—'}\n"
             f"telegram: @{user.telegram or '—'}\n"
             f"Request ID: {request.request_id}\n"
-            f"Сумма: {request_amount:.2f} ₽\n"
+            f"Сумма: {request_amount:.2f} {config.market.currency_symbol}\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
         )
         admin_base = (config.admin.admin_base_url or "").strip()

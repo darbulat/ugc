@@ -9,8 +9,9 @@ from aiogram import Bot
 
 from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.start import START_TEXT, _role_keyboard
+from ugc_bot.bot.handlers.keyboards import role_keyboard
 from ugc_bot.bot.handlers.utils import send_with_retry
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import load_config
 from ugc_bot.infrastructure.db.repositories import SqlAlchemyUserRepository
 from ugc_bot.infrastructure.db.session import (
@@ -60,10 +61,23 @@ def _seconds_until_next_run(config) -> float:
     return (next_run - now_local).total_seconds()
 
 
+def _reminder_text_and_keyboard(config):
+    """Start message and role keyboard for reminder (uses default locale)."""
+    locale = getattr(config.market, "default_locale", "ru") or "ru"
+    locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+    start_text = locale_texts.get(
+        "msg_start", locale_texts.get("start_message", "")
+    )
+    keys = ["btn_creator", "btn_advertiser", "btn_support"]
+    texts = {k: locale_texts.get(k, "") for k in keys}
+    return start_text, role_keyboard(texts)
+
+
 async def run_once(
     messenger_client: MessengerClient,
     user_role_service: UserRoleService,
     reminder_cutoff: datetime,
+    config,
 ) -> None:
     """Send one reminder to each user due for a role-choice reminder.
 
@@ -80,11 +94,12 @@ async def run_once(
         try:
             await user_role_service.update_last_role_reminder_at(user.user_id)
             chat_id = int(user.external_id)
+            start_text, keyboard = _reminder_text_and_keyboard(config)
             await send_with_retry(
                 messenger_client,
                 chat_id=str(chat_id),
-                text=START_TEXT,
-                keyboard=_role_keyboard(),
+                text=start_text,
+                keyboard=keyboard,
                 retries=_send_retries,
                 delay_seconds=_send_retry_delay_seconds,
                 logger=logger,
@@ -110,7 +125,9 @@ async def run_loop(
 
     while True:
         reminder_cutoff = _reminder_cutoff(config)
-        await run_once(messenger_client, user_role_service, reminder_cutoff)
+        await run_once(
+            messenger_client, user_role_service, reminder_cutoff, config
+        )
         sleep_seconds = _seconds_until_next_run(config)
         logger.info(
             "Role reminder done, sleeping until next run",

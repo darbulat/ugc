@@ -167,15 +167,17 @@ async def notify_admins_about_new_order(
     user_role_service: UserRoleService,
     content_moderation: ContentModerationService,
     admin_base_url: str = "",
+    currency_symbol: str = "₽",
 ) -> None:
     """Send order details to all Telegram admins for moderation.
 
     Args:
         order: The order pending moderation.
-        bot: Telegram Bot instance for sending messages.
+        messenger_client: Messenger client for sending messages.
         user_role_service: Service to fetch admin list and usernames.
         content_moderation: Service to check for banned content.
         admin_base_url: Optional base URL for admin panel links.
+        currency_symbol: Symbol for price display (e.g. ₽, $).
     """
     admins = await user_role_service.list_admins(
         messenger_type=MessengerType.TELEGRAM
@@ -233,7 +235,7 @@ async def notify_admins_about_new_order(
         f"<b>Задача:</b> {offer_esc}\n"
         f"<b>Ссылка на продукт:</b> {product_link_esc}\n"
         f"<b>Бартер:</b> {barter_esc}\n"
-        f"<b>Бюджет:</b> {order.price} ₽\n"
+        f"<b>Бюджет:</b> {order.price} {currency_symbol}\n"
         f"<b>Нужно креаторов:</b> {order.bloggers_needed}\n"
         f"<b>Использование контента:</b> {content_usage_esc}\n"
         f"<b>Сроки:</b> {deadlines_esc}\n"

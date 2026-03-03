@@ -9,6 +9,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
@@ -278,6 +279,7 @@ def build_bot_services(
             offer_dispatch_repo=repos["offer_dispatch_repo"],
             interaction_repo=repos["interaction_repo"],
             transaction_manager=transaction_manager,
+            currency_symbol=config.market.currency_symbol,
         ),
         "offer_response_service": OfferResponseService(
             order_repo=repos["order_repo"],
@@ -352,4 +354,11 @@ def build_bot_services(
         "transaction_manager": transaction_manager,
         "max_order_price": config.order.max_order_price,
         "allowed_blogger_counts": config.order.get_allowed_blogger_counts_set(),
+        "payment_currency": config.market.payment_currency,
+        "currency_symbol": config.market.currency_symbol,
+        "default_locale": config.market.default_locale,
+        "bot_texts_service": BotTextsService(
+            bot_texts_repo=repos["bot_texts_repo"],
+            default_locale=config.market.default_locale,
+        ),
     }

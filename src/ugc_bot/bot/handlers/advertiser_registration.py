@@ -18,20 +18,19 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
-    ADVERTISER_START_BUTTON_TEXT,
     CALLBACK_ADV_AGREE,
     CALLBACK_ADV_START,
-    CONFIRM_AGREEMENT_BUTTON_TEXT,
     advertiser_menu_keyboard,
     advertiser_start_keyboard,
     confirm_agreement_inline_keyboard,
     flow_keyboard_remove,
     phone_request_keyboard,
 )
-from ugc_bot.bot.handlers.start import ADVERTISER_LABEL
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
@@ -78,30 +77,52 @@ ADVERTISER_INTRO_TEXT = (
 
 
 @router.message(Command("advertiser"))
-@router.message(lambda msg: (msg.text or "").strip() == ADVERTISER_LABEL)
+@router.message(TextEqualsKey("btn_advertiser"))
 async def choose_advertiser_role(
     message: Message,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle 'Мне нужны UGC‑креаторы': persist role, show menu or reg."""
+    """Handle advertiser role: persist role, show menu or reg."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    texts = await bot_texts_service.get_many(
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+            "btn_support",
+            "btn_advertiser_start",
+            "msg_choose_action",
+        ],
+        locale,
+    )
+    choose_action_text = await bot_texts_service.get(
+        "msg_choose_action", locale
+    )
+    intro_text = await bot_texts_service.get("msg_advertiser_intro", locale)
+    if not intro_text:
+        intro_text = ADVERTISER_INTRO_TEXT
     await handle_role_choice(
         incoming,
         messenger_client,
         user_role_service,
         AiogramStateStore(state),
         profile_getter=profile_service.get_advertiser_profile,
-        choose_action_text=ADVERTISER_CHOOSE_ACTION_TEXT,
-        intro_text=ADVERTISER_INTRO_TEXT,
+        choose_action_text=choose_action_text or ADVERTISER_CHOOSE_ACTION_TEXT,
+        intro_text=intro_text,
         menu_keyboard=advertiser_menu_keyboard,
         start_keyboard=advertiser_start_keyboard,
+        texts=texts,
     )
 
 
@@ -137,6 +158,7 @@ async def _advertiser_start_impl(
     user: object,
     messenger_client: MessengerClient,
     profile_service: ProfileService,
+    texts: dict[str, str],
 ) -> None:
     """Run advertiser start logic: show menu or start registration."""
     user_id = getattr(user, "user_id", None)
@@ -147,8 +169,8 @@ async def _advertiser_start_impl(
     if advertiser is not None:
         await messenger_client.send_text(
             chat_id=chat_id,
-            text="Выберите действие:",
-            keyboard=advertiser_menu_keyboard(),
+            text=texts.get("msg_choose_action", "Выберите действие:"),
+            keyboard=advertiser_menu_keyboard(texts),
         )
         return
     await state_store.update_data(user_id=user_id)
@@ -161,21 +183,21 @@ async def _advertiser_start_impl(
                 "Нажмите кнопку ниже или введите номер вручную "
                 "(пример: 89001110777)."
             ),
-            keyboard=phone_request_keyboard(),
+            keyboard=phone_request_keyboard(texts),
         )
         await state_store.set_state(AdvertiserRegistrationStates.phone.state)
     else:
         await _ask_name_for_chat(chat_id, messenger_client, state_store)
 
 
-@router.message(
-    lambda msg: (msg.text or "").strip() == ADVERTISER_START_BUTTON_TEXT
-)
+@router.message(TextEqualsKey("btn_advertiser_start"))
 async def handle_advertiser_start(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -195,8 +217,25 @@ async def handle_advertiser_start(
     )
     if user is None:
         return
+    locale = config.market.default_locale
+    texts = await bot_texts_service.get_many(
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+            "btn_support",
+            "btn_phone_request",
+        ],
+        locale,
+    )
     await _advertiser_start_impl(
-        incoming.chat_id, state_store, user, messenger_client, profile_service
+        incoming.chat_id,
+        state_store,
+        user,
+        messenger_client,
+        profile_service,
+        texts,
     )
 
 
@@ -206,6 +245,8 @@ async def handle_advertiser_start_callback(
     state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -227,8 +268,26 @@ async def handle_advertiser_start_callback(
     if user is None:
         return
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    texts = await bot_texts_service.get_many(
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+            "btn_support",
+            "btn_phone_request",
+            "msg_choose_action",
+        ],
+        locale,
+    )
     await _advertiser_start_impl(
-        incoming.chat_id, state_store, user, messenger_client, profile_service
+        incoming.chat_id,
+        state_store,
+        user,
+        messenger_client,
+        profile_service,
+        texts,
     )
 
 
@@ -236,6 +295,8 @@ async def handle_advertiser_start_callback(
 async def handle_name(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -256,6 +317,9 @@ async def handle_name(
         return
 
     await state_store.update_data(name=name)
+    texts = await bot_texts_service.get_many(
+        ["btn_phone_request"], config.market.default_locale
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=(
@@ -263,7 +327,7 @@ async def handle_name(
             "Нажмите кнопку ниже или введите номер вручную "
             "(пример: 89001110777)."
         ),
-        keyboard=phone_request_keyboard(),
+        keyboard=phone_request_keyboard(texts),
     )
     await state_store.set_state(AdvertiserRegistrationStates.phone.state)
 
@@ -272,6 +336,8 @@ async def handle_name(
 async def handle_phone(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -284,10 +350,13 @@ async def handle_phone(
     phone = (incoming.contact_phone or incoming.text or "").strip()
     err = validate_phone(phone)
     if err is not None:
+        texts = await bot_texts_service.get_many(
+            ["btn_phone_request"], config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=err,
-            keyboard=phone_request_keyboard(),
+            keyboard=phone_request_keyboard(texts),
         )
         return
 
@@ -401,6 +470,7 @@ async def handle_site_link(
     message: Message,
     state: FSMContext,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -447,11 +517,14 @@ async def handle_site_link(
     except Exception:
         raise
 
+    texts = await bot_texts_service.get_many(
+        ["btn_confirm_agreement"], config.market.default_locale
+    )
     text = format_agreements_message(config)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
-        keyboard=confirm_agreement_inline_keyboard(CALLBACK_ADV_AGREE),
+        keyboard=confirm_agreement_inline_keyboard(CALLBACK_ADV_AGREE, texts),
         parse_mode="HTML",
     )
     await state_store.set_state(AdvertiserRegistrationStates.agreements.state)
@@ -461,6 +534,8 @@ async def handle_site_link(
 async def handle_agreements_confirm(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -471,7 +546,11 @@ async def handle_agreements_confirm(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    if (incoming.text or "").strip() != CONFIRM_AGREEMENT_BUTTON_TEXT:
+    locale = config.market.default_locale
+    confirm_text = (
+        await bot_texts_service.get("btn_confirm_agreement", locale)
+    ).strip()
+    if (incoming.text or "").strip() != confirm_text:
         await state_store.clear()
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -495,10 +574,21 @@ async def handle_agreements_confirm(
         user_id=user_id,
     )
     await state_store.clear()
+    texts = await bot_texts_service.get_many(
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+            "btn_support",
+        ],
+        locale,
+    )
+    msg_done = await bot_texts_service.get("msg_after_registration", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Теперь вы можете разместить заказ и найти UGC-креаторов.",
-        keyboard=advertiser_menu_keyboard(),
+        text=msg_done or "Теперь вы можете разместить заказ.",
+        keyboard=advertiser_menu_keyboard(texts),
     )
 
 
@@ -506,6 +596,8 @@ async def handle_agreements_confirm(
 async def handle_advertiser_agreements_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -541,8 +633,20 @@ async def handle_advertiser_agreements_callback(
     )
 
     await state_store.clear()
+    locale = config.market.default_locale
+    texts = await bot_texts_service.get_many(
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+            "btn_support",
+        ],
+        locale,
+    )
+    msg_done = await bot_texts_service.get("msg_after_registration", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Теперь вы можете разместить заказ и найти UGC-креаторов.",
-        keyboard=advertiser_menu_keyboard(),
+        text=msg_done or "Теперь вы можете разместить заказ.",
+        keyboard=advertiser_menu_keyboard(texts),
     )

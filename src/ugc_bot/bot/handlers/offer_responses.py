@@ -20,6 +20,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
@@ -30,10 +31,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import (
-    CONFIRM_AGREEMENT_BUTTON_TEXT,
-    flow_keyboard,
-)
+from ugc_bot.bot.handlers.keyboards import flow_keyboard
 from ugc_bot.bot.handlers.profile import _BLOGGER_AGREEMENTS_STATE
 from ugc_bot.bot.handlers.security_warnings import (
     ADVERTISER_CONTACTS_WARNING,
@@ -196,6 +194,7 @@ async def handle_offer_response(
     interaction_service: InteractionService,
     offer_response_rate_limiter: Any,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -238,11 +237,14 @@ async def handle_offer_response(
             config,
             intro="Пожалуйста, подтвердите согласие с документами платформы.",
         )
+        confirm_btn = await bot_texts_service.get(
+            "btn_confirm_agreement", config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
             keyboard=flow_keyboard(
-                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+                keyboard=[[Button(text=confirm_btn)]],
             ),
             parse_mode="HTML",
         )

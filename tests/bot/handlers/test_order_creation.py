@@ -101,7 +101,7 @@ def _order_creation_config() -> AppConfig:
 
 @pytest.mark.asyncio
 async def test_start_order_creation_requires_role(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Require advertiser role before creation."""
 
@@ -119,14 +119,21 @@ async def test_start_order_creation_requires_role(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
     assert "Пользователь не найден" in message.answers[0]
 
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_user_not_found(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' callback with unknown user sends nothing."""
     user_service = UserRoleService(user_repo=user_repo)
@@ -145,7 +152,8 @@ async def test_start_order_creation_from_profile_callback_user_not_found(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -154,7 +162,13 @@ async def test_start_order_creation_from_profile_callback_user_not_found(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_no_advertiser(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' when advertiser profile missing."""
     await create_test_user(user_repo, external_id="81", username="no_adv")
@@ -174,7 +188,8 @@ async def test_start_order_creation_from_profile_callback_no_advertiser(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -187,7 +202,13 @@ async def test_start_order_creation_from_profile_callback_no_advertiser(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_agreement_required(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' when agreement not confirmed sends agreement."""
     user = await create_test_user(
@@ -214,7 +235,8 @@ async def test_start_order_creation_from_profile_callback_agreement_required(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -226,7 +248,13 @@ async def test_start_order_creation_from_profile_callback_agreement_required(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_success(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' with agreed advertiser shows order type."""
     from datetime import datetime, timezone
@@ -255,7 +283,8 @@ async def test_start_order_creation_from_profile_callback_success(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -265,7 +294,12 @@ async def test_start_order_creation_from_profile_callback_success(
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_new_advertiser(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow: order_type -> offer_text -> cooperation -> price -> product_link.
 
@@ -292,7 +326,8 @@ async def test_order_creation_flow_new_advertiser(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
     assert "Что вам нужно?" in message.answers[0]
 
@@ -309,6 +344,7 @@ async def test_order_creation_flow_new_advertiser(
         FakeMessage(text="1000", user=None),
         state,
         TEST_MAX_ORDER_PRICE,
+        "₽",
         TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_bloggers_needed(
@@ -358,7 +394,12 @@ async def test_order_creation_flow_new_advertiser(
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_with_barter(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow with barter: order_type -> offer_text -> cooperation -> barter."""
 
@@ -394,7 +435,8 @@ async def test_order_creation_flow_with_barter(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     await handle_order_type(
@@ -456,7 +498,7 @@ async def test_order_creation_flow_with_barter(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_no_advertiser_profile(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Reject when user has no advertiser profile."""
 
@@ -480,7 +522,8 @@ async def test_start_order_creation_no_advertiser_profile(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -491,7 +534,7 @@ async def test_start_order_creation_no_advertiser_profile(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_shows_agreement_when_not_confirmed(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Advertiser with profile but agreement not confirmed sees agreement."""
 
@@ -522,7 +565,8 @@ async def test_start_order_creation_shows_agreement_when_not_confirmed(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -534,7 +578,7 @@ async def test_start_order_creation_shows_agreement_when_not_confirmed(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_blocked_user(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Block order creation for blocked users."""
 
@@ -562,7 +606,8 @@ async def test_start_order_creation_blocked_user(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert "Заблокированные" in message.answers[0]
@@ -590,7 +635,7 @@ async def test_handle_price_exceeds_max_rejected() -> None:
     overflow_price = str(int(TEST_MAX_ORDER_PRICE) + 1)
     message = FakeMessage(text=overflow_price, user=None)
     await handle_price(
-        message, state, TEST_MAX_ORDER_PRICE, TEST_ALLOWED_BLOGGER_COUNTS
+        message, state, TEST_MAX_ORDER_PRICE, "₽", TEST_ALLOWED_BLOGGER_COUNTS
     )
 
     assert message.answers
@@ -669,7 +714,7 @@ async def test_handle_price_negative() -> None:
     state = FakeFSMContext()
     message = FakeMessage(text="-100", user=None)
     await handle_price(
-        message, state, TEST_MAX_ORDER_PRICE, TEST_ALLOWED_BLOGGER_COUNTS
+        message, state, TEST_MAX_ORDER_PRICE, "₽", TEST_ALLOWED_BLOGGER_COUNTS
     )
 
     assert message.answers
@@ -692,6 +737,7 @@ async def test_handle_price_with_coop_both_asks_barter_description() -> None:
         message,
         state,
         TEST_MAX_ORDER_PRICE,
+        "₽",
         TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,
@@ -703,7 +749,12 @@ async def test_handle_price_with_coop_both_asks_barter_description() -> None:
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_coop_both(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow with COOP_BOTH: price -> barter (required) -> bloggers -> ..."""
 
@@ -727,7 +778,8 @@ async def test_order_creation_flow_coop_both(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     await handle_order_type(
@@ -743,6 +795,7 @@ async def test_order_creation_flow_coop_both(
         FakeMessage(text="1500", user=None),
         state,
         TEST_MAX_ORDER_PRICE,
+        "₽",
         TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_barter_description(
@@ -1011,7 +1064,12 @@ async def test_handle_geography_invalid_order_type(
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_ugc_plus_placement(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow with ORDER_TYPE_UGC_PLUS_PLACEMENT."""
 
@@ -1035,7 +1093,8 @@ async def test_order_creation_flow_ugc_plus_placement(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_order_type(
         FakeMessage(text=ORDER_TYPE_UGC_PLUS_PLACEMENT, user=None), state
@@ -1050,6 +1109,7 @@ async def test_order_creation_flow_ugc_plus_placement(
         FakeMessage(text="1000", user=None),
         state,
         TEST_MAX_ORDER_PRICE,
+        "₽",
         TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_bloggers_needed(
@@ -1324,6 +1384,7 @@ async def test_handle_price_invalid_number_sends_message() -> None:
         message,
         state,
         TEST_MAX_ORDER_PRICE,
+        "₽",
         TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,

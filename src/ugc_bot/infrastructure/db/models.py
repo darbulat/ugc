@@ -393,6 +393,21 @@ class ContactPricingModel(Base):
     )
 
 
+class BotTextModel(Base):
+    """Localized bot text ORM model (key, locale -> value)."""
+
+    __tablename__ = "bot_texts"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    locale: Mapped[str] = mapped_column(String(16), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+
 class OfferDispatchModel(Base):
     """ORM model for tracking offer dispatches and responses."""
 

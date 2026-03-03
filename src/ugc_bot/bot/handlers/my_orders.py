@@ -18,16 +18,16 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_MENU_MY_ORDERS,
-    CONFIRM_AGREEMENT_BUTTON_TEXT,
-    MY_ORDERS_BUTTON_TEXT,
     PAY_ORDER_CALLBACK_PREFIX,
     flow_keyboard,
 )
@@ -54,9 +54,9 @@ ORDER_STATUS_LABELS = {
 }
 
 
-def _format_price(price: float) -> str:
-    """Format price with space as thousands separator and ruble sign."""
-    return f"{int(price):,}".replace(",", " ") + " ₽"
+def _format_price(price: float, currency_symbol: str = "₽") -> str:
+    """Format price with space as thousands separator and currency symbol."""
+    return f"{int(price):,}".replace(",", " ") + f" {currency_symbol}"
 
 
 def _format_date(dt: Optional[datetime]) -> str:
@@ -73,11 +73,15 @@ def _format_order_type(order: Order) -> str:
     return "UGC-видео для бренда"
 
 
-def _format_price_and_barter(order: Order) -> list[str]:
+def _format_price_and_barter(
+    order: Order, currency_symbol: str = "₽"
+) -> list[str]:
     """Return lines for price and/or barter (0-2 lines)."""
     result: list[str] = []
     if order.price > 0:
-        result.append(f"Стоимость 1 UGC: {_format_price(order.price)}")
+        result.append(
+            f"Стоимость 1 UGC: {_format_price(order.price, currency_symbol)}"
+        )
     if order.barter_description:
         result.append(f"Бартер: {order.barter_description}")
     return result
@@ -89,7 +93,7 @@ _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
 
 
 @router.message(Command("my_orders"))
-@router.message(lambda msg: (msg.text or "").strip() == MY_ORDERS_BUTTON_TEXT)
+@router.message(TextEqualsKey("btn_my_orders"))
 async def show_my_orders(  # noqa: C901, PLR0912
     message: Message,
     state: FSMContext,
@@ -98,6 +102,7 @@ async def show_my_orders(  # noqa: C901, PLR0912
     order_service: OrderService,
     offer_response_service: OfferResponseService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -136,11 +141,14 @@ async def show_my_orders(  # noqa: C901, PLR0912
             config,
             intro="Пожалуйста, подтвердите согласие с документами платформы.",
         )
+        confirm_btn = await bot_texts_service.get(
+            "btn_confirm_agreement", config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
             keyboard=flow_keyboard(
-                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+                keyboard=[[Button(text=confirm_btn)]],
             ),
             parse_mode="HTML",
         )
@@ -159,7 +167,10 @@ async def show_my_orders(  # noqa: C901, PLR0912
         )
         if orders:
             text, keyboard = await _render_page(
-                orders, page=1, offer_response_service=offer_response_service
+                orders,
+                page=1,
+                offer_response_service=offer_response_service,
+                currency_symbol=config.market.currency_symbol,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
@@ -183,7 +194,9 @@ async def show_my_orders(  # noqa: C901, PLR0912
                 order_responses.append((order, resp))
         if order_responses:
             text, keyboard = _render_blogger_orders_page(
-                order_responses, page=1
+                order_responses,
+                page=1,
+                currency_symbol=config.market.currency_symbol,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
@@ -204,6 +217,7 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
     order_service: OrderService,
     offer_response_service: OfferResponseService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -240,11 +254,14 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
             config,
             intro="Пожалуйста, подтвердите согласие с документами платформы.",
         )
+        confirm_btn = await bot_texts_service.get(
+            "btn_confirm_agreement", config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
             keyboard=flow_keyboard(
-                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+                keyboard=[[Button(text=confirm_btn)]],
             ),
             parse_mode="HTML",
         )
@@ -262,7 +279,10 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
         )
         if orders:
             text, keyboard = await _render_page(
-                orders, page=1, offer_response_service=offer_response_service
+                orders,
+                page=1,
+                offer_response_service=offer_response_service,
+                currency_symbol=config.market.currency_symbol,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
@@ -285,7 +305,9 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
                 order_responses.append((order, resp))
         if order_responses:
             text, keyboard = _render_blogger_orders_page(
-                order_responses, page=1
+                order_responses,
+                page=1,
+                currency_symbol=config.market.currency_symbol,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
@@ -312,6 +334,7 @@ async def paginate_orders(
     profile_service: ProfileService,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
+    currency_symbol: str,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -355,7 +378,9 @@ async def paginate_orders(
             order = await order_service.get_order(resp.order_id)
             if order is not None:
                 order_responses.append((order, resp))
-        text, keyboard = _render_blogger_orders_page(order_responses, page=page)
+        text, keyboard = _render_blogger_orders_page(
+            order_responses, page=page, currency_symbol=currency_symbol
+        )
     else:
         raw = data.split(_MY_ORDERS_CALLBACK_PREFIX, 1)[-1]
         advertiser = await profile_service.get_advertiser_profile(user.user_id)
@@ -375,7 +400,10 @@ async def paginate_orders(
             reverse=True,
         )
         text, keyboard = await _render_page(
-            orders, page=page, offer_response_service=offer_response_service
+            orders,
+            page=page,
+            offer_response_service=offer_response_service,
+            currency_symbol=currency_symbol,
         )
 
     if incoming.message_id:
@@ -389,7 +417,10 @@ async def paginate_orders(
 
 
 async def _render_page(
-    orders, page: int, offer_response_service: OfferResponseService
+    orders,
+    page: int,
+    offer_response_service: OfferResponseService,
+    currency_symbol: str = "₽",
 ) -> tuple[str, Keyboard]:
     """Render paginated orders list."""
 
@@ -414,7 +445,7 @@ async def _render_page(
             f"Статус: {status_label}",
             f"Креаторов: {order.bloggers_needed}",
             f"Подобрано: {matched_count} / {order.bloggers_needed}",
-            *_format_price_and_barter(order),
+            *_format_price_and_barter(order, currency_symbol),
             f"Дата создания: {_format_date(order.created_at)}",
             f"Дата завершения: {_format_date(order.completed_at)}",
             f"Ссылка на проект: {order.product_link}",
@@ -456,6 +487,7 @@ async def _render_page(
 def _render_blogger_orders_page(
     order_responses: list[tuple[Order, OfferDispatch]],
     page: int = 1,
+    currency_symbol: str = "₽",
 ) -> tuple[str, Keyboard]:
     """Render paginated list of orders the blogger responded to."""
 

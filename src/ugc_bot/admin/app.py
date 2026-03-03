@@ -51,6 +51,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    BotTextModel,
     ComplaintModel,
     ContactPricingModel,
     InstagramVerificationCodeModel,
@@ -1379,6 +1380,31 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     ]
 
 
+class BotTextAdmin(ModelView, model=BotTextModel):
+    """Admin view for localized bot texts (key, locale, value)."""
+
+    name = "Текст бота"
+    name_plural = "Тексты бота"
+    column_list = [
+        BotTextModel.key,
+        BotTextModel.locale,
+        BotTextModel.value,
+        BotTextModel.updated_at,
+    ]
+    column_sortable_list = [BotTextModel.key, BotTextModel.locale]
+    column_labels = {
+        BotTextModel.key: "Ключ",
+        BotTextModel.locale: "Локаль",
+        BotTextModel.value: "Текст",
+        BotTextModel.updated_at: "Обновлено",
+    }
+    form_columns = [
+        BotTextModel.key,
+        BotTextModel.locale,
+        BotTextModel.value,
+    ]
+
+
 class NpsResponseAdmin(ModelView, model=NpsResponseModel):
     """Admin view for NPS responses (read-only)."""
 
@@ -1610,6 +1636,7 @@ def create_admin_app() -> FastAPI:  # noqa: C901
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)
     admin.add_view(ContactPricingAdmin)
+    admin.add_view(BotTextAdmin)
     admin.add_view(NpsResponseAdmin)
     admin.add_view(PayoutRequestAdmin)
 

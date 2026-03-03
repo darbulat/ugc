@@ -53,6 +53,11 @@ def test_app_config_accepts_nested_dict() -> None:
             "ALLOWED_BLOGGER_COUNTS": "1,3,5,10",
             "MAX_ORDER_PRICE": "10000",
         },
+        "market": {
+            "PAYMENT_CURRENCY": "RUB",
+            "CURRENCY_SYMBOL": "₽",
+            "BOT_DEFAULT_LOCALE": "ru",
+        },
         "referral": {
             "REFERRAL_SUPPORT_CHAT_ID": "",
             "REFERRAL_BOT_USERNAME": "",

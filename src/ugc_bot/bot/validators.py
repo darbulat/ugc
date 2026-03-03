@@ -353,10 +353,15 @@ def validate_audience_geo(value: str) -> str | None:
     return None
 
 
-def validate_price(value: float, max_price: float) -> str | None:
+def validate_price(
+    value: float, max_price: float, currency_symbol: str = "₽"
+) -> str | None:
     """Validate price (positive, not exceeding max)."""
     if value <= 0:
         return "Цена должна быть больше 0."
     if value > max_price:
-        return f"Сумма превышает максимально допустимую ({max_price:,.0f} ₽)."
+        return (
+            f"Сумма превышает максимально допустимую "
+            f"({max_price:,.0f} {currency_symbol})."
+        )
     return None

@@ -23,6 +23,7 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_new_order,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
@@ -55,12 +56,13 @@ from ugc_bot.infrastructure.messenger.telegram.adapter import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
+DEFAULT_RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
 
 
 def build_receipt_provider_data(
     total_amount: float,
-    currency: str = "RUB",
+    currency: str,
+    receipt_description: str,
 ) -> str:
     """Build provider_data JSON for YooKassa receipt (54-FZ).
 
@@ -71,7 +73,8 @@ def build_receipt_provider_data(
         "receipt": {
             "items": [
                 {
-                    "description": RECEIPT_SERVICE_DESCRIPTION,
+                    "description": receipt_description
+                    or DEFAULT_RECEIPT_SERVICE_DESCRIPTION,
                     "quantity": 1,
                     "amount": {"value": amount_str, "currency": currency},
                     "vat_code": 2,
@@ -92,6 +95,7 @@ async def send_order_invoice(
     offer_text: str,
     price_value: float,
     config: AppConfig,
+    receipt_description: str | None = None,
 ) -> None:
     """Send invoice for order with 54-FZ receipt (email via Telegram form)."""
 
@@ -119,9 +123,17 @@ async def send_order_invoice(
         )
         return
 
+    currency = config.market.payment_currency
+    currency_symbol = config.market.currency_symbol
+    receipt_desc = (
+        (receipt_description or "").strip()
+        or config.market.receipt_service_description
+        or DEFAULT_RECEIPT_SERVICE_DESCRIPTION
+    )
     provider_data = build_receipt_provider_data(
         total_amount=price_value,
-        currency="RUB",
+        currency=currency,
+        receipt_description=receipt_desc,
     )
 
     try:
@@ -132,10 +144,12 @@ async def send_order_invoice(
                 description=offer_text[:255],
                 payload=str(order_id),
                 provider_token=config.bot.telegram_provider_token,
-                currency="RUB",
+                currency=currency,
                 items=[
                     InvoiceItem(
-                        label=f"💳 Заплатить {int(price_value)} ₽",
+                        label=(
+                            f"💳 Заплатить {int(price_value)} {currency_symbol}"
+                        ),
                         amount_minor=price,
                     )
                 ],
@@ -163,6 +177,7 @@ async def pay_order(
     payment_service: PaymentService,
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -244,6 +259,10 @@ async def pay_order(
         )
         return
 
+    locale = config.market.default_locale
+    receipt_desc = (
+        await bot_texts_service.get("receipt_description", locale)
+    ).strip() or None
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
@@ -251,6 +270,7 @@ async def pay_order(
         offer_text=order.offer_text,
         price_value=contact_price,
         config=config,
+        receipt_description=receipt_desc,
     )
 
 
@@ -266,6 +286,7 @@ async def pay_order_callback(
     payment_service: PaymentService,
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -342,6 +363,10 @@ async def pay_order_callback(
         )
         return
 
+    locale = config.market.default_locale
+    receipt_desc = (
+        await bot_texts_service.get("receipt_description", locale)
+    ).strip() or None
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
@@ -349,6 +374,7 @@ async def pay_order_callback(
         offer_text=order.offer_text,
         price_value=contact_price,
         config=config,
+        receipt_description=receipt_desc,
     )
 
 
@@ -374,6 +400,7 @@ async def successful_payment_handler(
     payment_service: PaymentService,
     content_moderation_service: ContentModerationService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -437,6 +464,7 @@ async def successful_payment_handler(
             user_role_service=user_role_service,
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
+            currency_symbol=config.market.currency_symbol,
         )
 
     await messenger_client.send_text(
@@ -448,9 +476,13 @@ async def successful_payment_handler(
         text=ADVERTISER_AFTER_PAYMENT_WHAT_NEXT,
         parse_mode="Markdown",
     )
+    after_texts = await bot_texts_service.get_many(
+        ["btn_create_order", "btn_my_orders", "btn_support"],
+        config.market.default_locale,
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=ADVERTISER_AFTER_PAYMENT_IMPORTANT,
         parse_mode="Markdown",
-        keyboard=advertiser_after_payment_keyboard(),
+        keyboard=advertiser_after_payment_keyboard(after_texts),
     )

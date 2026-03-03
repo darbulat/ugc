@@ -68,6 +68,7 @@ async def test_pay_order_success(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Invoice is sent when order is valid."""
 
@@ -135,6 +136,7 @@ async def test_pay_order_success(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert bot.invoices
 
@@ -148,6 +150,7 @@ async def test_pay_order_missing_provider_token(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject when provider token missing."""
 
@@ -222,6 +225,7 @@ async def test_pay_order_missing_provider_token(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "Платежный провайдер не настроен." in message.answers[0]
 
@@ -235,6 +239,7 @@ async def test_pay_order_invalid_args(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject missing order id argument."""
 
@@ -278,6 +283,7 @@ async def test_pay_order_invalid_args(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "Использование" in message.answers[0]
 
@@ -291,6 +297,7 @@ async def test_pay_order_invalid_uuid(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject invalid order id format."""
 
@@ -334,6 +341,7 @@ async def test_pay_order_invalid_uuid(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "Неверный формат" in message.answers[0]
 
@@ -347,6 +355,7 @@ async def test_pay_order_order_not_found(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject missing order."""
 
@@ -392,6 +401,7 @@ async def test_pay_order_order_not_found(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "Заказ не найден" in message.answers[0]
 
@@ -405,6 +415,7 @@ async def test_pay_order_wrong_owner(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject payments for чужие заказы."""
 
@@ -465,6 +476,7 @@ async def test_pay_order_wrong_owner(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "не принадлежит" in message.answers[0]
 
@@ -478,6 +490,7 @@ async def test_pay_order_not_new_status(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject payments for non-NEW orders."""
 
@@ -531,6 +544,7 @@ async def test_pay_order_not_new_status(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "статусе NEW" in message.answers[0]
 
@@ -544,6 +558,7 @@ async def test_pay_order_blocked_user(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject blocked users."""
 
@@ -592,6 +607,7 @@ async def test_pay_order_blocked_user(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "Заблокированные" in message.answers[0]
 
@@ -605,6 +621,7 @@ async def test_pay_order_paused_user(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject paused users."""
 
@@ -653,6 +670,7 @@ async def test_pay_order_paused_user(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "на паузе" in message.answers[0]
 
@@ -666,6 +684,7 @@ async def test_pay_order_missing_profile(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject missing advertiser profile."""
 
@@ -710,6 +729,7 @@ async def test_pay_order_missing_profile(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert "Профиль рекламодателя" in message.answers[0]
 
@@ -760,6 +780,7 @@ async def test_successful_payment_handler(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Confirm payment on successful payment message."""
 
@@ -817,6 +838,7 @@ async def test_successful_payment_handler(
         payment_service,
         content_moderation,
         config,
+        bot_texts_service=bot_texts_service,
     )
     assert message.answers
 
@@ -835,6 +857,7 @@ async def test_successful_payment_invalid_payload(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject invalid payload."""
 
@@ -874,6 +897,7 @@ async def test_successful_payment_invalid_payload(
         payment_service,
         content_moderation,
         config,
+        bot_texts_service=bot_texts_service,
     )
     assert "Не удалось определить заказ" in message.answers[0]
 
@@ -887,6 +911,7 @@ async def test_successful_payment_user_not_found(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject when user is not found."""
 
@@ -920,6 +945,7 @@ async def test_successful_payment_user_not_found(
         payment_service,
         content_moderation,
         config,
+        bot_texts_service=bot_texts_service,
     )
     assert "Пользователь не найден" in message.answers[0]
 
@@ -1019,6 +1045,7 @@ async def test_successful_payment_handler_no_payment_returns(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """successful_payment_handler returns when successful_payment is None."""
     user_service = UserRoleService(user_repo=user_repo)
@@ -1054,6 +1081,7 @@ async def test_successful_payment_handler_no_payment_returns(
         payment_service,
         content_moderation,
         config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert not message.answers
@@ -1148,6 +1176,7 @@ async def test_pay_order_contact_price_not_configured(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Reject when contact pricing is not configured for bloggers count."""
 
@@ -1211,6 +1240,7 @@ async def test_pay_order_contact_price_not_configured(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
     )
     assert message.answers
     assert (
@@ -1228,6 +1258,7 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
     payment_repo,
     outbox_repo,
     pricing_repo,
+    bot_texts_service,
 ) -> None:
     """Payment handler records metric when confirm raises OrderCreationError."""
 
@@ -1281,6 +1312,7 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
             payment_service,
             content_moderation,
             config,
+            bot_texts_service=bot_texts_service,
         )
 
     assert len(metrics.recorded) == 1
@@ -1303,6 +1335,7 @@ async def test_pay_order_callback_success(
     pricing_repo,
     messenger_client,
     event_adapter,
+    bot_texts_service,
 ) -> None:
     """pay_order_callback sends invoice when order is valid."""
     from ugc_bot.domain.enums import MessengerType
@@ -1370,6 +1403,7 @@ async def test_pay_order_callback_success(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1390,6 +1424,7 @@ async def test_pay_order_callback_order_not_new(
     pricing_repo,
     messenger_client,
     event_adapter,
+    bot_texts_service,
 ) -> None:
     """pay_order_callback rejects non-NEW order."""
     from ugc_bot.domain.enums import MessengerType
@@ -1455,6 +1490,7 @@ async def test_pay_order_callback_order_not_new(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1473,6 +1509,7 @@ async def test_pay_order_callback_invalid_uuid(
     pricing_repo,
     messenger_client,
     event_adapter,
+    bot_texts_service,
 ) -> None:
     """pay_order_callback rejects invalid order id in callback data."""
     from ugc_bot.domain.enums import MessengerType
@@ -1529,6 +1566,7 @@ async def test_pay_order_callback_invalid_uuid(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1549,6 +1587,7 @@ async def test_pay_order_callback_order_not_found(
     pricing_repo,
     messenger_client,
     event_adapter,
+    bot_texts_service,
 ) -> None:
     """pay_order_callback rejects when order does not exist."""
     from ugc_bot.domain.enums import MessengerType
@@ -1605,6 +1644,7 @@ async def test_pay_order_callback_order_not_found(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1625,6 +1665,7 @@ async def test_pay_order_callback_no_advertiser_profile(
     pricing_repo,
     messenger_client,
     event_adapter,
+    bot_texts_service,
 ) -> None:
     """pay_order_callback rejects when user has no advertiser profile."""
     from ugc_bot.domain.enums import MessengerType
@@ -1688,6 +1729,7 @@ async def test_pay_order_callback_no_advertiser_profile(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1708,6 +1750,7 @@ async def test_pay_order_callback_wrong_owner(
     pricing_repo,
     messenger_client,
     event_adapter,
+    bot_texts_service,
 ) -> None:
     """pay_order_callback rejects when order belongs to another advertiser."""
     from ugc_bot.domain.enums import MessengerType
@@ -1779,6 +1822,7 @@ async def test_pay_order_callback_wrong_owner(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1799,6 +1843,7 @@ async def test_pay_order_callback_no_provider_token(
     pricing_repo,
     messenger_client,
     event_adapter,
+    bot_texts_service,
 ) -> None:
     """pay_order_callback rejects when provider token is not configured."""
     from ugc_bot.domain.enums import MessengerType
@@ -1864,6 +1909,7 @@ async def test_pay_order_callback_no_provider_token(
         payment_service,
         contact_pricing_service,
         config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

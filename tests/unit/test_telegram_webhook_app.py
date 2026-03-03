@@ -47,7 +47,11 @@ def client() -> TestClient:
         patch("ugc_bot.telegram_webhook_app.Bot") as MockBot,
     ):
         mock_storage.return_value = MemoryStorage()
-        mock_build.return_value = Dispatcher(storage=MemoryStorage())
+        dp = Dispatcher(storage=MemoryStorage())
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        dp["bot_texts_service"] = mock_bot_texts
+        mock_build.return_value = dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)
         fake_bot.delete_webhook = AsyncMock(return_value=True)
@@ -376,7 +380,11 @@ def test_exception_handler_returns_200_for_webhook_path() -> None:
             side_effect=RuntimeError("Simulated error"),
         ),
     ):
-        mock_build.return_value = Dispatcher(storage=MemoryStorage())
+        dp = Dispatcher(storage=MemoryStorage())
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        dp["bot_texts_service"] = mock_bot_texts
+        mock_build.return_value = dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)
         fake_bot.delete_webhook = AsyncMock(return_value=True)
@@ -429,7 +437,11 @@ def test_exception_handler_returns_500_for_non_webhook_path() -> None:
         patch("ugc_bot.telegram_webhook_app.build_dispatcher") as mock_build,
         patch("ugc_bot.telegram_webhook_app.Bot") as MockBot,
     ):
-        mock_build.return_value = Dispatcher(storage=MemoryStorage())
+        dp = Dispatcher(storage=MemoryStorage())
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        dp["bot_texts_service"] = mock_bot_texts
+        mock_build.return_value = dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)
         fake_bot.delete_webhook = AsyncMock(return_value=True)
@@ -482,6 +494,11 @@ def test_webhook_rejects_invalid_secret() -> None:
     ):
         fake_dp = MagicMock()
         fake_dp.feed_update = AsyncMock(return_value=None)
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        fake_dp.__getitem__ = lambda self, k: (
+            mock_bot_texts if k == "bot_texts_service" else MagicMock()
+        )
         mock_build.return_value = fake_dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)

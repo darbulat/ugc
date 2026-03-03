@@ -206,6 +206,12 @@ async def _notify_user_verification_success(
 
         confirmed = blogger_profile.confirmed if blogger_profile else False
 
+        from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+
+        locale = getattr(config.market, "default_locale", "ru") or "ru"
+        locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+        keys = ["btn_confirm_instagram", "btn_my_profile"]
+        texts = {k: locale_texts.get(k, "") for k in keys}
         bot = Bot(token=config.bot.bot_token)
         messenger_client = TelegramMessengerClient(bot)
         try:
@@ -215,7 +221,7 @@ async def _notify_user_verification_success(
                     "Instagram подтверждён ✅. "
                     "Бренды могут отправлять предложения."
                 ),
-                keyboard=blogger_menu_keyboard(confirmed=confirmed),
+                keyboard=blogger_menu_keyboard(texts, confirmed=confirmed),
             )
         finally:
             await bot.session.close()
@@ -237,6 +243,7 @@ async def _notify_user_verification_mismatch(
         from aiogram import Bot
 
         from ugc_bot.bot.handlers.keyboards import blogger_profile_view_keyboard
+        from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
         from ugc_bot.infrastructure.messenger.telegram.client import (
             TelegramMessengerClient,
         )
@@ -259,6 +266,10 @@ async def _notify_user_verification_mismatch(
             )
             return
 
+        locale = getattr(config.market, "default_locale", "ru") or "ru"
+        locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+        keys = ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"]
+        texts = {k: locale_texts.get(k, "") for k in keys}
         bot = Bot(token=config.bot.bot_token)
         messenger_client = TelegramMessengerClient(bot)
         try:
@@ -270,7 +281,7 @@ async def _notify_user_verification_mismatch(
                     "отредактируйте профиль блогера и укажите корректный "
                     "Instagram."
                 ),
-                keyboard=blogger_profile_view_keyboard(confirmed=False),
+                keyboard=blogger_profile_view_keyboard(texts, confirmed=False),
             )
         finally:
             await bot.session.close()

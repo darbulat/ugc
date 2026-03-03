@@ -15,16 +15,17 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_ORDER_AGREE,
     CALLBACK_PROFILE_MENU_CREATE_ORDER,
-    CREATE_ORDER_BUTTON_TEXT,
     confirm_agreement_inline_keyboard,
     flow_inline_keyboard,
     flow_keyboard_remove,
@@ -105,9 +106,7 @@ async def _remove_inline_keyboard_from_callback(
 
 
 @router.message(Command("create_order"))
-@router.message(
-    lambda msg: (msg.text or "").strip() == CREATE_ORDER_BUTTON_TEXT
-)
+@router.message(TextEqualsKey("btn_create_order"))
 async def start_order_creation(
     message: Message,
     state: FSMContext,
@@ -115,6 +114,7 @@ async def start_order_creation(
     profile_service: ProfileService,
     order_service: OrderService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -149,10 +149,15 @@ async def start_order_creation(
             config,
             intro="Пожалуйста, подтвердите согласие с документами платформы.",
         )
+        agree_texts = await bot_texts_service.get_many(
+            ["btn_confirm_agreement"], config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
-            keyboard=confirm_agreement_inline_keyboard(CALLBACK_ORDER_AGREE),
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_ORDER_AGREE, agree_texts
+            ),
             parse_mode="HTML",
         )
         await state_store.update_data(
@@ -178,6 +183,7 @@ async def start_order_creation_from_profile_callback(
     profile_service: ProfileService,
     order_service: OrderService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -212,10 +218,15 @@ async def start_order_creation_from_profile_callback(
             config,
             intro="Пожалуйста, подтвердите согласие с документами платформы.",
         )
+        agree_texts = await bot_texts_service.get_many(
+            ["btn_confirm_agreement"], config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
-            keyboard=confirm_agreement_inline_keyboard(CALLBACK_ORDER_AGREE),
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_ORDER_AGREE, agree_texts
+            ),
             parse_mode="HTML",
         )
         await state_store.update_data(
@@ -524,6 +535,7 @@ async def handle_price(
     message: Message,
     state: FSMContext,
     max_order_price: float,
+    currency_symbol: str,
     allowed_blogger_counts: frozenset[int],
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -543,7 +555,7 @@ async def handle_price(
         )
         return
 
-    err = validate_price(price, max_order_price)
+    err = validate_price(price, max_order_price, currency_symbol)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

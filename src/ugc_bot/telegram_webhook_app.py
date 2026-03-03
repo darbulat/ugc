@@ -97,6 +97,7 @@ async def _lifespan(app: FastAPI):
     try:
         storage = await create_storage(config)
         dispatcher = build_dispatcher(config, storage=storage)
+        await dispatcher["bot_texts_service"].load_from_db()
         bot = Bot(token=config.bot.bot_token)
         messenger_client = TelegramMessengerClient(bot)
         event_adapter = TelegramEventAdapter()

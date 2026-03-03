@@ -12,6 +12,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 
 # Application errors are handled by ErrorHandlerMiddleware
 from ugc_bot.application.services.instagram_verification_service import (
@@ -19,9 +20,9 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
-    CONFIRM_INSTAGRAM_BUTTON_TEXT,
     blogger_verification_sent_keyboard,
 )
 from ugc_bot.bot.handlers.utils import (
@@ -57,9 +58,7 @@ def _verification_instruction_text(admin_instagram_username: str) -> str:
 
 
 @router.message(Command("verify_instagram"))
-@router.message(
-    lambda msg: (msg.text or "").strip() == CONFIRM_INSTAGRAM_BUTTON_TEXT
-)
+@router.message(TextEqualsKey("btn_confirm_instagram"))
 async def start_verification(
     message: Message,
     state: FSMContext,
@@ -67,6 +66,7 @@ async def start_verification(
     profile_service: ProfileService,
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -113,11 +113,13 @@ async def start_verification(
         chat_id=incoming.chat_id, text=instruction, parse_mode="HTML"
     )
     code_escaped = html.escape(verification.code)
+    locale = config.market.default_locale
+    texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=f"<code>{code_escaped}</code>",
         parse_mode="HTML",
-        keyboard=blogger_verification_sent_keyboard(),
+        keyboard=blogger_verification_sent_keyboard(texts),
     )
 
 
@@ -129,6 +131,7 @@ async def start_verification_from_profile_callback(
     profile_service: ProfileService,
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -173,9 +176,11 @@ async def start_verification_from_profile_callback(
         chat_id=incoming.chat_id, text=instruction, parse_mode="HTML"
     )
     code_escaped = html.escape(verification.code)
+    locale = config.market.default_locale
+    texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=f"<code>{code_escaped}</code>",
         parse_mode="HTML",
-        keyboard=blogger_verification_sent_keyboard(),
+        keyboard=blogger_verification_sent_keyboard(texts),
     )

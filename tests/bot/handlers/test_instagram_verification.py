@@ -36,7 +36,11 @@ def _fake_config() -> AppConfig:
 
 @pytest.mark.asyncio
 async def test_start_verification_requires_role(
-    user_repo, blogger_repo, instagram_verification_repo
+    user_repo,
+    blogger_repo,
+    instagram_verification_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Require blogger role before verification."""
     user_service = UserRoleService(user_repo=user_repo)
@@ -55,7 +59,8 @@ async def test_start_verification_requires_role(
         user_service,
         profile_service,
         verification_service,
-        _fake_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -64,7 +69,11 @@ async def test_start_verification_requires_role(
 
 @pytest.mark.asyncio
 async def test_start_verification_user_not_found(
-    user_repo, blogger_repo, instagram_verification_repo
+    user_repo,
+    blogger_repo,
+    instagram_verification_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Show business error when user is missing."""
 
@@ -89,7 +98,8 @@ async def test_start_verification_user_not_found(
         user_service,
         profile_service,
         verification_service,
-        _fake_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -98,7 +108,11 @@ async def test_start_verification_user_not_found(
 
 @pytest.mark.asyncio
 async def test_start_verification_blocked_user(
-    user_repo, blogger_repo, instagram_verification_repo
+    user_repo,
+    blogger_repo,
+    instagram_verification_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject verification for blocked user."""
 
@@ -127,7 +141,8 @@ async def test_start_verification_blocked_user(
         user_service,
         profile_service,
         verification_service,
-        _fake_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -136,7 +151,11 @@ async def test_start_verification_blocked_user(
 
 @pytest.mark.asyncio
 async def test_start_verification_paused_user(
-    user_repo, blogger_repo, instagram_verification_repo
+    user_repo,
+    blogger_repo,
+    instagram_verification_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject verification for paused user."""
 
@@ -165,7 +184,8 @@ async def test_start_verification_paused_user(
         user_service,
         profile_service,
         verification_service,
-        _fake_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -187,13 +207,17 @@ def test_verification_instruction_format() -> None:
 
 @pytest.mark.asyncio
 async def test_start_verification_via_button(
-    user_repo, blogger_repo, instagram_verification_repo
+    user_repo,
+    blogger_repo,
+    instagram_verification_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle verification request via button click."""
     from datetime import datetime, timezone
     from uuid import UUID
 
-    from ugc_bot.bot.handlers.keyboards import CONFIRM_INSTAGRAM_BUTTON_TEXT
+    from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
     from ugc_bot.domain.entities import BloggerProfile
     from ugc_bot.domain.enums import AudienceGender, WorkFormat
 
@@ -228,7 +252,7 @@ async def test_start_verification_via_button(
     )
     profile_service = build_profile_service(user_repo, blogger_repo)
     message = FakeMessage(
-        text=CONFIRM_INSTAGRAM_BUTTON_TEXT,
+        text=DEFAULT_TEXTS["ru"]["btn_confirm_instagram"],
         user=FakeUser(6, "blogger", "Blogger"),
     )
     state = FakeFSMContext()
@@ -239,7 +263,8 @@ async def test_start_verification_via_button(
         user_service,
         profile_service,
         verification_service,
-        _fake_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -252,13 +277,17 @@ async def test_start_verification_via_button(
 
 @pytest.mark.asyncio
 async def test_start_verification_skipped_when_already_confirmed(
-    user_repo, blogger_repo, instagram_verification_repo
+    user_repo,
+    blogger_repo,
+    instagram_verification_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """If Instagram already confirmed, skip code step and show message."""
     from datetime import datetime, timezone
     from uuid import UUID
 
-    from ugc_bot.bot.handlers.keyboards import CONFIRM_INSTAGRAM_BUTTON_TEXT
+    from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
     from ugc_bot.domain.entities import BloggerProfile
     from ugc_bot.domain.enums import AudienceGender, WorkFormat
 
@@ -293,7 +322,7 @@ async def test_start_verification_skipped_when_already_confirmed(
     )
     profile_service = build_profile_service(user_repo, blogger_repo)
     message = FakeMessage(
-        text=CONFIRM_INSTAGRAM_BUTTON_TEXT,
+        text=DEFAULT_TEXTS["ru"]["btn_confirm_instagram"],
         user=FakeUser(7, "confirmed_blogger", "Confirmed"),
     )
     state = FakeFSMContext()
@@ -304,7 +333,8 @@ async def test_start_verification_skipped_when_already_confirmed(
         user_service,
         profile_service,
         verification_service,
-        _fake_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert len(message.answers) == 1
@@ -315,6 +345,8 @@ async def test_start_verification_skipped_when_already_confirmed(
 async def test_start_verification_from_profile_callback_sends_instruction(
     user_repo,
     blogger_repo,
+    config,
+    bot_texts_service,
     instagram_verification_repo,
     messenger_client,
     event_adapter,
@@ -367,7 +399,8 @@ async def test_start_verification_from_profile_callback_sends_instruction(
         user_service,
         profile_service,
         verification_service,
-        _fake_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

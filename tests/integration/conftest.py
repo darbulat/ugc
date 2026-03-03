@@ -297,6 +297,20 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
     dispatcher["allowed_blogger_counts"] = (
         config.order.get_allowed_blogger_counts_set()
     )
+    dispatcher["payment_currency"] = config.market.payment_currency
+    dispatcher["currency_symbol"] = config.market.currency_symbol
+    dispatcher["default_locale"] = config.market.default_locale
+    from ugc_bot.application.services.bot_texts_service import BotTextsService
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyBotTextsRepository,
+    )
+
+    dispatcher["bot_texts_service"] = BotTextsService(
+        bot_texts_repo=SqlAlchemyBotTextsRepository(
+            session_factory=session_factory
+        ),
+        default_locale=config.market.default_locale,
+    )
 
     # Add repositories for easier testing
     dispatcher["user_repo"] = user_repo

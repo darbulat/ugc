@@ -8,6 +8,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
@@ -70,3 +71,7 @@ class BotServices(TypedDict):
     transaction_manager: Any
     max_order_price: float
     allowed_blogger_counts: frozenset[int]
+    payment_currency: str
+    currency_symbol: str
+    default_locale: str
+    bot_texts_service: BotTextsService

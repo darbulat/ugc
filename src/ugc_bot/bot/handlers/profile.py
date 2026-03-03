@@ -33,8 +33,10 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_AGE_0_17,
     CALLBACK_PROFILE_AGE_18_24,
@@ -57,10 +59,6 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_REGION_PREFIX,
     CALLBACK_PROFILE_WORK_ADS,
     CALLBACK_PROFILE_WORK_UGC,
-    EDIT_PROFILE_BUTTON_TEXT,
-    MY_PROFILE_BUTTON_TEXT,
-    WORK_FORMAT_ADS_BUTTON_TEXT,
-    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
     advertiser_menu_inline_keyboard,
     blogger_profile_view_inline_keyboard,
     city_picker_keyboard,
@@ -138,6 +136,7 @@ def _format_profile_text(
     user: User,
     blogger: BloggerProfile | None,
     advertiser: AdvertiserProfile | None,
+    currency_symbol: str = "₽",
 ) -> str:
     """Format profile data for user-friendly display."""
     roles: list[str] = []
@@ -198,7 +197,7 @@ def _format_profile_text(
                 f"   Целевая аудитория: {gender_label}, "
                 f"{blogger.audience_age_min}–{blogger.audience_age_max} лет",
                 f"   География: {blogger.audience_geo}",
-                f"   Цена: {blogger.price} ₽",
+                f"   Цена: {blogger.price} {currency_symbol}",
                 f"   Бартер: {barter_str}",
                 f"   Формат работы: {work_fmt}",
             ]
@@ -364,8 +363,16 @@ async def _update_advertiser_field(
     advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
 ) -> bool:
     """Validate and update advertiser field. Returns True on success."""
+    locale = config.market.default_locale
+    adv_keys = [
+        "btn_create_order",
+        "btn_my_orders",
+        "btn_my_profile",
+        "btn_edit_profile",
+    ]
     if field_key == "name":
         err = validate_name(text)
         if err is not None:
@@ -377,11 +384,14 @@ async def _update_advertiser_field(
             username=text,
         )
         await state.clear()
+        adv_texts = await bot_texts_service.get_many(adv_keys, locale)
         await message.answer(
             "Профиль обновлён.",
-            reply_markup=advertiser_menu_inline_keyboard(),
+            reply_markup=advertiser_menu_inline_keyboard(adv_texts),
         )
-        await show_profile(message, profile_service, state, config)
+        await show_profile(
+            message, profile_service, state, config, bot_texts_service
+        )
         return True
 
     updaters = {
@@ -404,11 +414,14 @@ async def _update_advertiser_field(
         await message.answer("Не удалось обновить профиль.")
         return False
     await state.clear()
+    adv_texts = await bot_texts_service.get_many(adv_keys, locale)
     await message.answer(
         "Профиль обновлён.",
-        reply_markup=advertiser_menu_inline_keyboard(),
+        reply_markup=advertiser_menu_inline_keyboard(adv_texts),
     )
-    await show_profile(message, profile_service, state, config)
+    await show_profile(
+        message, profile_service, state, config, bot_texts_service
+    )
     return True
 
 
@@ -447,6 +460,8 @@ async def _blog_update_city(
     message: MessageContext,
     blogger_registration_service: BloggerRegistrationService,
     webhook_base_url: str | None = None,
+    bot_texts_service: BotTextsService | None = None,
+    config: AppConfig | None = None,
 ) -> BloggerProfile | None:
     """Update city. Returns profile or None. Saves only canonical city."""
     err = validate_city(text, required=True)
@@ -455,11 +470,13 @@ async def _blog_update_city(
         return None
     normalized = normalize_geo_token(text)
     if not normalized or not is_canonical_city_only(normalized):
-        city_keyboard = (
-            city_picker_keyboard(webhook_base_url or "")
-            if webhook_base_url
-            else flow_keyboard_remove()
-        )
+        if webhook_base_url and bot_texts_service and config:
+            texts = await bot_texts_service.get_many(
+                ["btn_city_picker"], config.market.default_locale
+            )
+            city_keyboard = city_picker_keyboard(webhook_base_url, texts)
+        else:
+            city_keyboard = flow_keyboard_remove()
         await message.answer(
             "Укажите ближайший крупный город или нажмите «Выбрать город»"
             " и выберите из списка.",
@@ -590,6 +607,7 @@ async def _blog_update_price(
     message: MessageContext,
     blogger_registration_service: BloggerRegistrationService,
     max_order_price: float,
+    currency_symbol: str = "₽",
 ) -> BloggerProfile | None:
     """Update price. Returns profile or None."""
     try:
@@ -597,7 +615,7 @@ async def _blog_update_price(
     except ValueError:
         await message.answer("Введите число, например 1000.")
         return None
-    err = validate_price(price, max_order_price)
+    err = validate_price(price, max_order_price, currency_symbol)
     if err is not None:
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
@@ -630,11 +648,20 @@ async def _blog_update_work_format(
     user_id: UUID,
     message: MessageContext,
     blogger_registration_service: BloggerRegistrationService,
+    bot_texts_service: BotTextsService,
+    config: AppConfig,
 ) -> BloggerProfile | None:
     """Update work_format. Returns profile or None."""
-    if text == WORK_FORMAT_ADS_BUTTON_TEXT:
+    locale = config.market.default_locale
+    btn_ads = (
+        await bot_texts_service.get("btn_work_format_ads", locale)
+    ).strip()
+    btn_ugc = (
+        await bot_texts_service.get("btn_work_format_ugc_only", locale)
+    ).strip()
+    if text == btn_ads:
         wf = WorkFormat.ADS_IN_ACCOUNT
-    elif text == WORK_FORMAT_UGC_ONLY_BUTTON_TEXT:
+    elif text == btn_ugc:
         wf = WorkFormat.UGC_ONLY
     else:
         await message.answer("Выберите одну из кнопок.")
@@ -652,6 +679,7 @@ async def _update_blogger_field_city(
     blogger_registration_service: BloggerRegistrationService,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
 ) -> bool | None:
     """
     Handle city field update: validate, maybe region picker, or save.
@@ -682,7 +710,9 @@ async def _update_blogger_field_city(
             "Профиль обновлён.",
             reply_markup=flow_keyboard_remove(),
         )
-        await show_profile(message, profile_service, state, config)
+        await show_profile(
+            message, profile_service, state, config, bot_texts_service
+        )
         return True
     regions = get_regions_for_city(normalized)
     if len(regions) > 1:
@@ -718,7 +748,9 @@ async def _update_blogger_field_city(
         "Профиль обновлён.",
         reply_markup=flow_keyboard_remove(),
     )
-    await show_profile(message, profile_service, state, config)
+    await show_profile(
+        message, profile_service, state, config, bot_texts_service
+    )
     return True
 
 
@@ -735,8 +767,15 @@ async def _update_blogger_field(
     user_role_service: UserRoleService,
     max_order_price: float,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
 ) -> bool:
     """Validate and update blogger field. Returns True on success."""
+    locale = config.market.default_locale
+    profile_view_keys = [
+        "btn_edit_profile",
+        "btn_confirm_instagram",
+        "btn_my_profile",
+    ]
     if field_key == "nickname":
         err = validate_nickname(text)
         if err is not None:
@@ -748,13 +787,16 @@ async def _update_blogger_field(
             username=text,
         )
         await state.clear()
+        texts = await bot_texts_service.get_many(profile_view_keys, locale)
         await message.answer(
             "Имя обновлено.",
             reply_markup=blogger_profile_view_inline_keyboard(
-                blogger.confirmed
+                texts, blogger.confirmed
             ),
         )
-        await show_profile(message, profile_service, state, config)
+        await show_profile(
+            message, profile_service, state, config, bot_texts_service
+        )
         return True
 
     if field_key == "city":
@@ -766,6 +808,7 @@ async def _update_blogger_field(
             blogger_registration_service,
             profile_service,
             config,
+            bot_texts_service,
         )
         if result is not None:
             return result
@@ -773,7 +816,13 @@ async def _update_blogger_field(
     updaters = {
         "instagram_url": _blog_update_instagram,
         "city": lambda t, u, m, s: _blog_update_city(
-            t, u, m, s, config.webhook.webhook_base_url
+            t,
+            u,
+            m,
+            s,
+            config.webhook.webhook_base_url,
+            bot_texts_service,
+            config,
         ),
         "blogger_gender": _blog_update_blogger_gender,
         "birth_date": _blog_update_birth_date,
@@ -782,10 +831,12 @@ async def _update_blogger_field(
         "audience_age": _blog_update_audience_age,
         "audience_geo": _blog_update_audience_geo,
         "price": lambda t, u, m, s: _blog_update_price(
-            t, u, m, s, max_order_price
+            t, u, m, s, max_order_price, config.market.currency_symbol
         ),
         "barter": _blog_update_barter,
-        "work_format": _blog_update_work_format,
+        "work_format": lambda t, u, m, s: _blog_update_work_format(
+            t, u, m, s, bot_texts_service, config
+        ),
     }
     updater = updaters.get(field_key)
     if updater is None:
@@ -803,13 +854,16 @@ async def _update_blogger_field(
         )
         return False
     await state.clear()
+    texts = await bot_texts_service.get_many(profile_view_keys, locale)
     await message.answer(
         "Профиль обновлён.",
         reply_markup=blogger_profile_view_inline_keyboard(
-            updated_blogger.confirmed
+            texts, updated_blogger.confirmed
         ),
     )
-    await show_profile(message, profile_service, state, config)
+    await show_profile(
+        message, profile_service, state, config, bot_texts_service
+    )
     return True
 
 
@@ -835,12 +889,13 @@ async def _remove_inline_keyboard_from_callback(
 
 
 @router.message(Command("profile"))
-@router.message(lambda msg: (msg.text or "").strip() == MY_PROFILE_BUTTON_TEXT)
+@router.message(TextEqualsKey("btn_my_profile"))
 async def show_profile(
     message: Message,
     profile_service: ProfileService,
     state: FSMContext,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -871,6 +926,7 @@ async def show_profile(
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    locale = config.market.default_locale
     if (
         blogger is not None or advertiser is not None
     ) and agreement_confirmed_at is None:
@@ -878,10 +934,13 @@ async def show_profile(
             config,
             intro="Пожалуйста, подтвердите согласие с документами платформы.",
         )
+        agree_texts = await bot_texts_service.get_many(
+            ["btn_confirm_agreement"], locale
+        )
         await message_ctx.answer(
             agreements_text,
             reply_markup=confirm_agreement_inline_keyboard(
-                CALLBACK_PROFILE_AGREE
+                CALLBACK_PROFILE_AGREE, agree_texts
             ),
             parse_mode="HTML",
         )
@@ -892,15 +951,30 @@ async def show_profile(
             await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
 
-    text = _format_profile_text(user, blogger, advertiser)
+    text = _format_profile_text(
+        user, blogger, advertiser, config.market.currency_symbol
+    )
 
     reply_markup = None
     if blogger is not None:
+        blog_texts = await bot_texts_service.get_many(
+            ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"],
+            locale,
+        )
         reply_markup = blogger_profile_view_inline_keyboard(
-            confirmed=blogger.confirmed
+            blog_texts, blogger.confirmed
         )
     elif advertiser is not None:
-        reply_markup = advertiser_menu_inline_keyboard()
+        adv_texts = await bot_texts_service.get_many(
+            [
+                "btn_create_order",
+                "btn_my_orders",
+                "btn_my_profile",
+                "btn_edit_profile",
+            ],
+            locale,
+        )
+        reply_markup = advertiser_menu_inline_keyboard(adv_texts)
 
     await message_ctx.answer(text, reply_markup=reply_markup)
 
@@ -913,6 +987,9 @@ async def handle_profile_agree_callback(
     user_role_service: UserRoleService,
     blogger_registration_service: BloggerRegistrationService,
     advertiser_registration_service: AdvertiserRegistrationService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    currency_symbol: str,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -959,14 +1036,30 @@ async def handle_profile_agree_callback(
         return
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
-    text = _format_profile_text(user, blogger, advertiser)
+    text = _format_profile_text(
+        user, blogger, advertiser, currency_symbol=currency_symbol
+    )
+    locale = config.market.default_locale
     reply_markup = None
     if blogger is not None:
+        blog_texts = await bot_texts_service.get_many(
+            ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"],
+            locale,
+        )
         reply_markup = blogger_profile_view_inline_keyboard(
-            confirmed=blogger.confirmed
+            blog_texts, blogger.confirmed
         )
     elif advertiser is not None:
-        reply_markup = advertiser_menu_inline_keyboard()
+        adv_texts = await bot_texts_service.get_many(
+            [
+                "btn_create_order",
+                "btn_my_orders",
+                "btn_my_profile",
+                "btn_edit_profile",
+            ],
+            locale,
+        )
+        reply_markup = advertiser_menu_inline_keyboard(adv_texts)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
@@ -979,6 +1072,8 @@ async def handle_profile_edit_callback(
     callback: CallbackQuery,
     state: FSMContext,
     profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1013,28 +1108,45 @@ async def handle_profile_edit_callback(
         edit_user_id=user.user_id,
         edit_external_id=str(incoming.user.external_id),
     )
+    locale = config.market.default_locale
     if blogger is not None and advertiser is not None:
+        type_texts = await bot_texts_service.get_many(
+            [
+                "btn_edit_profile_blogger",
+                "btn_edit_profile_advertiser",
+                "btn_my_profile",
+            ],
+            locale,
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите профиль для редактирования:",
-            keyboard=edit_profile_type_inline_keyboard(),
+            keyboard=edit_profile_type_inline_keyboard(type_texts),
         )
         await state.set_state(EditProfileStates.choosing_profile_type)
         return
     if blogger is not None:
         await state.update_data(edit_profile_type="blogger")
+        field_texts = await bot_texts_service.get_many(
+            ["btn_my_profile"], locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите раздел для редактирования:",
-            keyboard=edit_field_inline_keyboard(_edit_field_rows("blogger")),
+            keyboard=edit_field_inline_keyboard(
+                _edit_field_rows("blogger"), field_texts
+            ),
         )
         await state.set_state(EditProfileStates.choosing_field)
         return
     await state.update_data(edit_profile_type="advertiser")
+    field_texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text="Выберите раздел для редактирования:",
-        keyboard=edit_field_inline_keyboard(_edit_field_rows("advertiser")),
+        keyboard=edit_field_inline_keyboard(
+            _edit_field_rows("advertiser"), field_texts
+        ),
     )
     await state.set_state(EditProfileStates.choosing_field)
 
@@ -1045,6 +1157,7 @@ async def handle_profile_my_profile_callback(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1079,10 +1192,15 @@ async def handle_profile_my_profile_callback(
             config,
             intro="Пожалуйста, подтвердите согласие с документами платформы.",
         )
+        agree_texts = await bot_texts_service.get_many(
+            ["btn_confirm_agreement"], config.market.default_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
-            keyboard=confirm_agreement_inline_keyboard(CALLBACK_PROFILE_AGREE),
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_PROFILE_AGREE, agree_texts
+            ),
             parse_mode="HTML",
         )
         await state.update_data(user_id=user.user_id)
@@ -1091,14 +1209,30 @@ async def handle_profile_my_profile_callback(
         else:
             await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
-    text = _format_profile_text(user, blogger, advertiser)
+    text = _format_profile_text(
+        user, blogger, advertiser, config.market.currency_symbol
+    )
+    locale = config.market.default_locale
     reply_markup = None
     if blogger is not None:
+        blog_texts = await bot_texts_service.get_many(
+            ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"],
+            locale,
+        )
         reply_markup = blogger_profile_view_inline_keyboard(
-            confirmed=blogger.confirmed
+            blog_texts, blogger.confirmed
         )
     elif advertiser is not None:
-        reply_markup = advertiser_menu_inline_keyboard()
+        adv_texts = await bot_texts_service.get_many(
+            [
+                "btn_create_order",
+                "btn_my_orders",
+                "btn_my_profile",
+                "btn_edit_profile",
+            ],
+            locale,
+        )
+        reply_markup = advertiser_menu_inline_keyboard(adv_texts)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
@@ -1119,6 +1253,7 @@ async def handle_profile_edit_type_callback(
     callback: CallbackQuery,
     state: FSMContext,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     profile_service: ProfileService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -1130,19 +1265,25 @@ async def handle_profile_edit_type_callback(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    locale = config.market.default_locale
+    field_texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
     if incoming.data == CALLBACK_PROFILE_EDIT_TYPE_BLOGGER:
         await state.update_data(edit_profile_type="blogger")
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите раздел для редактирования:",
-            keyboard=edit_field_inline_keyboard(_edit_field_rows("blogger")),
+            keyboard=edit_field_inline_keyboard(
+                _edit_field_rows("blogger"), field_texts
+            ),
         )
     else:
         await state.update_data(edit_profile_type="advertiser")
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Выберите раздел для редактирования:",
-            keyboard=edit_field_inline_keyboard(_edit_field_rows("advertiser")),
+            keyboard=edit_field_inline_keyboard(
+                _edit_field_rows("advertiser"), field_texts
+            ),
         )
     await state.set_state(EditProfileStates.choosing_field)
 
@@ -1159,6 +1300,7 @@ async def handle_profile_edit_field_callback(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     max_order_price: float,
@@ -1220,35 +1362,56 @@ async def handle_profile_edit_field_callback(
         prompts_advertiser if profile_type == "advertiser" else prompts_blogger
     )
     prompt = prompts.get(field_key, "Введите новое значение:")
+    locale = config.market.default_locale
+    edit_keys = [
+        "btn_audience_f",
+        "btn_audience_m",
+        "btn_audience_a",
+        "btn_gender_m",
+        "btn_gender_f",
+        "btn_age_0_17",
+        "btn_age_18_24",
+        "btn_age_25_34",
+        "btn_age_35_44",
+        "btn_age_45_99",
+        "btn_barter_yes",
+        "btn_barter_no",
+        "btn_work_format_ads",
+        "btn_work_format_ugc_only",
+        "btn_city_picker",
+    ]
+    edit_texts = await bot_texts_service.get_many(edit_keys, locale)
     if field_key == "audience_gender":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_audience_gender_inline_keyboard(),
+            reply_markup=edit_audience_gender_inline_keyboard(edit_texts),
         )
     elif field_key == "blogger_gender":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_blogger_gender_inline_keyboard(),
+            reply_markup=edit_blogger_gender_inline_keyboard(edit_texts),
         )
     elif field_key == "audience_age":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_audience_age_inline_keyboard(),
+            reply_markup=edit_audience_age_inline_keyboard(edit_texts),
         )
     elif field_key == "barter":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_barter_inline_keyboard(),
+            reply_markup=edit_barter_inline_keyboard(edit_texts),
         )
     elif field_key == "work_format":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_work_format_inline_keyboard(),
+            reply_markup=edit_work_format_inline_keyboard(edit_texts),
         )
     elif field_key == "city" and profile_type == "blogger":
         await message_ctx.answer(
             prompt,
-            reply_markup=city_picker_keyboard(config.webhook.webhook_base_url),
+            reply_markup=city_picker_keyboard(
+                config.webhook.webhook_base_url or "", edit_texts
+            ),
         )
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
@@ -1287,8 +1450,6 @@ _CALLBACK_TO_CHOICE_TEXT: dict[str, str] = {
     CALLBACK_PROFILE_AGE_45_99: "45+",
     CALLBACK_PROFILE_BARTER_Y: "Да",
     CALLBACK_PROFILE_BARTER_N: "Нет",
-    CALLBACK_PROFILE_WORK_ADS: WORK_FORMAT_ADS_BUTTON_TEXT,
-    CALLBACK_PROFILE_WORK_UGC: WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
 }
 
 
@@ -1298,6 +1459,7 @@ async def handle_profile_edit_choice_callback(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     max_order_price: float,
@@ -1310,6 +1472,14 @@ async def handle_profile_edit_choice_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = config.market.default_locale
+    work_ads = await bot_texts_service.get("btn_work_format_ads", locale)
+    work_ugc = await bot_texts_service.get("btn_work_format_ugc_only", locale)
+    choice_map = {
+        **_CALLBACK_TO_CHOICE_TEXT,
+        CALLBACK_PROFILE_WORK_ADS: work_ads,
+        CALLBACK_PROFILE_WORK_UGC: work_ugc,
+    }
     data = await state.get_data()
     field_key = data.get("editing_field")
     user_id = parse_user_id_from_state(data, key="edit_user_id")
@@ -1322,7 +1492,7 @@ async def handle_profile_edit_choice_callback(
         or profile_type != "blogger"
     ):
         return
-    choice_text = _CALLBACK_TO_CHOICE_TEXT.get(incoming.data or "")
+    choice_text = choice_map.get(incoming.data or "")
     if not choice_text:
         return
     fake_message = IncomingMessage(
@@ -1349,6 +1519,7 @@ async def handle_profile_edit_choice_callback(
         user_role_service,
         max_order_price,
         config,
+        bot_texts_service,
     )
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
 
@@ -1371,13 +1542,13 @@ def _edit_field_rows(
     return rows
 
 
-@router.message(
-    lambda msg: (msg.text or "").strip() == EDIT_PROFILE_BUTTON_TEXT
-)
+@router.message(TextEqualsKey("btn_edit_profile"))
 async def edit_profile_start(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1411,27 +1582,42 @@ async def edit_profile_start(
         edit_user_id=user.user_id,
         edit_external_id=str(message_ctx.from_user.id),
     )
+    locale = config.market.default_locale
     if blogger is not None and advertiser is not None:
+        type_texts = await bot_texts_service.get_many(
+            [
+                "btn_edit_profile_blogger",
+                "btn_edit_profile_advertiser",
+                "btn_my_profile",
+            ],
+            locale,
+        )
         await message_ctx.answer(
             "Выберите профиль для редактирования:",
-            reply_markup=edit_profile_type_inline_keyboard(),
+            reply_markup=edit_profile_type_inline_keyboard(type_texts),
         )
         await state.set_state(EditProfileStates.choosing_profile_type)
         return
     if blogger is not None:
         await state.update_data(edit_profile_type="blogger")
+        field_texts = await bot_texts_service.get_many(
+            ["btn_my_profile"], locale
+        )
         await message_ctx.answer(
             "Выберите раздел для редактирования:",
             reply_markup=edit_field_inline_keyboard(
-                _edit_field_rows("blogger")
+                _edit_field_rows("blogger"), field_texts
             ),
         )
         await state.set_state(EditProfileStates.choosing_field)
         return
     await state.update_data(edit_profile_type="advertiser")
+    field_texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
     await message_ctx.answer(
         "Выберите раздел для редактирования:",
-        reply_markup=edit_field_inline_keyboard(_edit_field_rows("advertiser")),
+        reply_markup=edit_field_inline_keyboard(
+            _edit_field_rows("advertiser"), field_texts
+        ),
     )
     await state.set_state(EditProfileStates.choosing_field)
 
@@ -1442,6 +1628,7 @@ async def edit_profile_choose_type(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1452,40 +1639,65 @@ async def edit_profile_choose_type(
     incoming = event_adapter.from_message(message)
     message_ctx = MessageContext(incoming, messenger_client)
     text = (message_ctx.text or "").strip()
-    if text == MY_PROFILE_BUTTON_TEXT:
+    locale = config.market.default_locale
+    my_profile_btn = (
+        await bot_texts_service.get("btn_my_profile", locale)
+    ).strip()
+    if text == my_profile_btn:
         await state.clear()
         await show_profile(
             message=message_ctx,
             profile_service=profile_service,
             state=state,
             config=config,
+            bot_texts_service=bot_texts_service,
             messenger_client=messenger_client,
             event_adapter=event_adapter,
         )
         return
-    if text == "Редактировать профиль блогера":
+    edit_blogger_btn = (
+        await bot_texts_service.get("btn_edit_profile_blogger", locale)
+    ).strip()
+    edit_advertiser_btn = (
+        await bot_texts_service.get("btn_edit_profile_advertiser", locale)
+    ).strip()
+    if text == edit_blogger_btn:
         await state.update_data(edit_profile_type="blogger")
+        field_texts = await bot_texts_service.get_many(
+            ["btn_my_profile"], locale
+        )
         await message_ctx.answer(
             "Выберите раздел для редактирования:",
             reply_markup=edit_field_inline_keyboard(
-                _edit_field_rows("blogger")
+                _edit_field_rows("blogger"), field_texts
             ),
         )
         await state.set_state(EditProfileStates.choosing_field)
         return
-    if text == "Редактировать профиль рекламодателя":
+    if text == edit_advertiser_btn:
         await state.update_data(edit_profile_type="advertiser")
+        field_texts = await bot_texts_service.get_many(
+            ["btn_my_profile"], locale
+        )
         await message_ctx.answer(
             "Выберите раздел для редактирования:",
             reply_markup=edit_field_inline_keyboard(
-                _edit_field_rows("advertiser")
+                _edit_field_rows("advertiser"), field_texts
             ),
         )
         await state.set_state(EditProfileStates.choosing_field)
         return
+    type_texts = await bot_texts_service.get_many(
+        [
+            "btn_edit_profile_blogger",
+            "btn_edit_profile_advertiser",
+            "btn_my_profile",
+        ],
+        locale,
+    )
     await message_ctx.answer(
         "Выберите один из вариантов на клавиатуре.",
-        reply_markup=edit_profile_type_inline_keyboard(),
+        reply_markup=edit_profile_type_inline_keyboard(type_texts),
     )
 
 
@@ -1495,6 +1707,7 @@ async def edit_profile_choose_field(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     messenger_client: MessengerClient | None = None,
@@ -1507,13 +1720,19 @@ async def edit_profile_choose_field(
     incoming = event_adapter.from_message(message)
     message_ctx = MessageContext(incoming, messenger_client)
     text = (message_ctx.text or "").strip()
-    if text == MY_PROFILE_BUTTON_TEXT:
+    my_profile_btn = (
+        await bot_texts_service.get(
+            "btn_my_profile", config.market.default_locale
+        )
+    ).strip()
+    if text == my_profile_btn:
         await state.clear()
         await show_profile(
             message=message_ctx,
             profile_service=profile_service,
             state=state,
             config=config,
+            bot_texts_service=bot_texts_service,
             messenger_client=messenger_client,
             event_adapter=event_adapter,
         )
@@ -1527,10 +1746,13 @@ async def edit_profile_choose_field(
         else EDIT_FIELD_KEYS
     )
     if text not in field_keys:
+        field_texts = await bot_texts_service.get_many(
+            ["btn_my_profile"], config.market.default_locale
+        )
         await message_ctx.answer(
             "Выберите один из разделов на клавиатуре.",
             reply_markup=edit_field_inline_keyboard(
-                _edit_field_rows(profile_type)
+                _edit_field_rows(profile_type), field_texts
             ),
         )
         return
@@ -1564,36 +1786,56 @@ async def edit_profile_choose_field(
         prompts_advertiser if profile_type == "advertiser" else prompts_blogger
     )
     prompt = prompts.get(field_key, "Введите новое значение:")
-
+    locale = config.market.default_locale
+    edit_keys = [
+        "btn_audience_f",
+        "btn_audience_m",
+        "btn_audience_a",
+        "btn_gender_m",
+        "btn_gender_f",
+        "btn_age_0_17",
+        "btn_age_18_24",
+        "btn_age_25_34",
+        "btn_age_35_44",
+        "btn_age_45_99",
+        "btn_barter_yes",
+        "btn_barter_no",
+        "btn_work_format_ads",
+        "btn_work_format_ugc_only",
+        "btn_city_picker",
+    ]
+    edit_texts = await bot_texts_service.get_many(edit_keys, locale)
     if field_key == "audience_gender":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_audience_gender_inline_keyboard(),
+            reply_markup=edit_audience_gender_inline_keyboard(edit_texts),
         )
     elif field_key == "blogger_gender":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_blogger_gender_inline_keyboard(),
+            reply_markup=edit_blogger_gender_inline_keyboard(edit_texts),
         )
     elif field_key == "audience_age":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_audience_age_inline_keyboard(),
+            reply_markup=edit_audience_age_inline_keyboard(edit_texts),
         )
     elif field_key == "barter":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_barter_inline_keyboard(),
+            reply_markup=edit_barter_inline_keyboard(edit_texts),
         )
     elif field_key == "work_format":
         await message_ctx.answer(
             prompt,
-            reply_markup=edit_work_format_inline_keyboard(),
+            reply_markup=edit_work_format_inline_keyboard(edit_texts),
         )
     elif field_key == "city" and profile_type == "blogger":
         await message_ctx.answer(
             prompt,
-            reply_markup=city_picker_keyboard(config.webhook.webhook_base_url),
+            reply_markup=city_picker_keyboard(
+                config.webhook.webhook_base_url or "", edit_texts
+            ),
         )
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
@@ -1610,6 +1852,7 @@ async def handle_city_web_app_data_profile(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     messenger_client: MessengerClient | None = None,
@@ -1628,7 +1871,12 @@ async def handle_city_web_app_data_profile(
         else ""
     )
     city, region = parse_miniapp_city_id(raw_id)
-    city_keyboard = city_picker_keyboard(config.webhook.webhook_base_url)
+    city_texts = await bot_texts_service.get_many(
+        ["btn_city_picker"], config.market.default_locale
+    )
+    city_keyboard = city_picker_keyboard(
+        config.webhook.webhook_base_url or "", city_texts
+    )
     if not city or not is_canonical_city_only(city):
         await messenger_client.send_text(
             chat_id=str(message.chat.id),
@@ -1668,6 +1916,7 @@ async def handle_city_web_app_data_profile(
         profile_service=profile_service,
         state=state,
         config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1682,6 +1931,7 @@ async def handle_profile_region_callback(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -1727,6 +1977,7 @@ async def handle_profile_region_callback(
         profile_service=profile_service,
         state=state,
         config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1738,6 +1989,7 @@ async def edit_profile_enter_value(
     state: FSMContext,
     profile_service: ProfileService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
     advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
@@ -1783,6 +2035,7 @@ async def edit_profile_enter_value(
             advertiser_registration_service,
             user_role_service,
             config,
+            bot_texts_service,
         )
         return
 
@@ -1804,4 +2057,5 @@ async def edit_profile_enter_value(
         user_role_service,
         max_order_price,
         config,
+        bot_texts_service,
     )
