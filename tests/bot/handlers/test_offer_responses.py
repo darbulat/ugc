@@ -145,6 +145,7 @@ async def test_contact_sent_immediately(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     # Check contact sent (TZ: "Новый отклик", Креатор, Профиль креатора)
@@ -234,6 +235,7 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     sent_to_blogger = [
@@ -258,6 +260,8 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
 @pytest.mark.asyncio
 async def test_offer_skip_handler(
     user_repo,
+    config,
+    bot_texts_service,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -300,6 +304,8 @@ async def test_offer_skip_handler(
         callback,
         user_role_service=user_service,
         offer_dispatch_service=offer_dispatch_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -307,6 +313,7 @@ async def test_offer_skip_handler(
     assert (
         "пропущено" in callback.answers[0].lower()
         or "ок" in callback.answers[0].lower()
+        or "skip" in callback.answers[0].lower()
     )
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
@@ -898,7 +905,12 @@ async def test_offer_response_handler_user_not_found(
     )
 
     assert callback.answers
-    assert "Пользователь не найден" in callback.answers[0]
+    msg = callback.answers[0]
+    assert (
+        "не найден" in msg
+        or "not found" in msg.lower()
+        or "profile" in msg.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -1326,6 +1338,7 @@ async def test_send_contact_order_not_found(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert not bot.answers
@@ -1382,6 +1395,7 @@ async def test_send_contact_order_not_active(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert not bot.answers
@@ -1435,6 +1449,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     # Contact should not be sent when user/profile is missing
@@ -1444,6 +1459,8 @@ async def test_maybe_send_contacts_missing_user_or_profile(
 @pytest.mark.asyncio
 async def test_offer_skip_edit_reply_markup_exception(
     user_repo,
+    config,
+    bot_texts_service,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -1482,6 +1499,8 @@ async def test_offer_skip_edit_reply_markup_exception(
         callback,
         user_role_service=user_service,
         offer_dispatch_service=offer_dispatch_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1489,6 +1508,7 @@ async def test_offer_skip_edit_reply_markup_exception(
     assert (
         "пропущено" in callback.answers[0].lower()
         or "ок" in callback.answers[0].lower()
+        or "skip" in callback.answers[0].lower()
     )
 
 
@@ -1701,6 +1721,7 @@ async def test_send_contact_ugc_plus_placement_format(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert any(
@@ -1763,6 +1784,7 @@ async def test_send_contact_empty_instagram_url(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert any(
@@ -1828,6 +1850,7 @@ async def test_send_contact_instagram_url_without_http(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert any(

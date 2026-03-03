@@ -947,7 +947,8 @@ async def test_successful_payment_user_not_found(
         config,
         bot_texts_service=bot_texts_service,
     )
-    assert "Пользователь не найден" in message.answers[0]
+    msg = message.answers[0]
+    assert "не найден" in msg or "not found" in msg.lower()
 
 
 @pytest.mark.asyncio

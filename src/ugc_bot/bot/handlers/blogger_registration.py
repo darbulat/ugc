@@ -66,6 +66,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
+    VALIDATOR_ERR_KEYS,
     normalize_instagram_url,
     validate_audience_geo,
     validate_birth_date,
@@ -217,13 +218,22 @@ async def _start_registration_flow(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found_start",
+            "msg_registration_blocked",
+            "msg_registration_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
-        pause_msg="Пользователи на паузе не могут регистрироваться.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found_start", ""),
+        blocked_msg=allow_msgs.get("msg_registration_blocked", ""),
+        pause_msg=allow_msgs.get("msg_registration_pause", ""),
     )
     if user is None:
         return
@@ -276,13 +286,22 @@ async def start_registration_inline(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found_start",
+            "msg_registration_blocked",
+            "msg_registration_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
-        pause_msg="Пользователи на паузе не могут регистрироваться.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found_start", ""),
+        blocked_msg=allow_msgs.get("msg_registration_blocked", ""),
+        pause_msg=allow_msgs.get("msg_registration_pause", ""),
     )
     if user is None:
         return
@@ -312,8 +331,12 @@ async def handle_name(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     nickname = (incoming.text or "").strip()
-    err = validate_nickname(nickname)
+    err = validate_nickname(nickname, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -322,7 +345,6 @@ async def handle_name(
         )
         return
 
-    locale = config.market.default_locale
     step_instagram = await bot_texts_service.get(
         "msg_step_ask_instagram", locale
     )
@@ -476,8 +498,12 @@ async def handle_city(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     city = (incoming.text or "").strip()
-    err = validate_city(city, required=True)
+    err = validate_city(city, required=True, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -485,7 +511,6 @@ async def handle_city(
             keyboard=flow_keyboard_remove(),
         )
         return
-    locale = config.market.default_locale
     msg_city_or_type = await bot_texts_service.get(
         "msg_choose_city_or_type", locale
     )
@@ -592,8 +617,12 @@ async def handle_birth_date(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     text = (incoming.text or "").strip()
-    parsed_date, err = validate_birth_date(text)
+    parsed_date, err = validate_birth_date(text, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -602,7 +631,6 @@ async def handle_birth_date(
         )
         return
     assert parsed_date is not None
-    locale = config.market.default_locale
     step_gender = await bot_texts_service.get("msg_step_ask_gender", locale)
     gender_texts = await bot_texts_service.get_many(
         ["btn_gender_m", "btn_gender_f"], locale
@@ -734,11 +762,15 @@ async def handle_topics(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     raw = (incoming.text or "").strip()
     topics = [
         topic.strip().lower() for topic in raw.split(",") if topic.strip()
     ]
-    err = validate_topics(topics)
+    err = validate_topics(topics, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -747,7 +779,6 @@ async def handle_topics(
         )
         return
     await state_store.update_data(topics={"selected": topics})
-    locale = config.market.default_locale
     step_audience = await bot_texts_service.get(
         "msg_step_ask_audience_gender", locale
     )
@@ -1091,10 +1122,13 @@ async def handle_geo(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     err_geo = await bot_texts_service.get("err_geo_max_cities", locale)
     step_price = await bot_texts_service.get("msg_step_ask_price", locale)
     geo = (incoming.text or "").strip()
-    err = validate_audience_geo(geo)
+    err = validate_audience_geo(geo, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -1139,6 +1173,9 @@ async def handle_price(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     err_price = await bot_texts_service.get("err_price_number", locale)
     step_barter = await bot_texts_service.get("msg_step_ask_barter", locale)
     barter_texts = await bot_texts_service.get_many(
@@ -1154,7 +1191,9 @@ async def handle_price(
         )
         return
 
-    err = validate_price(price, max_order_price, currency_symbol)
+    err = validate_price(
+        price, max_order_price, currency_symbol, texts=validator_texts
+    )
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

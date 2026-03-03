@@ -77,6 +77,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
+    VALIDATOR_ERR_KEYS,
     normalize_url,
     validate_barter_description,
     validate_geography,
@@ -124,18 +125,25 @@ async def start_order_creation(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_order_creation_blocked",
+            "msg_order_creation_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные не могут создавать заказы.",
-        pause_msg="На паузе не могут создавать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_order_creation_blocked", ""),
+        pause_msg=allow_msgs.get("msg_order_creation_pause", ""),
     )
     if user is None:
         return
-
-    locale = config.market.default_locale
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         msg_fill = await bot_texts_service.get(
@@ -209,17 +217,25 @@ async def start_order_creation_from_profile_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_order_creation_blocked",
+            "msg_order_creation_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные не могут создавать заказы.",
-        pause_msg="На паузе не могут создавать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_order_creation_blocked", ""),
+        pause_msg=allow_msgs.get("msg_order_creation_pause", ""),
     )
     if user is None:
         return
-    locale = config.market.default_locale
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         msg_fill = await bot_texts_service.get(
@@ -275,6 +291,8 @@ async def start_order_creation_from_profile_callback(
 async def handle_order_agree_callback(
     callback: CallbackQuery,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -299,9 +317,13 @@ async def handle_order_agree_callback(
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+        locale = config.market.default_locale
+        msg_expired = await bot_texts_service.get(
+            "msg_session_expired_orders", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Сессия истекла. Начните заново с «Создать заказ».",
+            text=msg_expired,
         )
         await state_store.clear()
         return
@@ -311,9 +333,11 @@ async def handle_order_agree_callback(
         user_id=user_id,
     )
     await state_store.update_data(flow_type=None)
+    locale = config.market.default_locale
+    msg_what = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Что вам нужно?",
+        text=msg_what,
         keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
@@ -421,8 +445,12 @@ async def handle_offer_text(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     offer_text = (incoming.text or "").strip()
-    err = validate_offer_text(offer_text)
+    err = validate_offer_text(offer_text, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -432,7 +460,6 @@ async def handle_offer_text(
         return
 
     await state_store.update_data(offer_text=offer_text)
-    locale = config.market.default_locale
     msg_coop = await bot_texts_service.get("msg_coop_format", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -601,7 +628,13 @@ async def handle_price(
         )
         return
 
-    err = validate_price(price, max_order_price, currency_symbol)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
+    err = validate_price(
+        price, max_order_price, currency_symbol, texts=validator_texts
+    )
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -612,7 +645,6 @@ async def handle_price(
 
     await state_store.update_data(price=price)
     data = await state_store.get_data()
-    locale = config.market.default_locale
     msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     msg_how_many = await bot_texts_service.get("msg_how_many_creators", locale)
     if data.get("cooperation_format") == COOP_BOTH:
@@ -651,10 +683,16 @@ async def handle_barter_description(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     barter_description = (incoming.text or "").strip()
     coop = (await state_store.get_data()).get("cooperation_format")
     required = coop == COOP_BOTH
-    err = validate_barter_description(barter_description, required=required)
+    err = validate_barter_description(
+        barter_description, required=required, texts=validator_texts
+    )
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -663,7 +701,6 @@ async def handle_barter_description(
         )
         return
     await state_store.update_data(barter_description=barter_description or None)
-    locale = config.market.default_locale
     msg_how_many = await bot_texts_service.get("msg_how_many_creators", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -785,8 +822,12 @@ async def handle_product_link(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     product_link = (incoming.text or "").strip()
-    err = validate_product_link(product_link)
+    err = validate_product_link(product_link, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -796,7 +837,6 @@ async def handle_product_link(
         return
 
     await state_store.update_data(product_link=normalize_url(product_link))
-    locale = config.market.default_locale
     msg_photo_intro = await bot_texts_service.get(
         "msg_order_photo_intro", locale
     )
@@ -1118,8 +1158,12 @@ async def handle_geography(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     geography = (incoming.text or "").strip()
-    err = validate_geography(geography)
+    err = validate_geography(geography, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -1131,9 +1175,13 @@ async def handle_geography(
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
+        locale = config.market.default_locale
+        msg_expired = await bot_texts_service.get(
+            "msg_session_expired_orders", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Сессия истекла. Начните заново с «Создать заказ».",
+            text=msg_expired,
         )
         await state_store.clear()
         return

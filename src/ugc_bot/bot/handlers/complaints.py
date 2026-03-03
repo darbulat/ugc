@@ -75,13 +75,17 @@ async def select_complaint_target(
     if not incoming.data:
         return
 
+    allow_msgs = await bot_texts_service.get_many(
+        ["msg_user_not_found", "msg_complaint_blocked", "msg_complaint_pause"],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные пользователи не могут подавать жалобы.",
-        pause_msg="Пользователи на паузе не могут подавать жалобы.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found", ""),
+        blocked_msg=allow_msgs.get("msg_complaint_blocked", ""),
+        pause_msg=allow_msgs.get("msg_complaint_pause", ""),
     )
     if user is None:
         return
@@ -225,13 +229,17 @@ async def start_complaint(
     if not incoming.data:
         return
 
+    allow_msgs = await bot_texts_service.get_many(
+        ["msg_user_not_found", "msg_complaint_blocked", "msg_complaint_pause"],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные пользователи не могут подавать жалобы.",
-        pause_msg="Пользователи на паузе не могут подавать жалобы.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found", ""),
+        blocked_msg=allow_msgs.get("msg_complaint_blocked", ""),
+        pause_msg=allow_msgs.get("msg_complaint_pause", ""),
     )
     if user is None:
         return

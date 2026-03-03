@@ -18,6 +18,7 @@ from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import send_with_retry
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import FeedbackConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.entities import BloggerProfile, Interaction, Order, User
@@ -37,33 +38,43 @@ _send_retries = 3
 _send_retry_delay_seconds = 0.5
 
 
-def _feedback_keyboard(kind: str, interaction_id: UUID) -> Keyboard:
-    """Build feedback buttons."""
-
+def _feedback_keyboard(
+    kind: str, interaction_id: UUID, texts: dict[str, str]
+) -> Keyboard:
+    """Build feedback buttons from localized texts."""
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text="✅ Всё прошло нормально",
+                    text=texts.get(
+                        "msg_fb_feedback_ok", "✅ Всё прошло нормально"
+                    ),
                     callback_data=f"feedback:{kind}:{interaction_id}:ok",
                 )
             ],
             [
                 Button(
-                    text="❌ Не договорились",
+                    text=texts.get(
+                        "msg_fb_feedback_no_deal", "❌ Не договорились"
+                    ),
                     callback_data=f"feedback:{kind}:{interaction_id}:no_deal",
                 )
             ],
             [
                 Button(
-                    text="⏳ Ещё не связался",
+                    text=texts.get(
+                        "msg_fb_feedback_postpone", "⏳ Ещё не связался"
+                    ),
                     callback_data=f"feedback:{kind}:{interaction_id}:postpone",
                 )
             ],
             [
                 Button(
-                    text="⚠️ Проблема / подозрение на мошенничество",
+                    text=texts.get(
+                        "msg_fb_feedback_issue",
+                        "⚠️ Проблема / подозрение на мошенничество",
+                    ),
                     callback_data=f"feedback:{kind}:{interaction_id}:issue",
                 )
             ],
@@ -97,6 +108,7 @@ async def _send_advertiser_feedback(
     interaction: Interaction,
     advertiser: User,
     blogger_profile: Optional[BloggerProfile],
+    texts: dict[str, str],
 ) -> bool:
     """Send feedback request to advertiser. Return True if sent."""
     creator_link = ""
@@ -105,17 +117,19 @@ async def _send_advertiser_feedback(
         if url and not url.startswith("http"):
             url = "https://" + url
         creator_link = f" [{url}]({url})"
-    text = (
+    template = texts.get(
+        "msg_feedback_request_adv",
         "Хотим убедиться, что всё прошло корректно 🙌\n"
-        f"Удалось ли вам связаться с креатором{creator_link}?\n"
-        "Выберите подходящий вариант:"
+        "Удалось ли вам связаться с креатором{creator_link}?\n"
+        "Выберите подходящий вариант:",
     )
+    text = template.format(creator_link=creator_link)
     await send_with_retry(
         messenger_client,
         chat_id=advertiser.external_id,
         text=text,
         parse_mode="Markdown",
-        keyboard=_feedback_keyboard("adv", interaction.interaction_id),
+        keyboard=_feedback_keyboard("adv", interaction.interaction_id, texts),
         retries=_send_retries,
         delay_seconds=_send_retry_delay_seconds,
         logger=logger,
@@ -136,6 +150,7 @@ async def _send_blogger_feedback(
     interaction: Interaction,
     blogger: User,
     order: Optional[Order],
+    texts: dict[str, str],
 ) -> bool:
     """Send feedback request to blogger. Return True if sent."""
     order_link_part = "по заказу?"
@@ -144,16 +159,18 @@ async def _send_blogger_feedback(
         if url and not url.startswith("http"):
             url = "https://" + url
         order_link_part = f"[по заказу]({url})?"
-    text = (
+    template = texts.get(
+        "msg_feedback_request_blog",
         "Мы хотим убедиться, что всё прошло корректно 🙌\n"
-        f"Удалось ли вам связаться с заказчиком {order_link_part}"
+        "Удалось ли вам связаться с заказчиком {order_link_part}",
     )
+    text = template.format(order_link_part=order_link_part)
     await send_with_retry(
         messenger_client,
         chat_id=blogger.external_id,
         text=text,
         parse_mode="Markdown",
-        keyboard=_feedback_keyboard("blog", interaction.interaction_id),
+        keyboard=_feedback_keyboard("blog", interaction.interaction_id, texts),
         retries=_send_retries,
         delay_seconds=_send_retry_delay_seconds,
         logger=logger,
@@ -169,6 +186,20 @@ async def _send_blogger_feedback(
     return True
 
 
+def _feedback_texts_for_locale(locale: str) -> dict[str, str]:
+    """Get feedback button and request texts for locale from defaults."""
+    locale_map = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS.get("ru") or {}
+    keys = [
+        "msg_fb_feedback_ok",
+        "msg_fb_feedback_no_deal",
+        "msg_fb_feedback_postpone",
+        "msg_fb_feedback_issue",
+        "msg_feedback_request_adv",
+        "msg_feedback_request_blog",
+    ]
+    return {k: locale_map.get(k, "") for k in keys}
+
+
 async def _send_feedback_requests(
     messenger_client: MessengerClient,
     interaction: Interaction,
@@ -177,8 +208,10 @@ async def _send_feedback_requests(
     profile_service: Optional[ProfileService],
     order: Optional[Order],
     feedback_config: FeedbackConfig,
+    locale: str,
 ) -> None:
     """Send feedback requests to both sides for a single interaction."""
+    texts = _feedback_texts_for_locale(locale)
 
     logger.debug(
         "Processing interaction for feedback",
@@ -218,7 +251,11 @@ async def _send_feedback_requests(
         and advertiser.external_id.isdigit()
     ):
         sent_to_adv = await _send_advertiser_feedback(
-            messenger_client, interaction, advertiser, blogger_profile
+            messenger_client,
+            interaction,
+            advertiser,
+            blogger_profile,
+            texts,
         )
 
     if (
@@ -227,7 +264,7 @@ async def _send_feedback_requests(
         and blogger.external_id.isdigit()
     ):
         sent_to_blog = await _send_blogger_feedback(
-            messenger_client, interaction, blogger, order
+            messenger_client, interaction, blogger, order, texts
         )
 
     if sent_to_adv or sent_to_blog:
@@ -255,6 +292,7 @@ async def run_once(
     feedback_config: FeedbackConfig,
     cutoff: datetime,
     transaction_manager,
+    locale: str = "ru",
 ) -> None:
     """Run a single feedback dispatch cycle."""
 
@@ -282,6 +320,7 @@ async def run_once(
                 profile_service,
                 order,
                 feedback_config,
+                locale,
             )
         except (
             Exception
@@ -312,6 +351,7 @@ async def run_loop(
     feedback_config: FeedbackConfig,
     interval_seconds: int,
     transaction_manager,
+    default_locale: str = "ru",
     max_iterations: int | None = None,
 ) -> None:
     """Run periodic feedback dispatch."""
@@ -336,6 +376,7 @@ async def run_loop(
                 feedback_config,
                 cutoff,
                 transaction_manager,
+                locale=default_locale,
             )
             if max_iterations is not None and iterations >= max_iterations:
                 return
@@ -389,6 +430,9 @@ def main() -> None:
 
     bot = Bot(token=config.bot.bot_token)
     messenger_client = TelegramMessengerClient(bot)
+    default_locale = (
+        getattr(getattr(config, "market", None), "default_locale", "ru") or "ru"
+    )
     try:
         asyncio.run(
             run_loop(
@@ -401,6 +445,7 @@ def main() -> None:
                 config.feedback,
                 interval_seconds=config.feedback.feedback_poll_interval_seconds,
                 transaction_manager=deps["transaction_manager"],
+                default_locale=default_locale,
             )
         )
     finally:

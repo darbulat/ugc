@@ -122,7 +122,8 @@ async def test_start_order_creation_requires_role(
         config,
         bot_texts_service=bot_texts_service,
     )
-    assert "Пользователь не найден" in message.answers[0]
+    msg = message.answers[0]
+    assert "не найден" in msg or "not found" in msg.lower()
 
 
 @pytest.mark.asyncio
@@ -1761,7 +1762,7 @@ def test_deadlines_offer_from_callback_bad_prefix_returns_none() -> None:
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_confirms_and_shows_order_type(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """handle_order_agree_callback confirms agreement and shows order type."""
     from tests.helpers.factories import (
@@ -1793,13 +1794,16 @@ async def test_order_agree_callback_confirms_and_shows_order_type(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert state.state == OrderCreationStates.order_type.state
-    assert any("Что вам нужно?" in s["text"] for s in client.sent_text)
+    texts = [s["text"] for s in client.sent_text]
+    assert any("Что вам нужно?" in t or "What do you need?" in t for t in texts)
     assert len(client.answered_callbacks) >= 1
 
 
@@ -1905,7 +1909,7 @@ async def test_deadlines_callback_sets_state(config, bot_texts_service) -> None:
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_wrong_state_only_answers(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When state is not agreements, callback only answers, no flow."""
     adv_service = AdvertiserRegistrationService(
@@ -1920,6 +1924,8 @@ async def test_order_agree_callback_wrong_state_only_answers(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1931,7 +1937,7 @@ async def test_order_agree_callback_wrong_state_only_answers(
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_no_user_id_sends_session_expired(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When user_id missing in state, send session expired and clear."""
     adv_service = AdvertiserRegistrationService(
@@ -1947,18 +1953,21 @@ async def test_order_agree_callback_no_user_id_sends_session_expired(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
-    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    texts = [s["text"] for s in client.sent_text]
+    assert any("Сессия истекла" in t or "Session expired" in t for t in texts)
     assert state.cleared or state._data.get("flow_type") is None
 
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_wrong_flow_type_only_answers(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When flow_type is not order_creation, callback only answers."""
     user = await create_test_user(
@@ -1978,6 +1987,8 @@ async def test_order_agree_callback_wrong_flow_type_only_answers(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,

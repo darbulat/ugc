@@ -188,18 +188,26 @@ async def pay_order(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_payment_blocked",
+            "msg_payment_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
-        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_payment_blocked", ""),
+        pause_msg=allow_msgs.get("msg_payment_pause", ""),
     )
     if user is None:
         return
 
-    locale = config.market.default_locale
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         msg_fill = await bot_texts_service.get(
@@ -320,18 +328,26 @@ async def pay_order_callback(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_payment_blocked",
+            "msg_payment_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
-        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_payment_blocked", ""),
+        pause_msg=allow_msgs.get("msg_payment_pause", ""),
     )
     if user is None:
         return
 
-    locale = config.market.default_locale
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
         msg_fill = await bot_texts_service.get(
@@ -455,18 +471,26 @@ async def successful_payment_handler(
     if incoming.successful_payment is None:
         return
 
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_payment_blocked",
+            "msg_payment_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
-        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_payment_blocked", ""),
+        pause_msg=allow_msgs.get("msg_payment_pause", ""),
     )
     if user is None:
         return
 
-    locale = config.market.default_locale
     payload = incoming.successful_payment.invoice_payload
     try:
         order_id = UUID(payload)

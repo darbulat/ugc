@@ -33,10 +33,6 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import flow_keyboard
 from ugc_bot.bot.handlers.profile import _BLOGGER_AGREEMENTS_STATE
-from ugc_bot.bot.handlers.security_warnings import (
-    ADVERTISER_CONTACTS_WARNING,
-    ADVERTISER_NEW_RESPONSE_WHAT_NEXT,
-)
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed_callback,
@@ -45,8 +41,28 @@ from ugc_bot.bot.handlers.utils import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order
+from ugc_bot.domain.enums import OrderType
 
 router = Router()
+
+OFFER_RESPONSE_TEXTS_KEYS = (
+    "msg_profile_not_found_role",
+    "msg_offer_response_blocked",
+    "msg_offer_response_pause",
+)
+_SEND_CONTACT_TEXTS_KEYS = (
+    "lbl_creator_fallback",
+    "msg_offer_new_response",
+    "msg_advertiser_new_response_what_next",
+    "msg_advertiser_contacts_warning",
+    "msg_offer_contacts_header",
+    "lbl_phone_dash",
+    "lbl_telegram_dash",
+    "msg_order_type_ugc",
+    "msg_order_type_placement",
+    "btn_open_profile",
+    "btn_write_telegram",
+)
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
@@ -118,6 +134,9 @@ async def _reply_offer_response_result(
         await messenger_client.send_text(
             chat_id=incoming.chat_id, text=msg_what_next
         )
+        contact_texts = await bot_texts_service.get_many(
+            list(_SEND_CONTACT_TEXTS_KEYS), locale
+        )
         await _send_contact_immediately(
             order=result.order,
             blogger_id=blogger_id,
@@ -127,6 +146,7 @@ async def _reply_offer_response_result(
             profile_service=profile_service,
             interaction_service=interaction_service,
             messenger_client=messenger_client,
+            texts=contact_texts,
         )
 
 
@@ -147,6 +167,8 @@ async def handle_offer_skip(
     callback: CallbackQuery,
     user_role_service: UserRoleService,
     offer_dispatch_service: OfferDispatchService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -159,17 +181,19 @@ async def handle_offer_skip(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
+    locale = config.market.default_locale
+    msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
     order_id = _parse_offer_skip_order_id(callback.data or "")
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Ок, пропущено.",
-        blocked_msg="Ок, пропущено.",
-        pause_msg="Ок, пропущено.",
+        user_not_found_msg=msg_skip,
+        blocked_msg=msg_skip,
+        pause_msg=msg_skip,
     )
     await messenger_client.answer_callback(
-        callback_id=incoming.callback_id, text="Ок, пропущено."
+        callback_id=incoming.callback_id, text=msg_skip
     )
     if order_id is not None and user is not None:
         await offer_dispatch_service.record_skip(order_id, user.user_id)
@@ -204,17 +228,20 @@ async def handle_offer_response(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
+    locale = config.market.default_locale
+    offer_msgs = await bot_texts_service.get_many(
+        list(OFFER_RESPONSE_TEXTS_KEYS), locale
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные пользователи не могут откликаться.",
-        pause_msg="Пользователи на паузе не могут откликаться.",
+        user_not_found_msg=offer_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=offer_msgs.get("msg_offer_response_blocked", ""),
+        pause_msg=offer_msgs.get("msg_offer_response_pause", ""),
     )
     if user is None:
         return
-    locale = config.market.default_locale
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
         msg_profile_fill = await bot_texts_service.get(
@@ -285,9 +312,10 @@ async def handle_offer_response(
     try:
         order_id = UUID(raw)
     except ValueError:
+        msg = await bot_texts_service.get("err_order_invalid_id", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Неверный идентификатор заказа.",
+            text=msg,
         )
         return
 
@@ -314,17 +342,15 @@ async def handle_offer_response(
     )
 
 
-def _format_ugc_type(order: Order) -> str:
+def _format_ugc_type(order: Order, texts: dict[str, str] | None = None) -> str:
     """Return human-readable order/format type for advertiser message."""
-    if order.order_type.value == "ugc_plus_placement":
-        return "UGC + размещение"
-    return "UGC-видео для бренда"
+    t = texts or {}
+    if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
+        return t.get("msg_order_type_placement", "UGC + размещение")
+    return t.get("msg_order_type_ugc", "UGC-видео для бренда")
 
 
-BLOGGER_ADVERTISER_CONTACTS_HEADER = "📞 Контакты заказчика для связи:\n\n"
-
-
-async def _send_contact_immediately(
+async def _send_contact_immediately(  # noqa: C901
     order: Order,
     blogger_id: UUID,
     blogger_chat_id: str,
@@ -333,13 +359,14 @@ async def _send_contact_immediately(
     profile_service: ProfileService,
     interaction_service: InteractionService | None,
     messenger_client: MessengerClient,
+    texts: dict[str, str],
 ) -> None:
     """Send contact to advertiser after each response (TZ format).
 
     Also sends advertiser's Telegram and phone to the blogger when they get
     into the order.
     """
-
+    t = texts
     user = await user_role_service.get_user_by_id(blogger_id)
     profile = await profile_service.get_blogger_profile(blogger_id)
     if user is None or profile is None:
@@ -349,28 +376,40 @@ async def _send_contact_immediately(
         )
         return
 
-    creator_name = user.username or "Креатор"
-    ugc_format = _format_ugc_type(order)
-    contact_text = (
+    creator_name = user.username or t.get("lbl_creator_fallback", "Креатор")
+    ugc_format = _format_ugc_type(order, t)
+    msg_new = t.get(
+        "msg_offer_new_response",
         "Новый отклик по вашему заказу 🙌\n\n"
-        f"👤 Креатор: {creator_name}\n"
-        f"📍 Город: {profile.city or '—'}\n"
-        f"🎬 Формат: {ugc_format}\n"
+        "👤 Креатор: {creator}\n"
+        "📍 Город: {city}\n"
+        "🎬 Формат: {format}\n"
         "💼 Готов работать на условиях оффера\n"
-        f"🔗 Профиль креатора:\n{profile.instagram_url}\n\n"
-        + ADVERTISER_NEW_RESPONSE_WHAT_NEXT
+        "🔗 Профиль креатора:\n{profile_url}",
     )
+    what_next = t.get("msg_advertiser_new_response_what_next", "")
+    contact_text = msg_new.format(
+        creator=creator_name,
+        city=profile.city or "—",
+        format=ugc_format,
+        profile_url=profile.instagram_url,
+    ) + ("\n\n" + what_next if what_next else "")
 
     profile_url = profile.instagram_url.strip()
     if profile_url and not profile_url.startswith("http"):
         profile_url = "https://" + profile_url
     buttons: list[Button] = []
     if profile_url.startswith("http"):
-        buttons.append(Button(text="🔗 Открыть профиль", url=profile_url))
+        buttons.append(
+            Button(
+                text=t.get("btn_open_profile", "🔗 Открыть профиль"),
+                url=profile_url,
+            )
+        )
     if user.telegram and user.telegram.strip():
         buttons.append(
             Button(
-                text="Написать в телеграм",
+                text=t.get("btn_write_telegram", "Написать в телеграм"),
                 url=f"https://t.me/{user.telegram.lstrip('@')}",
             )
         )
@@ -391,31 +430,36 @@ async def _send_contact_immediately(
             extra={"order_id": str(order.order_id)},
         )
         if response_count == 1:
-            await send_with_retry(
-                messenger_client,
-                chat_id=advertiser.external_id,
-                text=ADVERTISER_CONTACTS_WARNING,
-                parse_mode="Markdown",
-                retries=_send_retries,
-                delay_seconds=_send_retry_delay_seconds,
-                logger=logger,
-                extra={"order_id": str(order.order_id)},
-            )
+            warning = t.get("msg_advertiser_contacts_warning", "")
+            if warning:
+                await send_with_retry(
+                    messenger_client,
+                    chat_id=advertiser.external_id,
+                    text=warning,
+                    parse_mode="Markdown",
+                    retries=_send_retries,
+                    delay_seconds=_send_retry_delay_seconds,
+                    logger=logger,
+                    extra={"order_id": str(order.order_id)},
+                )
 
     # Send advertiser's Telegram and phone to blogger
     advertiser_profile = await profile_service.get_advertiser_profile(
         order.advertiser_id
     )
-    parts = [BLOGGER_ADVERTISER_CONTACTS_HEADER]
+    header = t.get(
+        "msg_offer_contacts_header", "📞 Контакты заказчика для связи:\n\n"
+    )
+    parts = [header]
     if advertiser and advertiser.telegram and advertiser.telegram.strip():
         tg = advertiser.telegram.strip().lstrip("@")
         parts.append(f"Telegram: @{tg}\n")
     else:
-        parts.append("Telegram: —\n")
+        parts.append(t.get("lbl_telegram_dash", "Telegram: —") + "\n")
     if advertiser_profile and advertiser_profile.phone:
         parts.append(f"Телефон: {advertiser_profile.phone}")
     else:
-        parts.append("Телефон: —")
+        parts.append(t.get("lbl_phone_dash", "Телефон: —"))
     blogger_contact_text = "".join(parts)
     await send_with_retry(
         messenger_client,

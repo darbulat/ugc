@@ -40,6 +40,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
+    VALIDATOR_ERR_KEYS,
     normalize_url,
     validate_brand,
     validate_city,
@@ -208,17 +209,25 @@ async def handle_advertiser_start(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found_start",
+            "msg_registration_blocked",
+            "msg_registration_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
-        pause_msg="Пользователи на паузе не могут регистрироваться.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found_start", ""),
+        blocked_msg=allow_msgs.get("msg_registration_blocked", ""),
+        pause_msg=allow_msgs.get("msg_registration_pause", ""),
     )
     if user is None:
         return
-    locale = config.market.default_locale
     texts = await bot_texts_service.get_many(
         [
             "btn_create_order",
@@ -261,18 +270,26 @@ async def handle_advertiser_start_callback(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found_start",
+            "msg_registration_blocked",
+            "msg_registration_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные пользователи не могут регистрироваться.",
-        pause_msg="Пользователи на паузе не могут регистрироваться.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found_start", ""),
+        blocked_msg=allow_msgs.get("msg_registration_blocked", ""),
+        pause_msg=allow_msgs.get("msg_registration_pause", ""),
     )
     if user is None:
         return
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
     texts = await bot_texts_service.get_many(
         [
             "btn_create_order",
@@ -312,8 +329,12 @@ async def handle_name(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     name = (incoming.text or "").strip()
-    err = validate_name(name)
+    err = validate_name(name, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -323,7 +344,6 @@ async def handle_name(
         return
 
     await state_store.update_data(name=name)
-    locale = config.market.default_locale
     texts = await bot_texts_service.get_many(
         ["btn_phone_request", "msg_phone_request"], locale
     )
@@ -351,8 +371,12 @@ async def handle_phone(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     phone = (incoming.contact_phone or incoming.text or "").strip()
-    err = validate_phone(phone)
+    err = validate_phone(phone, texts=validator_texts)
     if err is not None:
         texts = await bot_texts_service.get_many(
             ["btn_phone_request"], config.market.default_locale
@@ -365,7 +389,6 @@ async def handle_phone(
         return
 
     await state_store.update_data(phone=phone)
-    locale = config.market.default_locale
     msg_city = await bot_texts_service.get("msg_what_city", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -390,8 +413,12 @@ async def handle_city(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     city = (incoming.text or "").strip() or None
-    err = validate_city(city, required=False)
+    err = validate_city(city, required=False, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -400,7 +427,6 @@ async def handle_city(
         )
         return
     await state_store.update_data(city=city)
-    locale = config.market.default_locale
     msg_brand = await bot_texts_service.get("msg_brand_name", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -425,8 +451,12 @@ async def handle_brand(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     brand = (incoming.text or "").strip()
-    err = validate_brand(brand)
+    err = validate_brand(brand, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -436,7 +466,6 @@ async def handle_brand(
         return
 
     await state_store.update_data(brand=brand)
-    locale = config.market.default_locale
     msg_activity = await bot_texts_service.get("msg_company_activity", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -463,8 +492,12 @@ async def handle_company_activity(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     company_activity = (incoming.text or "").strip() or None
-    err = validate_company_activity(company_activity)
+    err = validate_company_activity(company_activity, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -473,7 +506,6 @@ async def handle_company_activity(
         )
         return
     await state_store.update_data(company_activity=company_activity)
-    locale = config.market.default_locale
     msg_link = await bot_texts_service.get("msg_brand_link", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -499,8 +531,12 @@ async def handle_site_link(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
     site_link = (incoming.text or "").strip() or None
-    err = validate_site_link(site_link)
+    err = validate_site_link(site_link, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

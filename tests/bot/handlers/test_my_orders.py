@@ -377,11 +377,16 @@ async def test_paginate_orders_blogger_no_profile(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
     assert callback.answers
-    assert "Профиль блогера не заполнен" in callback.answers[0]
+    assert (
+        "Профиль блогера не заполнен" in callback.answers[0]
+        or "Blogger profile not filled" in callback.answers[0]
+    )
 
 
 @pytest.mark.asyncio
@@ -447,6 +452,8 @@ async def test_paginate_orders_blogger_page2(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -491,7 +498,12 @@ async def test_show_my_orders_user_not_found(
         bot_texts_service=bot_texts_service,
     )
     assert message.answers
-    assert "Пользователь не найден" in message.answers[0]
+    text = message.answers[0]
+    assert (
+        "не найден" in text
+        or "not found" in text.lower()
+        or "profile" in text.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -1242,6 +1254,8 @@ async def test_paginate_orders_returns_early_when_no_from_user(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert not callback.answers or callback.answers == [""]
 
@@ -1281,9 +1295,14 @@ async def test_paginate_orders_user_not_found(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert callback.answers
-    assert "не найден" in callback.answers[0]
+    assert (
+        "не найден" in callback.answers[0]
+        or "not found" in callback.answers[0].lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -1328,9 +1347,14 @@ async def test_paginate_orders_no_advertiser_profile(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert callback.answers
-    assert "Профиль рекламодателя не заполнен" in callback.answers[0]
+    assert (
+        "Профиль рекламодателя не заполнен" in callback.answers[0]
+        or "Advertiser profile not filled" in callback.answers[0]
+    )
 
 
 @pytest.mark.asyncio
@@ -1384,6 +1408,8 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1434,6 +1460,8 @@ async def test_paginate_orders_invalid_page_uses_one(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await callback.answer()
     assert message.answers or callback.answers
@@ -1493,6 +1521,8 @@ async def test_my_orders_page_one_shows_forward_button(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1570,6 +1600,8 @@ async def test_my_orders_pagination(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1729,6 +1761,8 @@ async def test_paginate_orders_blogger(
         order_service,
         offer_response_service,
         currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

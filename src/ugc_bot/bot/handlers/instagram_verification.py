@@ -76,28 +76,43 @@ async def start_verification(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found_start",
+            "msg_instagram_blocked",
+            "msg_instagram_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные не могут подтверждать аккаунт.",
-        pause_msg="На паузе не могут подтверждать аккаунт.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found_start", ""),
+        blocked_msg=allow_msgs.get("msg_instagram_blocked", ""),
+        pause_msg=allow_msgs.get("msg_instagram_pause", ""),
     )
     if user is None:
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
+        msg_empty = await bot_texts_service.get(
+            "msg_profile_empty_creator", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Профиль не заполнен. «Создать профиль» или /creator",
+            text=msg_empty,
         )
         return
 
     if blogger_profile.confirmed:
+        msg_confirmed = await bot_texts_service.get(
+            "msg_instagram_already_confirmed", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Ваш Instagram‑аккаунт уже подтвержден",
+            text=msg_confirmed,
         )
         return
 
@@ -141,27 +156,42 @@ async def start_verification_from_profile_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found_start",
+            "msg_instagram_blocked",
+            "msg_instagram_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Начните с /start.",
-        blocked_msg="Заблокированные не могут подтверждать аккаунт.",
-        pause_msg="На паузе не могут подтверждать аккаунт.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found_start", ""),
+        blocked_msg=allow_msgs.get("msg_instagram_blocked", ""),
+        pause_msg=allow_msgs.get("msg_instagram_pause", ""),
     )
     if user is None:
         return
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
+        msg_empty = await bot_texts_service.get(
+            "msg_profile_empty_creator", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Профиль не заполнен. «Создать профиль» или /creator",
+            text=msg_empty,
         )
         return
     if blogger_profile.confirmed:
+        msg_confirmed = await bot_texts_service.get(
+            "msg_instagram_already_confirmed", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Ваш Instagram‑аккаунт уже подтвержден",
+            text=msg_confirmed,
         )
         return
     verification = await instagram_verification_service.generate_code(
