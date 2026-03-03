@@ -395,22 +395,39 @@ async def send_with_retry(
 
 def format_agreements_message(
     config: AppConfig,
-    intro: str = "Профиль создан. Ознакомьтесь с документами и подтвердите.",
+    intro: str | None = None,
+    texts: dict[str, str] | None = None,
 ) -> str:
     """Build agreements text with clickable document links (HTML).
 
     Args:
         config: Application config with docs URLs.
-        intro: Introductory text before document links.
-        use_emoji: If True, add emoji prefixes to link labels.
+        intro: Introductory text before document links. If None, uses
+            texts["msg_agreements_intro_default"] when texts is provided.
+        texts: Optional dict with keys msg_agreements_intro_default,
+            msg_label_offer, msg_label_privacy, msg_label_consent,
+            msg_confirm_docs_fallback. If None, uses built-in defaults.
 
     Returns:
         Formatted HTML string with document links.
     """
+    texts = texts or {}
+    if intro is None:
+        intro = texts.get(
+            "msg_agreements_intro_default",
+            "Profile created. Please read the documents and confirm.",
+        )
+    offer_label = texts.get("msg_label_offer", "📄 Offer")
+    privacy_label = texts.get("msg_label_privacy", "🔒 Privacy Policy")
+    consent_label = texts.get(
+        "msg_label_consent", "🧾 Consent to personal data processing"
+    )
+    fallback = texts.get(
+        "msg_confirm_docs_fallback",
+        "Please confirm your agreement with the platform documents.",
+    )
+
     parts = [intro, ""]
-    offer_label = "📄 Оферта"
-    privacy_label = "🔒 Политика конфиденциальности"
-    consent_label = "🧾 Согласие на обработку персональных данных"
     if config.docs.docs_offer_url:
         parts.append(
             f'<a href="{config.docs.docs_offer_url}">{offer_label}</a>'
@@ -424,7 +441,7 @@ def format_agreements_message(
             f'<a href="{config.docs.docs_consent_url}">{consent_label}</a>'
         )
     if len(parts) == 2:
-        parts.append("Подтвердите согласие с документами платформы.")
+        parts.append(fallback)
     return "\n".join(parts)
 
 

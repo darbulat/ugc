@@ -149,15 +149,21 @@ async def start_order_creation(
 
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
-        msg_confirm_intro = await bot_texts_service.get(
-            "msg_confirm_agreement", locale
-        )
+        agree_keys = [
+            "btn_confirm_agreement",
+            "msg_confirm_agreement",
+            "msg_agreements_intro_default",
+            "msg_label_offer",
+            "msg_label_privacy",
+            "msg_label_consent",
+            "msg_confirm_docs_fallback",
+        ]
+        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
+        msg_confirm_intro = agree_texts.get("msg_confirm_agreement", "")
         agreements_text = format_agreements_message(
             config,
             intro=msg_confirm_intro,
-        )
-        agree_texts = await bot_texts_service.get_many(
-            ["btn_confirm_agreement"], locale
+            texts=agree_texts,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -226,15 +232,21 @@ async def start_order_creation_from_profile_callback(
         return
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
-        msg_confirm_intro = await bot_texts_service.get(
-            "msg_confirm_agreement", locale
-        )
+        agree_keys = [
+            "btn_confirm_agreement",
+            "msg_confirm_agreement",
+            "msg_agreements_intro_default",
+            "msg_label_offer",
+            "msg_label_privacy",
+            "msg_label_consent",
+            "msg_confirm_docs_fallback",
+        ]
+        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
+        msg_confirm_intro = agree_texts.get("msg_confirm_agreement", "")
         agreements_text = format_agreements_message(
             config,
             intro=msg_confirm_intro,
-        )
-        agree_texts = await bot_texts_service.get_many(
-            ["btn_confirm_agreement"], locale
+            texts=agree_texts,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

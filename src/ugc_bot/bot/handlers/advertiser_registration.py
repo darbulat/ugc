@@ -537,10 +537,18 @@ async def handle_site_link(
     except Exception:
         raise
 
+    agreement_keys = [
+        "btn_confirm_agreement",
+        "msg_agreements_intro_default",
+        "msg_label_offer",
+        "msg_label_privacy",
+        "msg_label_consent",
+        "msg_confirm_docs_fallback",
+    ]
     texts = await bot_texts_service.get_many(
-        ["btn_confirm_agreement"], config.market.default_locale
+        agreement_keys, config.market.default_locale
     )
-    text = format_agreements_message(config)
+    text = format_agreements_message(config, texts=texts)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,

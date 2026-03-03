@@ -243,16 +243,22 @@ async def handle_offer_response(
             callback_id=incoming.callback_id,
             text=msg_confirm_first,
         )
-        msg_confirm_intro = await bot_texts_service.get(
-            "msg_confirm_agreement", locale
-        )
+        agree_keys = [
+            "btn_confirm_agreement",
+            "msg_confirm_agreement",
+            "msg_agreements_intro_default",
+            "msg_label_offer",
+            "msg_label_privacy",
+            "msg_label_consent",
+            "msg_confirm_docs_fallback",
+        ]
+        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
         agreements_text = format_agreements_message(
             config,
-            intro=msg_confirm_intro,
+            intro=agree_texts.get("msg_confirm_agreement"),
+            texts=agree_texts,
         )
-        confirm_btn = await bot_texts_service.get(
-            "btn_confirm_agreement", config.market.default_locale
-        )
+        confirm_btn = agree_texts.get("btn_confirm_agreement", "")
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,

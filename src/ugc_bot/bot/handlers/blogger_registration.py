@@ -1403,19 +1403,28 @@ async def handle_work_format_callback(
             return
         raise
 
-    agreements_intro = await bot_texts_service.get(
-        "msg_agreements_intro_creator", config.market.default_locale
+    agree_keys = [
+        "btn_confirm_agreement",
+        "msg_agreements_intro_creator",
+        "msg_agreements_intro_default",
+        "msg_label_offer",
+        "msg_label_privacy",
+        "msg_label_consent",
+        "msg_confirm_docs_fallback",
+    ]
+    agree_texts = await bot_texts_service.get_many(
+        agree_keys, config.market.default_locale
     )
-    agreements_text = format_agreements_message(config, intro=agreements_intro)
-    texts = await bot_texts_service.get_many(
-        ["btn_confirm_agreement"], config.market.default_locale
+    agreements_intro = agree_texts.get("msg_agreements_intro_creator", "")
+    agreements_text = format_agreements_message(
+        config, intro=agreements_intro, texts=agree_texts
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=agreements_text,
         parse_mode="HTML",
         keyboard=confirm_agreement_inline_keyboard(
-            CALLBACK_BLOGGER_AGREE, texts
+            CALLBACK_BLOGGER_AGREE, agree_texts
         ),
     )
     await state_store.set_state(BloggerRegistrationStates.agreements.state)
@@ -1515,15 +1524,21 @@ async def handle_work_format(
             )
             return
         raise
-    agreements_intro = await bot_texts_service.get(
-        "msg_agreements_intro_creator", locale
-    )
+    agree_keys = [
+        "btn_confirm_agreement",
+        "msg_agreements_intro_creator",
+        "msg_agreements_intro_default",
+        "msg_label_offer",
+        "msg_label_privacy",
+        "msg_label_consent",
+        "msg_confirm_docs_fallback",
+    ]
+    agree_texts = await bot_texts_service.get_many(agree_keys, locale)
+    agreements_intro = agree_texts.get("msg_agreements_intro_creator", "")
     agreements_text = format_agreements_message(
         config,
         intro=agreements_intro,
-    )
-    agree_texts = await bot_texts_service.get_many(
-        ["btn_confirm_agreement"], locale
+        texts=agree_texts,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,

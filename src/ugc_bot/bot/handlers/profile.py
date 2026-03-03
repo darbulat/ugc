@@ -930,12 +930,20 @@ async def show_profile(
     if (
         blogger is not None or advertiser is not None
     ) and agreement_confirmed_at is None:
+        agree_keys = [
+            "btn_confirm_agreement",
+            "msg_confirm_agreement",
+            "msg_agreements_intro_default",
+            "msg_label_offer",
+            "msg_label_privacy",
+            "msg_label_consent",
+            "msg_confirm_docs_fallback",
+        ]
+        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
-        )
-        agree_texts = await bot_texts_service.get_many(
-            ["btn_confirm_agreement"], locale
+            intro=agree_texts.get("msg_confirm_agreement"),
+            texts=agree_texts,
         )
         await message_ctx.answer(
             agreements_text,
@@ -1188,12 +1196,21 @@ async def handle_profile_my_profile_callback(
     if (
         blogger is not None or advertiser is not None
     ) and agreement_confirmed_at is None:
+        locale = config.market.default_locale
+        agree_keys = [
+            "btn_confirm_agreement",
+            "msg_confirm_agreement",
+            "msg_agreements_intro_default",
+            "msg_label_offer",
+            "msg_label_privacy",
+            "msg_label_consent",
+            "msg_confirm_docs_fallback",
+        ]
+        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
-        )
-        agree_texts = await bot_texts_service.get_many(
-            ["btn_confirm_agreement"], config.market.default_locale
+            intro=agree_texts.get("msg_confirm_agreement"),
+            texts=agree_texts,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

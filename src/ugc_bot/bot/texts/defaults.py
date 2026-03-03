@@ -81,6 +81,15 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_confirm_agreement": (
             "Пожалуйста, подтвердите согласие с документами платформы."
         ),
+        "msg_agreements_intro_default": (
+            "Профиль создан. Ознакомьтесь с документами и подтвердите."
+        ),
+        "msg_label_offer": "📄 Оферта",
+        "msg_label_privacy": "🔒 Политика конфиденциальности",
+        "msg_label_consent": "🧾 Согласие на обработку персональных данных",
+        "msg_confirm_docs_fallback": (
+            "Подтвердите согласие с документами платформы."
+        ),
         "msg_no_orders": "У вас пока нет заказов. /create_order",
         "msg_no_blogger_orders": (
             "Вы пока не откликались. Предложения приходят в бот."
@@ -524,6 +533,15 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Fill your profile (/advertiser or /creator) to see orders."
         ),
         "msg_confirm_agreement": "Please confirm agreement with platform documents.",
+        "msg_agreements_intro_default": (
+            "Profile created. Please read the documents and confirm."
+        ),
+        "msg_label_offer": "📄 Offer",
+        "msg_label_privacy": "🔒 Privacy Policy",
+        "msg_label_consent": "🧾 Consent to personal data processing",
+        "msg_confirm_docs_fallback": (
+            "Please confirm your agreement with the platform documents."
+        ),
         "msg_no_orders": "You have no orders yet. /create_order",
         "msg_no_blogger_orders": "You haven't responded yet. Offers come to the bot.",
         "msg_blogger_profile_empty": "Blogger profile not filled.",
