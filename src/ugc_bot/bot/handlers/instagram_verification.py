@@ -37,24 +37,19 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-def _verification_instruction_text(admin_instagram_username: str) -> str:
-    """Instruction text without code (code sent in separate message).
+def _format_verification_instruction(
+    template: str, admin_instagram_username: str
+) -> str:
+    """Format verification instruction with escaped URL for HTML.
 
-    Uses HTML parse mode so the URL (which may contain underscores in username)
-    does not break Telegram entity parsing.
+    Uses HTML parse mode so the URL (e.g. with underscores) does not break
+    Telegram entity parsing. Template must contain {url} placeholder.
     """
     base = "https://www.instagram.com/"
     username = (admin_instagram_username or "usemycontent").lstrip("@")
     url = f"{base}{username}/"
     url_escaped = html.escape(url, quote=True)
-    return (
-        "<b>Чтобы подтвердить Instagram‑аккаунт, сделайте 3 шага:</b>\n\n"
-        "1. Скопируйте код ниже\n"
-        "2. Отправьте его в личные сообщения Instagram‑аккаунту UMC\n"
-        "3. Дождитесь автоматического подтверждения\n\n"
-        f'🔗 Instagram UMC: <a href="{url_escaped}">{url_escaped}</a>\n\n'
-        "🔐 Ваш код (код действует 15 минут) 👇"
-    )
+    return template.format(url=url_escaped)
 
 
 @router.message(Command("verify_instagram"))
@@ -121,14 +116,16 @@ async def start_verification(
     )
     await state_store.clear()
 
-    instruction = _verification_instruction_text(
-        config.instagram.admin_instagram_username
+    instruction_template = await bot_texts_service.get(
+        "msg_instagram_verify_instruction", locale
+    )
+    instruction = _format_verification_instruction(
+        instruction_template, config.instagram.admin_instagram_username
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id, text=instruction, parse_mode="HTML"
     )
     code_escaped = html.escape(verification.code)
-    locale = config.market.default_locale
     texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -199,14 +196,16 @@ async def start_verification_from_profile_callback(
     )
     state_store = AiogramStateStore(state)
     await state_store.clear()
-    instruction = _verification_instruction_text(
-        config.instagram.admin_instagram_username
+    instruction_template = await bot_texts_service.get(
+        "msg_instagram_verify_instruction", locale
+    )
+    instruction = _format_verification_instruction(
+        instruction_template, config.instagram.admin_instagram_username
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id, text=instruction, parse_mode="HTML"
     )
     code_escaped = html.escape(verification.code)
-    locale = config.market.default_locale
     texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,

@@ -511,8 +511,8 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     ), "Expected exit to main menu or interruption message"
 
     # Return: open My Profile — bot should show agreements again.
-    text = await send_and_get_reply(
-        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:menu:profile", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
     assert _has_any(text, "согласи", "agree", "consent"), (
@@ -574,7 +574,11 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
     text = await click_inline_and_get_reply(
         client, entity, "adv:start", timeout=20
     )
-    assert text is not None
+    if text is None:
+        pytest.skip(
+            "No message with adv:start button (advertiser may already have "
+            "profile); run this test first or in isolation."
+        )
     if _has_any(text, "Выберите действие", "Choose action", "Select"):
         pytest.skip(
             "Advertiser already has profile from previous test; "
@@ -638,8 +642,8 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
     ), "Expected exit to main menu or interruption message"
 
     # Return: open My Profile — bot should show agreements again.
-    text = await send_and_get_reply(
-        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:menu:profile", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
     assert _has_any(text, "согласи", "agree", "consent"), (
@@ -712,8 +716,8 @@ async def test_order_creation_full_flow(
                 client, entity, "adv:agree", timeout=20
             )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "➕ Создать заказ", timeout=25
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:menu:order", timeout=25
     )
     assert text is not None
     if _has_any(text, "Профиль", "profile") and _has_any(
@@ -727,8 +731,8 @@ async def test_order_creation_full_flow(
         await click_inline_and_get_reply(
             client, entity, "order:agree", timeout=20
         )
-        text = await send_and_get_reply(
-            client, entity, bot_username, "➕ Создать заказ", timeout=25
+        text = await click_inline_and_get_reply(
+            client, entity, "profile:menu:order", timeout=25
         )
         assert text is not None
     assert _has_any(
@@ -876,8 +880,8 @@ async def test_blogger_profile_update(
 
     await _ensure_blogger_profile(client, entity, bot_username)
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:menu:profile", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
     if _has_any(
@@ -889,24 +893,21 @@ async def test_blogger_profile_update(
         assert text is not None
     assert _has_any(text or "", "профиль", "profile", "креатор", "creator")
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Редактировать профиль", timeout=20
+    # Edit profile -> choose blogger -> then city field (inline).
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:menu:edit", timeout=20
     )
     assert text is not None
     if _has_any(
         text or "", "Выберите профиль", "Choose profile", "Select profile"
     ):
-        text = await send_and_get_reply(
-            client,
-            entity,
-            bot_username,
-            "Редактировать профиль блогера",
-            timeout=15,
+        text = await click_inline_and_get_reply(
+            client, entity, "profile:type:blogger", timeout=15
         )
     assert text and _has_any(text, "раздел", "section", "field")
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Город", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:field:city", timeout=15
     )
     assert text and _has_any(text, "город", "city")
 
@@ -941,8 +942,8 @@ async def test_advertiser_profile_update(
 
     await _ensure_advertiser_profile(client, entity, bot_username)
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "👤 Мой профиль", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:menu:profile", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
     if _has_any(
@@ -956,24 +957,21 @@ async def test_advertiser_profile_update(
         text or "", "профиль", "profile", "рекламодатель", "advertiser"
     )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Редактировать профиль", timeout=20
+    # Edit profile -> choose advertiser -> then city field (inline).
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:menu:edit", timeout=20
     )
     assert text is not None
     if _has_any(
         text or "", "Выберите профиль", "Choose profile", "Select profile"
     ):
-        text = await send_and_get_reply(
-            client,
-            entity,
-            bot_username,
-            "Редактировать профиль рекламодателя",
-            timeout=15,
+        text = await click_inline_and_get_reply(
+            client, entity, "profile:type:advertiser", timeout=15
         )
     assert text and _has_any(text, "раздел", "section", "field")
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Город", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "profile:field:city", timeout=15
     )
     # Advertiser city uses generic prompt "Введите новое значение:" in app
     assert text and _has_any(

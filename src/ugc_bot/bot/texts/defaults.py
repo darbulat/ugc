@@ -658,6 +658,14 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Профиль не заполнен. «Создать профиль» или /creator"
         ),
         "msg_instagram_already_confirmed": "Ваш Instagram‑аккаунт уже подтвержден",
+        "msg_instagram_verify_instruction": (
+            "<b>Чтобы подтвердить Instagram‑аккаунт, сделайте 3 шага:</b>\n\n"
+            "1. Скопируйте код ниже\n"
+            "2. Отправьте его в личные сообщения Instagram‑аккаунту UMC\n"
+            "3. Дождитесь автоматического подтверждения\n\n"
+            '🔗 Instagram UMC: <a href="{url}">{url}</a>\n\n'
+            "🔐 Ваш код (код действует 15 минут) 👇"
+        ),
         # Messages: complaints
         "msg_invalid_format": "Неверный формат.",
         "msg_invalid_id_format": "Неверный формат идентификатора.",
@@ -1390,6 +1398,14 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "msg_profile_empty_creator": "Profile not filled. «Create profile» or /creator",
         "msg_instagram_already_confirmed": "Your Instagram is already verified",
+        "msg_instagram_verify_instruction": (
+            "<b>To verify your Instagram account, follow 3 steps:</b>\n\n"
+            "1. Copy the code below\n"
+            "2. Send it in a direct message to the UMC Instagram account\n"
+            "3. Wait for automatic verification\n\n"
+            '🔗 Instagram UMC: <a href="{url}">{url}</a>\n\n'
+            "🔐 Your code (valid for 15 minutes) 👇"
+        ),
         "msg_invalid_format": "Invalid format.",
         "msg_invalid_id_format": "Invalid identifier format.",
         "msg_order_not_found_short": "Order not found.",

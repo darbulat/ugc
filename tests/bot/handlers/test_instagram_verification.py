@@ -17,11 +17,12 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.instagram_verification import (
-    _verification_instruction_text,
+    _format_verification_instruction,
     start_verification,
     start_verification_from_profile_callback,
 )
 from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_CONFIRM_INSTAGRAM
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
@@ -193,10 +194,11 @@ async def test_start_verification_paused_user(
 
 
 def test_verification_instruction_format() -> None:
-    """Verify instruction matches TZ (code sent in separate message)."""
+    """Verify instruction format with URL (code sent in separate message)."""
     admin_username = "admin_ugc_bot"
+    template_ru = DEFAULT_TEXTS["ru"]["msg_instagram_verify_instruction"]
 
-    instruction = _verification_instruction_text(admin_username)
+    instruction = _format_verification_instruction(template_ru, admin_username)
 
     assert "Чтобы подтвердить Instagram" in instruction
     assert "Скопируйте код ниже" in instruction
