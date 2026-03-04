@@ -54,19 +54,26 @@ def _validate_blogger_input(
     return instagram_url_clean, city_clean, audience_geo_clean
 
 
-async def _resolve_location_geometry(
+async def _resolve_location_and_nominatim_details(
     geocoder: Optional[GeocoderPort],
     city: str,
     region: Optional[str] = None,
-) -> Optional[str]:
-    """Return WKT MULTIPOINT for city (and region) or None."""
+    country: Optional[str] = None,
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Return (wkt_geometry, region_from_nominatim, country_from_nominatim).
+
+    Uses geocode_with_details; returns (None, None, None) when unavailable.
+    """
     if geocoder is None or not city.strip():
-        return None
-    coords = await geocoder.geocode(city.strip(), region=region)
-    if coords is None:
-        return None
-    lat, lon = coords
-    return wkt_multipoint_from_lat_lon(lat, lon)
+        return (None, None, None)
+    details = await geocoder.geocode_with_details(
+        city.strip(), region=region, country=country
+    )
+    if details is None:
+        return (None, None, None)
+    lat, lon, _, _, region_nom, country_nom = details
+    wkt = wkt_multipoint_from_lat_lon(lat, lon)
+    return (wkt, region_nom, country_nom)
 
 
 @dataclass(slots=True)
@@ -145,9 +152,15 @@ class BloggerRegistrationService:
                     "Пожалуйста, используйте другой аккаунт."
                 )
 
-            location_geometry = await _resolve_location_geometry(
-                self.geocoder, city_clean, region
+            (
+                location_geometry,
+                region_nom,
+                country_nom,
+            ) = await _resolve_location_and_nominatim_details(
+                self.geocoder, city_clean, region=region, country=None
             )
+            profile_region = region_nom if region_nom is not None else region
+            profile_country = country_nom if country_nom is not None else ""
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -164,9 +177,9 @@ class BloggerRegistrationService:
                 updated_at=datetime.now(timezone.utc),
                 blogger_gender=blogger_gender,
                 birth_date=birth_date,
-                region=region,
+                region=profile_region,
                 location_geometry=location_geometry,
-                country="",
+                country=profile_country,
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -259,9 +272,15 @@ class BloggerRegistrationService:
                     "Пожалуйста, используйте другой аккаунт."
                 )
 
-            location_geometry = await _resolve_location_geometry(
-                self.geocoder, city_clean, region
+            (
+                location_geometry,
+                region_nom,
+                country_nom,
+            ) = await _resolve_location_and_nominatim_details(
+                self.geocoder, city_clean, region=region, country=None
             )
+            profile_region = region_nom if region_nom is not None else region
+            profile_country = country_nom if country_nom is not None else ""
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -278,9 +297,9 @@ class BloggerRegistrationService:
                 updated_at=datetime.now(timezone.utc),
                 blogger_gender=blogger_gender,
                 birth_date=birth_date,
-                region=region,
+                region=profile_region,
                 location_geometry=location_geometry,
-                country="",
+                country=profile_country,
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -401,13 +420,26 @@ class BloggerRegistrationService:
             )
             new_city = city.strip() if city is not None else profile.city
             new_region = region if region is not None else profile.region
+            new_country = profile.country or ""
             new_geometry = location_geometry
             if new_geometry is None and (
                 city is not None or region is not None
             ):
-                new_geometry = await _resolve_location_geometry(
-                    self.geocoder, new_city, new_region
+                (
+                    geom_wkt,
+                    region_nom,
+                    country_nom,
+                ) = await _resolve_location_and_nominatim_details(
+                    self.geocoder,
+                    new_city,
+                    region=new_region,
+                    country=profile.country or None,
                 )
+                new_geometry = geom_wkt
+                if region_nom is not None:
+                    new_region = region_nom
+                if country_nom is not None:
+                    new_country = country_nom
             if new_geometry is None and location_geometry is None:
                 new_geometry = profile.location_geometry
             now = datetime.now(timezone.utc)
@@ -417,6 +449,7 @@ class BloggerRegistrationService:
                 confirmed=False if instagram_changed else profile.confirmed,
                 city=new_city,
                 region=new_region,
+                country=new_country,
                 location_geometry=new_geometry,
                 topics=topics if topics is not None else profile.topics,
                 audience_gender=audience_gender

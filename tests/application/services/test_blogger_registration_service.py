@@ -88,6 +88,18 @@ async def test_register_blogger_with_geocoder_sets_location_geometry() -> None:
         async def geocode(self, query, region=None):
             return (55.7558, 37.6173) if query else None
 
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (
+                55.7558,
+                37.6173,
+                "",
+                "",
+                "Москва",
+                "Russia",
+            )
+
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
@@ -112,6 +124,7 @@ async def test_register_blogger_with_geocoder_sets_location_geometry() -> None:
 
     assert profile.location_geometry == "MULTIPOINT((37.6173 55.7558))"
     assert profile.region == "Москва"
+    assert profile.country == "Russia"
 
 
 @pytest.mark.asyncio
@@ -123,6 +136,9 @@ async def test_register_blogger_geocoder_none_leaves_geometry_empty() -> None:
 
     class FakeGeocoder:
         async def geocode(self, query, region=None):
+            return None
+
+        async def geocode_with_details(self, query, region=None, country=None):
             return None
 
     service = BloggerRegistrationService(
@@ -1022,6 +1038,11 @@ async def test_update_blogger_profile_with_geocoder_sets_geometry() -> None:
         async def geocode(self, query, region=None):
             return (55.0, 37.0) if query else None
 
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (55.0, 37.0, "", "", "Москва", "Russia")
+
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
@@ -1033,6 +1054,7 @@ async def test_update_blogger_profile_with_geocoder_sets_geometry() -> None:
     assert updated is not None
     assert updated.city == "Moscow"
     assert updated.region == "Москва"
+    assert updated.country == "Russia"
     assert updated.location_geometry == "MULTIPOINT((37.0 55.0))"
 
 

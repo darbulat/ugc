@@ -123,3 +123,26 @@ async def test_load_from_db_on_repo_error_uses_defaults_only() -> None:
     await svc.load_from_db()
     result = await svc.get("start_message", "ru")
     assert result == DEFAULT_TEXTS["ru"]["start_message"]
+
+
+@pytest.mark.asyncio
+async def test_get_many_returns_dict() -> None:
+    """get_many returns key -> text for each key, using get() fallback."""
+    repo = FakeBotTextsRepo(get_all_rows=[])
+    svc = BotTextsService(bot_texts_repo=repo, default_locale="ru")
+    await svc.load_from_db()
+    result = await svc.get_many(["start_message", "support_response"], "ru")
+    assert result["start_message"] == DEFAULT_TEXTS["ru"]["start_message"]
+    assert result["support_response"] == DEFAULT_TEXTS["ru"]["support_response"]
+
+
+@pytest.mark.asyncio
+async def test_get_loaded_but_key_missing_in_cache_uses_defaults() -> None:
+    """When loaded from DB but key not in cache, fall back to DEFAULT_TEXTS."""
+    repo = FakeBotTextsRepo(
+        get_all_rows=[("other_key", "ru", "Other")]  # not start_message
+    )
+    svc = BotTextsService(bot_texts_repo=repo, default_locale="ru")
+    await svc.load_from_db()
+    result = await svc.get("start_message", "ru")
+    assert result == DEFAULT_TEXTS["ru"]["start_message"]

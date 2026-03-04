@@ -5,7 +5,7 @@ import dataclasses
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, Optional, TypeVar, cast
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -33,7 +33,10 @@ from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
-from ugc_bot.application.services.geocoder import NominatimGeocoder
+from ugc_bot.application.services.geocoder import (
+    NominatimGeocoder,
+    wkt_multipoint_from_lat_lon,
+)
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.referral_income_service import (
@@ -139,6 +142,70 @@ async def _update_order_location_geometry_after_geography_change(
         logger.exception(
             "Failed to update order location_geometry after geography change",
             extra={"order_id": str(order_id)},
+        )
+
+
+async def _update_blogger_profile_location_from_nominatim(
+    user_id: UUID, city: Optional[str] = None
+) -> None:
+    """Update blogger profile location_geometry, region, country from Nominatim.
+
+    When admin updates blogger profile city, we geocode via Nominatim and
+    save coordinates, region and country to the profile.
+    """
+    container = _get_admin_container()
+    if not container:
+        return
+    repos = container.build_repos()
+    blogger_repo = repos.get("blogger_repo")
+    tm = container.transaction_manager
+    if not blogger_repo or not tm:
+        return
+    try:
+        async with tm.transaction() as session:
+            profile = await blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
+            if profile is None:
+                return
+            city_for_query = (city or "").strip() or (
+                profile.city or ""
+            ).strip()
+            if not city_for_query:
+                return
+            geocoder = NominatimGeocoder(enabled=True)
+            details = await geocoder.geocode_with_details(
+                city_for_query,
+                region=profile.region,
+                country=profile.country or None,
+            )
+            if details is None:
+                return
+            lat, lon, _, _, region_nom, country_nom = details
+            new_geometry = wkt_multipoint_from_lat_lon(lat, lon)
+            new_region = (
+                region_nom if region_nom is not None else profile.region
+            )
+            new_country = (
+                country_nom
+                if country_nom is not None
+                else (profile.country or "")
+            )
+            updated = dataclasses.replace(
+                profile,
+                location_geometry=new_geometry,
+                region=new_region,
+                country=new_country,
+            )
+            await blogger_repo.save(updated, session=session)
+        logger.info(
+            "Updated blogger profile location from Nominatim after city change",
+            extra={"user_id": str(user_id)},
+        )
+    except Exception:
+        logger.exception(
+            "Failed to update blogger profile location from Nominatim",
+            extra={"user_id": str(user_id)},
         )
 
 
@@ -960,6 +1027,15 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
         BloggerProfileModel.work_format: "Формат работы",
         BloggerProfileModel.updated_at: "Обновлён",
     }
+
+    async def update_model(self, request: Request, pk: str, data: dict) -> Any:
+        """After save, refresh location from Nominatim if city changed."""
+        result = await super().update_model(request, pk, data)
+        if "city" in data:
+            await _update_blogger_profile_location_from_nominatim(
+                UUID(pk), data.get("city")
+            )
+        return result
 
 
 class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):

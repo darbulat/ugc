@@ -829,6 +829,15 @@ class GeocoderPort(Protocol):
         """Return (latitude, longitude) for the query, or None if not found."""
         ...
 
+    async def geocode_with_details(
+        self,
+        query: str,
+        region: Optional[str] = None,
+        country: Optional[str] = None,
+    ) -> Optional[Tuple[float, float, str, str, Optional[str], Optional[str]]]:
+        """Return (lat, lon, osm_class, osm_type, region, country) or None."""
+        ...
+
     async def get_multipolygon_wkt_for_queries(
         self,
         queries: List[Tuple[str, Optional[str], str]],
