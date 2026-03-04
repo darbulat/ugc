@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ugc_bot.admin.app import (
+    BloggerProfileAdmin,
     ComplaintAdmin,
     EnumAwareAdmin,
     InteractionAdmin,
@@ -16,6 +17,7 @@ from ugc_bot.admin.app import (
     UserAdmin,
     _get_order_moderation_deps,
     _get_services,
+    _update_blogger_profile_location_from_nominatim,
     _update_order_location_geometry_after_geography_change,
     create_admin_app,
 )
@@ -1343,6 +1345,446 @@ async def test_update_order_location_geometry_with_geocoder() -> None:
     assert (
         saved_order.location_geometry == "MULTIPOLYGON(((1 2, 3 4, 5 6, 1 2)))"
     )
+
+
+@pytest.mark.asyncio
+async def test_update_blogger_profile_location_from_nominatim() -> None:
+    """Geocode city via Nominatim; save profile geometry, region, country."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import BloggerProfile
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    user_id = UUID("00000000-0000-0000-0000-0000000000b1")
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        region=None,
+        location_geometry=None,
+        country="",
+    )
+
+    mock_blogger_repo = MagicMock()
+    mock_blogger_repo.get_by_user_id = AsyncMock(return_value=profile)
+    mock_blogger_repo.save = AsyncMock()
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_repos = MagicMock(
+        return_value={"blogger_repo": mock_blogger_repo}
+    )
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
+    ):
+        mock_geocoder = MagicMock()
+        mock_geocoder.geocode_with_details = AsyncMock(
+            return_value=(55.75, 37.62, "", "", "Moscow", "Russia")
+        )
+        mock_geocoder_cls.return_value = mock_geocoder
+
+        await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
+
+    mock_blogger_repo.get_by_user_id.assert_called_once_with(
+        user_id, session=mock_session
+    )
+    mock_blogger_repo.save.assert_called_once()
+    saved_profile = mock_blogger_repo.save.call_args[0][0]
+    assert saved_profile.location_geometry == "MULTIPOINT((37.62 55.75))"
+    assert saved_profile.region == "Moscow"
+    assert saved_profile.country == "Russia"
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_admin_update_model_city_triggers_nominatim() -> (
+    None
+):
+    """When city in form data, update_model calls nominatim location update."""
+    user_id = UUID("00000000-0000-0000-0000-0000000000b2")
+    admin = BloggerProfileAdmin()
+    admin.session_maker = MagicMock()
+    admin.is_async = True  # type: ignore[attr-defined]
+
+    request = MagicMock()
+    data = {"city": "Kazan"}
+
+    with (
+        patch.object(
+            BloggerProfileAdmin.__bases__[0],
+            "update_model",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "ugc_bot.admin.app._update_blogger_profile_location_from_nominatim",
+            new_callable=AsyncMock,
+        ) as mock_nominatim,
+    ):
+        await admin.update_model(request, str(user_id), data)
+
+    mock_nominatim.assert_called_once_with(user_id, "Kazan")
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_no_container() -> None:
+    """When container is None, function returns without updating."""
+    with patch("ugc_bot.admin.app._get_admin_container", return_value=None):
+        await _update_blogger_profile_location_from_nominatim(
+            UUID("00000000-0000-0000-0000-0000000000b3"), "Moscow"
+        )
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_geocode_none_no_save() -> None:
+    """When geocode_with_details returns None, profile is not updated."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import BloggerProfile
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    user_id = UUID("00000000-0000-0000-0000-0000000000b4")
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=True,
+        city="UnknownCity",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        region=None,
+        location_geometry=None,
+        country="",
+    )
+
+    mock_blogger_repo = MagicMock()
+    mock_blogger_repo.get_by_user_id = AsyncMock(return_value=profile)
+    mock_blogger_repo.save = AsyncMock()
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_repos = MagicMock(
+        return_value={"blogger_repo": mock_blogger_repo}
+    )
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
+    ):
+        mock_geocoder = MagicMock()
+        mock_geocoder.geocode_with_details = AsyncMock(return_value=None)
+        mock_geocoder_cls.return_value = mock_geocoder
+
+        await _update_blogger_profile_location_from_nominatim(
+            user_id, "Unknown"
+        )
+
+    mock_blogger_repo.get_by_user_id.assert_called_once()
+    mock_blogger_repo.save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_profile_not_found() -> None:
+    """When profile is not found, save is not called."""
+    from contextlib import asynccontextmanager
+
+    user_id = UUID("00000000-0000-0000-0000-0000000000b5")
+    mock_blogger_repo = MagicMock()
+    mock_blogger_repo.get_by_user_id = AsyncMock(return_value=None)
+    mock_blogger_repo.save = AsyncMock()
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_repos = MagicMock(
+        return_value={"blogger_repo": mock_blogger_repo}
+    )
+
+    with patch(
+        "ugc_bot.admin.app._get_admin_container", return_value=mock_container
+    ):
+        await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
+
+    mock_blogger_repo.get_by_user_id.assert_called_once()
+    mock_blogger_repo.save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_no_repo_early_return() -> None:
+    """When build_repos has no blogger_repo, return without updating."""
+    user_id = UUID("00000000-0000-0000-0000-0000000000b6")
+    mock_container = MagicMock()
+    mock_container.build_repos = MagicMock(return_value={})
+
+    with patch(
+        "ugc_bot.admin.app._get_admin_container", return_value=mock_container
+    ):
+        await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
+
+    mock_container.build_repos.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_no_tm_early_return() -> None:
+    """When transaction_manager is None, return without updating."""
+    user_id = UUID("00000000-0000-0000-0000-0000000000b9")
+    mock_container = MagicMock()
+    mock_container.transaction_manager = None
+    mock_container.build_repos = MagicMock(
+        return_value={"blogger_repo": MagicMock()}
+    )
+
+    with patch(
+        "ugc_bot.admin.app._get_admin_container", return_value=mock_container
+    ):
+        await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
+
+    mock_container.build_repos.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_save_exception_logged() -> None:
+    """When save raises, exception is logged and not re-raised."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import BloggerProfile
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    user_id = UUID("00000000-0000-0000-0000-0000000000b7")
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        region=None,
+        location_geometry=None,
+        country="",
+    )
+
+    mock_blogger_repo = MagicMock()
+    mock_blogger_repo.get_by_user_id = AsyncMock(return_value=profile)
+    mock_blogger_repo.save = AsyncMock(side_effect=RuntimeError("db error"))
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_repos = MagicMock(
+        return_value={"blogger_repo": mock_blogger_repo}
+    )
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
+        patch("ugc_bot.admin.app.logger") as mock_logger,
+    ):
+        mock_geocoder = MagicMock()
+        mock_geocoder.geocode_with_details = AsyncMock(
+            return_value=(55.75, 37.62, "", "", "Moscow", "Russia")
+        )
+        mock_geocoder_cls.return_value = mock_geocoder
+
+        await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
+
+    mock_logger.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_empty_city_skips_geocode() -> None:
+    """When city and profile.city are empty, return without geocoding."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import BloggerProfile
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    user_id = UUID("00000000-0000-0000-0000-0000000000b8")
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=True,
+        city="",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        region=None,
+        location_geometry=None,
+        country="",
+    )
+
+    mock_blogger_repo = MagicMock()
+    mock_blogger_repo.get_by_user_id = AsyncMock(return_value=profile)
+    mock_blogger_repo.save = AsyncMock()
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_repos = MagicMock(
+        return_value={"blogger_repo": mock_blogger_repo}
+    )
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
+    ):
+        await _update_blogger_profile_location_from_nominatim(user_id, None)
+
+    mock_geocoder_cls.return_value.geocode_with_details.assert_not_called()
+    mock_blogger_repo.save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_nominatim_keeps_region_country_when_none() -> (
+    None
+):
+    """When Nominatim returns None for region/country, keep profile values."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import BloggerProfile
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    user_id = UUID("00000000-0000-0000-0000-0000000000ba")
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        region="Moscow",
+        location_geometry=None,
+        country="Russia",
+    )
+
+    mock_blogger_repo = MagicMock()
+    mock_blogger_repo.get_by_user_id = AsyncMock(return_value=profile)
+    mock_blogger_repo.save = AsyncMock()
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_repos = MagicMock(
+        return_value={"blogger_repo": mock_blogger_repo}
+    )
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
+    ):
+        mock_geocoder = MagicMock()
+        mock_geocoder.geocode_with_details = AsyncMock(
+            return_value=(55.75, 37.62, "", "", None, None)
+        )
+        mock_geocoder_cls.return_value = mock_geocoder
+
+        await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
+
+    mock_blogger_repo.save.assert_called_once()
+    saved = mock_blogger_repo.save.call_args[0][0]
+    assert saved.location_geometry == "MULTIPOINT((37.62 55.75))"
+    assert saved.region == "Moscow"
+    assert saved.country == "Russia"
 
 
 def test_enum_aware_admin_edit_form_data_skip_existing() -> None:

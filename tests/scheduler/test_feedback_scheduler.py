@@ -11,6 +11,7 @@ from tests.helpers.fakes import FakeBot, FakeBotWithSession
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import FeedbackConfig, load_config
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
@@ -30,6 +31,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.feedback_scheduler import (
     _feedback_keyboard,
+    _feedback_texts_for_locale,
     main,
     run_loop,
     run_once,
@@ -46,21 +48,23 @@ from ugc_bot.startup_logging import log_startup_info, safe_config_for_logging
 
 
 def test_feedback_keyboard() -> None:
-    """Ensure feedback keyboard contains callback data and TZ button labels."""
-
+    """Ensure feedback keyboard contains callback data and button labels."""
+    texts = _feedback_texts_for_locale("ru")
     markup_adv = _feedback_keyboard(
-        "adv", UUID("00000000-0000-0000-0000-000000000950")
+        "adv", UUID("00000000-0000-0000-0000-000000000950"), texts
     )
     first_adv = markup_adv.rows[0][0]
     assert "feedback:adv:" in first_adv.callback_data
-    assert first_adv.text == "✅ Всё прошло нормально"
+    assert first_adv.text == DEFAULT_TEXTS["ru"]["msg_fb_feedback_ok"]
     postpone_adv = markup_adv.rows[2][0]
-    assert postpone_adv.text == "⏳ Ещё не связался"
+    assert postpone_adv.text == DEFAULT_TEXTS["ru"]["msg_fb_feedback_postpone"]
 
     markup_blog = _feedback_keyboard(
-        "blog", UUID("00000000-0000-0000-0000-000000000950")
+        "blog", UUID("00000000-0000-0000-0000-000000000950"), texts
     )
-    assert markup_blog.rows[0][0].text == "✅ Всё прошло нормально"
+    assert (
+        markup_blog.rows[0][0].text == DEFAULT_TEXTS["ru"]["msg_fb_feedback_ok"]
+    )
 
 
 @pytest.mark.asyncio

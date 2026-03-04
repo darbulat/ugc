@@ -246,6 +246,7 @@ class OfferDispatchService:
     interaction_repo: InteractionRepository
     instagram_stats_repo: InstagramStatsRepository | None = None
     transaction_manager: TransactionManager | None = None
+    currency_symbol: str = "₽"
 
     async def get_order_and_advertiser(
         self, order_id: UUID
@@ -513,7 +514,10 @@ class OfferDispatchService:
             f"📝 Задача: {order.offer_text}",
         ]
         if order.price > 0:
-            parts.append(f"💰 Бюджет: {order.price} ₽ за 1 UGC-видео")
+            parts.append(
+                f"💰 Бюджет: {order.price} {self.currency_symbol} "
+                "за 1 UGC-видео"
+            )
         if order.barter_description:
             parts.append(f"🎁 Бартер: {order.barter_description}")
         if order.content_usage:

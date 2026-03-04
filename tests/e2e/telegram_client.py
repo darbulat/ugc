@@ -66,17 +66,114 @@ async def send_and_get_reply(
 
 
 async def get_bot_message_containing(
-    client, entity, substring: str, timeout: float = 30.0
+    client,
+    entity,
+    substring: str | tuple[str, ...],
+    timeout: float = 30.0,
 ) -> str | None:
-    """Wait for a bot message that contains the given substring."""
+    """Wait for a bot message that contains the given substring(s).
+    substring may be a single str or a tuple of alternatives (e.g. for i18n).
+    """
+    substrings = (substring,) if isinstance(substring, str) else substring
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         messages = await client.get_messages(entity, limit=10)
         for msg in messages:
-            if not msg.out and msg.text and substring in msg.text:
-                return msg.text
+            if not msg.out and msg.text:
+                for sub in substrings:
+                    if sub in msg.text:
+                        return msg.text
         await asyncio.sleep(1)
     return None
+
+
+def _has_inline_buttons(msg) -> bool:
+    """Return True if message has inline keyboard (callback buttons)."""
+    if msg.out or not getattr(msg, "reply_markup", None):
+        return False
+    rm = msg.reply_markup
+    return getattr(rm, "rows", None) is not None
+
+
+def _message_has_callback_button(msg, callback_data: str | bytes) -> bool:
+    """True if message has an inline button with the given callback_data."""
+    if not _has_inline_buttons(msg):
+        return False
+    want = (
+        callback_data.encode()
+        if isinstance(callback_data, str)
+        else callback_data
+    )
+    rm = msg.reply_markup
+    rows = getattr(rm, "rows", None) or []
+    for row in rows:
+        buttons = (
+            row
+            if isinstance(row, (list, tuple))
+            else getattr(row, "buttons", [])
+        )
+        for btn in buttons:
+            btn_data = getattr(btn, "data", None)
+            if btn_data is not None and btn_data == want:
+                return True
+    return False
+
+
+async def _get_last_bot_message_with_inline(
+    client, entity, callback_data: str | None = None
+):
+    """Return the most recent bot message with inline keyboard, or None.
+
+    If callback_data is set, only return a message that has a button with
+    that callback_data (avoids clicking the wrong message).
+    """
+    messages = await client.get_messages(entity, limit=15)
+    for msg in messages:
+        if (
+            not msg.out
+            and _has_inline_buttons(msg)
+            and (
+                callback_data is None
+                or _message_has_callback_button(msg, callback_data)
+            )
+        ):
+            return msg
+    return None
+
+
+async def click_inline_and_get_reply(
+    client, entity, callback_data: str, timeout: float = 20.0
+) -> str | None:
+    """Find last bot message with inline keyboard, click by callback_data,
+    return bot reply text."""
+    msg = await _get_last_bot_message_with_inline(
+        client, entity, callback_data=callback_data
+    )
+    if msg is None:
+        return None
+    data = (
+        callback_data.encode()
+        if isinstance(callback_data, str)
+        else callback_data
+    )
+    await msg.click(data=data)
+    return await get_last_bot_message(
+        client, entity, timeout=timeout, after_message=msg
+    )
+
+
+async def click_inline_by_index_and_get_reply(
+    client, entity, index: int = 0, timeout: float = 20.0
+) -> str | None:
+    """Find last bot message with inline keyboard, click by index,
+    return bot reply text."""
+    msg = await _get_last_bot_message_with_inline(client, entity)
+    if msg is None:
+        return None
+    await msg.click(index)
+    return await get_last_bot_message(
+        client, entity, timeout=timeout, after_message=msg
+    )
 
 
 @pytest.fixture(scope="session")

@@ -1,123 +1,158 @@
-"""Tests for keyboard helpers."""
+"""Tests for keyboard helpers (inline only)."""
 
-from ugc_bot.application.messenger.dto import Button
+from ugc_bot.application.messenger.dto import KeyboardKind
 from ugc_bot.bot.handlers.keyboards import (
-    ADVERTISER_START_BUTTON_TEXT,
-    CONFIRM_INSTAGRAM_BUTTON_TEXT,
-    CREATE_ORDER_BUTTON_TEXT,
-    MY_ORDERS_BUTTON_TEXT,
-    MY_PROFILE_BUTTON_TEXT,
-    SUPPORT_BUTTON_TEXT,
-    advertiser_menu_keyboard,
+    advertiser_menu_inline_keyboard,
     advertiser_start_keyboard,
-    blogger_menu_keyboard,
-    main_menu_keyboard,
-    profile_keyboard,
-    support_keyboard,
-    with_support_keyboard,
+    blogger_after_registration_inline_keyboard,
+    blogger_menu_inline_keyboard,
+    blogger_profile_view_inline_keyboard,
+    blogger_verification_sent_inline_keyboard,
+    creator_filled_profile_inline_keyboard,
+    flow_keyboard_city_request,
+    main_menu_inline_keyboard,
 )
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+
+_TEXTS_RU = DEFAULT_TEXTS["ru"]
 
 
-def test_blogger_menu_keyboard_not_confirmed() -> None:
+def test_blogger_menu_inline_keyboard_not_confirmed() -> None:
     """Show verification button when Instagram is not confirmed."""
-    keyboard = blogger_menu_keyboard(confirmed=False)
+    keyboard = blogger_menu_inline_keyboard(
+        _TEXTS_RU, confirmed=False, verification_started=False
+    )
 
+    assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
     assert len(keyboard.rows) == 2
-    assert keyboard.rows[0][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
-    assert keyboard.rows[1][0].text == MY_PROFILE_BUTTON_TEXT
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_confirm_instagram"]
+    assert keyboard.rows[1][0].text == _TEXTS_RU["btn_my_profile"]
 
 
-def test_blogger_menu_keyboard_confirmed() -> None:
+def test_blogger_menu_inline_keyboard_confirmed() -> None:
     """Hide verification button when Instagram is confirmed."""
-    keyboard = blogger_menu_keyboard(confirmed=True)
+    keyboard = blogger_menu_inline_keyboard(
+        _TEXTS_RU, confirmed=True, verification_started=False
+    )
 
+    assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
     assert len(keyboard.rows) == 1
-    assert keyboard.rows[0][0].text == MY_PROFILE_BUTTON_TEXT
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_my_profile"]
 
 
-def test_blogger_menu_keyboard_one_time() -> None:
-    """Respect one_time_keyboard parameter."""
-    keyboard = blogger_menu_keyboard(confirmed=False, one_time_keyboard=True)
+def test_main_menu_inline_keyboard() -> None:
+    """Main menu has Support and Change role as inline buttons."""
+    keyboard = main_menu_inline_keyboard(_TEXTS_RU)
 
-    assert keyboard.one_time is True
-
-
-def test_blogger_menu_keyboard_resize() -> None:
-    """Keyboard should always be resizable."""
-    keyboard = blogger_menu_keyboard(confirmed=False)
-
-    assert keyboard.resize is True
-
-
-def test_support_keyboard() -> None:
-    """Support keyboard has one Support button."""
-    keyboard = support_keyboard()
-
-    assert keyboard.rows is not None
-    assert len(keyboard.rows) == 1
-    assert keyboard.rows[0][0].text == SUPPORT_BUTTON_TEXT
-
-
-def test_with_support_keyboard_appends_support_row() -> None:
-    """with_support_keyboard appends Support button row."""
-    base = [[Button(text="A")]]
-    keyboard = with_support_keyboard(base)
-
-    assert len(keyboard.rows) == 2
-    assert keyboard.rows[1][0].text == SUPPORT_BUTTON_TEXT
-
-
-def test_main_menu_keyboard_persistent() -> None:
-    """Main menu has Support and Change role, is persistent."""
-    keyboard = main_menu_keyboard()
-
+    assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
     assert len(keyboard.rows) == 2
-    assert keyboard.rows[0][0].text == SUPPORT_BUTTON_TEXT
-    assert keyboard.rows[1][0].text == "Смена роли"
-    assert keyboard.is_persistent is True
-    assert keyboard.one_time is False
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_support"]
+    assert keyboard.rows[1][0].text == _TEXTS_RU["btn_change_role"]
 
 
 def test_advertiser_start_keyboard() -> None:
-    """Advertiser start keyboard has only Начать before profile filled."""
-    keyboard = advertiser_start_keyboard()
+    """Advertiser start keyboard has only Start before profile filled."""
+    keyboard = advertiser_start_keyboard(_TEXTS_RU)
 
+    assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
     assert len(keyboard.rows) == 1
-    assert keyboard.rows[0][0].text == ADVERTISER_START_BUTTON_TEXT
-    assert keyboard.rows[0][0].text == "Начать"
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_advertiser_start"]
 
 
-def test_advertiser_menu_keyboard() -> None:
-    """Advertiser menu: Create order, My orders, My profile, Edit, Support."""
-    from ugc_bot.bot.handlers.keyboards import EDIT_PROFILE_BUTTON_TEXT
+def test_advertiser_menu_inline_keyboard() -> None:
+    """Advertiser menu: Create order, My orders, Profile, Edit (inline)."""
+    keyboard = advertiser_menu_inline_keyboard(_TEXTS_RU)
 
-    keyboard = advertiser_menu_keyboard()
-
+    assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
-    assert len(keyboard.rows) == 5
-    assert keyboard.rows[0][0].text == CREATE_ORDER_BUTTON_TEXT
-    assert keyboard.rows[1][0].text == MY_ORDERS_BUTTON_TEXT
-    assert keyboard.rows[2][0].text == MY_PROFILE_BUTTON_TEXT
-    assert keyboard.rows[3][0].text == EDIT_PROFILE_BUTTON_TEXT
-    assert keyboard.rows[4][0].text == SUPPORT_BUTTON_TEXT
+    assert len(keyboard.rows) == 3
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_create_order"]
+    assert keyboard.rows[1][0].text == _TEXTS_RU["btn_my_orders"]
+    assert keyboard.rows[2][0].text == _TEXTS_RU["btn_my_profile"]
+    assert keyboard.rows[2][1].text == _TEXTS_RU["btn_edit_profile"]
 
 
-def test_profile_keyboard() -> None:
-    """Profile keyboard has single My profile button."""
-    keyboard = profile_keyboard()
+def test_creator_filled_profile_inline_keyboard() -> None:
+    """Creator menu: Edit, My profile, My orders, Support (inline)."""
+    keyboard = creator_filled_profile_inline_keyboard(_TEXTS_RU)
 
+    assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
+    assert len(keyboard.rows) == 4
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_edit_profile"]
+    assert keyboard.rows[1][0].text == _TEXTS_RU["btn_my_profile"]
+    assert keyboard.rows[2][0].text == _TEXTS_RU["btn_my_orders"]
+    assert keyboard.rows[3][0].text == _TEXTS_RU["btn_support"]
+
+
+def test_blogger_profile_view_inline_keyboard_not_confirmed() -> None:
+    """Blogger profile view: Edit, Confirm Instagram, My profile (inline)."""
+    keyboard = blogger_profile_view_inline_keyboard(_TEXTS_RU, confirmed=False)
+
+    assert keyboard.kind == KeyboardKind.INLINE
+    assert len(keyboard.rows) == 3
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_edit_profile"]
+    assert keyboard.rows[1][0].text == _TEXTS_RU["btn_confirm_instagram"]
+    assert keyboard.rows[2][0].text == _TEXTS_RU["btn_my_profile"]
+
+
+def test_blogger_profile_view_inline_keyboard_confirmed() -> None:
+    """Blogger profile view when confirmed: Edit, My profile (inline)."""
+    keyboard = blogger_profile_view_inline_keyboard(_TEXTS_RU, confirmed=True)
+
+    assert keyboard.kind == KeyboardKind.INLINE
+    assert len(keyboard.rows) == 2
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_edit_profile"]
+    assert keyboard.rows[1][0].text == _TEXTS_RU["btn_my_profile"]
+
+
+def test_blogger_after_registration_inline_keyboard() -> None:
+    """After blogger reg: Confirm Instagram, My profile (inline)."""
+    keyboard = blogger_after_registration_inline_keyboard(_TEXTS_RU)
+
+    assert keyboard.kind == KeyboardKind.INLINE
+    assert len(keyboard.rows) == 2
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_confirm_instagram"]
+    assert keyboard.rows[1][0].text == _TEXTS_RU["btn_my_profile"]
+
+
+def test_blogger_verification_sent_inline_keyboard() -> None:
+    """After code sent: My profile only (inline)."""
+    keyboard = blogger_verification_sent_inline_keyboard(_TEXTS_RU)
+
+    assert keyboard.kind == KeyboardKind.INLINE
     assert len(keyboard.rows) == 1
-    assert keyboard.rows[0][0].text == MY_PROFILE_BUTTON_TEXT
-    assert keyboard.one_time is True
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_my_profile"]
 
 
-def test_profile_keyboard_one_time_false() -> None:
-    """Profile keyboard respects one_time_keyboard=False."""
-    keyboard = profile_keyboard(one_time_keyboard=False)
+def test_flow_keyboard_city_request_without_miniapp_url() -> None:
+    """City request keyboard has one row (location only) when no URL."""
+    texts = {
+        "btn_location_request": "Share location",
+        "btn_location_map": "Map",
+    }
+    keyboard = flow_keyboard_city_request(texts)
 
-    assert keyboard.one_time is False
+    assert len(keyboard.rows) == 1
+    assert keyboard.rows[0][0].request_location is True
+    assert keyboard.rows[0][0].web_app_url is None
+
+
+def test_flow_keyboard_city_request_with_miniapp_url() -> None:
+    """City request keyboard has two rows when miniapp URL provided."""
+    texts = {"btn_location_request": "Share", "btn_location_map": "Pick on map"}
+    keyboard = flow_keyboard_city_request(
+        texts,
+        miniapp_location_url="https://bot.example/miniapp/location_picker.html",
+    )
+
+    assert len(keyboard.rows) == 2
+    assert keyboard.rows[0][0].request_location is True
+    assert keyboard.rows[1][0].web_app_url == (
+        "https://bot.example/miniapp/location_picker.html"
+    )
+    assert keyboard.rows[1][0].text == "Pick on map"

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
+    SqlAlchemyBotTextsRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
     SqlAlchemyInstagramStatsRepository,
@@ -61,6 +62,9 @@ def build_repos(
             session_factory=session_factory
         ),
         "pricing_repo": SqlAlchemyContactPricingRepository(
+            session_factory=session_factory
+        ),
+        "bot_texts_repo": SqlAlchemyBotTextsRepository(
             session_factory=session_factory
         ),
         "complaint_repo": SqlAlchemyComplaintRepository(

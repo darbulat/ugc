@@ -47,7 +47,11 @@ def client() -> TestClient:
         patch("ugc_bot.telegram_webhook_app.Bot") as MockBot,
     ):
         mock_storage.return_value = MemoryStorage()
-        mock_build.return_value = Dispatcher(storage=MemoryStorage())
+        dp = Dispatcher(storage=MemoryStorage())
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        dp["bot_texts_service"] = mock_bot_texts
+        mock_build.return_value = dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)
         fake_bot.delete_webhook = AsyncMock(return_value=True)
@@ -109,35 +113,6 @@ def test_webhook_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
-
-
-def test_miniapp_cities_json_returns_list(client: TestClient) -> None:
-    """GET /miniapp/cities.json returns list of {id, label}."""
-    response = client.get("/miniapp/cities.json")
-    assert response.status_code == 200
-    data = response.json()
-    assert isinstance(data, list)
-    assert len(data) > 0
-    assert all("id" in item and "label" in item for item in data)
-    ids = [item["id"] for item in data]
-    assert "москва:москва" in ids
-    assert "республика татарстан:казань" in ids
-    assert all(" (" in item["label"] and ")" in item["label"] for item in data)
-
-
-def test_miniapp_city_picker_returns_404_when_file_missing(
-    client: TestClient,
-) -> None:
-    """GET /miniapp/city-picker returns 404 when HTML file is missing."""
-    with patch(
-        "ugc_bot.telegram_webhook_app._MINIAPP_DIR", new_callable=MagicMock
-    ) as mock_dir:
-        child = MagicMock()
-        child.is_file.return_value = False
-        mock_dir.__truediv__ = MagicMock(return_value=child)
-        response = client.get("/miniapp/city-picker")
-    assert response.status_code == 404
-    assert response.json().get("detail") == "Mini App not found"
 
 
 def test_webhook_metrics(client: TestClient) -> None:
@@ -376,7 +351,11 @@ def test_exception_handler_returns_200_for_webhook_path() -> None:
             side_effect=RuntimeError("Simulated error"),
         ),
     ):
-        mock_build.return_value = Dispatcher(storage=MemoryStorage())
+        dp = Dispatcher(storage=MemoryStorage())
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        dp["bot_texts_service"] = mock_bot_texts
+        mock_build.return_value = dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)
         fake_bot.delete_webhook = AsyncMock(return_value=True)
@@ -429,7 +408,11 @@ def test_exception_handler_returns_500_for_non_webhook_path() -> None:
         patch("ugc_bot.telegram_webhook_app.build_dispatcher") as mock_build,
         patch("ugc_bot.telegram_webhook_app.Bot") as MockBot,
     ):
-        mock_build.return_value = Dispatcher(storage=MemoryStorage())
+        dp = Dispatcher(storage=MemoryStorage())
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        dp["bot_texts_service"] = mock_bot_texts
+        mock_build.return_value = dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)
         fake_bot.delete_webhook = AsyncMock(return_value=True)
@@ -482,6 +465,11 @@ def test_webhook_rejects_invalid_secret() -> None:
     ):
         fake_dp = MagicMock()
         fake_dp.feed_update = AsyncMock(return_value=None)
+        mock_bot_texts = MagicMock()
+        mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+        fake_dp.__getitem__ = lambda self, k: (
+            mock_bot_texts if k == "bot_texts_service" else MagicMock()
+        )
         mock_build.return_value = fake_dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)

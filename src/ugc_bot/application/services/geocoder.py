@@ -369,3 +369,56 @@ class NominatimGeocoder:
             if wkt:
                 wkt_parts.append(wkt)
         return wkt_multipolygon_from_polygon_wkts(wkt_parts)
+
+    async def reverse_geocode(
+        self, lat: float, lon: float
+    ) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+        """Return (city, region, country) for coordinates, or None if not found.
+
+        Uses Nominatim reverse API. Prefers city/town/village from address.
+        """
+        if not self._enabled:
+            return None
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            return None
+        url = f"{self._base_url}/reverse"
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                headers={
+                    "User-Agent": self._user_agent,
+                    "Accept-Language": "ru",
+                },
+            ) as client:
+                resp = await client.get(
+                    url,
+                    params={
+                        "lat": lat,
+                        "lon": lon,
+                        "format": "json",
+                        "addressdetails": 1,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        address = data.get("address")
+        if not isinstance(address, dict):
+            return None
+        city = (
+            address.get("city")
+            or address.get("town")
+            or address.get("village")
+            or address.get("municipality")
+            or address.get("county")
+        )
+        if isinstance(city, dict):
+            city = city.get("name")
+        if not city or not isinstance(city, str) or not city.strip():
+            return None
+        region = _extract_region_from_address(address)
+        country = _extract_country_from_address(address)
+        return (city.strip(), region, country)

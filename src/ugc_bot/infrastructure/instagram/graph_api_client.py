@@ -302,7 +302,34 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
 
         return None  # pragma: no cover - unreachable, satisfies RET503
 
-    async def get_profile_by_id(  # noqa: C901, PLR0912, PLR0912
+    async def _handle_profile_400_ig_business_scoped(
+        self, instagram_user_id: str
+    ) -> Optional[InstagramProfileInfo]:
+        """On 400 IGBusinessScopedID: username-only then Business Discovery."""
+        username_info = await self._get_profile_username_only(instagram_user_id)
+        if username_info is None:
+            return None
+        if self._business_account_id and self._business_access_token:
+            full_info = await self._get_profile_via_business_discovery(
+                username_info.username
+            )
+            if full_info is not None:
+                logger.info(
+                    "Got profile via Business Discovery",
+                    extra={
+                        "instagram_user_id": instagram_user_id,
+                        "username": full_info.username,
+                    },
+                )
+                return full_info
+        logger.debug(
+            "Got username only (IGBusinessScopedID); "
+            "stats unavailable for this node type",
+            extra={"instagram_user_id": instagram_user_id},
+        )
+        return username_info
+
+    async def get_profile_by_id(
         self, instagram_user_id: str
     ) -> Optional[InstagramProfileInfo]:
         """Get full profile (username, counts, biography) by user ID.
@@ -376,38 +403,9 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                     exc.response.status_code == 400
                     and _is_ig_business_scoped_id_error(exc.response.text)
                 ):
-                    username_info = await self._get_profile_username_only(
+                    return await self._handle_profile_400_ig_business_scoped(
                         instagram_user_id
                     )
-                    if username_info is None:
-                        pass
-                    elif (
-                        self._business_account_id
-                        and self._business_access_token
-                    ):
-                        full_info = (
-                            await self._get_profile_via_business_discovery(
-                                username_info.username
-                            )
-                        )
-                        if full_info is not None:
-                            logger.info(
-                                "Got profile via Business Discovery",
-                                extra={
-                                    "instagram_user_id": instagram_user_id,
-                                    "username": full_info.username,
-                                },
-                            )
-                            return full_info
-                    if username_info is not None:
-                        logger.debug(
-                            "Got username only (IGBusinessScopedID); "
-                            "stats unavailable for this node type",
-                            extra={
-                                "instagram_user_id": instagram_user_id,
-                            },
-                        )
-                        return username_info
                 logger.warning(
                     "Instagram API request failed",
                     extra={

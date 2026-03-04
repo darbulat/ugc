@@ -81,6 +81,7 @@ max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "PLR0911", "C901"]
+"src/ugc_bot/bot/texts/defaults.py" = ["E501"]
 
 [dependency-groups]
 dev = [

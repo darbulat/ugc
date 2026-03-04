@@ -1,22 +1,12 @@
-"""Keyboard helpers for bot handlers."""
+"""Keyboard helpers. All button labels come from texts (bot_texts)."""
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 
-SUPPORT_BUTTON_TEXT = "💬 Поддержка"
-MY_ORDERS_BUTTON_TEXT = "📂 Мои заказы"
-CHANGE_ROLE_BUTTON_TEXT = "Смена роли"
-CREATE_PROFILE_BUTTON_TEXT = "Создать профиль"
-ADVERTISER_START_BUTTON_TEXT = "Начать"
-CREATE_ORDER_BUTTON_TEXT = "➕ Создать заказ"
-CONFIRM_INSTAGRAM_BUTTON_TEXT = "✅ Подтвердить Instagram"
-CONFIRM_AGREEMENT_BUTTON_TEXT = "✅ Подтвердить согласие"
-EDIT_PROFILE_BUTTON_TEXT = "Редактировать профиль"
-MY_PROFILE_BUTTON_TEXT = "👤 Мой профиль"
-WORK_FORMAT_ADS_BUTTON_TEXT = "📢 Размещать рекламу у себя в аккаунте"
-WORK_FORMAT_UGC_ONLY_BUTTON_TEXT = "❌ Только UGC (без размещения)"
-PHONE_REQUEST_BUTTON_TEXT = "📱 Поделиться номером телефона"
+# Keys per keyboard in docstrings. Use bot_texts_service.get_many(keys, locale).
 
 # Inline callback_data (Telegram limit 64 bytes)
+CALLBACK_ROLE_CREATOR = "role:creator"
+CALLBACK_ROLE_ADVERTISER = "role:advertiser"
 CALLBACK_CREATOR_CREATE = "creator:create"
 CALLBACK_ADV_START = "adv:start"
 CALLBACK_ADV_AGREE = "adv:agree"
@@ -64,47 +54,16 @@ CALLBACK_PROFILE_BARTER_N = "profile:barter:N"
 CALLBACK_PROFILE_WORK_ADS = "profile:work:ads"
 CALLBACK_PROFILE_WORK_UGC = "profile:work:ugc"
 CALLBACK_PROFILE_REGION_PREFIX = "profile:region:"
+CALLBACK_SUPPORT = "support"
+CALLBACK_CHANGE_ROLE = "change_role"
 
 
-def support_keyboard(one_time_keyboard: bool = True) -> Keyboard:
-    """Build a reply keyboard with a support button."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=SUPPORT_BUTTON_TEXT)]],
-        resize=True,
-        one_time=one_time_keyboard,
-    )
-
-
-def with_support_keyboard(
-    keyboard: list[list[Button]],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Build a reply keyboard with a support button appended."""
-
-    combined = list(keyboard)
-    combined.append([Button(text=SUPPORT_BUTTON_TEXT)])
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=combined,
-        resize=True,
-        one_time=one_time_keyboard,
-    )
-
-
-def flow_keyboard(
-    keyboard: list[list[Button]],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Build a reply keyboard for flow steps (no support button)."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=keyboard,
-        resize=True,
-        one_time=one_time_keyboard,
-    )
+def build_support_telegram_url(support_contact: str) -> str | None:
+    """Build t.me URL for support chat from username (with or without @)."""
+    username = (support_contact or "").strip().lstrip("@")
+    if not username:
+        return None
+    return f"https://t.me/{username}"
 
 
 def flow_keyboard_remove() -> Keyboard:
@@ -113,31 +72,56 @@ def flow_keyboard_remove() -> Keyboard:
     return Keyboard(kind=KeyboardKind.REMOVE)
 
 
-CITY_PICKER_BUTTON_TEXT = "Выбрать город"
+def flow_keyboard_phone_request(texts: dict[str, str]) -> Keyboard:
+    """Reply KB: Share phone (request_contact). Key: btn_phone_request."""
 
-
-def city_picker_keyboard(webhook_base_url: str) -> Keyboard:
-    """Reply keyboard with one button that opens Mini App for city selection."""
-    url = (webhook_base_url or "").rstrip("/")
-    if not url:
-        return flow_keyboard_remove()
-    miniapp_url = f"{url}/miniapp/city-picker"
     return Keyboard(
         kind=KeyboardKind.REPLY,
-        rows=[[Button(text=CITY_PICKER_BUTTON_TEXT, web_app_url=miniapp_url)]],
-        resize=True,
+        rows=[
+            [
+                Button(
+                    text=texts.get(
+                        "btn_phone_request", "📱 Поделиться номером телефона"
+                    ),
+                    request_contact=True,
+                )
+            ]
+        ],
         one_time=True,
+        resize=True,
     )
 
 
-def phone_request_keyboard() -> Keyboard:
-    """Reply keyboard: one button to share phone (request_contact)."""
+def flow_keyboard_city_request(
+    texts: dict[str, str],
+    miniapp_location_url: str | None = None,
+) -> Keyboard:
+    """Reply KB: Share location and/or pick on map. Keys: btn_*."""
 
+    rows: list[list[Button]] = [
+        [
+            Button(
+                text=texts.get(
+                    "btn_location_request", "📍 Поделиться геопозицией"
+                ),
+                request_location=True,
+            )
+        ]
+    ]
+    if miniapp_location_url and miniapp_location_url.strip():
+        rows.append(
+            [
+                Button(
+                    text=texts.get("btn_location_map", "🗺 Выбрать на карте"),
+                    web_app_url=miniapp_location_url.strip(),
+                )
+            ]
+        )
     return Keyboard(
         kind=KeyboardKind.REPLY,
-        rows=[[Button(text=PHONE_REQUEST_BUTTON_TEXT, request_contact=True)]],
-        resize=True,
+        rows=rows,
         one_time=True,
+        resize=True,
     )
 
 
@@ -147,15 +131,37 @@ def flow_inline_keyboard(rows: list[list[Button]]) -> Keyboard:
     return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
 
-def creator_start_keyboard() -> Keyboard:
-    """Creator after role: single Create profile button (inline)."""
+def role_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Role selection (inline). Needs: btn_creator, btn_advertiser."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text=CREATE_PROFILE_BUTTON_TEXT,
+                    text=texts["btn_creator"],
+                    callback_data=CALLBACK_ROLE_CREATOR,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_advertiser"],
+                    callback_data=CALLBACK_ROLE_ADVERTISER,
+                )
+            ],
+        ],
+    )
+
+
+def creator_start_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Creator after role: Create profile. Needs: btn_create_profile."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_create_profile"],
                     callback_data=CALLBACK_CREATOR_CREATE,
                 )
             ]
@@ -163,70 +169,83 @@ def creator_start_keyboard() -> Keyboard:
     )
 
 
-def creator_start_keyboard_reply() -> Keyboard:
-    """Legacy reply keyboard for creator start (for tests if needed)."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=CREATE_PROFILE_BUTTON_TEXT)]],
-        resize=True,
-        one_time=True,
-    )
-
-
-def creator_filled_profile_keyboard(
-    one_time_keyboard: bool = False,
+def main_menu_inline_keyboard(
+    texts: dict[str, str],
+    support_url: str | None = None,
 ) -> Keyboard:
-    """Keyboard for creator with filled profile: Edit, Profile, Orders."""
+    """Inline: Support (link if support_url), Change role. Needs: btn_*."""
 
+    support_button = (
+        Button(text=texts["btn_support"], url=support_url)
+        if support_url
+        else Button(
+            text=texts["btn_support"],
+            callback_data=CALLBACK_SUPPORT,
+        )
+    )
     return Keyboard(
-        kind=KeyboardKind.REPLY,
+        kind=KeyboardKind.INLINE,
         rows=[
-            [Button(text=EDIT_PROFILE_BUTTON_TEXT)],
-            [Button(text=MY_PROFILE_BUTTON_TEXT)],
-            [Button(text=MY_ORDERS_BUTTON_TEXT)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
+            [support_button],
+            [
+                Button(
+                    text=texts["btn_change_role"],
+                    callback_data=CALLBACK_CHANGE_ROLE,
+                )
+            ],
         ],
-        resize=True,
-        one_time=one_time_keyboard,
     )
 
 
-def main_menu_keyboard() -> Keyboard:
-    """Build persistent main menu (Support, Change role)."""
+def creator_filled_profile_inline_keyboard(
+    texts: dict[str, str],
+    support_url: str | None = None,
+) -> Keyboard:
+    """Creator filled profile (inline): Edit, Profile, Orders. Needs: btn_*."""
 
+    support_btn = (
+        Button(text=texts["btn_support"], url=support_url)
+        if support_url
+        else Button(
+            text=texts["btn_support"],
+            callback_data=CALLBACK_SUPPORT,
+        )
+    )
     return Keyboard(
-        kind=KeyboardKind.REPLY,
+        kind=KeyboardKind.INLINE,
         rows=[
-            [Button(text=SUPPORT_BUTTON_TEXT)],
-            [Button(text=CHANGE_ROLE_BUTTON_TEXT)],
+            [
+                Button(
+                    text=texts["btn_edit_profile"],
+                    callback_data=CALLBACK_PROFILE_EDIT,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_my_profile"],
+                    callback_data=CALLBACK_PROFILE_MY_PROFILE,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_my_orders"],
+                    callback_data=CALLBACK_PROFILE_MENU_MY_ORDERS,
+                )
+            ],
+            [support_btn],
         ],
-        resize=True,
-        is_persistent=True,
-        one_time=False,
     )
 
 
-def profile_keyboard(one_time_keyboard: bool = True) -> Keyboard:
-    """Build a reply keyboard with a profile button."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=MY_PROFILE_BUTTON_TEXT)]],
-        resize=True,
-        one_time=one_time_keyboard,
-    )
-
-
-def advertiser_start_keyboard() -> Keyboard:
-    """Keyboard after advertiser role selection: Start (inline)."""
+def advertiser_start_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Advertiser role: Start (inline). Needs: btn_advertiser_start."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text=ADVERTISER_START_BUTTON_TEXT,
+                    text=texts["btn_advertiser_start"],
                     callback_data=CALLBACK_ADV_START,
                 )
             ]
@@ -234,15 +253,18 @@ def advertiser_start_keyboard() -> Keyboard:
     )
 
 
-def confirm_agreement_inline_keyboard(callback_data: str) -> Keyboard:
-    """Inline keyboard with single Confirm agreement button."""
+def confirm_agreement_inline_keyboard(
+    callback_data: str,
+    texts: dict[str, str],
+) -> Keyboard:
+    """Inline: Confirm agreement. Needs: btn_confirm_agreement."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text=CONFIRM_AGREEMENT_BUTTON_TEXT,
+                    text=texts["btn_confirm_agreement"],
                     callback_data=callback_data,
                 )
             ]
@@ -250,132 +272,101 @@ def confirm_agreement_inline_keyboard(callback_data: str) -> Keyboard:
     )
 
 
-def advertiser_menu_keyboard(
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Build a reply keyboard for advertiser actions."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=CREATE_ORDER_BUTTON_TEXT)],
-            [Button(text=MY_ORDERS_BUTTON_TEXT)],
-            [Button(text=MY_PROFILE_BUTTON_TEXT)],
-            [Button(text=EDIT_PROFILE_BUTTON_TEXT)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
-        ],
-        resize=True,
-        one_time=one_time_keyboard,
-    )
-
-
-def advertiser_after_payment_keyboard() -> Keyboard:
-    """Keyboard after successful payment: Create order, My orders, Support."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=CREATE_ORDER_BUTTON_TEXT)],
-            [Button(text=MY_ORDERS_BUTTON_TEXT)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
-        ],
-        resize=True,
-        one_time=False,
-    )
-
-
-def blogger_menu_keyboard(
+def blogger_menu_inline_keyboard(
+    texts: dict[str, str],
     confirmed: bool,
-    one_time_keyboard: bool = False,
     verification_started: bool = False,
 ) -> Keyboard:
-    """Build a reply keyboard for blogger actions.
+    """Inline blogger menu. Needs: btn_confirm_instagram, btn_my_profile."""
 
-    Args:
-        confirmed: Whether Instagram account is verified
-        one_time_keyboard: Whether to hide keyboard after use
-        verification_started: If True, no verification btn (already requested)
-    """
-    keyboard: list[list[Button]] = []
-
+    rows: list[list[Button]] = []
     if not confirmed and not verification_started:
-        keyboard.append([Button(text=CONFIRM_INSTAGRAM_BUTTON_TEXT)])
-
-    keyboard.append([Button(text=MY_PROFILE_BUTTON_TEXT)])
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=keyboard,
-        resize=True,
-        one_time=one_time_keyboard,
+        rows.append(
+            [
+                Button(
+                    text=texts["btn_confirm_instagram"],
+                    callback_data=CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
+                )
+            ]
+        )
+    rows.append(
+        [
+            Button(
+                text=texts["btn_my_profile"],
+                callback_data=CALLBACK_PROFILE_MY_PROFILE,
+            )
+        ]
     )
+    return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
 
-def blogger_after_registration_keyboard() -> Keyboard:
-    """Keyboard after profile creation: Confirm Instagram + My profile."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=CONFIRM_INSTAGRAM_BUTTON_TEXT)],
-            [Button(text=MY_PROFILE_BUTTON_TEXT)],
-        ],
-        resize=True,
-        one_time=False,
-    )
-
-
-def blogger_verification_sent_keyboard() -> Keyboard:
-    """Keyboard after code sent: only My profile (no verification button)."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=MY_PROFILE_BUTTON_TEXT)]],
-        resize=True,
-        one_time=False,
-    )
-
-
-def blogger_profile_view_keyboard(confirmed: bool) -> Keyboard:
-    """Build a reply keyboard for My profile (legacy)."""
-
-    keyboard = [[Button(text=EDIT_PROFILE_BUTTON_TEXT)]]
-    if not confirmed:
-        keyboard.append([Button(text=CONFIRM_INSTAGRAM_BUTTON_TEXT)])
-    keyboard.append([Button(text=MY_PROFILE_BUTTON_TEXT)])
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=keyboard,
-        resize=True,
-        one_time=False,
-    )
-
-
-def advertiser_menu_inline_keyboard() -> Keyboard:
-    """Inline: Create order, My orders, Profile, Edit."""
+def blogger_after_registration_inline_keyboard(
+    texts: dict[str, str],
+) -> Keyboard:
+    """Inline: Confirm Instagram, My profile after blogger reg."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text=CREATE_ORDER_BUTTON_TEXT,
+                    text=texts["btn_confirm_instagram"],
+                    callback_data=CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_my_profile"],
+                    callback_data=CALLBACK_PROFILE_MY_PROFILE,
+                )
+            ],
+        ],
+    )
+
+
+def blogger_verification_sent_inline_keyboard(
+    texts: dict[str, str],
+) -> Keyboard:
+    """Inline after code sent: My profile only. Needs: btn_my_profile."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_my_profile"],
+                    callback_data=CALLBACK_PROFILE_MY_PROFILE,
+                )
+            ]
+        ],
+    )
+
+
+def advertiser_menu_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Inline: Create order, My orders, Profile, Edit. Needs: btn_*."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_create_order"],
                     callback_data=CALLBACK_PROFILE_MENU_CREATE_ORDER,
                 )
             ],
             [
                 Button(
-                    text=MY_ORDERS_BUTTON_TEXT,
+                    text=texts["btn_my_orders"],
                     callback_data=CALLBACK_PROFILE_MENU_MY_ORDERS,
                 )
             ],
             [
                 Button(
-                    text=MY_PROFILE_BUTTON_TEXT,
+                    text=texts["btn_my_profile"],
                     callback_data=CALLBACK_PROFILE_MY_PROFILE,
                 ),
                 Button(
-                    text=EDIT_PROFILE_BUTTON_TEXT,
+                    text=texts["btn_edit_profile"],
                     callback_data=CALLBACK_PROFILE_EDIT,
                 ),
             ],
@@ -383,13 +374,16 @@ def advertiser_menu_inline_keyboard() -> Keyboard:
     )
 
 
-def blogger_profile_view_inline_keyboard(confirmed: bool) -> Keyboard:
-    """Inline: Edit, Confirm Instagram, Back (blogger profile)."""
+def blogger_profile_view_inline_keyboard(
+    texts: dict[str, str],
+    confirmed: bool,
+) -> Keyboard:
+    """Inline: Edit, Confirm Instagram, Back. Needs: btn_*."""
 
     rows: list[list[Button]] = [
         [
             Button(
-                text=EDIT_PROFILE_BUTTON_TEXT,
+                text=texts["btn_edit_profile"],
                 callback_data=CALLBACK_PROFILE_EDIT,
             )
         ],
@@ -398,7 +392,7 @@ def blogger_profile_view_inline_keyboard(confirmed: bool) -> Keyboard:
         rows.append(
             [
                 Button(
-                    text=CONFIRM_INSTAGRAM_BUTTON_TEXT,
+                    text=texts["btn_confirm_instagram"],
                     callback_data=CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
                 )
             ]
@@ -406,7 +400,7 @@ def blogger_profile_view_inline_keyboard(confirmed: bool) -> Keyboard:
     rows.append(
         [
             Button(
-                text=MY_PROFILE_BUTTON_TEXT,
+                text=texts["btn_my_profile"],
                 callback_data=CALLBACK_PROFILE_MY_PROFILE,
             )
         ]
@@ -414,27 +408,27 @@ def blogger_profile_view_inline_keyboard(confirmed: bool) -> Keyboard:
     return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
 
-def edit_profile_type_inline_keyboard() -> Keyboard:
-    """Inline keyboard to choose blogger or advertiser profile to edit."""
+def edit_profile_type_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Edit type keys: btn_edit_profile_blogger, btn_edit_profile_advertiser."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text="Редактировать профиль блогера",
+                    text=texts["btn_edit_profile_blogger"],
                     callback_data=CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
                 )
             ],
             [
                 Button(
-                    text="Редактировать профиль рекламодателя",
+                    text=texts["btn_edit_profile_advertiser"],
                     callback_data=CALLBACK_PROFILE_EDIT_TYPE_ADVERTISER,
                 )
             ],
             [
                 Button(
-                    text=MY_PROFILE_BUTTON_TEXT,
+                    text=texts["btn_my_profile"],
                     callback_data=CALLBACK_PROFILE_MY_PROFILE,
                 )
             ],
@@ -444,8 +438,9 @@ def edit_profile_type_inline_keyboard() -> Keyboard:
 
 def edit_field_inline_keyboard(
     field_rows: list[list[tuple[str, str]]],
+    texts: dict[str, str],
 ) -> Keyboard:
-    """Profile fields (label, key); callback profile:field:key."""
+    """Profile fields (label, key). Needs: btn_my_profile."""
 
     rows: list[list[Button]] = []
     for row in field_rows:
@@ -461,7 +456,7 @@ def edit_field_inline_keyboard(
     rows.append(
         [
             Button(
-                text=MY_PROFILE_BUTTON_TEXT,
+                text=texts["btn_my_profile"],
                 callback_data=CALLBACK_PROFILE_MY_PROFILE,
             ),
         ]
@@ -469,25 +464,25 @@ def edit_field_inline_keyboard(
     return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
 
-def edit_audience_gender_inline_keyboard() -> Keyboard:
-    """Inline keyboard for audience gender choice in profile edit."""
+def edit_audience_gender_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Audience. Needs: btn_audience_f, btn_audience_m, btn_audience_a."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text="👩 В основном женщины",
+                    text=texts["btn_audience_f"],
                     callback_data=CALLBACK_PROFILE_AUDIENCE_F,
                 ),
                 Button(
-                    text="👨 В основном мужчины",
+                    text=texts["btn_audience_m"],
                     callback_data=CALLBACK_PROFILE_AUDIENCE_M,
                 ),
             ],
             [
                 Button(
-                    text="👥 Примерно поровну",
+                    text=texts["btn_audience_a"],
                     callback_data=CALLBACK_PROFILE_AUDIENCE_A,
                 )
             ],
@@ -495,19 +490,19 @@ def edit_audience_gender_inline_keyboard() -> Keyboard:
     )
 
 
-def edit_blogger_gender_inline_keyboard() -> Keyboard:
-    """Inline keyboard for blogger gender choice in profile edit."""
+def edit_blogger_gender_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Blogger gender choice. Needs: btn_gender_m, btn_gender_f."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text="Мужской",
+                    text=texts["btn_gender_m"],
                     callback_data=CALLBACK_PROFILE_BLOGGER_GENDER_M,
                 ),
                 Button(
-                    text="Женский",
+                    text=texts["btn_gender_f"],
                     callback_data=CALLBACK_PROFILE_BLOGGER_GENDER_F,
                 ),
             ],
@@ -515,54 +510,75 @@ def edit_blogger_gender_inline_keyboard() -> Keyboard:
     )
 
 
-def edit_audience_age_inline_keyboard() -> Keyboard:
-    """Inline keyboard for audience age choice in profile edit."""
-
-    return Keyboard(
-        kind=KeyboardKind.INLINE,
-        rows=[
-            [
-                Button(text="до 18", callback_data=CALLBACK_PROFILE_AGE_0_17),
-                Button(text="18–24", callback_data=CALLBACK_PROFILE_AGE_18_24),
-                Button(text="25–34", callback_data=CALLBACK_PROFILE_AGE_25_34),
-            ],
-            [
-                Button(text="35–44", callback_data=CALLBACK_PROFILE_AGE_35_44),
-                Button(text="45+", callback_data=CALLBACK_PROFILE_AGE_45_99),
-            ],
-        ],
-    )
-
-
-def edit_barter_inline_keyboard() -> Keyboard:
-    """Inline keyboard for barter choice in profile edit."""
-
-    return Keyboard(
-        kind=KeyboardKind.INLINE,
-        rows=[
-            [
-                Button(text="Да", callback_data=CALLBACK_PROFILE_BARTER_Y),
-                Button(text="Нет", callback_data=CALLBACK_PROFILE_BARTER_N),
-            ],
-        ],
-    )
-
-
-def edit_work_format_inline_keyboard() -> Keyboard:
-    """Inline keyboard for work format choice in profile edit."""
+def edit_audience_age_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Audience age choice. Needs: btn_age_*."""
 
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text=WORK_FORMAT_ADS_BUTTON_TEXT,
+                    text=texts["btn_age_0_17"],
+                    callback_data=CALLBACK_PROFILE_AGE_0_17,
+                ),
+                Button(
+                    text=texts["btn_age_18_24"],
+                    callback_data=CALLBACK_PROFILE_AGE_18_24,
+                ),
+                Button(
+                    text=texts["btn_age_25_34"],
+                    callback_data=CALLBACK_PROFILE_AGE_25_34,
+                ),
+            ],
+            [
+                Button(
+                    text=texts["btn_age_35_44"],
+                    callback_data=CALLBACK_PROFILE_AGE_35_44,
+                ),
+                Button(
+                    text=texts["btn_age_45_99"],
+                    callback_data=CALLBACK_PROFILE_AGE_45_99,
+                ),
+            ],
+        ],
+    )
+
+
+def edit_barter_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Barter choice. Needs: btn_barter_yes, btn_barter_no."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_barter_yes"],
+                    callback_data=CALLBACK_PROFILE_BARTER_Y,
+                ),
+                Button(
+                    text=texts["btn_barter_no"],
+                    callback_data=CALLBACK_PROFILE_BARTER_N,
+                ),
+            ],
+        ],
+    )
+
+
+def edit_work_format_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Work format. Needs: btn_work_format_ads, btn_work_format_ugc_only."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_work_format_ads"],
                     callback_data=CALLBACK_PROFILE_WORK_ADS,
                 )
             ],
             [
                 Button(
-                    text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
+                    text=texts["btn_work_format_ugc_only"],
                     callback_data=CALLBACK_PROFILE_WORK_UGC,
                 )
             ],

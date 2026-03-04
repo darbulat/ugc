@@ -14,11 +14,11 @@ from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from ugc_bot.app import build_dispatcher, create_storage
-from ugc_bot.application.geography import get_cities_list_for_miniapp
 from ugc_bot.config import load_config
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
@@ -97,6 +97,7 @@ async def _lifespan(app: FastAPI):
     try:
         storage = await create_storage(config)
         dispatcher = build_dispatcher(config, storage=storage)
+        await dispatcher["bot_texts_service"].load_from_db()
         bot = Bot(token=config.bot.bot_token)
         messenger_client = TelegramMessengerClient(bot)
         event_adapter = TelegramEventAdapter()
@@ -129,6 +130,12 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telegram Webhook", lifespan=_lifespan)
+
+_miniapp_dir = Path(__file__).resolve().parent / "miniapp"
+if _miniapp_dir.is_dir():
+    app.mount(
+        "/miniapp", StaticFiles(directory=str(_miniapp_dir)), name="miniapp"
+    )
 
 
 @app.middleware("http")
@@ -189,28 +196,6 @@ async def metrics() -> Response:
     """Prometheus metrics."""
     body = generate_latest()
     return Response(content=body, media_type=CONTENT_TYPE_LATEST)
-
-
-_MINIAPP_DIR = Path(__file__).resolve().parent / "miniapp"
-
-
-@app.get("/miniapp/cities.json")
-async def miniapp_cities_json() -> JSONResponse:
-    """Return list of cities for Mini App city picker (id + label)."""
-    cities = get_cities_list_for_miniapp()
-    return JSONResponse(
-        content=cities,
-        headers={"Cache-Control": "public, max-age=3600"},
-    )
-
-
-@app.get("/miniapp/city-picker")
-async def miniapp_city_picker() -> FileResponse:
-    """Serve Mini App HTML page for city selection."""
-    path = _MINIAPP_DIR / "city_picker.html"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Mini App not found")
-    return FileResponse(path, media_type="text/html")
 
 
 @app.post("/webhook/telegram")

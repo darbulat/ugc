@@ -18,18 +18,19 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_PROFILE_AGREE,
     CALLBACK_PROFILE_MENU_MY_ORDERS,
-    CONFIRM_AGREEMENT_BUTTON_TEXT,
-    MY_ORDERS_BUTTON_TEXT,
     PAY_ORDER_CALLBACK_PREFIX,
-    flow_keyboard,
+    confirm_agreement_inline_keyboard,
 )
 from ugc_bot.bot.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
@@ -46,17 +47,41 @@ from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 
 router = Router()
-ORDER_STATUS_LABELS = {
-    OrderStatus.NEW: "Создан",
-    OrderStatus.PENDING_MODERATION: "На модерации",
-    OrderStatus.ACTIVE: "Активен",
-    OrderStatus.CLOSED: "Завершён",
+
+ORDER_STATUS_KEYS = {
+    OrderStatus.NEW: "msg_status_new",
+    OrderStatus.PENDING_MODERATION: "msg_status_pending_moderation",
+    OrderStatus.ACTIVE: "msg_status_active",
+    OrderStatus.CLOSED: "msg_status_closed",
 }
 
+MY_ORDERS_TEXTS_KEYS = (
+    "msg_orders_title",
+    "msg_orders_blogger_title",
+    "msg_order_status",
+    "msg_order_creators",
+    "msg_order_matched",
+    "msg_order_date_created",
+    "msg_order_date_completed",
+    "msg_order_link",
+    "msg_order_format",
+    "msg_order_price",
+    "msg_order_barter",
+    "msg_order_type_ugc",
+    "msg_order_type_placement",
+    "msg_status_new",
+    "msg_status_pending_moderation",
+    "msg_status_active",
+    "msg_status_closed",
+    "btn_back_arrow",
+    "btn_forward_arrow",
+    "btn_pay_order",
+)
 
-def _format_price(price: float) -> str:
-    """Format price with space as thousands separator and ruble sign."""
-    return f"{int(price):,}".replace(",", " ") + " ₽"
+
+def _format_price(price: float, currency_symbol: str = "₽") -> str:
+    """Format price with space as thousands separator and currency symbol."""
+    return f"{int(price):,}".replace(",", " ") + f" {currency_symbol}"
 
 
 def _format_date(dt: Optional[datetime]) -> str:
@@ -66,20 +91,37 @@ def _format_date(dt: Optional[datetime]) -> str:
     return dt.strftime("%d.%m.%Y")
 
 
-def _format_order_type(order: Order) -> str:
+def _format_order_type(
+    order: Order, texts: dict[str, str] | None = None
+) -> str:
     """Format order type for display."""
+    t = texts or {}
     if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
-        return "UGC + размещение"
-    return "UGC-видео для бренда"
+        return t.get("msg_order_type_placement", "UGC + размещение")
+    return t.get("msg_order_type_ugc", "UGC-видео для бренда")
 
 
-def _format_price_and_barter(order: Order) -> list[str]:
+def _format_price_and_barter(
+    order: Order,
+    currency_symbol: str = "₽",
+    texts: dict[str, str] | None = None,
+) -> list[str]:
     """Return lines for price and/or barter (0-2 lines)."""
+    t = texts or {}
     result: list[str] = []
     if order.price > 0:
-        result.append(f"Стоимость 1 UGC: {_format_price(order.price)}")
+        price_str = _format_price(order.price, currency_symbol)
+        result.append(
+            t.get("msg_order_price", "Стоимость 1 UGC: {price}").format(
+                price=price_str
+            )
+        )
     if order.barter_description:
-        result.append(f"Бартер: {order.barter_description}")
+        result.append(
+            t.get("msg_order_barter", "Бартер: {desc}").format(
+                desc=order.barter_description
+            )
+        )
     return result
 
 
@@ -88,59 +130,52 @@ _MY_ORDERS_CALLBACK_PREFIX = "my_orders:"
 _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
 
 
-@router.message(Command("my_orders"))
-@router.message(lambda msg: (msg.text or "").strip() == MY_ORDERS_BUTTON_TEXT)
-async def show_my_orders(  # noqa: C901, PLR0912
-    message: Message,
+async def _send_my_orders_content(
+    incoming,
     state: FSMContext,
-    user_role_service: UserRoleService,
-    profile_service: ProfileService,
+    user,
+    advertiser,
+    blogger,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
     config: AppConfig,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient,
+    locale: str,
 ) -> None:
-    """Show advertiser and blogger orders in two separate messages."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    user = await get_user_and_ensure_allowed(
-        incoming,
-        messenger_client,
-        user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные не могут просматривать заказы.",
-        pause_msg="На паузе не могут просматривать заказы.",
-    )
-    if user is None:
-        return
-
-    advertiser = await profile_service.get_advertiser_profile(user.user_id)
-    blogger = await profile_service.get_blogger_profile(user.user_id)
-
+    """Send fill profile, agreement, or order lists depending on user state."""
     if advertiser is None and blogger is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_fill_profile_orders", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Заполните профиль (/advertiser или /creator), "
-                "чтобы видеть заказы."
-            ),
+            text=msg_fill,
         )
         return
 
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
+        agree_keys = [
+            "btn_confirm_agreement",
+            "msg_confirm_agreement",
+            "msg_agreements_intro_default",
+            "msg_label_offer",
+            "msg_label_privacy",
+            "msg_label_consent",
+            "msg_confirm_docs_fallback",
+        ]
+        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
         agreements_text = format_agreements_message(
             config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
+            intro=agree_texts.get("msg_confirm_agreement"),
+            texts=agree_texts,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
-            keyboard=flow_keyboard(
-                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_PROFILE_AGREE, agree_texts
             ),
             parse_mode="HTML",
         )
@@ -151,6 +186,9 @@ async def show_my_orders(  # noqa: C901, PLR0912
             await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
 
+    order_texts = await bot_texts_service.get_many(
+        list(MY_ORDERS_TEXTS_KEYS), locale
+    )
     if advertiser is not None:
         orders = sorted(
             await order_service.list_by_advertiser(user.user_id),
@@ -159,15 +197,20 @@ async def show_my_orders(  # noqa: C901, PLR0912
         )
         if orders:
             text, keyboard = await _render_page(
-                orders, page=1, offer_response_service=offer_response_service
+                orders,
+                page=1,
+                offer_response_service=offer_response_service,
+                currency_symbol=config.market.currency_symbol,
+                texts=order_texts,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
             )
         else:
+            msg_no_orders = await bot_texts_service.get("msg_no_orders", locale)
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
-                text="У вас пока нет заказов. /create_order",
+                text=msg_no_orders,
             )
 
     if blogger is not None:
@@ -183,20 +226,82 @@ async def show_my_orders(  # noqa: C901, PLR0912
                 order_responses.append((order, resp))
         if order_responses:
             text, keyboard = _render_blogger_orders_page(
-                order_responses, page=1
+                order_responses,
+                page=1,
+                currency_symbol=config.market.currency_symbol,
+                texts=order_texts,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
             )
         else:
+            msg_no_blogger = await bot_texts_service.get(
+                "msg_no_blogger_orders", locale
+            )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
-                text="Вы пока не откликались. Предложения приходят в бот.",
+                text=msg_no_blogger,
             )
 
 
+@router.message(Command("my_orders"))
+@router.message(TextEqualsKey("btn_my_orders"))
+async def show_my_orders(
+    message: Message,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    order_service: OrderService,
+    offer_response_service: OfferResponseService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Show advertiser and blogger orders in two separate messages."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    order_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_my_orders_blocked",
+            "msg_my_orders_pause",
+        ],
+        locale,
+    )
+    user = await get_user_and_ensure_allowed(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg=order_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=order_msgs.get("msg_my_orders_blocked", ""),
+        pause_msg=order_msgs.get("msg_my_orders_pause", ""),
+    )
+    if user is None:
+        return
+
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    blogger = await profile_service.get_blogger_profile(user.user_id)
+    await _send_my_orders_content(
+        incoming,
+        state,
+        user,
+        advertiser,
+        blogger,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
+        messenger_client,
+        locale,
+    )
+
+
 @router.callback_query(lambda c: c.data == CALLBACK_PROFILE_MENU_MY_ORDERS)
-async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
+async def show_my_orders_from_profile_callback(
     callback: CallbackQuery,
     state: FSMContext,
     user_role_service: UserRoleService,
@@ -204,6 +309,7 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
     order_service: OrderService,
     offer_response_service: OfferResponseService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -213,88 +319,40 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = config.market.default_locale
+    order_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_my_orders_blocked",
+            "msg_my_orders_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные не могут просматривать заказы.",
-        pause_msg="На паузе не могут просматривать заказы.",
+        user_not_found_msg=order_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=order_msgs.get("msg_my_orders_blocked", ""),
+        pause_msg=order_msgs.get("msg_my_orders_pause", ""),
     )
     if user is None:
         return
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     blogger = await profile_service.get_blogger_profile(user.user_id)
-    if advertiser is None and blogger is None:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=(
-                "Заполните профиль (/advertiser или /creator), "
-                "чтобы видеть заказы."
-            ),
-        )
-        return
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
-    if agreement_confirmed_at is None:
-        agreements_text = format_agreements_message(
-            config,
-            intro="Пожалуйста, подтвердите согласие с документами платформы.",
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=agreements_text,
-            keyboard=flow_keyboard(
-                keyboard=[[Button(text=CONFIRM_AGREEMENT_BUTTON_TEXT)]],
-            ),
-            parse_mode="HTML",
-        )
-        await state.update_data(user_id=user.user_id)
-        if blogger is not None:
-            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
-        else:
-            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
-        return
-    if advertiser is not None:
-        orders = sorted(
-            await order_service.list_by_advertiser(user.user_id),
-            key=lambda item: item.created_at,
-            reverse=True,
-        )
-        if orders:
-            text, keyboard = await _render_page(
-                orders, page=1, offer_response_service=offer_response_service
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id, text=text, keyboard=keyboard
-            )
-        else:
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text="У вас пока нет заказов. /create_order",
-            )
-    if blogger is not None:
-        responses = await offer_response_service.list_by_blogger(user.user_id)
-        order_responses = []
-        for resp in sorted(
-            responses,
-            key=lambda r: (r.updated_at or r.created_at, r.created_at),
-            reverse=True,
-        ):
-            order = await order_service.get_order(resp.order_id)
-            if order is not None:
-                order_responses.append((order, resp))
-        if order_responses:
-            text, keyboard = _render_blogger_orders_page(
-                order_responses, page=1
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id, text=text, keyboard=keyboard
-            )
-        else:
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text="Вы пока не откликались. Предложения приходят в бот.",
-            )
+    await _send_my_orders_content(
+        incoming,
+        state,
+        user,
+        advertiser,
+        blogger,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
+        messenger_client,
+        locale,
+    )
 
 
 @router.callback_query(
@@ -312,6 +370,9 @@ async def paginate_orders(
     profile_service: ProfileService,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
+    currency_symbol: str,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -320,25 +381,40 @@ async def paginate_orders(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
+    locale = config.market.default_locale
+    order_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_my_orders_blocked",
+            "msg_my_orders_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные не могут просматривать заказы.",
-        pause_msg="Пользователи на паузе не могут просматривать заказы.",
+        user_not_found_msg=order_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=order_msgs.get("msg_my_orders_blocked", ""),
+        pause_msg=order_msgs.get("msg_my_orders_pause", ""),
     )
     if user is None:
         return
 
+    order_texts = await bot_texts_service.get_many(
+        list(MY_ORDERS_TEXTS_KEYS), locale
+    )
     data = incoming.data or ""
     if data.startswith(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX):
         raw = data.split(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX, 1)[-1]
         blogger = await profile_service.get_blogger_profile(user.user_id)
         if blogger is None:
+            msg = await bot_texts_service.get(
+                "msg_blogger_profile_empty", locale
+            )
             await messenger_client.answer_callback(
                 callback_id=incoming.callback_id,
-                text="Профиль блогера не заполнен.",
+                text=msg,
             )
             return
         try:
@@ -355,14 +431,22 @@ async def paginate_orders(
             order = await order_service.get_order(resp.order_id)
             if order is not None:
                 order_responses.append((order, resp))
-        text, keyboard = _render_blogger_orders_page(order_responses, page=page)
+        text, keyboard = _render_blogger_orders_page(
+            order_responses,
+            page=page,
+            currency_symbol=currency_symbol,
+            texts=order_texts,
+        )
     else:
         raw = data.split(_MY_ORDERS_CALLBACK_PREFIX, 1)[-1]
         advertiser = await profile_service.get_advertiser_profile(user.user_id)
         if advertiser is None:
+            msg = await bot_texts_service.get(
+                "msg_advertiser_profile_empty", locale
+            )
             await messenger_client.answer_callback(
                 callback_id=incoming.callback_id,
-                text="Профиль рекламодателя не заполнен.",
+                text=msg,
             )
             return
         try:
@@ -375,7 +459,11 @@ async def paginate_orders(
             reverse=True,
         )
         text, keyboard = await _render_page(
-            orders, page=page, offer_response_service=offer_response_service
+            orders,
+            page=page,
+            offer_response_service=offer_response_service,
+            currency_symbol=currency_symbol,
+            texts=order_texts,
         )
 
     if incoming.message_id:
@@ -389,60 +477,94 @@ async def paginate_orders(
 
 
 async def _render_page(
-    orders, page: int, offer_response_service: OfferResponseService
+    orders,
+    page: int,
+    offer_response_service: OfferResponseService,
+    currency_symbol: str = "₽",
+    texts: dict[str, str] | None = None,
 ) -> tuple[str, Keyboard]:
     """Render paginated orders list."""
-
+    t = texts or {}
     total_pages = max(1, ceil(len(orders) / _PAGE_SIZE))
     page = max(1, min(page, total_pages))
     start = (page - 1) * _PAGE_SIZE
     end = start + _PAGE_SIZE
     slice_orders = orders[start:end]
 
-    lines = [f"Ваши заказы (страница {page}/{total_pages}):"]
+    title_tpl = t.get(
+        "msg_orders_title", "Ваши заказы (страница {page}/{total_pages}):"
+    )
+    lines = [title_tpl.format(page=page, total_pages=total_pages)]
     buttons_rows: list[list[Button]] = []
 
     for idx, order in enumerate(slice_orders):
-        # Нумерация по дате создания: 1 = первый созданный (самый старый)
         creation_number = len(orders) - start - idx
         matched_count = await offer_response_service.count_by_order(
             order.order_id
         )
-        status_label = ORDER_STATUS_LABELS.get(order.status, order.status.value)
+        status_key = ORDER_STATUS_KEYS.get(order.status, "msg_status_new")
+        status_label = t.get(status_key, order.status.value)
+        status_line = t.get(
+            "msg_order_status", "Статус: {status_label}"
+        ).format(status_label=status_label)
+        creators_line = t.get(
+            "msg_order_creators", "Креаторов: {bloggers_needed}"
+        ).format(bloggers_needed=order.bloggers_needed)
+        matched_line = t.get(
+            "msg_order_matched",
+            "Подобрано: {matched_count} / {bloggers_needed}",
+        ).format(
+            matched_count=matched_count, bloggers_needed=order.bloggers_needed
+        )
+        date_created_line = t.get(
+            "msg_order_date_created", "Дата создания: {date}"
+        ).format(date=_format_date(order.created_at))
+        date_completed_line = t.get(
+            "msg_order_date_completed", "Дата завершения: {date}"
+        ).format(date=_format_date(order.completed_at))
+        link_line = t.get("msg_order_link", "Ссылка на проект: {link}").format(
+            link=order.product_link
+        )
         order_lines = [
             f"№ {creation_number}",
-            f"Статус: {status_label}",
-            f"Креаторов: {order.bloggers_needed}",
-            f"Подобрано: {matched_count} / {order.bloggers_needed}",
-            *_format_price_and_barter(order),
-            f"Дата создания: {_format_date(order.created_at)}",
-            f"Дата завершения: {_format_date(order.completed_at)}",
-            f"Ссылка на проект: {order.product_link}",
+            status_line,
+            creators_line,
+            matched_line,
+            *_format_price_and_barter(order, currency_symbol, t),
+            date_created_line,
+            date_completed_line,
+            link_line,
         ]
         lines.append("\n".join(order_lines))
         if order.status == OrderStatus.NEW:
+            pay_btn_tpl = t.get(
+                "btn_pay_order", "💳 Оплатить №{creation_number}"
+            )
             buttons_rows.append(
                 [
                     Button(
-                        text=f"💳 Оплатить №{creation_number}",
+                        text=pay_btn_tpl.format(
+                            creation_number=creation_number
+                        ),
                         callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{order.order_id}",
                     )
                 ]
             )
 
-    # Pagination buttons
+    btn_back = t.get("btn_back_arrow", "⬅️ Назад")
+    btn_forward = t.get("btn_forward_arrow", "Вперед ➡️")
     nav_buttons: list[Button] = []
     if page > 1:
         nav_buttons.append(
             Button(
-                text="⬅️ Назад",
+                text=btn_back,
                 callback_data=f"{_MY_ORDERS_CALLBACK_PREFIX}{page - 1}",
             )
         )
     if page < total_pages:
         nav_buttons.append(
             Button(
-                text="Вперед ➡️",
+                text=btn_forward,
                 callback_data=f"{_MY_ORDERS_CALLBACK_PREFIX}{page + 1}",
             )
         )
@@ -456,16 +578,17 @@ async def _render_page(
 def _render_blogger_orders_page(
     order_responses: list[tuple[Order, OfferDispatch]],
     page: int = 1,
+    currency_symbol: str = "₽",
+    texts: dict[str, str] | None = None,
 ) -> tuple[str, Keyboard]:
     """Render paginated list of orders the blogger responded to."""
-
+    t = texts or {}
     total_pages = max(1, ceil(len(order_responses) / _PAGE_SIZE))
     page = max(1, min(page, total_pages))
     start = (page - 1) * _PAGE_SIZE
     end = start + _PAGE_SIZE
     slice_pairs = order_responses[start:end]
 
-    # Нумерация по дате создания заказа: 1 = первый созданный
     orders_sorted_by_created = sorted(
         order_responses, key=lambda pair: pair[0].created_at
     )
@@ -474,35 +597,48 @@ def _render_blogger_orders_page(
         for idx, (order, _) in enumerate(orders_sorted_by_created)
     }
 
-    lines = [
-        f"Заказы, на которые вы откликнулись (страница {page}/{total_pages}):"
-    ]
+    title_tpl = t.get(
+        "msg_orders_blogger_title",
+        "Заказы, на которые вы откликнулись (страница {page}/{total_pages}):",
+    )
+    lines = [title_tpl.format(page=page, total_pages=total_pages)]
     buttons_rows: list[list[Button]] = []
 
     for order, _response in slice_pairs:
         creation_number = order_id_to_number.get(order.order_id, 0)
-        status_label = ORDER_STATUS_LABELS.get(order.status, order.status.value)
+        status_key = ORDER_STATUS_KEYS.get(order.status, "msg_status_new")
+        status_label = t.get(status_key, order.status.value)
+        status_line = t.get(
+            "msg_order_status", "Статус: {status_label}"
+        ).format(status_label=status_label)
+        format_line = t.get("msg_order_format", "Формат: {order_type}").format(
+            order_type=_format_order_type(order, t)
+        )
         order_lines = [
             f"№ {creation_number}",
-            f"Статус: {status_label}",
-            f"Формат: {_format_order_type(order)}",
-            *_format_price_and_barter(order),
-            f"Ссылка на проект: {order.product_link}",
+            status_line,
+            format_line,
+            *_format_price_and_barter(order, currency_symbol, t),
+            t.get("msg_order_link", "Ссылка на проект: {link}").format(
+                link=order.product_link
+            ),
         ]
         lines.append("\n".join(order_lines))
 
+    btn_back = t.get("btn_back_arrow", "⬅️ Назад")
+    btn_forward = t.get("btn_forward_arrow", "Вперед ➡️")
     nav_buttons: list[Button] = []
     if page > 1:
         nav_buttons.append(
             Button(
-                text="⬅️ Назад",
+                text=btn_back,
                 callback_data=f"{_MY_ORDERS_BLOGGER_CALLBACK_PREFIX}{page - 1}",
             )
         )
     if page < total_pages:
         nav_buttons.append(
             Button(
-                text="Вперед ➡️",
+                text=btn_forward,
                 callback_data=f"{_MY_ORDERS_BLOGGER_CALLBACK_PREFIX}{page + 1}",
             )
         )

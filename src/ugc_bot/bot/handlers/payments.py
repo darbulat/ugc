@@ -23,6 +23,7 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_new_order,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
@@ -34,12 +35,7 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     PAY_ORDER_CALLBACK_PREFIX,
-    advertiser_after_payment_keyboard,
-)
-from ugc_bot.bot.handlers.security_warnings import (
-    ADVERTISER_AFTER_PAYMENT_IMPORTANT,
-    ADVERTISER_AFTER_PAYMENT_SUCCESS,
-    ADVERTISER_AFTER_PAYMENT_WHAT_NEXT,
+    advertiser_menu_inline_keyboard,
 )
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
@@ -55,12 +51,13 @@ from ugc_bot.infrastructure.messenger.telegram.adapter import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
+DEFAULT_RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
 
 
 def build_receipt_provider_data(
     total_amount: float,
-    currency: str = "RUB",
+    currency: str,
+    receipt_description: str,
 ) -> str:
     """Build provider_data JSON for YooKassa receipt (54-FZ).
 
@@ -71,7 +68,8 @@ def build_receipt_provider_data(
         "receipt": {
             "items": [
                 {
-                    "description": RECEIPT_SERVICE_DESCRIPTION,
+                    "description": receipt_description
+                    or DEFAULT_RECEIPT_SERVICE_DESCRIPTION,
                     "quantity": 1,
                     "amount": {"value": amount_str, "currency": currency},
                     "vat_code": 2,
@@ -92,8 +90,11 @@ async def send_order_invoice(
     offer_text: str,
     price_value: float,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
+    receipt_description: str | None = None,
 ) -> None:
     """Send invoice for order with 54-FZ receipt (email via Telegram form)."""
+    locale = config.market.default_locale
 
     if not incoming_message.chat_id:
         return
@@ -103,39 +104,53 @@ async def send_order_invoice(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
     except InvalidOperation:
+        msg_invalid = await bot_texts_service.get(
+            "msg_invalid_order_amount", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming_message.chat_id,
-            text="Некорректная сумма заказа.",
+            text=msg_invalid,
         )
         return
 
     price = int(price_decimal * 100)
     if price > 100_000_000:
+        msg_too_large = await bot_texts_service.get(
+            "msg_order_amount_too_large", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming_message.chat_id,
-            text=(
-                "Сумма заказа слишком большая для выставления счета в Telegram."
-            ),
+            text=msg_too_large,
         )
         return
 
+    currency = config.market.payment_currency
+    currency_symbol = config.market.currency_symbol
+    receipt_desc = (
+        (receipt_description or "").strip()
+        or config.market.receipt_service_description
+        or DEFAULT_RECEIPT_SERVICE_DESCRIPTION
+    )
     provider_data = build_receipt_provider_data(
         total_amount=price_value,
-        currency="RUB",
+        currency=currency,
+        receipt_description=receipt_desc,
     )
 
     try:
         await messenger_client.send_invoice(
             chat_id=incoming_message.chat_id,
             invoice=Invoice(
-                title="Оплата заказа",
+                title=await bot_texts_service.get("msg_title_payment", locale),
                 description=offer_text[:255],
                 payload=str(order_id),
                 provider_token=config.bot.telegram_provider_token,
-                currency="RUB",
+                currency=currency,
                 items=[
                     InvoiceItem(
-                        label=f"💳 Заплатить {int(price_value)} ₽",
+                        label=(
+                            f"💳 Заплатить {int(price_value)} {currency_symbol}"
+                        ),
                         amount_minor=price,
                     )
                 ],
@@ -149,9 +164,10 @@ async def send_order_invoice(
             "Failed to send invoice",
             extra={"order_id": str(order_id), "price_minor": price},
         )
+        msg_failed = await bot_texts_service.get("msg_invoice_failed", locale)
         await messenger_client.send_text(
             chat_id=incoming_message.chat_id,
-            text="Не удалось создать счет. Попробуйте позже.",
+            text=msg_failed,
         )
 
 
@@ -163,6 +179,7 @@ async def pay_order(
     payment_service: PaymentService,
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -171,59 +188,82 @@ async def pay_order(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_payment_blocked",
+            "msg_payment_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
-        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_payment_blocked", ""),
+        pause_msg=allow_msgs.get("msg_payment_pause", ""),
     )
     if user is None:
         return
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_advertiser_profile_fill", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Профиль рекламодателя не заполнен. Команда: /advertiser",
+            text=msg_fill,
         )
         return
 
     args = (incoming.text or "").split()
     if len(args) < 2:
+        msg_usage = await bot_texts_service.get("msg_pay_order_usage", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Использование: /pay_order <order_id>",
+            text=msg_usage,
         )
         return
 
     try:
         order_id = UUID(args[1])
     except ValueError:
+        msg_invalid_id = await bot_texts_service.get(
+            "msg_invalid_order_id", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Неверный формат order_id.",
+            text=msg_invalid_id,
         )
         return
 
     order = await payment_service.get_order(order_id)
     if order is None:
+        msg_not_found = await bot_texts_service.get(
+            "msg_order_not_found", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Заказ не найден.",
+            text=msg_not_found,
         )
         return
     if order.advertiser_id != user.user_id:
+        msg_not_yours = await bot_texts_service.get(
+            "msg_order_not_yours", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Заказ не принадлежит рекламодателю.",
+            text=msg_not_yours,
         )
         return
     if order.status != OrderStatus.NEW:
+        msg_not_new = await bot_texts_service.get("msg_order_not_new", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Заказ не в статусе NEW.",
+            text=msg_not_new,
         )
         return
 
@@ -231,19 +271,28 @@ async def pay_order(
         order.bloggers_needed
     )
     if contact_price is None:
+        msg_pricing = await bot_texts_service.get(
+            "msg_pricing_not_configured", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Стоимость доступа не настроена. Свяжитесь с поддержкой.",
+            text=msg_pricing,
         )
         return
 
     if not config.bot.telegram_provider_token:
+        msg_provider = await bot_texts_service.get(
+            "msg_payment_provider_not_configured", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Платежный провайдер не настроен.",
+            text=msg_provider,
         )
         return
 
+    receipt_desc = (
+        await bot_texts_service.get("receipt_description", locale)
+    ).strip() or None
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
@@ -251,6 +300,8 @@ async def pay_order(
         offer_text=order.offer_text,
         price_value=contact_price,
         config=config,
+        bot_texts_service=bot_texts_service,
+        receipt_description=receipt_desc,
     )
 
 
@@ -266,6 +317,7 @@ async def pay_order_callback(
     payment_service: PaymentService,
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -276,22 +328,34 @@ async def pay_order_callback(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_payment_blocked",
+            "msg_payment_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
-        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_payment_blocked", ""),
+        pause_msg=allow_msgs.get("msg_payment_pause", ""),
     )
     if user is None:
         return
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     if advertiser is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_advertiser_profile_fill", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Профиль рекламодателя не заполнен. Команда: /advertiser",
+            text=msg_fill,
         )
         return
 
@@ -299,29 +363,39 @@ async def pay_order_callback(
     try:
         order_id = UUID(raw)
     except ValueError:
+        msg_invalid_fmt = await bot_texts_service.get(
+            "msg_invalid_order_format", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Неверный формат заказа.",
+            text=msg_invalid_fmt,
         )
         return
 
     order = await payment_service.get_order(order_id)
     if order is None:
+        msg_not_found = await bot_texts_service.get(
+            "msg_order_not_found", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Заказ не найден.",
+            text=msg_not_found,
         )
         return
     if order.advertiser_id != user.user_id:
+        msg_not_yours = await bot_texts_service.get(
+            "msg_order_not_yours", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Заказ не принадлежит рекламодателю.",
+            text=msg_not_yours,
         )
         return
     if order.status != OrderStatus.NEW:
+        msg_not_new = await bot_texts_service.get("msg_order_not_new", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Заказ не в статусе NEW.",
+            text=msg_not_new,
         )
         return
 
@@ -329,19 +403,28 @@ async def pay_order_callback(
         order.bloggers_needed
     )
     if contact_price is None:
+        msg_pricing = await bot_texts_service.get(
+            "msg_pricing_not_configured", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Стоимость доступа не настроена. Свяжитесь с поддержкой.",
+            text=msg_pricing,
         )
         return
 
     if not config.bot.telegram_provider_token:
+        msg_provider = await bot_texts_service.get(
+            "msg_payment_provider_not_configured", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Платежный провайдер не настроен.",
+            text=msg_provider,
         )
         return
 
+    receipt_desc = (
+        await bot_texts_service.get("receipt_description", locale)
+    ).strip() or None
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
@@ -349,6 +432,8 @@ async def pay_order_callback(
         offer_text=order.offer_text,
         price_value=contact_price,
         config=config,
+        bot_texts_service=bot_texts_service,
+        receipt_description=receipt_desc,
     )
 
 
@@ -374,6 +459,7 @@ async def successful_payment_handler(
     payment_service: PaymentService,
     content_moderation_service: ContentModerationService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -385,13 +471,22 @@ async def successful_payment_handler(
     if incoming.successful_payment is None:
         return
 
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_payment_blocked",
+            "msg_payment_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные пользователи не могут оплачивать заказы.",
-        pause_msg="Пользователи на паузе не могут оплачивать заказы.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_payment_blocked", ""),
+        pause_msg=allow_msgs.get("msg_payment_pause", ""),
     )
     if user is None:
         return
@@ -400,9 +495,12 @@ async def successful_payment_handler(
     try:
         order_id = UUID(payload)
     except ValueError:
+        msg_undetermined = await bot_texts_service.get(
+            "msg_order_undetermined", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Не удалось определить заказ.",
+            text=msg_undetermined,
         )
         return
 
@@ -437,20 +535,39 @@ async def successful_payment_handler(
             user_role_service=user_role_service,
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
+            currency_symbol=config.market.currency_symbol,
         )
 
-    await messenger_client.send_text(
-        chat_id=incoming.chat_id,
-        text=ADVERTISER_AFTER_PAYMENT_SUCCESS,
+    msg_success = await bot_texts_service.get(
+        "msg_advertiser_after_payment_success", locale
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=ADVERTISER_AFTER_PAYMENT_WHAT_NEXT,
-        parse_mode="Markdown",
+        text=msg_success,
+    )
+    msg_what_next = await bot_texts_service.get(
+        "msg_advertiser_after_payment_what_next", locale
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=ADVERTISER_AFTER_PAYMENT_IMPORTANT,
+        text=msg_what_next,
         parse_mode="Markdown",
-        keyboard=advertiser_after_payment_keyboard(),
+    )
+    after_texts = await bot_texts_service.get_many(
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+        ],
+        locale,
+    )
+    msg_important = await bot_texts_service.get(
+        "msg_advertiser_after_payment_important", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=msg_important,
+        parse_mode="Markdown",
+        keyboard=advertiser_menu_inline_keyboard(after_texts),
     )

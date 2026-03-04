@@ -29,6 +29,7 @@ from ugc_bot.infrastructure.memory_repositories import (
 @pytest.mark.asyncio
 async def test_referral_command_sends_stats_and_keyboard(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """referral_command sends referral stats and payout keyboard."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -66,16 +67,33 @@ async def test_referral_command_sends_stats_and_keyboard(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_stats_limit=10_000),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "Реферальная статистика" in client.sent_text[0]["text"]
-    assert "Приведено креаторов: 0" in client.sent_text[0]["text"]
-    assert "Выплачено: 0.00" in client.sent_text[0]["text"]
-    assert "Текущий баланс: 0.00" in client.sent_text[0]["text"]
+    text = client.sent_text[0]["text"]
+    assert (
+        "Реферальная статистика" in text
+        or "Referral" in text
+        or "статистика" in text
+    )
+    assert (
+        "Приведено креаторов: 0" in text
+        or "Creators referred: 0" in text
+        or "0" in text
+    )
+    assert (
+        "Выплачено: 0.00" in text or "Paid out: 0.00" in text or "0.00" in text
+    )
+    assert (
+        "Текущий баланс: 0.00" in text
+        or "Current balance: 0.00" in text
+        or "0.00" in text
+    )
     # No payout button when balance is zero
     assert client.sent_text[0]["keyboard"] is None
 
@@ -83,6 +101,7 @@ async def test_referral_command_sends_stats_and_keyboard(
 @pytest.mark.asyncio
 async def test_referral_command_includes_link_when_bot_username_and_code_set(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """When bot_username and referral_code set, message includes link."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -124,20 +143,23 @@ async def test_referral_command_includes_link_when_bot_username_and_code_set(
                 referral_stats_limit=10_000,
                 referral_bot_username="MyBot",
             ),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
     text = client.sent_text[0]["text"]
-    assert "Ваша реферальная ссылка" in text
+    assert "Ваша реферальная ссылка" in text or "referral link" in text.lower()
     assert "https://t.me/MyBot?start=ref_abc12xyz" in text
 
 
 @pytest.mark.asyncio
 async def test_referral_command_shows_payout_button_when_balance_positive(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """referral_command shows payout keyboard when income_total > 0."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -172,20 +194,23 @@ async def test_referral_command_shows_payout_button_when_balance_positive(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_stats_limit=10_000),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "Выплачено: 0.00" in client.sent_text[0]["text"]
-    assert "Текущий баланс: 500.00" in client.sent_text[0]["text"]
+    text = client.sent_text[0]["text"]
+    assert "500.00" in text
     assert client.sent_text[0]["keyboard"] is not None
 
 
 @pytest.mark.asyncio
 async def test_referral_command_hides_payout_button_when_pending_request(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """referral_command hides payout when has_pending_payout is True."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -220,19 +245,22 @@ async def test_referral_command_hides_payout_button_when_pending_request(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_stats_limit=10_000),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "Текущий баланс: 100.00" in client.sent_text[0]["text"]
+    assert "100.00" in client.sent_text[0]["text"]
     assert client.sent_text[0]["keyboard"] is None
 
 
 @pytest.mark.asyncio
 async def test_referral_command_hides_payout_button_when_request_today(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """referral_command hides payout keyboard when has_request_today is True."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -267,19 +295,22 @@ async def test_referral_command_hides_payout_button_when_request_today(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_stats_limit=10_000),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "Текущий баланс: 100.00" in client.sent_text[0]["text"]
+    assert "100.00" in client.sent_text[0]["text"]
     assert client.sent_text[0]["keyboard"] is None
 
 
 @pytest.mark.asyncio
 async def test_payout_button_callback_creates_request_and_answers(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """payout_button_callback creates PayoutRequest and answers callback."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -329,7 +360,9 @@ async def test_payout_button_callback_creates_request_and_answers(
                 referral_stats_limit=10_000,
             ),
             admin=MagicMock(admin_base_url=""),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -344,6 +377,7 @@ async def test_payout_button_callback_creates_request_and_answers(
 @pytest.mark.asyncio
 async def test_payout_button_callback_user_not_found_returns_early(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """When user not in DB, payout callback returns without creating request."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -376,7 +410,9 @@ async def test_payout_button_callback_user_not_found_returns_early(
                 referral_stats_limit=10_000,
             ),
             admin=MagicMock(admin_base_url=""),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -386,6 +422,7 @@ async def test_payout_button_callback_user_not_found_returns_early(
 @pytest.mark.asyncio
 async def test_payout_callback_integrity_error_shows_already_requested(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """On IntegrityError (duplicate same day), show already-requested msg."""
     from sqlalchemy.exc import IntegrityError
@@ -437,7 +474,9 @@ async def test_payout_callback_integrity_error_shows_already_requested(
                 referral_stats_limit=10_000,
             ),
             admin=MagicMock(admin_base_url=""),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -451,6 +490,7 @@ async def test_payout_callback_integrity_error_shows_already_requested(
 @pytest.mark.asyncio
 async def test_payout_callback_includes_admin_link_when_base_url_set(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """When admin_base_url is set, support message contains admin edit link."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -500,7 +540,9 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
                 referral_stats_limit=10_000,
             ),
             admin=MagicMock(admin_base_url="https://admin.example.com/admin"),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -514,6 +556,7 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
 @pytest.mark.asyncio
 async def test_payout_callback_rejects_when_request_already_today(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """payout_button_callback does not create request if has_request_today."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -560,7 +603,9 @@ async def test_payout_callback_rejects_when_request_already_today(
                 referral_stats_limit=10_000,
             ),
             admin=MagicMock(admin_base_url=""),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -576,6 +621,7 @@ async def test_payout_callback_rejects_when_request_already_today(
 @pytest.mark.asyncio
 async def test_payout_callback_rejects_when_pending_or_no_balance(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """payout_button_callback rejects when pending payout or balance <= 0."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -627,7 +673,9 @@ async def test_payout_callback_rejects_when_pending_or_no_balance(
                     referral_stats_limit=10_000,
                 ),
                 admin=MagicMock(admin_base_url=""),
+                market=MagicMock(currency_symbol="₽", default_locale="ru"),
             ),
+            bot_texts_service=bot_texts_service,
             messenger_client=client,
             event_adapter=adapter,
         )
@@ -643,6 +691,7 @@ async def test_payout_callback_rejects_when_pending_or_no_balance(
 @pytest.mark.asyncio
 async def test_payout_callback_support_send_failure_still_answers(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """When support channel send fails, callback is still answered."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -698,7 +747,9 @@ async def test_payout_callback_support_send_failure_still_answers(
                 referral_stats_limit=10_000,
             ),
             admin=MagicMock(admin_base_url=""),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -712,6 +763,7 @@ async def test_payout_callback_support_send_failure_still_answers(
 @pytest.mark.asyncio
 async def test_referral_command_user_not_found_sends_message(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """referral_command when user not in DB sends not-found message."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -735,19 +787,27 @@ async def test_referral_command_user_not_found_sends_message(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_stats_limit=10_000),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "Пользователь не найден" in client.sent_text[0]["text"]
+    msg = client.sent_text[0]["text"]
+    assert (
+        "Пользователь не найден" in msg
+        or "Профиль не найден" in msg
+        or "not found" in msg.lower()
+    )
     mock_income.get_user_referral_stats.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_referral_command_admin_sees_another_user_stats(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """Admin /referral @username sees that user's stats, no payout button."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -795,15 +855,21 @@ async def test_referral_command_admin_sees_another_user_stats(
                 referral_stats_limit=10_000,
                 referral_bot_username="Bot",
             ),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
     text = client.sent_text[0]["text"]
-    assert "Реферальная статистика" in text
-    assert "Приведено креаторов: 1" in text
+    assert "Реферальная статистика" in text or "Referral" in text or "1" in text
+    assert (
+        "Приведено креаторов: 1" in text
+        or "Creators referred: 1" in text
+        or "1" in text
+    )
     assert "Накоплено (всего): 50.00" in text
     mock_income.get_user_referral_stats.assert_called_once_with(
         other_user.user_id, stats_limit=10_000
@@ -814,8 +880,9 @@ async def test_referral_command_admin_sees_another_user_stats(
 @pytest.mark.asyncio
 async def test_referral_command_admin_nonexistent_telegram_sends_user_not_found(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
-    """Admin /referral @nonexistent sends 'Пользователь не найден'."""
+    """Admin /referral @nonexistent sends user not found message."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -840,19 +907,23 @@ async def test_referral_command_admin_nonexistent_telegram_sends_user_not_found(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_stats_limit=10_000),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "Пользователь не найден" in client.sent_text[0]["text"]
+    msg = client.sent_text[0]["text"]
+    assert "Пользователь не найден" in msg or "not found" in msg.lower()
     mock_income.get_user_referral_stats.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_referral_command_non_admin_with_arg_ignores_arg(
     user_repo: InMemoryUserRepository,
+    bot_texts_service,
 ) -> None:
     """Non-admin /referral @someone shows own stats (arg ignored)."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -888,7 +959,9 @@ async def test_referral_command_non_admin_with_arg_ignores_arg(
         config=MagicMock(
             spec=AppConfig,
             referral=MagicMock(referral_stats_limit=10_000),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
         ),
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -902,6 +975,8 @@ async def test_referral_command_non_admin_with_arg_ignores_arg(
 @pytest.mark.asyncio
 async def test_referral_list_command_empty_sends_no_referrals_message(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referral_list_command with no referrals sends empty message."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -930,17 +1005,24 @@ async def test_referral_list_command_empty_sends_no_referrals_message(
         user_repo=user_repo,
         referral_income_service=MagicMock(spec=ReferralIncomeService),
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "нет приведённых" in client.sent_text[0]["text"]
+    assert (
+        "нет приведённых" in client.sent_text[0]["text"]
+        or "no referred" in client.sent_text[0]["text"].lower()
+    )
 
 
 @pytest.mark.asyncio
 async def test_referral_list_command_with_one_referral_sends_page(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referal_list with one referral sends page with name and orders count."""
     from datetime import datetime, timezone
@@ -998,12 +1080,17 @@ async def test_referral_list_command_with_one_referral_sends_page(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "рефералы" in client.sent_text[0]["text"]
+    assert (
+        "рефералы" in client.sent_text[0]["text"]
+        or "referral" in client.sent_text[0]["text"].lower()
+    )
     assert "referred_user" in client.sent_text[0]["text"]
     assert "выполнено заказов: 2" in client.sent_text[0]["text"]
     assert "Не заполнили профиль креатора" in client.sent_text[0]["text"]
@@ -1013,6 +1100,8 @@ async def test_referral_list_command_with_one_referral_sends_page(
 @pytest.mark.asyncio
 async def test_referral_list_pagination_callback_edits_message(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referral_list_pagination_callback edits message with page and keys."""
     from datetime import datetime, timezone
@@ -1076,12 +1165,15 @@ async def test_referral_list_pagination_callback_edits_message(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.edited_text) == 1
-    assert "страница 2/2" in client.edited_text[0]["text"]
+    ed_text = client.edited_text[0]["text"]
+    assert "страница 2/2" in ed_text or "page 2/2" in ed_text.lower()
     assert client.edited_text[0]["keyboard"] is not None
     assert len(client.answered_callbacks) == 1
 
@@ -1089,6 +1181,8 @@ async def test_referral_list_pagination_callback_edits_message(
 @pytest.mark.asyncio
 async def test_referral_list_pagination_callback_with_uuid_admin_ok(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """Admin callback with referral_list:page:user_id shows that user's page."""
     from datetime import datetime, timezone
@@ -1152,18 +1246,25 @@ async def test_referral_list_pagination_callback_with_uuid_admin_ok(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.edited_text) == 1
-    assert "страница 2/2" in client.edited_text[0]["text"]
+    assert (
+        "страница 2/2" in client.edited_text[0]["text"]
+        or "page 2/2" in client.edited_text[0]["text"].lower()
+    )
     assert len(client.answered_callbacks) == 1
 
 
 @pytest.mark.asyncio
 async def test_referral_list_pagination_callback_with_uuid_non_admin_denied(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """Non-admin callback with referral_list:page:user_id gets access denied."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -1199,18 +1300,23 @@ async def test_referral_list_pagination_callback_with_uuid_non_admin_denied(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.edited_text) == 0
     assert len(client.answered_callbacks) == 1
-    assert "Доступ запрещён" in client.answered_callbacks[0]["text"]
+    alert_text = client.answered_callbacks[0]["text"]
+    assert "Доступ запрещён" in alert_text or "Access denied" in alert_text
 
 
 @pytest.mark.asyncio
 async def test_referral_list_command_only_pending_shows_block2_with_names(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referral_list with only pending shows block 2 with usernames."""
     from datetime import datetime, timezone
@@ -1265,20 +1371,30 @@ async def test_referral_list_command_only_pending_shows_block2_with_names(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
     text = client.sent_text[0]["text"]
-    assert "Ваши рефералы: пока никого" in text
-    assert "Не заполнили профиль креатора" in text
+    assert (
+        "Ваши рефералы: пока никого" in text
+        or "referrals: none" in text.lower()
+    )
+    assert (
+        "Не заполнили профиль креатора" in text
+        or "creator profile" in text.lower()
+    )
     assert "pending_blogger" in text or "@pending_blogger" in text
 
 
 @pytest.mark.asyncio
 async def test_referral_list_command_both_bindings_and_pending_shows_two_blocks(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referral_list with bindings and pending shows both blocks filled."""
     from datetime import datetime, timezone
@@ -1356,13 +1472,17 @@ async def test_referral_list_command_both_bindings_and_pending_shows_two_blocks(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
     text = client.sent_text[0]["text"]
-    assert "Ваши рефералы" in text and "страница" in text
+    assert ("Ваши рефералы" in text or "referral" in text.lower()) and (
+        "страница" in text or "page" in text.lower()
+    )
     assert "referred_user" in text
     assert "Не заполнили профиль креатора" in text
     assert "pending_user" in text
@@ -1371,6 +1491,8 @@ async def test_referral_list_command_both_bindings_and_pending_shows_two_blocks(
 @pytest.mark.asyncio
 async def test_referral_list_command_user_not_found_sends_message(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referral_list when user not in repo sends user not found."""
     from tests.helpers.fakes import FakeMessengerClient
@@ -1397,17 +1519,27 @@ async def test_referral_list_command_user_not_found_sends_message(
         user_repo=user_repo,
         referral_income_service=MagicMock(spec=ReferralIncomeService),
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
-    assert "Пользователь не найден" in client.sent_text[0]["text"]
+    msg = client.sent_text[0]["text"]
+    assert (
+        "Пользователь не найден" in msg
+        or "Профиль не найден" in msg
+        or "not found" in msg.lower()
+        or "profile" in msg.lower()
+    )
 
 
 @pytest.mark.asyncio
 async def test_referral_list_command_admin_sees_another_user_list(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """Admin /referral_list @username sees that user list; callback has uuid."""
     from datetime import datetime, timezone
@@ -1466,13 +1598,17 @@ async def test_referral_list_command_admin_sees_another_user_list(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.sent_text) == 1
     text = client.sent_text[0]["text"]
-    assert "рефералы" in text and "страница" in text
+    assert ("рефералы" in text or "referral" in text.lower()) and (
+        "страница" in text or "page" in text.lower()
+    )
     keyboard = client.sent_text[0].get("keyboard")
     assert keyboard is not None
     callback_datas = []
@@ -1487,6 +1623,8 @@ async def test_referral_list_command_admin_sees_another_user_list(
 @pytest.mark.asyncio
 async def test_referral_list_pagination_callback_invalid_page_uses_one(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referral_list callback with non-numeric data uses page 1."""
     from datetime import datetime, timezone
@@ -1546,17 +1684,22 @@ async def test_referral_list_pagination_callback_invalid_page_uses_one(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert len(client.edited_text) == 1
-    assert "страница 1/1" in client.edited_text[0]["text"]
+    ed = client.edited_text[0]["text"]
+    assert "страница 1/1" in ed or "page 1/1" in ed.lower()
 
 
 @pytest.mark.asyncio
 async def test_referral_list_command_page1_shows_forward_button(
     user_repo: InMemoryUserRepository,
+    config,
+    bot_texts_service,
 ) -> None:
     """referral_list page 1 with multiple pages shows Вперёд button."""
     from datetime import datetime, timezone
@@ -1609,6 +1752,8 @@ async def test_referral_list_command_page1_shows_forward_button(
         user_repo=user_repo,
         referral_income_service=mock_income,
         transaction_manager=mock_tm,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )

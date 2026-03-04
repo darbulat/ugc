@@ -7,7 +7,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Protocol
+from typing import Any, Optional, Protocol, cast
 
 from ugc_bot.application.errors import ScrapeCreatorsAPIError
 from ugc_bot.application.ports import (
@@ -285,7 +285,126 @@ class InstagramStatsCollectorService:
         self._stats_update_interval_seconds = stats_update_interval_seconds
         self._aiograpi_fetcher = aiograpi_fetcher
 
-    async def run_once(self) -> RunOnceResult:  # noqa: C901
+    async def _fetch_raw_stats(
+        self, username: str, user_id_str: str
+    ) -> tuple[Optional[dict], str, Optional[str]]:
+        """Fetch raw stats from primary client, optionally fallback to aiograpi.
+
+        Returns (raw_dict, provider_name, error_reason). On success raw_dict is
+        set and error_reason is None. On failure raw_dict is None and
+        error_reason is set for failed_users.
+        """
+        provider = "scrapecreators"
+        client = cast(
+            InstagramStatsProviderClient,
+            self.stats_provider_client,
+        )
+        try:
+            raw, provider = await client.get_profile_stats_with_provider(
+                username
+            )
+        except ScrapeCreatorsAPIError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch Instagram stats",
+                extra={
+                    "user_id": user_id_str,
+                    "username": username,
+                    "error": str(exc),
+                },
+                exc_info=exc,
+            )
+            return None, "", str(exc)
+
+        if raw and isinstance(raw, dict):
+            return raw, provider or "scrapecreators", None
+
+        if self._aiograpi_fetcher:
+            try:
+                raw = (
+                    await self._aiograpi_fetcher.get_profile_stats_by_username(
+                        username
+                    )
+                )
+                if raw and isinstance(raw, dict):
+                    return raw, "aiograpi", None
+            except Exception as exc:
+                logger.warning(
+                    "Aiograpi fallback failed for %s: %s",
+                    username,
+                    exc,
+                    extra={
+                        "user_id": user_id_str,
+                        "username": username,
+                        "error": str(exc),
+                    },
+                )
+                return None, "", str(exc)
+
+        return None, "", "no_stats_data"
+
+    async def _process_one_profile(
+        self, profile: BloggerProfile, now: datetime
+    ) -> tuple[bool, dict]:
+        """Process one profile: fetch stats and save. Return (ok, user_info)."""
+        user_id_str = str(profile.user_id)
+        username = _username_from_profile(profile)
+        if not username:
+            logger.debug(
+                "Skipping profile without Instagram username",
+                extra={"user_id": user_id_str},
+            )
+            return False, {
+                "user_id": user_id_str,
+                "username": "",
+                "reason": "no_instagram_username",
+            }
+
+        raw, _provider, error_reason = await self._fetch_raw_stats(
+            username, user_id_str
+        )
+        if not raw or not isinstance(raw, dict):
+            return False, {
+                "user_id": user_id_str,
+                "username": username,
+                "reason": error_reason or "no_stats_data",
+            }
+
+        followers, follows, media, parsed_username, biography = (
+            _extract_typed_fields(raw)
+        )
+        stats = InstagramStats(
+            user_id=profile.user_id,
+            raw_response=raw,
+            fetched_at=now,
+            followers_count=followers,
+            follows_count=follows,
+            media_count=media,
+            instagram_username=parsed_username or username,
+            biography=biography,
+            provider=_provider or "scrapecreators",
+            instagram_id=_extract_instagram_id(raw),
+        )
+
+        async def _save(
+            session: object | None,
+            stats_to_save: InstagramStats = stats,
+        ) -> None:
+            await self.instagram_stats_repo.save(stats_to_save, session=session)
+
+        await with_optional_tx(self.transaction_manager, _save)
+        logger.debug(
+            "Saved Instagram stats",
+            extra={
+                "user_id": user_id_str,
+                "username": username,
+                "followers": followers,
+            },
+        )
+        return True, {"user_id": user_id_str, "username": username}
+
+    async def run_once(self) -> RunOnceResult:
         """Fetch stats for one batch; save to instagram_stats.
 
         Returns:
@@ -325,131 +444,13 @@ class InstagramStatsCollectorService:
         failed_users: list[dict] = []
 
         for profile in profiles:
-            user_id_str = str(profile.user_id)
-            username = _username_from_profile(profile)
-            if not username:
-                logger.debug(
-                    "Skipping profile without Instagram username",
-                    extra={"user_id": user_id_str},
-                )
+            success, user_info = await self._process_one_profile(profile, now)
+            if success:
+                updated += 1
+                updated_users.append(user_info)
+            else:
                 errors += 1
-                failed_users.append(
-                    {
-                        "user_id": user_id_str,
-                        "username": "",
-                        "reason": "no_instagram_username",
-                    }
-                )
-                continue
-
-            try:
-                client = self.stats_provider_client
-                raw, provider = await client.get_profile_stats_with_provider(
-                    username
-                )
-            except ScrapeCreatorsAPIError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    "Failed to fetch Instagram stats",
-                    extra={
-                        "user_id": user_id_str,
-                        "username": username,
-                        "error": str(exc),
-                    },
-                    exc_info=exc,
-                )
-                errors += 1
-                failed_users.append(
-                    {
-                        "user_id": user_id_str,
-                        "username": username,
-                        "reason": str(exc),
-                    }
-                )
-                continue
-
-            if not raw or not isinstance(raw, dict):
-                if self._aiograpi_fetcher:
-                    try:
-                        fetcher = self._aiograpi_fetcher
-                        raw = await fetcher.get_profile_stats_by_username(
-                            username
-                        )
-                        provider = "aiograpi"
-                    except Exception as exc:
-                        logger.warning(
-                            "Aiograpi fallback failed for %s: %s",
-                            username,
-                            exc,
-                            extra={
-                                "user_id": user_id_str,
-                                "username": username,
-                                "error": str(exc),
-                            },
-                        )
-                        errors += 1
-                        failed_users.append(
-                            {
-                                "user_id": user_id_str,
-                                "username": username,
-                                "reason": str(exc),
-                            }
-                        )
-                        continue
-                if not raw or not isinstance(raw, dict):
-                    logger.debug(
-                        "No stats data returned",
-                        extra={
-                            "user_id": user_id_str,
-                            "username": username,
-                        },
-                    )
-                    errors += 1
-                    failed_users.append(
-                        {
-                            "user_id": user_id_str,
-                            "username": username,
-                            "reason": "no_stats_data",
-                        }
-                    )
-                    continue
-
-            followers, follows, media, parsed_username, biography = (
-                _extract_typed_fields(raw)
-            )
-            stats = InstagramStats(
-                user_id=profile.user_id,
-                raw_response=raw,
-                fetched_at=now,
-                followers_count=followers,
-                follows_count=follows,
-                media_count=media,
-                instagram_username=parsed_username or username,
-                biography=biography,
-                provider=provider or "scrapecreators",
-                instagram_id=_extract_instagram_id(raw),
-            )
-
-            async def _save(
-                session: object | None,
-                stats_to_save: InstagramStats = stats,
-            ) -> None:
-                await self.instagram_stats_repo.save(
-                    stats_to_save, session=session
-                )
-
-            await with_optional_tx(self.transaction_manager, _save)
-            updated += 1
-            updated_users.append({"user_id": user_id_str, "username": username})
-            logger.debug(
-                "Saved Instagram stats",
-                extra={
-                    "user_id": user_id_str,
-                    "username": username,
-                    "followers": followers,
-                },
-            )
+                failed_users.append(user_info)
             await asyncio.sleep(random_delay_seconds(self._delay_seconds))
 
         return RunOnceResult(

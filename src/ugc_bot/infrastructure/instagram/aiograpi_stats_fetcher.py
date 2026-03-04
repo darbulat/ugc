@@ -10,6 +10,28 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+def _import_aiograpi():
+    """Import aiograpi Client and exceptions. Return tuple or None."""
+    _apply_httpx_proxies_compat()
+    try:
+        from aiograpi import Client  # type: ignore[import-untyped]
+        from aiograpi.exceptions import (  # type: ignore[import-untyped]
+            LoginRequired,
+            UserNotFound,
+        )
+
+        try:
+            from aiograpi.exceptions import (  # type: ignore[import-untyped]
+                FeedbackRequired,
+            )
+        except ImportError:
+            FeedbackRequired = None  # type: ignore[misc, assignment]
+        return Client, UserNotFound, LoginRequired, FeedbackRequired
+    except ImportError:
+        logger.warning("aiograpi not installed, cannot use aiograpi fallback")
+        return None
+
+
 def _apply_httpx_proxies_compat() -> None:
     """Make httpx.AsyncClient accept 'proxies' for aiograpi (httpx 0.28+).
 
@@ -60,7 +82,42 @@ class AiograpiStatsFetcher:
         """Return True if credentials are set."""
         return bool(self._instagram_username and self._instagram_password)
 
-    async def get_profile_stats_by_username(  # noqa: C901, PLR0912
+    async def _create_and_login_client(self, ClientCls):
+        """Create Client, load session, login. Return client or None."""
+        cl = ClientCls()
+        if self._session_path.exists():
+            try:
+                cl.load_settings(str(self._session_path))
+            except Exception as e:
+                logger.debug("Could not load aiograpi session: %s", e)
+        try:
+            await cl.login(self._instagram_username, self._instagram_password)
+        except Exception as e:
+            logger.warning("Aiograpi login failed: %s", e)
+            return None
+        return cl
+
+    async def _fetch_user_with_retry(
+        self, cl, username_clean: str, ClientCls, UserNotFound, LoginRequired
+    ):
+        """Fetch user; on LoginRequired re-login and retry."""
+        try:
+            return await cl.user_info_by_username_v1(username_clean)
+        except UserNotFound:
+            return None
+        except LoginRequired:
+            logger.info("Aiograpi session expired, re-logging in...")
+            cl = ClientCls()
+            try:
+                await cl.login(
+                    self._instagram_username, self._instagram_password
+                )
+                return await cl.user_info_by_username_v1(username_clean)
+            except Exception as inner_e:
+                logger.warning("Aiograpi re-login or fetch failed: %s", inner_e)
+                return None
+
+    async def get_profile_stats_by_username(
         self, username: str
     ) -> Optional[dict[str, Any]]:
         """Fetch profile stats for username.
@@ -69,60 +126,21 @@ class AiograpiStatsFetcher:
         """
         if not self.is_configured():
             return None
-        _apply_httpx_proxies_compat()
+
+        imp = _import_aiograpi()
+        if imp is None:
+            return None
+        ClientCls, UserNotFound, LoginRequired, FeedbackRequired = imp
+
+        cl = await self._create_and_login_client(ClientCls)
+        if cl is None:
+            return None
+
+        username_clean = username.strip().lower()
         try:
-            from aiograpi import Client  # type: ignore[import-untyped]
-            from aiograpi.exceptions import (  # type: ignore[import-untyped]
-                LoginRequired,
-                UserNotFound,
+            user = await self._fetch_user_with_retry(
+                cl, username_clean, ClientCls, UserNotFound, LoginRequired
             )
-
-            try:
-                from aiograpi.exceptions import (  # type: ignore[import-untyped]
-                    FeedbackRequired,
-                )
-            except ImportError:
-                FeedbackRequired = None  # type: ignore[misc, assignment]
-        except ImportError:
-            logger.warning(
-                "aiograpi not installed, cannot use aiograpi fallback"
-            )
-            return None
-
-        cl = Client()
-        if self._session_path.exists():
-            try:
-                cl.load_settings(str(self._session_path))
-            except Exception as e:
-                logger.debug("Could not load aiograpi session: %s", e)
-
-        try:
-            await cl.login(self._instagram_username, self._instagram_password)
-        except Exception as e:
-            logger.warning("Aiograpi login failed: %s", e)
-            return None
-
-        try:
-            user = await cl.user_info_by_username_v1(username.strip().lower())
-        except UserNotFound:
-            return None
-        except LoginRequired:
-            logger.info("Aiograpi session expired, re-logging in...")
-            cl = Client()
-            try:
-                await cl.login(
-                    self._instagram_username, self._instagram_password
-                )
-                user = await cl.user_info_by_username_v1(
-                    username.strip().lower()
-                )
-            except Exception as e:
-                logger.warning("Aiograpi re-login or fetch failed: %s", e)
-                return None
-            try:
-                cl.dump_settings(str(self._session_path))
-            except OSError as e:
-                logger.debug("Could not save aiograpi session: %s", e)
         except Exception as e:
             if FeedbackRequired is not None and isinstance(e, FeedbackRequired):
                 logger.warning(
@@ -132,11 +150,14 @@ class AiograpiStatsFetcher:
                 )
                 return None
             raise
-        else:
-            try:
-                cl.dump_settings(str(self._session_path))
-            except OSError as e:
-                logger.debug("Could not save aiograpi session: %s", e)
+
+        if user is None:
+            return None
+
+        try:
+            cl.dump_settings(str(self._session_path))
+        except OSError as e:
+            logger.debug("Could not save aiograpi session: %s", e)
 
         return {
             "data": {

@@ -23,6 +23,7 @@ from ugc_bot.application.ports import (
     UserReferralPendingRepository,
     UserRepository,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
@@ -42,10 +43,8 @@ logger = logging.getLogger(__name__)
 
 REFERRAL_PAYOUT_CALLBACK = "referral:payout"
 REFERRAL_LIST_CALLBACK_PREFIX = "referral_list:"
-PAYOUT_BUTTON_TEXT = "Выплатить"
 REFERRAL_LIST_PAGE_SIZE = 10
 REFERRAL_LIST_PENDING_LIMIT = 50
-USER_NOT_FOUND_MSG = "Пользователь не найден."
 
 
 def _parse_telegram_arg_from_command(
@@ -67,6 +66,7 @@ async def _resolve_referral_target_user(
     user_role_service: UserRoleService,
     messenger_client: MessengerClient,
     chat_id: str,
+    user_not_found_msg: str = "Пользователь не найден.",
 ) -> User | None:
     """Resolve target user for referral commands.
 
@@ -81,10 +81,21 @@ async def _resolve_referral_target_user(
     if target is None:
         await messenger_client.send_text(
             chat_id=chat_id,
-            text=USER_NOT_FOUND_MSG,
+            text=user_not_found_msg,
         )
         return None
     return target
+
+
+REFERRAL_STATS_KEYS = (
+    "lbl_referral_stats",
+    "lbl_referral_creators",
+    "lbl_referral_orders",
+    "lbl_referral_income_month",
+    "lbl_referral_income_total",
+    "lbl_referral_paid",
+    "lbl_referral_balance",
+)
 
 
 def _referral_stats_text(
@@ -94,16 +105,23 @@ def _referral_stats_text(
     income_total: float,
     paid_total: float,
     balance: float,
+    currency_symbol: str = "₽",
+    texts: dict[str, str] | None = None,
 ) -> str:
     """Format referral stats message."""
+    t = texts or {}
     return (
-        "📊 Реферальная статистика\n\n"
-        f"Приведено креаторов: {creators_count}\n"
-        f"Выполнено заказов: {orders_count}\n\n"
-        f"Доход за текущий месяц: {income_current_month:.2f} ₽\n"
-        f"Накоплено (всего): {income_total:.2f} ₽\n"
-        f"Выплачено: {paid_total:.2f} ₽\n"
-        f"Текущий баланс: {balance:.2f} ₽"
+        f"{t.get('lbl_referral_stats', '')}\n\n"
+        f"{t.get('lbl_referral_creators', '')}: {creators_count}\n"
+        f"{t.get('lbl_referral_orders', '')}: {orders_count}\n\n"
+        f"{t.get('lbl_referral_income_month', '')}: "
+        f"{income_current_month:.2f} {currency_symbol}\n"
+        f"{t.get('lbl_referral_income_total', '')}: "
+        f"{income_total:.2f} {currency_symbol}\n"
+        f"{t.get('lbl_referral_paid', '')}: "
+        f"{paid_total:.2f} {currency_symbol}\n"
+        f"{t.get('lbl_referral_balance', '')}: "
+        f"{balance:.2f} {currency_symbol}"
     )
 
 
@@ -111,6 +129,7 @@ def _referral_keyboard(
     balance: float,
     has_pending_payout: bool,
     has_request_today: bool,
+    payout_button_text: str = "Выплатить",
 ) -> Keyboard | None:
     """Payout button only when balance > 0, no pending and no request today."""
     if balance <= 0 or has_pending_payout or has_request_today:
@@ -120,7 +139,7 @@ def _referral_keyboard(
         rows=[
             [
                 Button(
-                    text=PAYOUT_BUTTON_TEXT,
+                    text=payout_button_text,
                     callback_data=REFERRAL_PAYOUT_CALLBACK,
                 )
             ],
@@ -134,6 +153,7 @@ async def referral_command(
     user_role_service: UserRoleService,
     referral_income_service: ReferralIncomeService,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -142,24 +162,38 @@ async def referral_command(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_referral_blocked",
+            "msg_referral_pause",
+        ],
+        locale,
+    )
+    msg_not_found = allow_msgs.get("msg_profile_not_found_role", "")
+    msg_blocked = allow_msgs.get("msg_referral_blocked", "")
+    msg_pause = allow_msgs.get("msg_referral_pause", "")
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные не могут использовать команду.",
-        pause_msg="Пользователи на паузе не могут использовать команду.",
+        user_not_found_msg=msg_not_found,
+        blocked_msg=msg_blocked,
+        pause_msg=msg_pause,
     )
     if user is None:
         return
 
     telegram_arg = _parse_telegram_arg_from_command(incoming.text, "referral")
+    user_not_found = await bot_texts_service.get("msg_user_not_found", locale)
     target = await _resolve_referral_target_user(
         user,
         telegram_arg,
         user_role_service,
         messenger_client,
         incoming.chat_id,
+        user_not_found_msg=user_not_found,
     )
     if target is None:
         return
@@ -168,6 +202,10 @@ async def referral_command(
         target.user_id, stats_limit=config.referral.referral_stats_limit
     )
     balance = stats.income_total - stats.paid_total
+    stats_texts = await bot_texts_service.get_many(
+        list(REFERRAL_STATS_KEYS) + ["msg_referral_link_intro", "btn_payout"],
+        locale,
+    )
     text = _referral_stats_text(
         creators_count=stats.creators_count,
         orders_count=stats.orders_count,
@@ -175,15 +213,22 @@ async def referral_command(
         income_total=stats.income_total,
         paid_total=stats.paid_total,
         balance=balance,
+        currency_symbol=config.market.currency_symbol,
+        texts=stats_texts,
     )
     is_own_view = target.user_id == user.user_id
     bot_username = (config.referral.referral_bot_username or "").strip()
     if is_own_view and bot_username and target.referral_code:
         link = f"https://t.me/{bot_username}?start=ref_{target.referral_code}"
-        text = f"Ваша реферальная ссылка:\n{link}\n\n{text}"
+        intro = stats_texts.get("msg_referral_link_intro", "")
+        text = f"{intro}\n{link}\n\n{text}"
+    payout_btn = stats_texts.get("btn_payout", "Выплатить")
     keyboard = (
         _referral_keyboard(
-            balance, stats.has_pending_payout, stats.has_request_today
+            balance,
+            stats.has_pending_payout,
+            stats.has_request_today,
+            payout_button_text=payout_btn,
         )
         if is_own_view
         else None
@@ -203,6 +248,7 @@ async def payout_button_callback(
     payout_request_repo: PayoutRequestRepository,
     transaction_manager: TransactionManager,
     config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -211,13 +257,22 @@ async def payout_button_callback(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
+    locale = config.market.default_locale
+    payout_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found",
+            "msg_referral_payout_blocked",
+            "msg_referral_payout_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Не можете запрашивать выплату.",
-        pause_msg="Пользователи на паузе не могут запрашивать выплату.",
+        user_not_found_msg=payout_msgs.get("msg_user_not_found", ""),
+        blocked_msg=payout_msgs.get("msg_referral_payout_blocked", ""),
+        pause_msg=payout_msgs.get("msg_referral_payout_pause", ""),
     )
     if user is None:
         return
@@ -226,18 +281,22 @@ async def payout_button_callback(
         user.user_id, stats_limit=config.referral.referral_stats_limit
     )
     if stats.has_request_today:
+        msg = await bot_texts_service.get("msg_referral_payout_today", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Вы уже подавали заявку на вывод сегодня.",
+            text=msg,
             show_alert=True,
         )
         return
 
     balance = stats.income_total - stats.paid_total
     if stats.has_pending_payout or balance <= 0:
+        msg = await bot_texts_service.get(
+            "msg_referral_payout_unavailable", locale
+        )
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Выплата недоступна: нет баланса или уже есть заявка.",
+            text=msg,
             show_alert=True,
         )
         return
@@ -257,9 +316,10 @@ async def payout_button_callback(
     try:
         await with_optional_tx(transaction_manager, _run)
     except IntegrityError:
+        msg = await bot_texts_service.get("msg_referral_payout_today", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Вы уже подавали заявку на вывод сегодня.",
+            text=msg,
             show_alert=True,
         )
         return
@@ -272,7 +332,7 @@ async def payout_button_callback(
             f"Пользователь: {user.username or '—'}\n"
             f"telegram: @{user.telegram or '—'}\n"
             f"Request ID: {request.request_id}\n"
-            f"Сумма: {request_amount:.2f} ₽\n"
+            f"Сумма: {request_amount:.2f} {config.market.currency_symbol}\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
         )
         admin_base = (config.admin.admin_base_url or "").strip()
@@ -298,12 +358,13 @@ async def payout_button_callback(
             )
 
     if support_chat_id and not support_notified:
-        reply_text = (
-            "Заявка создана, но не удалось уведомить поддержку. "
-            "Обратитесь в поддержку вручную."
+        reply_text = await bot_texts_service.get(
+            "msg_referral_payout_notify_failed", locale
         )
     else:
-        reply_text = "Запрос на выплату отправлен в поддержку."
+        reply_text = await bot_texts_service.get(
+            "msg_referral_payout_sent", locale
+        )
 
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
@@ -321,6 +382,8 @@ async def referral_list_command(
     user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
     transaction_manager: TransactionManager,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -329,13 +392,22 @@ async def referral_list_command(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_referral_blocked",
+            "msg_referral_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден. Выберите роль через /role.",
-        blocked_msg="Заблокированные не могут использовать команду.",
-        pause_msg="Пользователи на паузе не могут использовать команду.",
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_referral_blocked", ""),
+        pause_msg=allow_msgs.get("msg_referral_pause", ""),
     )
     if user is None:
         return
@@ -343,12 +415,14 @@ async def referral_list_command(
     telegram_arg = _parse_telegram_arg_from_command(
         incoming.text, "referral_list"
     )
+    user_not_found = await bot_texts_service.get("msg_user_not_found", locale)
     target = await _resolve_referral_target_user(
         user,
         telegram_arg,
         user_role_service,
         messenger_client,
         incoming.chat_id,
+        user_not_found_msg=user_not_found,
     )
     if target is None:
         return
@@ -361,12 +435,16 @@ async def referral_list_command(
             target.user_id, session=session
         )
     if total_bindings == 0 and total_pending == 0:
+        msg = await bot_texts_service.get("msg_referral_no_users", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="У вас пока нет приведённых пользователей.",
+            text=msg,
         )
         return
 
+    list_texts = await bot_texts_service.get_many(
+        list(REFERRAL_LIST_TEXTS_KEYS), locale
+    )
     referrer_user_id_for_callback = (
         target.user_id if target.user_id != user.user_id else None
     )
@@ -379,6 +457,7 @@ async def referral_list_command(
         referral_income_service=referral_income_service,
         transaction_manager=transaction_manager,
         referrer_user_id_for_callback=referrer_user_id_for_callback,
+        texts=list_texts,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -398,6 +477,8 @@ async def referral_list_pagination_callback(
     user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
     transaction_manager: TransactionManager,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -406,13 +487,22 @@ async def referral_list_pagination_callback(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
+    locale = config.market.default_locale
+    list_allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_user_not_found",
+            "msg_referral_list_blocked",
+            "msg_referral_list_pause",
+        ],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные не могут просматривать список.",
-        pause_msg="Пользователи на паузе не могут просматривать список.",
+        user_not_found_msg=list_allow_msgs.get("msg_user_not_found", ""),
+        blocked_msg=list_allow_msgs.get("msg_referral_list_blocked", ""),
+        pause_msg=list_allow_msgs.get("msg_referral_list_pause", ""),
     )
     if user is None:
         return
@@ -438,9 +528,13 @@ async def referral_list_pagination_callback(
             referrer_user_id = user.user_id
         else:
             if not user.admin:
+                locale = config.market.default_locale
+                msg = await bot_texts_service.get(
+                    "msg_referral_access_denied", locale
+                )
                 await messenger_client.answer_callback(
                     callback_id=incoming.callback_id,
-                    text="Доступ запрещён.",
+                    text=msg,
                     show_alert=True,
                 )
                 return
@@ -449,6 +543,9 @@ async def referral_list_pagination_callback(
 
     referrer_user_id_for_callback = (
         referrer_user_id if referrer_user_id != user.user_id else None
+    )
+    list_texts = await bot_texts_service.get_many(
+        list(REFERRAL_LIST_TEXTS_KEYS), locale
     )
     text, keyboard = await _render_referral_list_page(
         referrer_user_id=referrer_user_id,
@@ -459,6 +556,7 @@ async def referral_list_pagination_callback(
         referral_income_service=referral_income_service,
         transaction_manager=transaction_manager,
         referrer_user_id_for_callback=referrer_user_id_for_callback,
+        texts=list_texts,
     )
     if incoming.message_id:
         await messenger_client.edit_text(
@@ -485,13 +583,16 @@ async def _build_referral_block1(
     user_repo: UserRepository,
     referral_income_service: ReferralIncomeService,
     session: object,
+    texts: dict[str, str] | None = None,
 ) -> tuple[list[str], int, int, int]:
     """Build block 1 (bindings). Returns (lines, total_pages, total, page)."""
+    t = texts or {}
     total_bindings = await user_referral_binding_repo.count_by_referrer(
         referrer_user_id, session=session
     )
     if total_bindings == 0:
-        return (["Ваши рефералы: пока никого."], 1, 0, 1)
+        empty = t.get("msg_referral_list_empty", "Ваши рефералы: пока никого.")
+        return ([empty], 1, 0, 1)
     total_pages = max(1, ceil(total_bindings / REFERRAL_LIST_PAGE_SIZE))
     page = max(1, min(page, total_pages))
     offset = (page - 1) * REFERRAL_LIST_PAGE_SIZE
@@ -519,12 +620,18 @@ async def _build_referral_block1(
                 u.username if u else None,
             )
         )
-    lines = [f"Ваши рефералы (страница {page}/{total_pages}):"]
+    title_tpl = t.get(
+        "msg_referral_list_title",
+        "Ваши рефералы (страница {page}/{total_pages}):",
+    )
+    title = title_tpl.format(page=page, total_pages=total_pages)
+    lines = [title]
+    orders_done = t.get("lbl_referral_orders_done", "выполнено заказов")
     for idx, (binding, name) in enumerate(
         zip(bindings, names, strict=True), start=offset + 1
     ):
         completed = completed_map.get(binding.referred_user_id, 0)
-        lines.append(f"{idx}. {name} — выполнено заказов: {completed}")
+        lines.append(f"{idx}. {name} — {orders_done}: {completed}")
     return lines, total_pages, total_bindings, page
 
 
@@ -534,14 +641,23 @@ async def _build_pending_block2(
     user_referral_pending_repo: UserReferralPendingRepository,
     user_repo: UserRepository,
     session: object,
+    texts: dict[str, str] | None = None,
 ) -> list[str]:
     """Build block 2 lines (pending users without creator profile)."""
-    lines = ["Не заполнили профиль креатора (напоминайте заполнить):"]
+    t = texts or {}
+    lines = [
+        t.get(
+            "msg_referral_pending_block",
+            "Не заполнили профиль креатора (напоминайте заполнить):",
+        )
+    ]
     pending_count = await user_referral_pending_repo.count_by_referrer(
         referrer_user_id, session=session
     )
     if pending_count == 0:
-        lines.append("Нет рефералов без профиля.")
+        lines.append(
+            t.get("msg_referral_no_pending", "Нет рефералов без профиля.")
+        )
         return lines
     pending_list = list(
         await user_referral_pending_repo.list_by_referrer(
@@ -571,8 +687,10 @@ def _referral_list_pagination_keyboard(
     total_pages: int,
     total_bindings: int,
     referrer_user_id_for_callback: UUID | None = None,
+    texts: dict[str, str] | None = None,
 ) -> Keyboard:
     """Pagination keyboard for referral list when bindings exist."""
+    t = texts or {}
     if total_bindings == 0:
         return Keyboard(kind=KeyboardKind.INLINE, rows=[])
     suffix = (
@@ -582,22 +700,35 @@ def _referral_list_pagination_keyboard(
     )
     nav_buttons: list[Button] = []
     prefix = REFERRAL_LIST_CALLBACK_PREFIX
+    btn_back = t.get("btn_back", "Назад")
+    btn_forward = t.get("btn_forward", "Вперёд")
     if page > 1:
         nav_buttons.append(
             Button(
-                text="Назад",
+                text=btn_back,
                 callback_data=f"{prefix}{page - 1}{suffix}",
             )
         )
     if page < total_pages:
         nav_buttons.append(
             Button(
-                text="Вперёд",
+                text=btn_forward,
                 callback_data=f"{prefix}{page + 1}{suffix}",
             )
         )
     rows = [nav_buttons] if nav_buttons else []
     return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
+
+
+REFERRAL_LIST_TEXTS_KEYS = (
+    "msg_referral_list_title",
+    "msg_referral_list_empty",
+    "lbl_referral_orders_done",
+    "msg_referral_pending_block",
+    "msg_referral_no_pending",
+    "btn_back",
+    "btn_forward",
+)
 
 
 async def _render_referral_list_page(
@@ -610,6 +741,7 @@ async def _render_referral_list_page(
     referral_income_service: ReferralIncomeService,
     transaction_manager: TransactionManager,
     referrer_user_id_for_callback: UUID | None = None,
+    texts: dict[str, str] | None = None,
 ) -> tuple[str, Keyboard]:
     """Build referral list: block 1 (bindings), block 2 (pending)."""
     async with transaction_manager.transaction() as session:
@@ -625,12 +757,14 @@ async def _render_referral_list_page(
             user_repo=user_repo,
             referral_income_service=referral_income_service,
             session=session,
+            texts=texts,
         )
         block2_lines = await _build_pending_block2(
             referrer_user_id=referrer_user_id,
             user_referral_pending_repo=user_referral_pending_repo,
             user_repo=user_repo,
             session=session,
+            texts=texts,
         )
     text = "\n".join(block1_lines) + "\n\n" + "\n".join(block2_lines)
     keyboard = _referral_list_pagination_keyboard(
@@ -638,5 +772,6 @@ async def _render_referral_list_page(
         total_pages,
         total_bindings,
         referrer_user_id_for_callback=referrer_user_id_for_callback,
+        texts=texts,
     )
     return text, keyboard

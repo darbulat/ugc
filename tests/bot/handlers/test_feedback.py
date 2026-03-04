@@ -46,7 +46,13 @@ def order_service(user_repo, advertiser_repo, order_repo, fake_tm):
 
 @pytest.mark.asyncio
 async def test_feedback_handler_advertiser_ok(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser feedback updates interaction."""
 
@@ -79,6 +85,8 @@ async def test_feedback_handler_advertiser_ok(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert callback.answers
@@ -89,7 +97,13 @@ async def test_feedback_handler_advertiser_ok(
 
 @pytest.mark.asyncio
 async def test_feedback_handler_wrong_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback from unrelated user."""
 
@@ -127,13 +141,21 @@ async def test_feedback_handler_wrong_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Недостаточно прав." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_no_callback_data(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When callback has no data, return without error."""
 
@@ -152,13 +174,21 @@ async def test_feedback_handler_no_callback_data(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert not callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_invalid_format(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject malformed callback data."""
 
@@ -173,13 +203,21 @@ async def test_feedback_handler_invalid_format(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Неверный формат ответа." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_invalid_status(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject unknown status values."""
 
@@ -197,13 +235,21 @@ async def test_feedback_handler_invalid_status(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Неверный статус." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_invalid_uuid(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid UUID values."""
 
@@ -218,13 +264,21 @@ async def test_feedback_handler_invalid_uuid(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Неверный идентификатор." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_user_not_found(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when user is missing."""
 
@@ -242,13 +296,21 @@ async def test_feedback_handler_user_not_found(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Пользователь не найден." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_no_from_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle callback without from_user."""
 
@@ -267,13 +329,21 @@ async def test_feedback_handler_no_from_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert not callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_interaction_not_found(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle missing interaction."""
 
@@ -299,13 +369,21 @@ async def test_feedback_handler_interaction_not_found(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Взаимодействие не найдено." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_rejects_blocked_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback from blocked user."""
 
@@ -338,13 +416,21 @@ async def test_feedback_handler_rejects_blocked_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Заблокированные" in ans for ans in callback.answers)
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_rejects_paused_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback from paused user."""
 
@@ -377,13 +463,21 @@ async def test_feedback_handler_rejects_paused_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("паузе" in ans for ans in callback.answers)
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_blogger_wrong_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback from unrelated blogger."""
 
@@ -423,13 +517,21 @@ async def test_feedback_handler_blogger_wrong_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Недостаточно прав." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_feedback_handler_blogger_feedback(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger feedback updates interaction."""
 
@@ -463,6 +565,8 @@ async def test_feedback_handler_blogger_feedback(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert callback.answers
@@ -473,7 +577,13 @@ async def test_feedback_handler_blogger_feedback(
 
 @pytest.mark.asyncio
 async def test_feedback_handler_postpone(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle postpone feedback with remaining postpones."""
 
@@ -510,6 +620,8 @@ async def test_feedback_handler_postpone(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("перенесена" in ans for ans in callback.answers)
@@ -518,7 +630,13 @@ async def test_feedback_handler_postpone(
 
 @pytest.mark.asyncio
 async def test_feedback_handler_postpone_max_reached(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle postpone feedback when max postpones reached."""
 
@@ -555,6 +673,8 @@ async def test_feedback_handler_postpone_max_reached(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("максимум переносов" in ans for ans in callback.answers)
@@ -565,7 +685,13 @@ async def test_feedback_handler_postpone_max_reached(
 
 @pytest.mark.asyncio
 async def test_feedback_handler_exception(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle exceptions gracefully."""
 
@@ -609,6 +735,8 @@ async def test_feedback_handler_exception(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("ошибка" in ans.lower() for ans in callback.answers)
@@ -623,6 +751,8 @@ async def test_feedback_handler_no_deal_shows_reason_keyboard(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user selects no_deal, show reason keyboard (do not record yet)."""
 
@@ -655,6 +785,8 @@ async def test_feedback_handler_no_deal_shows_reason_keyboard(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -665,7 +797,7 @@ async def test_feedback_handler_no_deal_shows_reason_keyboard(
 
 @pytest.mark.asyncio
 async def test_feedback_handler_nps_saves_score(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS callback to comment step; handle_nps_comment saves score."""
 
@@ -694,7 +826,9 @@ async def test_feedback_handler_nps_saves_score(
         data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1080)
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "Спасибо" in callback.answers[0]
     assert state.state == FeedbackStates.waiting_nps_comment
@@ -702,14 +836,22 @@ async def test_feedback_handler_nps_saves_score(
     assert state._data.get("nps_score") == 4
 
     msg = FakeMessage(text="Готово", user=FakeUser(1080))
-    await handle_nps_comment(msg, state, user_service, nps_service)
+    await handle_nps_comment(
+        msg, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert nps_service.nps_repo.scores.get(advertiser.user_id) == [(4, None)]
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_shows_branch_prompt_score_5_adv(
-    user_repo, interaction_repo, nps_service, messenger_client, event_adapter
+    user_repo,
+    interaction_repo,
+    nps_service,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """NPS score 5 with adv kind shows advertiser-specific prompt."""
 
@@ -740,6 +882,8 @@ async def test_handle_nps_shows_branch_prompt_score_5_adv(
         state,
         user_service,
         nps_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -752,7 +896,13 @@ async def test_handle_nps_shows_branch_prompt_score_5_adv(
 
 @pytest.mark.asyncio
 async def test_handle_nps_shows_branch_prompt_score_5_blog(
-    user_repo, interaction_repo, nps_service, messenger_client, event_adapter
+    user_repo,
+    interaction_repo,
+    nps_service,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """NPS score 5 with blog kind shows blogger-specific prompt."""
 
@@ -783,6 +933,8 @@ async def test_handle_nps_shows_branch_prompt_score_5_blog(
         state,
         user_service,
         nps_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -795,7 +947,13 @@ async def test_handle_nps_shows_branch_prompt_score_5_blog(
 
 @pytest.mark.asyncio
 async def test_handle_nps_shows_branch_prompt_score_1_adv(
-    user_repo, interaction_repo, nps_service, messenger_client, event_adapter
+    user_repo,
+    interaction_repo,
+    nps_service,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """NPS score 1 with adv kind shows advertiser-specific prompt."""
 
@@ -819,6 +977,8 @@ async def test_handle_nps_shows_branch_prompt_score_1_adv(
         state,
         user_service,
         nps_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -831,7 +991,7 @@ async def test_handle_nps_shows_branch_prompt_score_1_adv(
 
 @pytest.mark.asyncio
 async def test_handle_nps_comment_saves_text_comment(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS comment with text saves full comment."""
 
@@ -850,11 +1010,15 @@ async def test_handle_nps_comment_saves_text_comment(
     )
     callback.message = FakeMessage(user=FakeUser(1040))
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
 
     comment_text = "Нужно улучшить уведомления"
     msg = FakeMessage(text=comment_text, user=FakeUser(1040))
-    await handle_nps_comment(msg, state, user_service, nps_service)
+    await handle_nps_comment(
+        msg, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert nps_service.nps_repo.scores.get(blogger.user_id) == [
         (3, comment_text)
@@ -863,7 +1027,7 @@ async def test_handle_nps_comment_saves_text_comment(
 
 @pytest.mark.asyncio
 async def test_handle_nps_comment_session_expired(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS comment when state has no nps_user_id shows session expired."""
 
@@ -879,14 +1043,45 @@ async def test_handle_nps_comment_session_expired(
     state = FakeFSMContext()
     state._data = {}  # Empty state - no nps_user_id
     msg = FakeMessage(text="Some text", user=FakeUser(1050))
-    await handle_nps_comment(msg, state, user_service, nps_service)
+    await handle_nps_comment(
+        msg, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "Сессия истекла" in msg.answers[-1]
 
 
 @pytest.mark.asyncio
+async def test_handle_nps_comment_from_user_none(
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
+) -> None:
+    """NPS comment when message has no from_user returns without error."""
+
+    from ugc_bot.bot.handlers.feedback import handle_nps_comment
+
+    user_service = UserRoleService(user_repo=user_repo)
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000051"),
+        external_id="1051",
+        username="blogger",
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "nps_user_id": "00000000-0000-0000-0000-000000000051",
+        "nps_score": 4,
+    }
+    msg = FakeMessage(text="Comment", user=FakeUser(1051))
+    msg.from_user = None
+    await handle_nps_comment(
+        msg, state, user_service, nps_service, config, bot_texts_service
+    )
+
+    assert not msg.answers
+
+
+@pytest.mark.asyncio
 async def test_handle_nps_comment_invalid_user_id(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS comment with invalid user_id in state shows error."""
 
@@ -902,14 +1097,16 @@ async def test_handle_nps_comment_invalid_user_id(
     state = FakeFSMContext()
     state._data = {"nps_user_id": "not-a-valid-uuid", "nps_score": 4}
     msg = FakeMessage(text="Comment", user=FakeUser(1060))
-    await handle_nps_comment(msg, state, user_service, nps_service)
+    await handle_nps_comment(
+        msg, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "Ошибка" in msg.answers[-1]
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_comment_user_id_mismatch(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS comment when user differs from nps_user_id: insufficient rights."""
 
@@ -934,14 +1131,16 @@ async def test_handle_nps_comment_user_id_mismatch(
         "nps_score": 4,
     }
     msg = FakeMessage(text="Comment", user=FakeUser(1071))
-    await handle_nps_comment(msg, state, user_service, nps_service)
+    await handle_nps_comment(
+        msg, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "Недостаточно прав" in msg.answers[-1]
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_no_callback_data(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """When callback has no data, return without error."""
 
@@ -953,13 +1152,15 @@ async def test_handle_nps_no_callback_data(
     )
     callback.data = None
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
     assert not callback.answers
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_wrong_parts_count(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """Reject nps callback with wrong number of parts."""
 
@@ -968,13 +1169,15 @@ async def test_handle_nps_wrong_parts_count(
     user_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="nps:uuid", user=FakeUser(1))
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
     assert "Неверный формат." in callback.answers
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_score_out_of_range(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """Reject nps score not in 1-5."""
 
@@ -999,13 +1202,15 @@ async def test_handle_nps_score_out_of_range(
         user=FakeUser(1085),
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
     assert "1 до 5" in callback.answers[0]
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_rejects_blocked_user(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS from blocked user is rejected."""
 
@@ -1030,7 +1235,9 @@ async def test_handle_nps_rejects_blocked_user(
         data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1093)
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "Заблокированные" in callback.answers[0]
     assert advertiser.user_id not in nps_service.nps_repo.scores
@@ -1038,7 +1245,7 @@ async def test_handle_nps_rejects_blocked_user(
 
 @pytest.mark.asyncio
 async def test_handle_nps_rejects_paused_user(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS from paused user is rejected."""
 
@@ -1063,7 +1270,9 @@ async def test_handle_nps_rejects_paused_user(
         data=f"nps:{advertiser.user_id.hex}:4", user=FakeUser(1097)
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "паузе" in callback.answers[0]
     assert advertiser.user_id not in nps_service.nps_repo.scores
@@ -1071,7 +1280,7 @@ async def test_handle_nps_rejects_paused_user(
 
 @pytest.mark.asyncio
 async def test_handle_nps_user_id_mismatch(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS when callback user_id does not match logged-in user returns error."""
 
@@ -1087,14 +1296,16 @@ async def test_handle_nps_user_id_mismatch(
     user_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data=f"nps:{user_b_id.hex}:4", user=FakeUser(4251))
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "Недостаточно прав" in callback.answers[0]
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_rejects_non_advertiser(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS from non-advertiser is rejected."""
 
@@ -1119,7 +1330,9 @@ async def test_handle_nps_rejects_non_advertiser(
         user=FakeUser(1089),
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
 
     assert "Недостаточно прав" in callback.answers[0]
     assert (
@@ -1136,6 +1349,8 @@ async def test_feedback_reason_records_and_marks_blogger(
     order_service,
     nps_service,
     offer_dispatch_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser 'Креатор хотел изменить условия': reason recorded."""
 
@@ -1208,6 +1423,8 @@ async def test_feedback_reason_records_and_marks_blogger(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert "Спасибо" in callback.answers[0]
@@ -1228,6 +1445,8 @@ async def test_feedback_handler_issue_sets_state_and_sends_prompt(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """User selects issue: set FSM state and send prompt for description."""
 
@@ -1260,6 +1479,8 @@ async def test_feedback_handler_issue_sets_state_and_sends_prompt(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1278,7 +1499,12 @@ async def test_feedback_handler_issue_sets_state_and_sends_prompt(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_reason_no_data(
-    blogger_repo, nps_service, offer_dispatch_repo, order_service
+    blogger_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When callback has no data, return without error."""
 
@@ -1315,13 +1541,20 @@ async def test_handle_feedback_reason_no_data(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert not callback.answers
 
 
 @pytest.mark.asyncio
 async def test_handle_feedback_reason_wrong_parts_count(
-    blogger_repo, nps_service, offer_dispatch_repo, order_service
+    blogger_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject callback with wrong number of parts."""
 
@@ -1354,6 +1587,8 @@ async def test_handle_feedback_reason_wrong_parts_count(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Неверный формат." in callback.answers
 
@@ -1366,6 +1601,8 @@ async def test_handle_feedback_reason_rejects_blocked_user(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback_reason from blocked user."""
 
@@ -1411,6 +1648,8 @@ async def test_handle_feedback_reason_rejects_blocked_user(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Заблокированные" in ans for ans in callback.answers)
 
@@ -1423,6 +1662,8 @@ async def test_handle_feedback_reason_rejects_paused_user(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback_reason from paused user."""
 
@@ -1468,6 +1709,8 @@ async def test_handle_feedback_reason_rejects_paused_user(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("паузе" in ans for ans in callback.answers)
 
@@ -1480,6 +1723,8 @@ async def test_handle_feedback_reason_interaction_not_found(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback_reason when interaction does not exist."""
 
@@ -1519,6 +1764,8 @@ async def test_handle_feedback_reason_interaction_not_found(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("не найдено" in ans.lower() for ans in callback.answers)
 
@@ -1531,6 +1778,8 @@ async def test_handle_feedback_reason_adv_wrong_user(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback_reason when advertiser not interaction advertiser."""
 
@@ -1587,6 +1836,8 @@ async def test_handle_feedback_reason_adv_wrong_user(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Недостаточно прав" in ans for ans in callback.answers)
 
@@ -1599,6 +1850,8 @@ async def test_handle_feedback_reason_blog_wrong_user(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback_reason when blogger is not the interaction blogger."""
 
@@ -1649,6 +1902,8 @@ async def test_handle_feedback_reason_blog_wrong_user(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Недостаточно прав" in ans for ans in callback.answers)
 
@@ -1661,6 +1916,8 @@ async def test_handle_feedback_reason_invalid_uuid(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid UUID in feedback_reason callback."""
 
@@ -1691,6 +1948,8 @@ async def test_handle_feedback_reason_invalid_uuid(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Неверный идентификатор." in callback.answers
 
@@ -1705,6 +1964,8 @@ async def test_feedback_reason_other_sets_state(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user selects no_deal reason 'Другое', set FSM and ask for text."""
 
@@ -1751,6 +2012,8 @@ async def test_feedback_reason_other_sets_state(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1766,7 +2029,13 @@ async def test_feedback_reason_other_sets_state(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_records_feedback(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """User text in waiting_no_deal_other: record feedback, clear state."""
 
@@ -1806,6 +2075,8 @@ async def test_handle_no_deal_other_text_records_feedback(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -1818,7 +2089,13 @@ async def test_handle_no_deal_other_text_records_feedback(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_no_from_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When message has no from_user, return without reply."""
 
@@ -1858,6 +2135,8 @@ async def test_handle_no_deal_other_text_no_from_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert not message.answers
@@ -1865,7 +2144,13 @@ async def test_handle_no_deal_other_text_no_from_user(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_session_expired(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When state has invalid kind, reply session expired."""
 
@@ -1899,6 +2184,8 @@ async def test_handle_no_deal_other_text_session_expired(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("истекла" in str(a).lower() for a in message.answers)
@@ -1906,7 +2193,13 @@ async def test_handle_no_deal_other_text_session_expired(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_adv_wrong_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject no_deal_other when advertiser not interaction advertiser."""
 
@@ -1957,6 +2250,8 @@ async def test_handle_no_deal_other_text_adv_wrong_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Недостаточно прав" in str(a) for a in message.answers)
@@ -1964,7 +2259,13 @@ async def test_handle_no_deal_other_text_adv_wrong_user(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_blog_wrong_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject no_deal_other when blogger is not the interaction blogger."""
 
@@ -2009,6 +2310,8 @@ async def test_handle_no_deal_other_text_blog_wrong_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("Недостаточно прав" in str(a) for a in message.answers)
@@ -2016,7 +2319,13 @@ async def test_handle_no_deal_other_text_blog_wrong_user(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_empty_asks_again(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """User sends empty in waiting_no_deal_other: ask again, keep state."""
 
@@ -2056,6 +2365,8 @@ async def test_handle_no_deal_other_text_empty_asks_again(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any(
@@ -2068,7 +2379,13 @@ async def test_handle_no_deal_other_text_empty_asks_again(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_interaction_not_found(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Interaction not found in waiting_no_deal_other: reply and clear state."""
 
@@ -2100,6 +2417,8 @@ async def test_handle_no_deal_other_text_interaction_not_found(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any("не найдено" in str(a).lower() for a in message.answers)
@@ -2107,7 +2426,13 @@ async def test_handle_no_deal_other_text_interaction_not_found(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_invalid_uuid(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """State has invalid interaction_id UUID: reply error and clear state."""
 
@@ -2139,6 +2464,8 @@ async def test_handle_no_deal_other_text_invalid_uuid(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert any(
@@ -2149,7 +2476,12 @@ async def test_handle_no_deal_other_text_invalid_uuid(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_user_not_in_repo_clears_state(
-    interaction_repo, nps_service, offer_dispatch_repo, order_service
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user is not in repo, clear state and return without reply."""
 
@@ -2186,10 +2518,135 @@ async def test_handle_no_deal_other_text_user_not_in_repo_clears_state(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
     assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_description_from_user_none(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
+) -> None:
+    """handle_issue_description with no from_user returns without error."""
+
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id="00000000-0000-0000-0000-000000000999",
+        feedback_kind="adv",
+    )
+    message = FakeMessage(text="text", user=FakeUser(1))
+    message.from_user = None
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+        config,
+        bot_texts_service,
+    )
+
+    assert not message.answers
+
+
+@pytest.mark.asyncio
+async def test_handle_issue_send_empty_parts_asks_description(
+    user_repo,
+    interaction_repo,
+    complaint_repo,
+    issue_lock_manager,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
+) -> None:
+    """Send button with no description/photos shows add description message."""
+
+    from ugc_bot.application.services.complaint_service import ComplaintService
+    from ugc_bot.bot.handlers.feedback import (
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
+        FeedbackStates,
+        handle_issue_description,
+    )
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001134"),
+        external_id="1134",
+        username="adv",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000001135"),
+        external_id="1135",
+        username="blogger",
+    )
+    interaction = await create_test_interaction(
+        interaction_repo,
+        order_id=UUID("00000000-0000-0000-0000-000000001136"),
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser.user_id,
+        interaction_id=UUID("00000000-0000-0000-0000-000000001137"),
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    complaint_service = ComplaintService(complaint_repo=complaint_repo)
+    state = FakeFSMContext()
+    await state.set_state(FeedbackStates.waiting_issue_description)
+    await state.update_data(
+        feedback_interaction_id=str(interaction.interaction_id),
+        feedback_kind="adv",
+        issue_description_parts=[],
+        issue_file_ids=[],
+    )
+    message = FakeMessage(
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1134)
+    )
+
+    await handle_issue_description(
+        message,
+        state,
+        user_service,
+        interaction_service,
+        complaint_service,
+        issue_lock_manager,
+        nps_service,
+        order_service,
+        config,
+        bot_texts_service,
+    )
+
+    assert any(
+        "описание" in str(a).lower() or "фото" in str(a).lower()
+        for a in message.answers
+    )
 
 
 @pytest.mark.asyncio
@@ -2201,12 +2658,14 @@ async def test_handle_issue_description_creates_complaint_and_records(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """User sends text, clicks Отправить: create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -2253,13 +2712,15 @@ async def test_handle_issue_description_creates_complaint_and_records(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is False
     assert len(message.reply_markups) > 0
 
     send_message = FakeMessage(
-        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1130)
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1130)
     )
     await handle_issue_description(
         send_message,
@@ -2270,6 +2731,8 @@ async def test_handle_issue_description_creates_complaint_and_records(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -2290,12 +2753,14 @@ async def test_handle_issue_description_blogger_creates_complaint(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger text, clicks Отправить: create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -2344,10 +2809,12 @@ async def test_handle_issue_description_blogger_creates_complaint(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     send_message = FakeMessage(
-        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1131)
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1131)
     )
     await handle_issue_description(
         send_message,
@@ -2358,6 +2825,8 @@ async def test_handle_issue_description_blogger_creates_complaint(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -2381,6 +2850,8 @@ async def test_handle_issue_description_expired_state(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """State data missing (expired): reply session expired and clear state."""
 
@@ -2416,6 +2887,8 @@ async def test_handle_issue_description_expired_state(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -2431,6 +2904,8 @@ async def test_handle_issue_description_interaction_not_found(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When interaction is not found (valid UUID), reply and clear state."""
 
@@ -2472,6 +2947,8 @@ async def test_handle_issue_description_interaction_not_found(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -2486,6 +2963,8 @@ async def test_handle_issue_description_user_not_in_repo_clears_state(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """User not in repo in waiting_issue_description: clear state and return."""
 
@@ -2526,6 +3005,8 @@ async def test_handle_issue_description_user_not_in_repo_clears_state(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -2540,6 +3021,8 @@ async def test_feedback_reason_invalid_code(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject fb_r callback with unknown reason code."""
 
@@ -2580,6 +3063,8 @@ async def test_feedback_reason_invalid_code(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert "Неверный формат" in callback.answers[0]
@@ -2593,6 +3078,8 @@ async def test_feedback_reason_blogger_conditions(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger selects conditions reason, feedback recorded."""
 
@@ -2633,6 +3120,8 @@ async def test_feedback_reason_blogger_conditions(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     updated = await interaction_repo.get_by_id(interaction.interaction_id)
@@ -2650,13 +3139,15 @@ async def test_handle_issue_description_with_photos(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """User photo with caption, Отправить: file_ids in complaint."""
 
     from tests.helpers.fakes import FakePhotoSize
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -2700,10 +3191,12 @@ async def test_handle_issue_description_with_photos(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     send_message = FakeMessage(
-        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1170)
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1170)
     )
     await handle_issue_description(
         send_message,
@@ -2714,6 +3207,8 @@ async def test_handle_issue_description_with_photos(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -2726,7 +3221,13 @@ async def test_handle_issue_description_with_photos(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_no_deal_interaction_not_found(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When no_deal and interaction not found, show error."""
 
@@ -2751,13 +3252,21 @@ async def test_handle_feedback_no_deal_interaction_not_found(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("не найдено" in ans.lower() for ans in callback.answers)
 
 
 @pytest.mark.asyncio
 async def test_handle_feedback_no_deal_adv_wrong_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When no_deal and user is not the advertiser, reject."""
 
@@ -2794,13 +3303,21 @@ async def test_handle_feedback_no_deal_adv_wrong_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Недостаточно прав" in ans for ans in callback.answers)
 
 
 @pytest.mark.asyncio
 async def test_handle_feedback_no_deal_blog_wrong_user(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When no_deal and user is not the blogger, reject."""
 
@@ -2837,6 +3354,8 @@ async def test_handle_feedback_no_deal_blog_wrong_user(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Недостаточно прав" in ans for ans in callback.answers)
 
@@ -2851,6 +3370,8 @@ async def test_handle_feedback_advertiser_ok_shows_nps_keyboard(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser ok: NPS keyboard shown (advertiser is last blogger)."""
 
@@ -2893,6 +3414,8 @@ async def test_handle_feedback_advertiser_ok_shows_nps_keyboard(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -2912,6 +3435,8 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser gets NPS after feedback to all bloggers in order."""
 
@@ -2968,6 +3493,8 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -2987,6 +3514,8 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -3005,6 +3534,8 @@ async def test_handle_feedback_no_deal_blogger(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger no_deal: gets reason question with blogger-specific text."""
 
@@ -3036,6 +3567,8 @@ async def test_handle_feedback_no_deal_blogger(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -3047,7 +3580,13 @@ async def test_handle_feedback_no_deal_blogger(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_invalid_status(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject feedback with invalid status."""
 
@@ -3079,6 +3618,8 @@ async def test_handle_feedback_invalid_status(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert "Неверный статус" in callback.answers[0]
@@ -3093,6 +3634,8 @@ async def test_handle_feedback_issue_sets_state(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser selects issue, state set to waiting_issue_description."""
 
@@ -3124,6 +3667,8 @@ async def test_handle_feedback_issue_sets_state(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -3183,12 +3728,14 @@ async def test_handle_issue_description_complaint_fails(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When complaint creation fails on Отправить, user gets error message."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -3218,7 +3765,7 @@ async def test_handle_issue_description_complaint_fails(
         issue_file_ids=[],
     )
     send_message = FakeMessage(
-        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1210)
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1210)
     )
 
     await handle_issue_description(
@@ -3230,6 +3777,8 @@ async def test_handle_issue_description_complaint_fails(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -3244,6 +3793,8 @@ async def test_handle_feedback_reason_invalid_hex(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid hex in interaction_id."""
 
@@ -3275,6 +3826,8 @@ async def test_handle_feedback_reason_invalid_hex(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Неверный идентификатор" in callback.answers[0]
 
@@ -3288,6 +3841,8 @@ async def test_handle_issue_description_empty_text_no_photos(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When text and photos empty, show prompt to add description."""
 
@@ -3334,6 +3889,8 @@ async def test_handle_issue_description_empty_text_no_photos(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Добавьте описание" in str(a) for a in message.answers)
 
@@ -3347,12 +3904,14 @@ async def test_handle_issue_description_send_button_invalid_uuid(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When Отправить with invalid interaction_id in state, show error."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -3374,7 +3933,9 @@ async def test_handle_issue_description_send_button_invalid_uuid(
         issue_description_parts=["Text"],
         issue_file_ids=[],
     )
-    message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1320))
+    message = FakeMessage(
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1320)
+    )
 
     await handle_issue_description(
         message,
@@ -3385,6 +3946,8 @@ async def test_handle_issue_description_send_button_invalid_uuid(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Ошибка" in str(a) for a in message.answers)
 
@@ -3398,12 +3961,14 @@ async def test_handle_issue_description_send_button_blogger(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger submits issue: complaint created with blogger as reporter."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -3433,7 +3998,7 @@ async def test_handle_issue_description_send_button_blogger(
         issue_file_ids=[],
     )
     message = FakeMessage(
-        text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1330), bot=FakeBot()
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1330), bot=FakeBot()
     )
 
     await handle_issue_description(
@@ -3445,6 +4010,8 @@ async def test_handle_issue_description_send_button_blogger(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert state.cleared is True
     assert any("заявку" in str(a).lower() for a in message.answers)
@@ -3455,7 +4022,12 @@ async def test_handle_issue_description_send_button_blogger(
 
 @pytest.mark.asyncio
 async def test_handle_nps_invalid_kind_defaults_to_blog(
-    user_repo, nps_service, messenger_client, event_adapter
+    user_repo,
+    nps_service,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """When kind is invalid, default to blog."""
 
@@ -3477,6 +4049,8 @@ async def test_handle_nps_invalid_kind_defaults_to_blog(
         state,
         user_service,
         nps_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -3488,7 +4062,9 @@ async def test_handle_nps_invalid_kind_defaults_to_blog(
 
 
 @pytest.mark.asyncio
-async def test_handle_nps_score_zero_rejected(user_repo, nps_service) -> None:
+async def test_handle_nps_score_zero_rejected(
+    user_repo, nps_service, config, bot_texts_service
+) -> None:
     """Reject score 0."""
 
     from ugc_bot.bot.handlers.feedback import handle_nps
@@ -3504,12 +4080,16 @@ async def test_handle_nps_score_zero_rejected(user_repo, nps_service) -> None:
         data=f"nps:{user.user_id.hex}:0:blog", user=FakeUser(1350)
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
     assert "1 до 5" in callback.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_handle_nps_score_six_rejected(user_repo, nps_service) -> None:
+async def test_handle_nps_score_six_rejected(
+    user_repo, nps_service, config, bot_texts_service
+) -> None:
     """Reject score 6."""
 
     from ugc_bot.bot.handlers.feedback import handle_nps
@@ -3525,12 +4105,16 @@ async def test_handle_nps_score_six_rejected(user_repo, nps_service) -> None:
         data=f"nps:{user.user_id.hex}:6:blog", user=FakeUser(1360)
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
     assert "1 до 5" in callback.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_handle_nps_comment_invalid_uuid(user_repo, nps_service) -> None:
+async def test_handle_nps_comment_invalid_uuid(
+    user_repo, nps_service, config, bot_texts_service
+) -> None:
     """Reject invalid nps_user_id in state."""
 
     from ugc_bot.bot.handlers.feedback import (
@@ -3554,13 +4138,21 @@ async def test_handle_nps_comment_invalid_uuid(user_repo, nps_service) -> None:
     )
     message = FakeMessage(text="Готово", user=FakeUser(1370))
 
-    await handle_nps_comment(message, state, user_service, nps_service)
+    await handle_nps_comment(
+        message, state, user_service, nps_service, config, bot_texts_service
+    )
     assert any("Ошибка" in str(a) for a in message.answers)
 
 
 @pytest.mark.asyncio
 async def test_handle_feedback_no_deal_invalid_uuid(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject no_deal with invalid interaction UUID."""
 
@@ -3583,6 +4175,8 @@ async def test_handle_feedback_no_deal_invalid_uuid(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert "Неверный идентификатор" in callback.answers[0]
 
@@ -3596,6 +4190,8 @@ async def test_handle_feedback_issue_blogger(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger can select issue and get prompt."""
 
@@ -3626,6 +4222,8 @@ async def test_handle_feedback_issue_blogger(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -3645,6 +4243,8 @@ async def test_handle_feedback_postpone_blogger_message(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Postpone from blogger shows blogger-specific message."""
 
@@ -3678,6 +4278,8 @@ async def test_handle_feedback_postpone_blogger_message(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -3694,6 +4296,8 @@ async def test_handle_feedback_postpone_advertiser_message(
     order_service,
     messenger_client,
     event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Postpone from advertiser shows advertiser-specific message."""
 
@@ -3727,6 +4331,8 @@ async def test_handle_feedback_postpone_advertiser_message(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -3736,7 +4342,12 @@ async def test_handle_feedback_postpone_advertiser_message(
 
 @pytest.mark.asyncio
 async def test_handle_feedback_no_deal_user_not_found_returns_early(
-    interaction_repo, nps_service, offer_dispatch_repo, order_service
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user not in repo on no_deal, return without error (line 337)."""
     from ugc_bot.infrastructure.memory_repositories import (
@@ -3765,13 +4376,22 @@ async def test_handle_feedback_no_deal_user_not_found_returns_early(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
-    assert "Пользователь не найден" in callback.answers[0]
+    msg = callback.answers[0]
+    assert "не найден" in msg or "not found" in msg.lower()
 
 
 @pytest.mark.asyncio
 async def test_handle_feedback_advertiser_ok_message(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser ok feedback shows advertiser-specific thank you msg."""
     advertiser = await create_test_user(
@@ -3801,6 +4421,8 @@ async def test_handle_feedback_advertiser_ok_message(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert callback.message.answers
     assert any("креатор" in str(a).lower() for a in callback.message.answers)
@@ -3809,7 +4431,13 @@ async def test_handle_feedback_advertiser_ok_message(
 
 @pytest.mark.asyncio
 async def test_handle_no_deal_other_text_advertiser_records(
-    user_repo, interaction_repo, nps_service, offer_dispatch_repo, order_service
+    user_repo,
+    interaction_repo,
+    nps_service,
+    offer_dispatch_repo,
+    order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser no_deal other records via record_advertiser_feedback (600)."""
     from ugc_bot.bot.handlers.feedback import (
@@ -3847,6 +4475,8 @@ async def test_handle_no_deal_other_text_advertiser_records(
         interaction_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
 
     assert state.cleared is True
@@ -3865,6 +4495,8 @@ async def test_handle_issue_description_no_from_user_returns(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When message has no from_user, return without processing (803)."""
     from ugc_bot.application.services.complaint_service import ComplaintService
@@ -3904,13 +4536,15 @@ async def test_handle_issue_description_no_from_user_returns(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert not message.answers
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_user_not_found_returns(
-    user_repo, interaction_repo, nps_service
+    user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """When user not in repo on NPS callback, return without error (973-975)."""
     from ugc_bot.bot.handlers.feedback import handle_nps
@@ -3921,8 +4555,11 @@ async def test_handle_nps_user_not_found_returns(
         user=FakeUser(9999),
     )
     state = FakeFSMContext()
-    await handle_nps(callback, state, user_service, nps_service)
-    assert "Пользователь не найден" in callback.answers[0]
+    await handle_nps(
+        callback, state, user_service, nps_service, config, bot_texts_service
+    )
+    msg = callback.answers[0]
+    assert "не найден" in msg or "not found" in msg.lower()
 
 
 @pytest.mark.asyncio
@@ -3934,6 +4571,8 @@ async def test_handle_issue_append_content_invalid_uuid(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """_handle_issue_append_content shows error on invalid UUID (754-757)."""
     from ugc_bot.application.services.complaint_service import ComplaintService
@@ -3970,6 +4609,8 @@ async def test_handle_issue_append_content_invalid_uuid(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Ошибка" in str(a) for a in message.answers)
 
@@ -3983,6 +4624,8 @@ async def test_handle_issue_append_content_interaction_not_found(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """_handle_issue_append_content shows error when interaction missing."""
     from ugc_bot.application.services.complaint_service import ComplaintService
@@ -4021,6 +4664,8 @@ async def test_handle_issue_append_content_interaction_not_found(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Взаимодействие не найдено" in str(a) for a in message.answers)
 
@@ -4034,6 +4679,8 @@ async def test_handle_issue_append_content_wrong_user_no_access(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """_handle_issue_append_content rejects wrong user (764-766)."""
     from ugc_bot.application.services.complaint_service import ComplaintService
@@ -4083,6 +4730,8 @@ async def test_handle_issue_append_content_wrong_user_no_access(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Недостаточно прав" in str(a) for a in message.answers)
 
@@ -4095,6 +4744,8 @@ async def test_handle_feedback_reason_invalid_reason_code(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject fb_r callback with unknown reason code."""
 
@@ -4134,13 +4785,15 @@ async def test_handle_feedback_reason_invalid_reason_code(
         blogger_registration_service,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert any("Неверный формат" in a for a in callback.answers)
 
 
 @pytest.mark.asyncio
 async def test_handle_nps_comment_session_expired_missing_score(
-    user_repo, nps_service
+    user_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS comment: nps_user_id set but nps_score missing -> session expired."""
     from ugc_bot.bot.handlers.feedback import (
@@ -4159,7 +4812,9 @@ async def test_handle_nps_comment_session_expired_missing_score(
     await state.set_state(FeedbackStates.waiting_nps_comment)
     await state.update_data(nps_user_id=str(user.user_id))
     message = FakeMessage(text="Comment", user=FakeUser(1510))
-    await handle_nps_comment(message, state, user_service, nps_service)
+    await handle_nps_comment(
+        message, state, user_service, nps_service, config, bot_texts_service
+    )
     assert any("Сессия истекла" in str(a) for a in message.answers)
 
 
@@ -4172,11 +4827,13 @@ async def test_handle_issue_description_send_button_user_not_in_repo(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """When Отправить and user not in repo, state is cleared and returns."""
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -4205,7 +4862,9 @@ async def test_handle_issue_description_send_button_user_not_in_repo(
         issue_description_parts=["Text"],
         issue_file_ids=[],
     )
-    message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(99999))
+    message = FakeMessage(
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(99999)
+    )
     await handle_issue_description(
         message,
         state,
@@ -4215,6 +4874,8 @@ async def test_handle_issue_description_send_button_user_not_in_repo(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert state.cleared is True
 
@@ -4228,11 +4889,13 @@ async def test_handle_issue_description_send_button_interaction_not_found(
     nps_service,
     offer_dispatch_repo,
     order_service,
+    config,
+    bot_texts_service,
 ) -> None:
     """Отправить with valid UUID but interaction missing: show not found."""
     from ugc_bot.application.services.complaint_service import ComplaintService
     from ugc_bot.bot.handlers.feedback import (
-        _ISSUE_SEND_BUTTON_TEXT,
+        DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
     )
@@ -4256,7 +4919,9 @@ async def test_handle_issue_description_send_button_interaction_not_found(
         issue_description_parts=["Text"],
         issue_file_ids=[],
     )
-    message = FakeMessage(text=_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1530))
+    message = FakeMessage(
+        text=DEFAULT_ISSUE_SEND_BUTTON_TEXT, user=FakeUser(1530)
+    )
     await handle_issue_description(
         message,
         state,
@@ -4266,6 +4931,8 @@ async def test_handle_issue_description_send_button_interaction_not_found(
         issue_lock_manager,
         nps_service,
         order_service,
+        config,
+        bot_texts_service,
     )
     assert state.cleared is True
     assert any("Взаимодействие не найдено" in str(a) for a in message.answers)

@@ -529,6 +529,22 @@ class ContactPricingRepository(ABC):
         """Fetch pricing by bloggers count."""
 
 
+class BotTextsRepository(ABC):
+    """Port for localized bot text persistence (key, locale -> value)."""
+
+    @abstractmethod
+    async def get(
+        self, key: str, locale: str, session: object | None = None
+    ) -> Optional[str]:
+        """Fetch text value for key and locale. Returns None if not found."""
+
+    @abstractmethod
+    async def get_all(
+        self, session: object | None = None
+    ) -> List[Tuple[str, str, str]]:
+        """Fetch all texts as (key, locale, value). Preload at startup."""
+
+
 class OrderActivationPublisher(ABC):
     """Port for publishing order activation events."""
 
@@ -813,11 +829,26 @@ class GeocoderPort(Protocol):
         """Return (latitude, longitude) for the query, or None if not found."""
         ...
 
+    async def geocode_with_details(
+        self,
+        query: str,
+        region: Optional[str] = None,
+        country: Optional[str] = None,
+    ) -> Optional[Tuple[float, float, str, str, Optional[str], Optional[str]]]:
+        """Return (lat, lon, osm_class, osm_type, region, country) or None."""
+        ...
+
     async def get_multipolygon_wkt_for_queries(
         self,
         queries: List[Tuple[str, Optional[str], str]],
     ) -> Optional[str]:
         """Resolve (query, region, country) list to one MULTIPOLYGON WKT."""
+        ...
+
+    async def reverse_geocode(
+        self, lat: float, lon: float
+    ) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+        """Return (city, region, country) for coordinates or None."""
         ...
 
 

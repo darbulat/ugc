@@ -15,6 +15,7 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
@@ -26,6 +27,7 @@ from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )
+from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
@@ -58,6 +60,8 @@ async def select_complaint_target(
     order_service: OrderService,
     offer_response_service: OfferResponseService,
     profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -67,24 +71,32 @@ async def select_complaint_target(
     )
     incoming = event_adapter.from_callback(callback)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
     if not incoming.data:
         return
 
+    allow_msgs = await bot_texts_service.get_many(
+        ["msg_user_not_found", "msg_complaint_blocked", "msg_complaint_pause"],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные пользователи не могут подавать жалобы.",
-        pause_msg="Пользователи на паузе не могут подавать жалобы.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found", ""),
+        blocked_msg=allow_msgs.get("msg_complaint_blocked", ""),
+        pause_msg=allow_msgs.get("msg_complaint_pause", ""),
     )
     if user is None:
         return
 
     parts = incoming.data.split(":")
     if len(parts) != 2:
+        msg_invalid = await bot_texts_service.get(
+            "msg_invalid_format_short", locale
+        )
         await messenger_client.answer_callback(
-            callback_id=incoming.callback_id, text="Неверный формат."
+            callback_id=incoming.callback_id, text=msg_invalid
         )
         return
 
@@ -93,16 +105,20 @@ async def select_complaint_target(
     try:
         order_id = UUID(order_id_raw)
     except ValueError:
+        msg_invalid_id = await bot_texts_service.get("msg_invalid_id", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Неверный формат идентификатора.",
+            text=msg_invalid_id,
         )
         return
 
     order = await order_service.get_order(order_id)
     if order is None:
+        msg_not_found = await bot_texts_service.get(
+            "msg_order_not_found", locale
+        )
         await messenger_client.answer_callback(
-            callback_id=incoming.callback_id, text="Заказ не найден."
+            callback_id=incoming.callback_id, text=msg_not_found
         )
         return
 
@@ -111,9 +127,12 @@ async def select_complaint_target(
         # Advertiser: show list of bloggers who responded
         responses = await offer_response_service.list_by_order(order_id)
         if not responses:
+            msg_no_bloggers = await bot_texts_service.get(
+                "msg_complaint_no_bloggers", locale
+            )
             await messenger_client.answer_callback(
                 callback_id=incoming.callback_id,
-                text="Нет блогеров для жалобы.",
+                text=msg_no_bloggers,
             )
             return
 
@@ -136,9 +155,12 @@ async def select_complaint_target(
                 ]
             )
         keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
+        msg_choose = await bot_texts_service.get(
+            "msg_choose_blogger_complain", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите блогера, на которого хотите пожаловаться:",
+            text=msg_choose,
             keyboard=keyboard,
         )
     else:
@@ -147,9 +169,12 @@ async def select_complaint_target(
         if not any(
             response.blogger_id == user.user_id for response in responses
         ):
+            msg_no_access = await bot_texts_service.get(
+                "msg_no_access_order", locale
+            )
             await messenger_client.answer_callback(
                 callback_id=incoming.callback_id,
-                text="У вас нет доступа к этому заказу.",
+                text=msg_no_access,
             )
             return
 
@@ -167,9 +192,12 @@ async def select_complaint_target(
         ]
         keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
 
+        msg_reason = await bot_texts_service.get(
+            "msg_choose_complaint_reason", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Выберите причину жалобы:",
+            text=msg_reason,
             keyboard=keyboard,
         )
         await state_store.set_state(ComplaintStates.waiting_for_reason.state)
@@ -186,6 +214,8 @@ async def start_complaint(
     user_role_service: UserRoleService,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -195,24 +225,32 @@ async def start_complaint(
     )
     incoming = event_adapter.from_callback(callback)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
     if not incoming.data:
         return
 
+    allow_msgs = await bot_texts_service.get_many(
+        ["msg_user_not_found", "msg_complaint_blocked", "msg_complaint_pause"],
+        locale,
+    )
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
         user_role_service,
-        user_not_found_msg="Пользователь не найден.",
-        blocked_msg="Заблокированные пользователи не могут подавать жалобы.",
-        pause_msg="Пользователи на паузе не могут подавать жалобы.",
+        user_not_found_msg=allow_msgs.get("msg_user_not_found", ""),
+        blocked_msg=allow_msgs.get("msg_complaint_blocked", ""),
+        pause_msg=allow_msgs.get("msg_complaint_pause", ""),
     )
     if user is None:
         return
 
     parts = incoming.data.split(":")
     if len(parts) != 3:
+        msg_invalid = await bot_texts_service.get(
+            "msg_invalid_format_short", locale
+        )
         await messenger_client.answer_callback(
-            callback_id=incoming.callback_id, text="Неверный формат."
+            callback_id=incoming.callback_id, text=msg_invalid
         )
         return
 
@@ -222,16 +260,20 @@ async def start_complaint(
         order_id = UUID(order_id_raw)
         reported_id = UUID(reported_id_raw)
     except ValueError:
+        msg_invalid_id = await bot_texts_service.get("msg_invalid_id", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Неверный формат идентификатора.",
+            text=msg_invalid_id,
         )
         return
 
     order = await order_service.get_order(order_id)
     if order is None:
+        msg_not_found = await bot_texts_service.get(
+            "msg_order_not_found", locale
+        )
         await messenger_client.answer_callback(
-            callback_id=incoming.callback_id, text="Заказ не найден."
+            callback_id=incoming.callback_id, text=msg_not_found
         )
         return
 
@@ -242,9 +284,12 @@ async def start_complaint(
         if not any(
             response.blogger_id == user.user_id for response in responses
         ):
+            msg_no_access = await bot_texts_service.get(
+                "msg_no_access_order", locale
+            )
             await messenger_client.answer_callback(
                 callback_id=incoming.callback_id,
-                text="У вас нет доступа к этому заказу.",
+                text=msg_no_access,
             )
             return
 
@@ -254,9 +299,12 @@ async def start_complaint(
         if not any(
             response.blogger_id == reported_id for response in responses
         ):
+            msg_invalid_user = await bot_texts_service.get(
+                "msg_invalid_uuid", locale
+            )
             await messenger_client.answer_callback(
                 callback_id=incoming.callback_id,
-                text="Неверный идентификатор пользователя.",
+                text=msg_invalid_user,
             )
             return
 
@@ -274,9 +322,12 @@ async def start_complaint(
     ]
     keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
 
+    msg_reason = await bot_texts_service.get(
+        "msg_choose_complaint_reason", locale
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Выберите причину жалобы:",
+        text=msg_reason,
         keyboard=keyboard,
     )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
@@ -294,6 +345,8 @@ async def handle_complaint_reason(
     complaint_service: ComplaintService,
     order_service: OrderService,
     user_role_service: UserRoleService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -303,21 +356,26 @@ async def handle_complaint_reason(
     )
     incoming = event_adapter.from_callback(callback)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
     if not incoming.data:
         return
 
     data = await state_store.get_data()
     if not data:
+        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Сессия истекла. Начните заново.",
+            text=msg_expired,
         )
         return
 
     reason = incoming.data.split("complaint_reason:", 1)[-1]
     if reason not in _COMPLAINT_REASONS:
+        msg_invalid_reason = await bot_texts_service.get(
+            "msg_invalid_reason", locale
+        )
         await messenger_client.answer_callback(
-            callback_id=incoming.callback_id, text="Неверная причина."
+            callback_id=incoming.callback_id, text=msg_invalid_reason
         )
         return
 
@@ -326,17 +384,21 @@ async def handle_complaint_reason(
         reported_id = UUID(data["reported_id"])
         reporter_id = UUID(data["reporter_id"])
     except (ValueError, KeyError):
+        msg_data_err = await bot_texts_service.get("msg_data_error", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Ошибка обработки данных.",
+            text=msg_data_err,
         )
         return
 
     # If "Другое" is selected, ask for text input
     if reason == "Другое":
+        msg_describe = await bot_texts_service.get(
+            "msg_describe_complaint", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Опишите причину жалобы:",
+            text=msg_describe,
         )
         await state_store.update_data(reason=reason)
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
@@ -353,12 +415,12 @@ async def handle_complaint_reason(
         await notify_admins_about_complaint(
             complaint, messenger_client, user_role_service
         )
+        msg_received = await bot_texts_service.get(
+            "msg_complaint_received", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Жалоба успешно подана. "
-                "Администратор рассмотрит её в ближайшее время."
-            ),
+            text=msg_received,
         )
         await state_store.clear()
     except ValueError as exc:
@@ -366,9 +428,10 @@ async def handle_complaint_reason(
             callback_id=incoming.callback_id, text=str(exc)
         )
     except Exception:
+        msg_error = await bot_texts_service.get("msg_error_later", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text="Произошла ошибка. Попробуйте позже.",
+            text=msg_error,
         )
 
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
@@ -380,6 +443,8 @@ async def handle_complaint_reason_text(
     state: FSMContext,
     complaint_service: ComplaintService,
     user_role_service: UserRoleService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -389,22 +454,27 @@ async def handle_complaint_reason_text(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
+    locale = config.market.default_locale
     if not incoming.text:
         return
 
     data = await state_store.get_data()
     if not data:
+        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Сессия истекла. Начните заново.",
+            text=msg_expired,
         )
         return
 
     reason_text = incoming.text.strip()
     if not reason_text:
+        msg_enter = await bot_texts_service.get(
+            "msg_enter_complaint_reason", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Пожалуйста, введите причину жалобы.",
+            text=msg_enter,
         )
         return
 
@@ -413,9 +483,10 @@ async def handle_complaint_reason_text(
         reported_id = UUID(data["reported_id"])
         reporter_id = UUID(data["reporter_id"])
     except (ValueError, KeyError):
+        msg_data_err = await bot_texts_service.get("msg_data_error", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Ошибка обработки данных.",
+            text=msg_data_err,
         )
         await state_store.clear()
         return
@@ -436,12 +507,12 @@ async def handle_complaint_reason_text(
         await notify_admins_about_complaint(
             complaint, messenger_client, user_role_service
         )
+        msg_received = await bot_texts_service.get(
+            "msg_complaint_received", locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=(
-                "Жалоба успешно подана. "
-                "Администратор рассмотрит её в ближайшее время."
-            ),
+            text=msg_received,
         )
         await state_store.clear()
     except ValueError as exc:
@@ -451,8 +522,9 @@ async def handle_complaint_reason_text(
         )
         await state_store.clear()
     except Exception:
+        msg_error = await bot_texts_service.get("msg_error_later", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text="Произошла ошибка. Попробуйте позже.",
+            text=msg_error,
         )
         await state_store.clear()

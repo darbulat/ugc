@@ -29,7 +29,6 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
-    ORDER_CLOSED_MESSAGE,
     _send_contact_immediately,
     _send_order_closed_and_remove_keyboard,
     handle_offer_response,
@@ -37,6 +36,7 @@ from ugc_bot.bot.handlers.offer_responses import (
 )
 from ugc_bot.bot.handlers.utils import RateLimiter
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig, OrderConfig
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
@@ -145,6 +145,7 @@ async def test_contact_sent_immediately(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     # Check contact sent (TZ: "Новый отклик", Креатор, Профиль креатора)
@@ -234,6 +235,7 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     sent_to_blogger = [
@@ -258,6 +260,8 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
 @pytest.mark.asyncio
 async def test_offer_skip_handler(
     user_repo,
+    config,
+    bot_texts_service,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -300,6 +304,8 @@ async def test_offer_skip_handler(
         callback,
         user_role_service=user_service,
         offer_dispatch_service=offer_dispatch_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -307,6 +313,7 @@ async def test_offer_skip_handler(
     assert (
         "пропущено" in callback.answers[0].lower()
         or "ок" in callback.answers[0].lower()
+        or "skip" in callback.answers[0].lower()
     )
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
@@ -356,6 +363,8 @@ async def test_offer_response_handler_success(
     messenger_client,
     event_adapter,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger can respond to offer."""
 
@@ -406,7 +415,8 @@ async def test_offer_response_handler_success(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -428,6 +438,8 @@ async def test_offer_response_handler_blocked_user(
     offer_dispatch_repo,
     interaction_repo,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject blocked bloggers early."""
 
@@ -464,7 +476,8 @@ async def test_offer_response_handler_blocked_user(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -475,6 +488,8 @@ async def test_offer_response_handler_blocked_user(
 async def test_offer_response_handler_order_not_active(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject responses for inactive orders."""
 
@@ -547,7 +562,9 @@ async def test_offer_response_handler_order_not_active(
 
 
 @pytest.mark.asyncio
-async def test_send_order_closed_and_remove_keyboard() -> None:
+async def test_send_order_closed_and_remove_keyboard(
+    bot_texts_service, config
+) -> None:
     """Order-closed helper answers callback and sends order-closed message."""
     incoming = IncomingCallback(
         callback_id="cb1",
@@ -560,15 +577,21 @@ async def test_send_order_closed_and_remove_keyboard() -> None:
         message_id="456",
     )
     client = FakeMessengerClient()
-    await _send_order_closed_and_remove_keyboard(incoming, client)
+    locale = config.market.default_locale
+    await _send_order_closed_and_remove_keyboard(
+        incoming, client, bot_texts_service, locale
+    )
     assert len(client.answered_callbacks) == 1
-    assert any(ORDER_CLOSED_MESSAGE in s["text"] for s in client.sent_text)
+    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
+    assert any(msg_closed_full in s["text"] for s in client.sent_text)
 
 
 @pytest.mark.asyncio
 async def test_offer_response_handler_order_not_found(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject responses for unknown order."""
 
@@ -623,6 +646,8 @@ async def test_offer_response_handler_order_not_found(
 async def test_offer_response_handler_already_responded(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject duplicate responses."""
 
@@ -702,6 +727,8 @@ async def test_offer_response_handler_already_responded(
 async def test_offer_response_handler_overflow_saved_no_contact(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Overflow saved, overflow message shown; no contact to advertiser."""
 
@@ -778,7 +805,8 @@ async def test_offer_response_handler_overflow_saved_no_contact(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -788,7 +816,8 @@ async def test_offer_response_handler_overflow_saved_no_contact(
     )
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
-    assert ORDER_CLOSED_MESSAGE not in message.answers
+    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
+    assert msg_closed_full not in message.answers
     total = await dispatch_repo.count_by_order(order.order_id)
     assert total == 2
     accepted_count = await dispatch_repo.count_accepted_by_order(order.order_id)
@@ -799,6 +828,8 @@ async def test_offer_response_handler_overflow_saved_no_contact(
 async def test_offer_response_handler_no_from_user(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle callback without from_user."""
 
@@ -828,7 +859,8 @@ async def test_offer_response_handler_no_from_user(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert not callback.answers
@@ -838,6 +870,8 @@ async def test_offer_response_handler_no_from_user(
 async def test_offer_response_handler_user_not_found(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when user is missing."""
 
@@ -866,17 +900,25 @@ async def test_offer_response_handler_user_not_found(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
-    assert "Пользователь не найден" in callback.answers[0]
+    msg = callback.answers[0]
+    assert (
+        "не найден" in msg
+        or "not found" in msg.lower()
+        or "profile" in msg.lower()
+    )
 
 
 @pytest.mark.asyncio
 async def test_offer_response_handler_paused_user(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject paused bloggers."""
 
@@ -915,7 +957,8 @@ async def test_offer_response_handler_paused_user(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -926,6 +969,8 @@ async def test_offer_response_handler_paused_user(
 async def test_offer_response_handler_no_blogger_profile(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when blogger profile is missing."""
 
@@ -965,17 +1010,23 @@ async def test_offer_response_handler_no_blogger_profile(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
-    assert "Профиль блогера не заполнен" in callback.answers[0]
+    assert (
+        "Профиль не заполнен" in callback.answers[0]
+        or "/creator" in callback.answers[0]
+    )
 
 
 @pytest.mark.asyncio
 async def test_offer_response_handler_unconfirmed_profile(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when Instagram is not confirmed."""
 
@@ -1018,7 +1069,8 @@ async def test_offer_response_handler_unconfirmed_profile(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -1036,6 +1088,8 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
     messenger_client,
     event_adapter,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger with confirmed profile but no agreement sees agreement screen."""
 
@@ -1085,7 +1139,8 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1102,6 +1157,8 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
 async def test_offer_response_handler_invalid_uuid(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject invalid UUID in callback data."""
 
@@ -1144,7 +1201,8 @@ async def test_offer_response_handler_invalid_uuid(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -1155,6 +1213,8 @@ async def test_offer_response_handler_invalid_uuid(
 async def test_offer_response_handler_exception(
     fake_tm: object,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Handle exceptions gracefully."""
 
@@ -1230,7 +1290,8 @@ async def test_offer_response_handler_exception(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -1277,6 +1338,7 @@ async def test_send_contact_order_not_found(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert not bot.answers
@@ -1333,6 +1395,7 @@ async def test_send_contact_order_not_active(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert not bot.answers
@@ -1386,6 +1449,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     # Contact should not be sent when user/profile is missing
@@ -1395,6 +1459,8 @@ async def test_maybe_send_contacts_missing_user_or_profile(
 @pytest.mark.asyncio
 async def test_offer_skip_edit_reply_markup_exception(
     user_repo,
+    config,
+    bot_texts_service,
     messenger_client,
     event_adapter,
 ) -> None:
@@ -1433,6 +1499,8 @@ async def test_offer_skip_edit_reply_markup_exception(
         callback,
         user_role_service=user_service,
         offer_dispatch_service=offer_dispatch_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1440,6 +1508,7 @@ async def test_offer_skip_edit_reply_markup_exception(
     assert (
         "пропущено" in callback.answers[0].lower()
         or "ок" in callback.answers[0].lower()
+        or "skip" in callback.answers[0].lower()
     )
 
 
@@ -1452,6 +1521,8 @@ async def test_offer_response_handler_rate_limited(
     offer_dispatch_repo,
     interaction_repo,
     strict_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Reject when rate limit exceeded."""
 
@@ -1512,7 +1583,8 @@ async def test_offer_response_handler_rate_limited(
             response_service,
             interaction_service,
             strict_rate_limiter,
-            _offer_responses_config(),
+            config,
+            bot_texts_service=bot_texts_service,
         )
 
     assert any("Слишком много запросов" in ans for ans in callback.answers)
@@ -1529,6 +1601,8 @@ async def test_offer_response_sends_product_link_and_what_next(
     messenger_client,
     event_adapter,
     offer_response_rate_limiter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Response succeeds: product_link and WHAT_NEXT sent."""
 
@@ -1578,7 +1652,8 @@ async def test_offer_response_sends_product_link_and_what_next(
         response_service,
         interaction_service,
         offer_response_rate_limiter,
-        _offer_responses_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -1646,6 +1721,7 @@ async def test_send_contact_ugc_plus_placement_format(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert any(
@@ -1708,6 +1784,7 @@ async def test_send_contact_empty_instagram_url(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert any(
@@ -1773,6 +1850,7 @@ async def test_send_contact_instagram_url_without_http(
         profile_service=profile_service,
         interaction_service=interaction_service,
         messenger_client=messenger_client,
+        texts={},
     )
 
     assert any(

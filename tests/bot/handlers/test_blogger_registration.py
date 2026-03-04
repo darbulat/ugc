@@ -1,5 +1,6 @@
 """Tests for blogger registration handlers."""
 
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
@@ -11,6 +12,7 @@ from tests.helpers.factories import (
 from tests.helpers.fakes import (
     FakeCallback,
     FakeFSMContext,
+    FakeLocation,
     FakeMessage,
     FakeMessengerClient,
     FakeUser,
@@ -23,8 +25,11 @@ from ugc_bot.application.services.blogger_registration_service import (
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.blogger_registration import (
     BloggerRegistrationStates,
+    _audience_gender_from_callback,
+    _blogger_gender_from_callback,
     _parse_age_range,
     _start_registration_flow,
+    _work_format_from_callback,
     choose_creator_role,
     handle_age,
     handle_agreements,
@@ -38,7 +43,6 @@ from ugc_bot.bot.handlers.blogger_registration import (
     handle_blogger_gender_callback,
     handle_city,
     handle_city_region_callback,
-    handle_city_web_app_data,
     handle_gender,
     handle_geo,
     handle_instagram,
@@ -53,20 +57,19 @@ from ugc_bot.bot.handlers.blogger_registration import (
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_BLOGGER_AGE_18_24,
     CALLBACK_BLOGGER_AGREE,
+    CALLBACK_BLOGGER_AUDIENCE_A,
+    CALLBACK_BLOGGER_AUDIENCE_F,
     CALLBACK_BLOGGER_AUDIENCE_M,
     CALLBACK_BLOGGER_BARTER_N,
     CALLBACK_BLOGGER_BARTER_Y,
+    CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
     CALLBACK_BLOGGER_REGION_PREFIX,
     CALLBACK_BLOGGER_WORK_ADS,
+    CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
-    CONFIRM_AGREEMENT_BUTTON_TEXT,
-    CONFIRM_INSTAGRAM_BUTTON_TEXT,
-    CREATE_PROFILE_BUTTON_TEXT,
-    MY_PROFILE_BUTTON_TEXT,
-    WORK_FORMAT_ADS_BUTTON_TEXT,
-    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
 )
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -82,6 +85,8 @@ from ugc_bot.infrastructure.memory_repositories import (
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
+
+_TEXTS_RU = DEFAULT_TEXTS["ru"]
 
 
 def _blogger_registration_config() -> AppConfig:
@@ -106,21 +111,27 @@ def _blogger_registration_config() -> AppConfig:
 
 
 @pytest.mark.asyncio
-async def test_start_registration_requires_user(user_repo) -> None:
+async def test_start_registration_requires_user(
+    user_repo, config, bot_texts_service
+) -> None:
     """Require existing user before registration."""
 
     service = UserRoleService(user_repo=user_repo)
     message = FakeMessage(text=None, user=FakeUser(1, "user", "User"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service)
+    await _start_registration_flow(
+        message, state, service, bot_texts_service, config
+    )
 
     assert message.answers
     assert "Пользователь не найден" in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_start_registration_sets_state(user_repo) -> None:
+async def test_start_registration_sets_state(
+    user_repo, config, bot_texts_service
+) -> None:
     """Start registration for blogger role."""
 
     service = UserRoleService(user_repo=user_repo)
@@ -132,14 +143,18 @@ async def test_start_registration_sets_state(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(7, "alice", "Alice"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service)
+    await _start_registration_flow(
+        message, state, service, bot_texts_service, config
+    )
 
     assert state._data["external_id"] == "7"
     assert state.state is not None
 
 
 @pytest.mark.asyncio
-async def test_start_registration_blocked_user(user_repo) -> None:
+async def test_start_registration_blocked_user(
+    user_repo, config, bot_texts_service
+) -> None:
     """Reject registration for blocked user."""
 
     from uuid import UUID
@@ -155,14 +170,18 @@ async def test_start_registration_blocked_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(8, "blocked", "Blocked"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service)
+    await _start_registration_flow(
+        message, state, service, bot_texts_service, config
+    )
 
     assert message.answers
     assert "Заблокированные" in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_start_registration_paused_user(user_repo) -> None:
+async def test_start_registration_paused_user(
+    user_repo, config, bot_texts_service
+) -> None:
     """Reject registration for paused user."""
 
     from uuid import UUID
@@ -178,14 +197,64 @@ async def test_start_registration_paused_user(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(9, "paused", "Paused"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service)
+    await _start_registration_flow(
+        message, state, service, bot_texts_service, config
+    )
 
     assert message.answers
     assert "паузе" in message.answers[0]
 
 
+def test_blogger_gender_from_callback() -> None:
+    """_blogger_gender_from_callback maps callback data to enum or None."""
+    assert (
+        _blogger_gender_from_callback(CALLBACK_BLOGGER_GENDER_M)
+        == BloggerGender.MALE
+    )
+    assert (
+        _blogger_gender_from_callback(CALLBACK_BLOGGER_GENDER_F)
+        == BloggerGender.FEMALE
+    )
+    assert _blogger_gender_from_callback("") is None
+    assert _blogger_gender_from_callback("blogger:gender:X") is None
+
+
+def test_audience_gender_from_callback() -> None:
+    """_audience_gender_from_callback maps callback data to enum or None."""
+    assert (
+        _audience_gender_from_callback(CALLBACK_BLOGGER_AUDIENCE_F)
+        == AudienceGender.FEMALE
+    )
+    assert (
+        _audience_gender_from_callback(CALLBACK_BLOGGER_AUDIENCE_M)
+        == AudienceGender.MALE
+    )
+    assert (
+        _audience_gender_from_callback(CALLBACK_BLOGGER_AUDIENCE_A)
+        == AudienceGender.ALL
+    )
+    assert _audience_gender_from_callback("") is None
+    assert _audience_gender_from_callback("blogger:aud:X") is None
+
+
+def test_work_format_from_callback() -> None:
+    """_work_format_from_callback maps callback data to enum or None."""
+    assert (
+        _work_format_from_callback(CALLBACK_BLOGGER_WORK_ADS)
+        == WorkFormat.ADS_IN_ACCOUNT
+    )
+    assert (
+        _work_format_from_callback(CALLBACK_BLOGGER_WORK_UGC)
+        == WorkFormat.UGC_ONLY
+    )
+    assert _work_format_from_callback("") is None
+    assert _work_format_from_callback("blogger:work:other") is None
+
+
 @pytest.mark.asyncio
-async def test_instagram_validation_in_handler(user_repo, blogger_repo) -> None:
+async def test_instagram_validation_in_handler(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """Validate Instagram URL in handler."""
 
     registration_service = BloggerRegistrationService(
@@ -196,7 +265,11 @@ async def test_instagram_validation_in_handler(user_repo, blogger_repo) -> None:
     state = FakeFSMContext()
 
     await handle_instagram(
-        message, state, _blogger_registration_config(), registration_service
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
     )
 
     assert message.answers
@@ -204,7 +277,9 @@ async def test_instagram_validation_in_handler(user_repo, blogger_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_instagram_success_in_handler(user_repo, blogger_repo) -> None:
+async def test_instagram_success_in_handler(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """Accept valid Instagram URL."""
 
     registration_service = BloggerRegistrationService(
@@ -218,15 +293,72 @@ async def test_instagram_success_in_handler(user_repo, blogger_repo) -> None:
     state = FakeFSMContext()
 
     await handle_instagram(
-        message, state, _blogger_registration_config(), registration_service
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
     )
 
     assert state._data["instagram_url"].endswith("test_user")
 
 
 @pytest.mark.asyncio
+async def test_handle_instagram_with_webhook_base_url_sends_map_button(
+    user_repo, blogger_repo, bot_texts_service
+) -> None:
+    """City step keyboard has map Mini App button when webhook_base_url set."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///",
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+            "KAFKA_ENABLED": "false",
+            "FEEDBACK_ENABLED": "false",
+            "ROLE_REMINDER_ENABLED": "false",
+            "REDIS_URL": "redis://",
+            "USE_REDIS_STORAGE": "false",
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+            "WEBHOOK_BASE_URL": "https://bot.example.com",
+            "WEBHOOK_SECRET": "secret",
+        }
+    )
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="https://instagram.com/test_user",
+        user=FakeUser(1, "user", "User"),
+    )
+    state = FakeFSMContext()
+
+    await handle_instagram(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert client.sent_text
+    last = client.sent_text[-1]
+    kb = last.get("keyboard")
+    assert kb is not None
+    assert len(kb.rows) == 2
+    assert kb.rows[1][0].web_app_url is not None
+
+
+@pytest.mark.asyncio
 async def test_instagram_url_normalized_with_query_and_www(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """URL with query and www is accepted and stored normalized."""
     registration_service = BloggerRegistrationService(
@@ -239,123 +371,200 @@ async def test_instagram_url_normalized_with_query_and_www(
     state = FakeFSMContext()
 
     await handle_instagram(
-        message, state, _blogger_registration_config(), registration_service
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
     )
 
     assert state._data["instagram_url"] == "https://instagram.com/norm_user"
 
 
 @pytest.mark.asyncio
-async def test_gender_invalid() -> None:
+async def test_gender_invalid(config, bot_texts_service) -> None:
     """Reject invalid gender."""
 
     message = FakeMessage(text="unknown", user=None)
     state = FakeFSMContext()
 
-    await handle_gender(message, state)
+    await handle_gender(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert message.answers
-    assert "Выберите" in message.answers[0]
+    assert _TEXTS_RU["err_audience_choose"] in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_age_invalid() -> None:
+async def test_age_invalid(config, bot_texts_service) -> None:
     """Reject invalid age format."""
 
     message = FakeMessage(text="18", user=None)
     state = FakeFSMContext()
 
-    await handle_age(message, state)
+    await handle_age(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert message.answers
-    assert "кнопок возраста" in message.answers[0]
+    assert _TEXTS_RU["err_age_choose"] in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_price_invalid() -> None:
+async def test_price_invalid(config, bot_texts_service) -> None:
     """Reject invalid price."""
 
     message = FakeMessage(text="abc", user=None)
     state = FakeFSMContext()
 
-    await handle_price(message, state, max_order_price=10_000.0)
+    await handle_price(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=10_000.0,
+        currency_symbol="₽",
+    )
 
     assert message.answers
-    assert "Введите число" in message.answers[0]
+    assert _TEXTS_RU["err_price_number"] in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_name_and_topics_flow() -> None:
+async def test_name_and_topics_flow(config, bot_texts_service) -> None:
     """Store nickname and topics."""
 
     state = FakeFSMContext()
     name_message = FakeMessage(text="Alice", user=FakeUser(1, "user", "User"))
-    await handle_name(name_message, state)
+    await handle_name(
+        name_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert state._data["nickname"] == "Alice"
 
     topics_message = FakeMessage(text="fitness, travel", user=None)
-    await handle_topics(topics_message, state)
+    await handle_topics(
+        topics_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert state._data["topics"]["selected"] == ["fitness", "travel"]
 
 
 @pytest.mark.asyncio
-async def test_name_and_topics_invalid() -> None:
+async def test_name_and_topics_invalid(config, bot_texts_service) -> None:
     """Handle invalid name and topics input."""
 
     state = FakeFSMContext()
     name_message = FakeMessage(text=" ", user=None)
-    await handle_name(name_message, state)
+    await handle_name(
+        name_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     ans = name_message.answers[0]
     assert "символ" in (ans if isinstance(ans, str) else ans[0]).lower()
 
     topics_message = FakeMessage(text=" ", user=None)
-    await handle_topics(topics_message, state)
+    await handle_topics(
+        topics_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     ans_t = topics_message.answers[0]
     assert "тематику" in (ans_t if isinstance(ans_t, str) else ans_t[0])
 
 
 @pytest.mark.asyncio
-async def test_gender_age_geo_price_flow() -> None:
+async def test_gender_age_geo_price_flow(config, bot_texts_service) -> None:
     """Store gender, age, geo, price."""
 
     state = FakeFSMContext()
 
-    gender_message = FakeMessage(text="👥 Примерно поровну", user=None)
-    await handle_gender(gender_message, state)
+    gender_message = FakeMessage(text=_TEXTS_RU["btn_audience_a"], user=None)
+    await handle_gender(
+        gender_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert state._data["audience_gender"] == AudienceGender.ALL
 
-    age_message = FakeMessage(text="18–24", user=None)
-    await handle_age(age_message, state)
+    age_message = FakeMessage(text=_TEXTS_RU["btn_age_18_24"], user=None)
+    await handle_age(
+        age_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert state._data["audience_age_min"] == 18
     assert state._data["audience_age_max"] == 24
 
     geo_message = FakeMessage(text="Moscow", user=None)
-    await handle_geo(geo_message, state)
+    await handle_geo(
+        geo_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert state._data["audience_geo"] == "Moscow"
 
     price_message = FakeMessage(text="1500", user=None)
-    await handle_price(price_message, state, max_order_price=10_000.0)
+    await handle_price(
+        price_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=10_000.0,
+        currency_symbol="₽",
+    )
     assert state._data["price"] == 1500.0
 
 
 @pytest.mark.asyncio
-async def test_geo_empty_and_price_negative() -> None:
+async def test_geo_empty_and_price_negative(config, bot_texts_service) -> None:
     """Handle invalid geo and price inputs."""
 
     state = FakeFSMContext()
     geo_message = FakeMessage(text=" ", user=None)
-    await handle_geo(geo_message, state)
+    await handle_geo(
+        geo_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     ans_g = geo_message.answers[0]
     assert "город" in (ans_g if isinstance(ans_g, str) else ans_g[0])
 
     price_message = FakeMessage(text="-5", user=None)
-    await handle_price(price_message, state, max_order_price=10_000.0)
+    await handle_price(
+        price_message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=10_000.0,
+        currency_symbol="₽",
+    )
     ans_p = price_message.answers[0]
     assert "Цена должна" in (ans_p if isinstance(ans_p, str) else ans_p[0])
 
 
 @pytest.mark.asyncio
-async def test_handle_geo_invalid_sends_error_via_client() -> None:
+async def test_handle_geo_invalid_sends_error_via_client(
+    config, bot_texts_service
+) -> None:
     """handle_geo with empty text sends validation error via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -366,6 +575,8 @@ async def test_handle_geo_invalid_sends_error_via_client() -> None:
     await handle_geo(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -374,7 +585,9 @@ async def test_handle_geo_invalid_sends_error_via_client() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_price_invalid_number_sends_error_via_client() -> None:
+async def test_handle_price_invalid_number_sends_error_via_client(
+    config, bot_texts_service
+) -> None:
     """handle_price with non-numeric text sends error via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -385,7 +598,10 @@ async def test_handle_price_invalid_number_sends_error_via_client() -> None:
     await handle_price(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         max_order_price=10_000.0,
+        currency_symbol="₽",
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -394,7 +610,9 @@ async def test_handle_price_invalid_number_sends_error_via_client() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_barter_invalid_sends_error_via_client() -> None:
+async def test_handle_barter_invalid_sends_error_via_client(
+    config, bot_texts_service
+) -> None:
     """handle_barter with invalid text sends error via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -405,15 +623,21 @@ async def test_handle_barter_invalid_sends_error_via_client() -> None:
     await handle_barter(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
-    assert any("Да или Нет" in s["text"] for s in client.sent_text)
+    assert any(
+        _TEXTS_RU["err_barter_choose"] in s["text"] for s in client.sent_text
+    )
 
 
 @pytest.mark.asyncio
-async def test_handle_blogger_gender_invalid_sends_error_via_client() -> None:
+async def test_handle_blogger_gender_invalid_sends_error_via_client(
+    config, bot_texts_service
+) -> None:
     """handle_blogger_gender with invalid text sends error via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -424,19 +648,20 @@ async def test_handle_blogger_gender_invalid_sends_error_via_client() -> None:
     await handle_blogger_gender(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert any(
-        "кнопок" in s["text"] or "Мужской" in s["text"]
-        for s in client.sent_text
+        _TEXTS_RU["err_gender_choose"] in s["text"] for s in client.sent_text
     )
 
 
 @pytest.mark.asyncio
 async def test_handle_work_format_invalid_sends_error_via_client(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_work_format with invalid text sends error via client."""
     config = _blogger_test_config()
@@ -452,8 +677,9 @@ async def test_handle_work_format_invalid_sends_error_via_client(
     await handle_work_format(
         message,
         state,
-        config,
-        reg_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -463,7 +689,7 @@ async def test_handle_work_format_invalid_sends_error_via_client(
 
 @pytest.mark.asyncio
 async def test_handle_work_format_session_expired_sends_message(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_work_format when user_id missing sends session expired."""
     config = _blogger_test_config()
@@ -489,14 +715,15 @@ async def test_handle_work_format_session_expired_sends_message(
         blogger_gender=BloggerGender.MALE,
     )
     message = FakeMessage(
-        text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(1, "u", "U")
+        text=_TEXTS_RU["btn_work_format_ads"], user=FakeUser(1, "u", "U")
     )
 
     await handle_work_format(
         message,
         state,
-        config,
-        reg_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -507,7 +734,7 @@ async def test_handle_work_format_session_expired_sends_message(
 
 @pytest.mark.asyncio
 async def test_handle_agreements_creates_profile(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """Agreement step confirms consent; profile is saved in work_format step."""
 
@@ -541,12 +768,18 @@ async def test_handle_agreements_creates_profile(
     )
 
     message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(42, "bob", "Bob")
+        text=_TEXTS_RU["btn_confirm_agreement"], user=FakeUser(42, "bob", "Bob")
     )
     state = FakeFSMContext()
     await state.update_data(user_id=user.user_id)
 
-    await handle_agreements(message, state, registration_service)
+    await handle_agreements(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -556,7 +789,7 @@ async def test_handle_agreements_creates_profile(
 
 @pytest.mark.asyncio
 async def test_handle_agreements_requires_consent(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """Require explicit consent."""
 
@@ -567,7 +800,13 @@ async def test_handle_agreements_requires_consent(
     message = FakeMessage(text="нет", user=FakeUser(1, "bob", "Bob"))
     state = FakeFSMContext()
 
-    await handle_agreements(message, state, registration_service)
+    await handle_agreements(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert message.answers
     first_answer = message.answers[0]
@@ -576,7 +815,9 @@ async def test_handle_agreements_requires_consent(
 
 
 @pytest.mark.asyncio
-async def test_handle_instagram_duplicate_url(user_repo, blogger_repo) -> None:
+async def test_handle_instagram_duplicate_url(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """Reject duplicate Instagram URL."""
     from datetime import datetime, timezone
     from uuid import UUID
@@ -619,7 +860,11 @@ async def test_handle_instagram_duplicate_url(user_repo, blogger_repo) -> None:
     state = FakeFSMContext()
 
     await handle_instagram(
-        message, state, _blogger_registration_config(), registration_service
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
     )
 
     assert message.answers
@@ -628,7 +873,7 @@ async def test_handle_instagram_duplicate_url(user_repo, blogger_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_agreements_shows_verification_button(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """Show verification button after registration for unconfirmed profile."""
     user_role_service = UserRoleService(user_repo=user_repo)
@@ -661,27 +906,47 @@ async def test_handle_agreements_shows_verification_button(
     )
 
     message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(43, "alice", "Alice")
+        text=_TEXTS_RU["btn_confirm_agreement"],
+        user=FakeUser(43, "alice", "Alice"),
     )
     state = FakeFSMContext()
     await state.update_data(user_id=user.user_id)
 
-    await handle_agreements(message, state, registration_service)
+    await handle_agreements(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    rows = (
+        keyboard.rows
+        if hasattr(keyboard, "rows")
+        else getattr(keyboard, "inline_keyboard", None)
+        or getattr(keyboard, "keyboard", None)
+    )
     assert rows is not None
-    # After registration: Confirm Instagram + My profile
+    # After registration: Confirm Instagram + My profile (inline)
     assert len(rows) == 2
-    assert rows[0][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
-    assert rows[1][0].text == MY_PROFILE_BUTTON_TEXT
+    assert rows[0][0].text == _TEXTS_RU["btn_confirm_instagram"]
+    assert rows[1][0].text == _TEXTS_RU["btn_my_profile"]
 
 
 @pytest.mark.asyncio
-async def test_start_registration_no_username_asks_name(user_repo) -> None:
-    """When user has no username, ask for name first."""
+async def test_start_registration_no_username_asks_name(
+    user_repo, config, bot_texts_service
+) -> None:
+    """When user has no username, first step asks for name."""
     service = UserRoleService(user_repo=user_repo)
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000000a"),
+        external_id="10",
+        username="",
+    )
     await service.set_user(
         external_id="10",
         messenger_type=MessengerType.TELEGRAM,
@@ -690,7 +955,9 @@ async def test_start_registration_no_username_asks_name(user_repo) -> None:
     message = FakeMessage(text=None, user=FakeUser(10, "", "User"))
     state = FakeFSMContext()
 
-    await _start_registration_flow(message, state, service)
+    await _start_registration_flow(
+        message, state, service, bot_texts_service, config
+    )
 
     ans = message.answers[0]
     text = (ans if isinstance(ans, str) else ans[0]).lower()
@@ -699,12 +966,23 @@ async def test_start_registration_no_username_asks_name(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_empty_rejects(user_repo) -> None:
+async def test_handle_city_empty_rejects(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """handle_city rejects empty city."""
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     message = FakeMessage(text="   ", user=FakeUser(1, "u", "U"))
     state = FakeFSMContext()
 
-    await handle_city(message, state, _blogger_registration_config())
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -713,12 +991,23 @@ async def test_handle_city_empty_rejects(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_valid_stores_and_asks_birth_date() -> None:
+async def test_handle_city_valid_stores_and_asks_birth_date(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """handle_city stores canonical city and asks for birth date."""
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     state = FakeFSMContext()
     message = FakeMessage(text="Москва", user=FakeUser(1, "u", "U"))
 
-    await handle_city(message, state, _blogger_registration_config())
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+    )
 
     assert state._data["city"] == "москва"
     assert state.state == BloggerRegistrationStates.birth_date
@@ -729,8 +1018,13 @@ async def test_handle_city_valid_stores_and_asks_birth_date() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_non_canonical_sends_picker_hint() -> None:
-    """handle_city with city not in dictionary sends picker hint."""
+async def test_handle_city_any_city_accepted_and_asks_birth_date(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city accepts any city text and asks for birth date."""
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
     message = FakeMessage(text="UnknownCity123", user=FakeUser(1, "u", "U"))
@@ -740,21 +1034,29 @@ async def test_handle_city_non_canonical_sends_picker_hint() -> None:
     await handle_city(
         message,
         state,
-        _blogger_registration_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
-    assert "city" not in state._data or state._data.get("city") is None
+    assert state._data.get("city") == "unknowncity123"
+    assert state.state == BloggerRegistrationStates.birth_date
     assert any(
-        "Выберите город из списка" in s["text"] or "Выбрать город" in s["text"]
+        "дату рождения" in s["text"].lower() or "дд.мм" in s["text"].lower()
         for s in client.sent_text
     )
 
 
 @pytest.mark.asyncio
-async def test_handle_city_multi_region_shows_region_buttons() -> None:
+async def test_handle_city_multi_region_shows_region_buttons(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """handle_city with city in multiple regions shows region picker."""
+    reg_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
     message = FakeMessage(text="Железногорск", user=FakeUser(1, "u", "U"))
@@ -764,7 +1066,9 @@ async def test_handle_city_multi_region_shows_region_buttons() -> None:
     await handle_city(
         message,
         state,
-        _blogger_registration_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -775,7 +1079,114 @@ async def test_handle_city_multi_region_shows_region_buttons() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_region_callback_no_city_answers_only() -> None:
+async def test_handle_city_with_location_stores_city_and_asks_birth_date(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city with shared location reverse-geocodes and stores city."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_from_location = AsyncMock(
+        return_value=("Moscow", "Moscow", "Russia")
+    )
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    reg_service.resolve_city_from_location.assert_called_once_with(55.75, 37.62)
+    assert state._data.get("city") == "moscow"
+    assert state._data.get("location_geometry") == "MULTIPOINT((37.62 55.75))"
+    assert state.state == BloggerRegistrationStates.birth_date
+    assert any(
+        "дату рождения" in s["text"].lower() or "дд.мм" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_city_with_location_resolve_fails_sends_error(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city with location and failed reverse geocode sends error."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_from_location = AsyncMock(return_value=None)
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "геопозици" in s["text"].lower() or "город" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_city_with_web_app_data_uses_lat_lon(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city with web_app_data (Mini App) parses JSON and uses lat/lon."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_from_location = AsyncMock(
+        return_value=("Kazan", "Tatarstan", "Russia")
+    )
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData(data='{"lat":55.79,"lon":49.12}'),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    reg_service.resolve_city_from_location.assert_called_once_with(55.79, 49.12)
+    assert state._data.get("city") == "kazan"
+
+
+@pytest.mark.asyncio
+async def test_handle_city_region_callback_no_city_answers_only(
+    config, bot_texts_service
+) -> None:
     """handle_city_region_callback with no city in state only answers."""
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
@@ -790,6 +1201,8 @@ async def test_handle_city_region_callback_no_city_answers_only() -> None:
     await handle_city_region_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -801,9 +1214,9 @@ async def test_handle_city_region_callback_no_city_answers_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_region_callback_invalid_region_answers_only() -> (
-    None
-):
+async def test_handle_city_region_callback_invalid_region_answers_only(
+    config, bot_texts_service
+) -> None:
     """handle_city_region_callback with region not for city only answers."""
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
@@ -819,6 +1232,8 @@ async def test_handle_city_region_callback_invalid_region_answers_only() -> (
     await handle_city_region_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -830,7 +1245,9 @@ async def test_handle_city_region_callback_invalid_region_answers_only() -> (
 
 
 @pytest.mark.asyncio
-async def test_handle_city_region_callback_success_asks_birth_date() -> None:
+async def test_handle_city_region_callback_success_asks_birth_date(
+    config, bot_texts_service
+) -> None:
     """Valid region in city_region_callback stores region, asks birth date."""
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
@@ -846,6 +1263,8 @@ async def test_handle_city_region_callback_success_asks_birth_date() -> None:
     await handle_city_region_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -859,113 +1278,19 @@ async def test_handle_city_region_callback_success_asks_birth_date() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_city_web_app_data_invalid_sends_message() -> None:
-    """handle_city_web_app_data with invalid city sends choose from list."""
-    state = FakeFSMContext()
-    await state.set_state(BloggerRegistrationStates.city.state)
-    message = FakeMessage(
-        user=FakeUser(1, "u", "U"),
-        web_app_data=FakeWebAppData("invalid-city-xyz"),
-    )
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-
-    await handle_city_web_app_data(
-        message,
-        state,
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-
-    assert "city" not in state._data or state._data.get("city") is None
-    assert any(
-        "Выберите город из списка" in s["text"] for s in client.sent_text
-    )
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_valid_stores_and_asks_birth_date() -> (
-    None
-):
-    """handle_city_web_app_data with valid city stores and asks birth date."""
-    state = FakeFSMContext()
-    await state.set_state(BloggerRegistrationStates.city.state)
-    message = FakeMessage(
-        user=FakeUser(1, "u", "U"),
-        web_app_data=FakeWebAppData("москва"),
-    )
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-
-    await handle_city_web_app_data(
-        message,
-        state,
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-
-    assert state._data["city"] == "москва"
-    assert state.state == BloggerRegistrationStates.birth_date
-    assert any(
-        "дату рождения" in s["text"].lower() or "дд.мм" in s["text"].lower()
-        for s in client.sent_text
-    )
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_region_city_format_stores_both() -> (
-    None
-):
-    """handle_city_web_app_data with region:city id stores city and region."""
-    state = FakeFSMContext()
-    await state.set_state(BloggerRegistrationStates.city.state)
-    message = FakeMessage(
-        user=FakeUser(1, "u", "U"),
-        web_app_data=FakeWebAppData("республика татарстан:казань"),
-    )
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    await handle_city_web_app_data(
-        message,
-        state,
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert state._data["city"] == "казань"
-    assert state._data.get("region") == "республика татарстан"
-    assert state.state == BloggerRegistrationStates.birth_date
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_wrong_region_rejects() -> None:
-    """handle_city_web_app_data with valid city but wrong region sends error."""
-    state = FakeFSMContext()
-    await state.set_state(BloggerRegistrationStates.city.state)
-    message = FakeMessage(
-        user=FakeUser(1, "u", "U"),
-        web_app_data=FakeWebAppData("республика татарстан:москва"),
-    )
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    await handle_city_web_app_data(
-        message,
-        state,
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any(
-        "Выберите город из списка" in s["text"] for s in client.sent_text
-    )
-    assert state.state == BloggerRegistrationStates.city.state
-
-
-@pytest.mark.asyncio
-async def test_handle_birth_date_valid_stores_and_asks_gender() -> None:
+async def test_handle_birth_date_valid_stores_and_asks_gender(
+    config, bot_texts_service
+) -> None:
     """handle_birth_date stores valid date and asks for gender."""
     state = FakeFSMContext()
     message = FakeMessage(text="15.05.1995", user=FakeUser(1, "u", "U"))
 
-    await handle_birth_date(message, state)
+    await handle_birth_date(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert state._data.get("birth_date") == "1995-05-15"
     assert state.state == BloggerRegistrationStates.blogger_gender
@@ -976,13 +1301,20 @@ async def test_handle_birth_date_valid_stores_and_asks_gender() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_birth_date_invalid_sends_error() -> None:
+async def test_handle_birth_date_invalid_sends_error(
+    config, bot_texts_service
+) -> None:
     """handle_birth_date sends error for invalid input."""
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.birth_date.state)
     message = FakeMessage(text="32.13.2000", user=FakeUser(1, "u", "U"))
 
-    await handle_birth_date(message, state)
+    await handle_birth_date(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert (
         "birth_date" not in state._data or state._data.get("birth_date") is None
@@ -999,12 +1331,21 @@ async def test_handle_birth_date_invalid_sends_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_blogger_gender_valid_stores_and_asks_topics() -> None:
+async def test_handle_blogger_gender_valid_stores_and_asks_topics(
+    config, bot_texts_service
+) -> None:
     """handle_blogger_gender stores gender and asks for topics."""
     state = FakeFSMContext()
-    message = FakeMessage(text="Мужской", user=FakeUser(1, "u", "U"))
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_gender_m"], user=FakeUser(1, "u", "U")
+    )
 
-    await handle_blogger_gender(message, state)
+    await handle_blogger_gender(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert state._data["blogger_gender"] == BloggerGender.MALE
     assert state.state == BloggerRegistrationStates.topics
@@ -1015,36 +1356,59 @@ async def test_handle_blogger_gender_valid_stores_and_asks_topics() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_blogger_gender_female_stores() -> None:
+async def test_handle_blogger_gender_female_stores(
+    config, bot_texts_service
+) -> None:
     """handle_blogger_gender stores FEMALE."""
     state = FakeFSMContext()
-    message = FakeMessage(text="Женский", user=FakeUser(1, "u", "U"))
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_gender_f"], user=FakeUser(1, "u", "U")
+    )
 
-    await handle_blogger_gender(message, state)
+    await handle_blogger_gender(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert state._data["blogger_gender"] == BloggerGender.FEMALE
 
 
 @pytest.mark.asyncio
-async def test_handle_blogger_gender_invalid_rejects() -> None:
+async def test_handle_blogger_gender_invalid_rejects(
+    config, bot_texts_service
+) -> None:
     """handle_blogger_gender rejects invalid input."""
     state = FakeFSMContext()
     message = FakeMessage(text="Другое", user=FakeUser(1, "u", "U"))
 
-    await handle_blogger_gender(message, state)
+    await handle_blogger_gender(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert "blogger_gender" not in state._data
     assert message.answers
-    assert "Выберите" in message.answers[0] or "кнопок" in message.answers[0]
+    assert _TEXTS_RU["err_gender_choose"] in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_handle_topics_only_commas_rejects(user_repo) -> None:
+async def test_handle_topics_only_commas_rejects(
+    user_repo, config, bot_texts_service
+) -> None:
     """handle_topics rejects input that yields no topics (e.g. ',,')."""
     message = FakeMessage(text=", , ,", user=FakeUser(1, "u", "U"))
     state = FakeFSMContext()
 
-    await handle_topics(message, state)
+    await handle_topics(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -1053,7 +1417,9 @@ async def test_handle_topics_only_commas_rejects(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_geo_too_many_cities_rejects(user_repo) -> None:
+async def test_handle_geo_too_many_cities_rejects(
+    user_repo, config, bot_texts_service
+) -> None:
     """handle_geo rejects more than 3 cities."""
     message = FakeMessage(
         text="Moscow, Kazan, SPb, Novosibirsk",
@@ -1061,7 +1427,12 @@ async def test_handle_geo_too_many_cities_rejects(user_repo) -> None:
     )
     state = FakeFSMContext()
 
-    await handle_geo(message, state)
+    await handle_geo(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -1070,28 +1441,38 @@ async def test_handle_geo_too_many_cities_rejects(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_barter_invalid_rejects(user_repo) -> None:
+async def test_handle_barter_invalid_rejects(
+    user_repo, config, bot_texts_service
+) -> None:
     """handle_barter rejects non-Da/Net input."""
     message = FakeMessage(text="maybe", user=FakeUser(1, "u", "U"))
     state = FakeFSMContext()
 
-    await handle_barter(message, state)
+    await handle_barter(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
-    assert "Да или Нет" in message.answers[0]
+    assert _TEXTS_RU["err_barter_choose"] in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_handle_barter_da_sends_work_format() -> None:
+async def test_handle_barter_da_sends_work_format(
+    config, bot_texts_service
+) -> None:
     """handle_barter with 'да' stores barter and sends work format keyboard."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     state = FakeFSMContext()
     state.state = BloggerRegistrationStates.barter
-    message = FakeMessage(text="да", user=FakeUser(1, "u", "U"))
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_barter_yes"], user=FakeUser(1, "u", "U")
+    )
     await handle_barter(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1101,16 +1482,22 @@ async def test_handle_barter_da_sends_work_format() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_barter_net_sends_work_format() -> None:
+async def test_handle_barter_net_sends_work_format(
+    config, bot_texts_service
+) -> None:
     """handle_barter with 'нет' stores barter and sends work format keyboard."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     state = FakeFSMContext()
     state.state = BloggerRegistrationStates.barter
-    message = FakeMessage(text="нет", user=FakeUser(1, "u", "U"))
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_barter_no"], user=FakeUser(1, "u", "U")
+    )
     await handle_barter(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1138,7 +1525,9 @@ def test_parse_age_range_invalid_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_agreements_wrong_text_clears_state() -> None:
+async def test_handle_agreements_wrong_text_clears_state(
+    config, bot_texts_service
+) -> None:
     """handle_agreements with wrong text clears state and sends message."""
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.agreements.state)
@@ -1156,6 +1545,8 @@ async def test_handle_agreements_wrong_text_clears_state() -> None:
     await handle_agreements(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1190,7 +1581,9 @@ def _blogger_test_config() -> AppConfig:
 
 
 @pytest.mark.asyncio
-async def test_handle_work_format_valid_ads(user_repo, blogger_repo) -> None:
+async def test_handle_work_format_valid_ads(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """handle_work_format accepts ADS_IN_ACCOUNT and saves profile."""
     await create_test_user(
         user_repo,
@@ -1202,7 +1595,7 @@ async def test_handle_work_format_valid_ads(user_repo, blogger_repo) -> None:
         user_repo=user_repo, blogger_repo=blogger_repo
     )
     message = FakeMessage(
-        text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(1, "u", "U")
+        text=_TEXTS_RU["btn_work_format_ads"], user=FakeUser(1, "u", "U")
     )
     state = FakeFSMContext()
     state.state = BloggerRegistrationStates.work_format
@@ -1223,7 +1616,13 @@ async def test_handle_work_format_valid_ads(user_repo, blogger_repo) -> None:
     )
     config = _blogger_test_config()
 
-    await handle_work_format(message, state, config, registration_service)
+    await handle_work_format(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert state._data["work_format"] == WorkFormat.ADS_IN_ACCOUNT
     assert state.state == BloggerRegistrationStates.agreements
@@ -1236,7 +1635,7 @@ async def test_handle_work_format_valid_ads(user_repo, blogger_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_work_format_invalid_rejects(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_work_format rejects invalid choice."""
     registration_service = BloggerRegistrationService(
@@ -1246,7 +1645,13 @@ async def test_handle_work_format_invalid_rejects(
     state = FakeFSMContext()
     config = _blogger_test_config()
 
-    await handle_work_format(message, state, config, registration_service)
+    await handle_work_format(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert message.answers
     assert "Выберите одну из кнопок" in message.answers[0]
@@ -1254,27 +1659,33 @@ async def test_handle_work_format_invalid_rejects(
 
 @pytest.mark.asyncio
 async def test_handle_agreements_session_expired(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_agreements clears when user_id missing from state."""
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
     message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(1, "bob", "Bob")
+        text=_TEXTS_RU["btn_confirm_agreement"], user=FakeUser(1, "bob", "Bob")
     )
     state = FakeFSMContext()
     state.state = BloggerRegistrationStates.agreements
     await state.update_data(nickname="x", external_id="1")  # no user_id
 
-    await handle_agreements(message, state, registration_service)
+    await handle_agreements(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert "Сессия истекла" in message.answers[0]
 
 
 @pytest.mark.asyncio
 async def test_choose_creator_role_no_from_user(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """choose_creator_role returns early when message.from_user is None."""
     user_service = UserRoleService(user_repo=user_repo)
@@ -1283,14 +1694,21 @@ async def test_choose_creator_role_no_from_user(
     message.from_user = None
     state = FakeFSMContext()
 
-    await choose_creator_role(message, user_service, profile_service, state)
+    await choose_creator_role(
+        message,
+        user_service,
+        profile_service,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert not message.answers
 
 
 @pytest.mark.asyncio
 async def test_choose_creator_role_with_profile(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """choose_creator_role shows action menu when blogger profile exists."""
     user_service = UserRoleService(user_repo=user_repo)
@@ -1308,7 +1726,14 @@ async def test_choose_creator_role_with_profile(
     )
     state = FakeFSMContext()
 
-    await choose_creator_role(message, user_service, profile_service, state)
+    await choose_creator_role(
+        message,
+        user_service,
+        profile_service,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -1317,20 +1742,35 @@ async def test_choose_creator_role_with_profile(
 
 
 @pytest.mark.asyncio
-async def test_start_registration_button(user_repo) -> None:
-    """start_registration_button delegates to _start_registration_flow."""
+async def test_start_registration_button(
+    user_repo, config, bot_texts_service
+) -> None:
+    """start_registration_button sends first step (instagram or name)."""
     user_service = UserRoleService(user_repo=user_repo)
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000033"),
+        external_id="51",
+        username="alice",
+    )
     await user_service.set_user(
         external_id="51",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
     )
     message = FakeMessage(
-        text=CREATE_PROFILE_BUTTON_TEXT, user=FakeUser(51, "alice", "Alice")
+        text=_TEXTS_RU["btn_create_profile"],
+        user=FakeUser(51, "alice", "Alice"),
     )
     state = FakeFSMContext()
 
-    await start_registration_button(message, state, user_service)
+    await start_registration_button(
+        message,
+        state,
+        user_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -1339,7 +1779,9 @@ async def test_start_registration_button(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_registration_inline_sets_state(user_repo) -> None:
+async def test_start_registration_inline_sets_state(
+    user_repo, config, bot_texts_service
+) -> None:
     """start_registration_inline (callback) starts flow and sends first step."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -1365,6 +1807,8 @@ async def test_start_registration_inline_sets_state(user_repo) -> None:
         callback,
         state,
         user_role_service=user_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1376,7 +1820,7 @@ async def test_start_registration_inline_sets_state(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_start_registration_inline_user_not_found_returns_early(
-    user_repo,
+    user_repo, config, bot_texts_service
 ) -> None:
     """When user not in DB, start_registration_inline answers and returns."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
@@ -1397,6 +1841,8 @@ async def test_start_registration_inline_user_not_found_returns_early(
         callback,
         state,
         user_role_service=user_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1409,7 +1855,9 @@ async def test_start_registration_inline_user_not_found_returns_early(
 
 
 @pytest.mark.asyncio
-async def test_start_registration_inline_blocked_user(user_repo) -> None:
+async def test_start_registration_inline_blocked_user(
+    user_repo, config, bot_texts_service
+) -> None:
     """When user is blocked, start_registration_inline answers and returns."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -1436,6 +1884,8 @@ async def test_start_registration_inline_blocked_user(user_repo) -> None:
         callback,
         state,
         user_role_service=user_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1448,7 +1898,7 @@ async def test_start_registration_inline_blocked_user(user_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_work_format_callback_saves_and_shows_agreements(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """work_format_callback saves profile and shows agreements (full state)."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
@@ -1507,6 +1957,7 @@ async def test_work_format_callback_saves_and_shows_agreements(
         callback,
         state,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1521,7 +1972,7 @@ async def test_work_format_callback_saves_and_shows_agreements(
 
 @pytest.mark.asyncio
 async def test_work_format_callback_duplicate_instagram_sends_message(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """When Instagram already registered, work_format_callback sends message."""
     from unittest.mock import AsyncMock, patch
@@ -1591,6 +2042,7 @@ async def test_work_format_callback_duplicate_instagram_sends_message(
             callback,
             state,
             config=config,
+            bot_texts_service=bot_texts_service,
             blogger_registration_service=reg_service,
             messenger_client=client,
             event_adapter=adapter,
@@ -1603,7 +2055,9 @@ async def test_work_format_callback_duplicate_instagram_sends_message(
 
 
 @pytest.mark.asyncio
-async def test_blogger_gender_callback_sets_state_and_asks_topics() -> None:
+async def test_blogger_gender_callback_sets_state_and_asks_topics(
+    config, bot_texts_service
+) -> None:
     """handle_blogger_gender_callback stores gender and sends topics step."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -1623,6 +2077,8 @@ async def test_blogger_gender_callback_sets_state_and_asks_topics() -> None:
     await handle_blogger_gender_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1634,7 +2090,9 @@ async def test_blogger_gender_callback_sets_state_and_asks_topics() -> None:
 
 
 @pytest.mark.asyncio
-async def test_blogger_gender_callback_wrong_state_only_answers() -> None:
+async def test_blogger_gender_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not blogger_gender, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1647,7 +2105,12 @@ async def test_blogger_gender_callback_wrong_state_only_answers() -> None:
     )
 
     await handle_blogger_gender_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1655,7 +2118,9 @@ async def test_blogger_gender_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_blogger_gender_callback_unknown_data_only_answers() -> None:
+async def test_blogger_gender_callback_unknown_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When callback data is not M/F, only answer (no state change)."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1668,7 +2133,12 @@ async def test_blogger_gender_callback_unknown_data_only_answers() -> None:
     )
 
     await handle_blogger_gender_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1676,7 +2146,9 @@ async def test_blogger_gender_callback_unknown_data_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audience_gender_callback_sets_state_and_asks_age() -> None:
+async def test_audience_gender_callback_sets_state_and_asks_age(
+    config, bot_texts_service
+) -> None:
     """handle_audience_gender_callback stores audience gender and asks age."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -1696,6 +2168,8 @@ async def test_audience_gender_callback_sets_state_and_asks_age() -> None:
     await handle_audience_gender_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1706,7 +2180,9 @@ async def test_audience_gender_callback_sets_state_and_asks_age() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audience_gender_callback_wrong_state_only_answers() -> None:
+async def test_audience_gender_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not audience_gender, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1720,6 +2196,8 @@ async def test_audience_gender_callback_wrong_state_only_answers() -> None:
     await handle_audience_gender_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1728,7 +2206,9 @@ async def test_audience_gender_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audience_gender_callback_unknown_data_only_answers() -> None:
+async def test_audience_gender_callback_unknown_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When callback data not in audience map, only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1742,6 +2222,8 @@ async def test_audience_gender_callback_unknown_data_only_answers() -> None:
     await handle_audience_gender_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1750,7 +2232,9 @@ async def test_audience_gender_callback_unknown_data_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audience_age_callback_sets_state_and_asks_geo() -> None:
+async def test_audience_age_callback_sets_state_and_asks_geo(
+    config, bot_texts_service
+) -> None:
     """handle_audience_age_callback stores age range and asks geography."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -1770,6 +2254,8 @@ async def test_audience_age_callback_sets_state_and_asks_geo() -> None:
     await handle_audience_age_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1780,7 +2266,9 @@ async def test_audience_age_callback_sets_state_and_asks_geo() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audience_age_callback_wrong_state_only_answers() -> None:
+async def test_audience_age_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not audience_age, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1793,7 +2281,12 @@ async def test_audience_age_callback_wrong_state_only_answers() -> None:
     )
 
     await handle_audience_age_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1801,7 +2294,9 @@ async def test_audience_age_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audience_age_callback_invalid_data_only_answers() -> None:
+async def test_audience_age_callback_invalid_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When callback data not in age map, only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1814,7 +2309,12 @@ async def test_audience_age_callback_invalid_data_only_answers() -> None:
     )
 
     await handle_audience_age_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1822,7 +2322,9 @@ async def test_audience_age_callback_invalid_data_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_barter_callback_wrong_state_only_answers() -> None:
+async def test_barter_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not barter, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1835,7 +2337,12 @@ async def test_barter_callback_wrong_state_only_answers() -> None:
     )
 
     await handle_barter_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1843,7 +2350,9 @@ async def test_barter_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_barter_callback_sets_state_and_asks_work_format() -> None:
+async def test_barter_callback_sets_state_and_asks_work_format(
+    config, bot_texts_service
+) -> None:
     """handle_barter_callback stores barter and asks work format."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1859,6 +2368,8 @@ async def test_barter_callback_sets_state_and_asks_work_format() -> None:
     await handle_barter_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1872,7 +2383,7 @@ async def test_barter_callback_sets_state_and_asks_work_format() -> None:
 
 @pytest.mark.asyncio
 async def test_agreements_callback_confirms_and_shows_success(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_agreements_callback confirms blogger and shows profile created."""
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
@@ -1902,6 +2413,8 @@ async def test_agreements_callback_confirms_and_shows_success(
     await handle_agreements_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1917,7 +2430,7 @@ async def test_agreements_callback_confirms_and_shows_success(
 
 @pytest.mark.asyncio
 async def test_agreements_callback_wrong_state_only_answers(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """When state is not agreements, callback only answers."""
     reg_service = BloggerRegistrationService(
@@ -1936,6 +2449,8 @@ async def test_agreements_callback_wrong_state_only_answers(
     await handle_agreements_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1947,7 +2462,7 @@ async def test_agreements_callback_wrong_state_only_answers(
 
 @pytest.mark.asyncio
 async def test_agreements_callback_session_expired(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_agreements_callback with no user_id sends session expired."""
     reg_service = BloggerRegistrationService(
@@ -1967,6 +2482,8 @@ async def test_agreements_callback_session_expired(
     await handle_agreements_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1979,7 +2496,7 @@ async def test_agreements_callback_session_expired(
 
 @pytest.mark.asyncio
 async def test_work_format_callback_wrong_state_only_answers(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """When state is not work_format, callback only answers."""
     config = _blogger_test_config()
@@ -2000,6 +2517,7 @@ async def test_work_format_callback_wrong_state_only_answers(
         callback,
         state,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -2011,7 +2529,7 @@ async def test_work_format_callback_wrong_state_only_answers(
 
 @pytest.mark.asyncio
 async def test_work_format_callback_unknown_data_only_answers(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """When callback data is not work format, only answer."""
     config = _blogger_test_config()
@@ -2032,6 +2550,7 @@ async def test_work_format_callback_unknown_data_only_answers(
         callback,
         state,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -2043,7 +2562,7 @@ async def test_work_format_callback_unknown_data_only_answers(
 
 @pytest.mark.asyncio
 async def test_work_format_callback_no_user_id_sends_session_expired(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """When user_id missing in state, work_format callback sends expired."""
     config = AppConfig.model_validate(
@@ -2080,6 +2599,7 @@ async def test_work_format_callback_no_user_id_sends_session_expired(
         callback,
         state,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -2089,7 +2609,9 @@ async def test_work_format_callback_no_user_id_sends_session_expired(
 
 
 @pytest.mark.asyncio
-async def test_handle_instagram_empty_url(user_repo, blogger_repo) -> None:
+async def test_handle_instagram_empty_url(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """handle_instagram rejects empty URL."""
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
@@ -2098,7 +2620,11 @@ async def test_handle_instagram_empty_url(user_repo, blogger_repo) -> None:
     state = FakeFSMContext()
 
     await handle_instagram(
-        message, state, _blogger_registration_config(), registration_service
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
     )
 
     assert message.answers
@@ -2107,7 +2633,7 @@ async def test_handle_instagram_empty_url(user_repo, blogger_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_instagram_no_instagram_domain(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_instagram rejects URL without instagram.com/."""
     registration_service = BloggerRegistrationService(
@@ -2119,7 +2645,11 @@ async def test_handle_instagram_no_instagram_domain(
     state = FakeFSMContext()
 
     await handle_instagram(
-        message, state, _blogger_registration_config(), registration_service
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
     )
 
     assert message.answers
@@ -2127,7 +2657,9 @@ async def test_handle_instagram_no_instagram_domain(
 
 
 @pytest.mark.asyncio
-async def test_handle_instagram_invalid_regex(user_repo, blogger_repo) -> None:
+async def test_handle_instagram_invalid_regex(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """handle_instagram rejects URL with instagram.com but invalid format."""
     registration_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
@@ -2139,7 +2671,11 @@ async def test_handle_instagram_invalid_regex(user_repo, blogger_repo) -> None:
     state = FakeFSMContext()
 
     await handle_instagram(
-        message, state, _blogger_registration_config(), registration_service
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
     )
 
     assert message.answers
@@ -2149,23 +2685,33 @@ async def test_handle_instagram_invalid_regex(user_repo, blogger_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_gender_female_and_male() -> None:
+async def test_handle_gender_female_and_male(config, bot_texts_service) -> None:
     """handle_gender accepts В основном женщины and В основном мужчины."""
     state = FakeFSMContext()
 
-    msg_female = FakeMessage(text="👩 В основном женщины", user=None)
-    await handle_gender(msg_female, state)
+    msg_female = FakeMessage(text=_TEXTS_RU["btn_audience_f"], user=None)
+    await handle_gender(
+        msg_female,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert state._data["audience_gender"] == AudienceGender.FEMALE
 
     state2 = FakeFSMContext()
-    msg_male = FakeMessage(text="👨 В основном мужчины", user=None)
-    await handle_gender(msg_male, state2)
+    msg_male = FakeMessage(text=_TEXTS_RU["btn_audience_m"], user=None)
+    await handle_gender(
+        msg_male,
+        state2,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert state2._data["audience_gender"] == AudienceGender.MALE
 
 
 @pytest.mark.asyncio
 async def test_handle_work_format_with_all_docs(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_work_format shows all doc links when config has them."""
     await create_test_user(
@@ -2195,7 +2741,7 @@ async def test_handle_work_format_with_all_docs(
         }
     )
     message = FakeMessage(
-        text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT, user=FakeUser(1, "u", "U")
+        text=_TEXTS_RU["btn_work_format_ugc_only"], user=FakeUser(1, "u", "U")
     )
     state = FakeFSMContext()
     await state.update_data(
@@ -2214,7 +2760,13 @@ async def test_handle_work_format_with_all_docs(
         blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_work_format(message, state, config, registration_service)
+    await handle_work_format(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     text = (
         message.answers[0]
@@ -2226,7 +2778,9 @@ async def test_handle_work_format_with_all_docs(
 
 
 @pytest.mark.asyncio
-async def test_handle_work_format_no_docs(user_repo, blogger_repo) -> None:
+async def test_handle_work_format_no_docs(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
     """handle_work_format shows fallback when no doc URLs configured."""
     await create_test_user(
         user_repo,
@@ -2255,7 +2809,7 @@ async def test_handle_work_format_no_docs(user_repo, blogger_repo) -> None:
         }
     )
     message = FakeMessage(
-        text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT, user=FakeUser(1, "u", "U")
+        text=_TEXTS_RU["btn_work_format_ugc_only"], user=FakeUser(1, "u", "U")
     )
     state = FakeFSMContext()
     await state.update_data(
@@ -2274,7 +2828,13 @@ async def test_handle_work_format_no_docs(user_repo, blogger_repo) -> None:
         blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_work_format(message, state, config, registration_service)
+    await handle_work_format(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     text = (
         message.answers[0]
@@ -2286,7 +2846,7 @@ async def test_handle_work_format_no_docs(user_repo, blogger_repo) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_agreements_from_user_none(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_agreements works when message.from_user is None."""
     user_role_service = UserRoleService(user_repo=user_repo)
@@ -2299,7 +2859,7 @@ async def test_handle_agreements_from_user_none(
         username="bob",
     )
     message = FakeMessage(
-        text=CONFIRM_AGREEMENT_BUTTON_TEXT, user=FakeUser(52, "bob", "Bob")
+        text=_TEXTS_RU["btn_confirm_agreement"], user=FakeUser(52, "bob", "Bob")
     )
     message.from_user = None
     state = FakeFSMContext()
@@ -2320,7 +2880,13 @@ async def test_handle_agreements_from_user_none(
         blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_agreements(message, state, registration_service)
+    await handle_agreements(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -2329,7 +2895,7 @@ async def test_handle_agreements_from_user_none(
 
 @pytest.mark.asyncio
 async def test_handle_agreements_unique_violation(
-    user_repo, blogger_repo
+    user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_work_format handles duplicate instagram_url gracefully."""
     await create_test_user(
@@ -2354,7 +2920,8 @@ async def test_handle_agreements_unique_violation(
     )
     config = _blogger_test_config()
     message = FakeMessage(
-        text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT, user=FakeUser(53, "bob", "Bob")
+        text=_TEXTS_RU["btn_work_format_ugc_only"],
+        user=FakeUser(53, "bob", "Bob"),
     )
     state = FakeFSMContext()
     state.state = BloggerRegistrationStates.work_format
@@ -2374,7 +2941,13 @@ async def test_handle_agreements_unique_violation(
         blogger_gender=BloggerGender.MALE,
     )
 
-    await handle_work_format(message, state, config, registration_service)
+    await handle_work_format(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+    )
 
     assert message.answers
     ans = message.answers[0]

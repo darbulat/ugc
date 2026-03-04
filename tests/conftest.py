@@ -42,6 +42,7 @@ from tests.helpers.repositories import (  # noqa: E402, F401
     repos,
     user_repo,
 )
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS  # noqa: E402
 from ugc_bot.infrastructure.messenger.telegram.adapter import (  # noqa: E402
     TelegramEventAdapter,
 )
@@ -159,6 +160,37 @@ def messenger_client() -> FakeMessengerClient:
 def event_adapter() -> TelegramEventAdapter:
     """Telegram event adapter for fake aiogram objects."""
     return TelegramEventAdapter()
+
+
+@pytest.fixture
+def config():
+    """Load config from env (has market defaults)."""
+    from ugc_bot.config import load_config
+
+    return load_config()
+
+
+class FakeBotTextsService:
+    """BotTextsService stub; returns DEFAULT_TEXTS for 'ru' in handler tests."""
+
+    def _text(self, key: str, locale: str | None) -> str:
+        loc = locale or "ru"
+        return DEFAULT_TEXTS.get(loc, {}).get(key, "")
+
+    async def get(self, key: str, locale: str | None = None) -> str:
+        return self._text(key, locale)
+
+    async def get_many(
+        self, keys: list[str], locale: str | None = None
+    ) -> dict[str, str]:
+        loc = locale or "ru"
+        return {k: self._text(k, loc) for k in keys}
+
+
+@pytest.fixture
+def bot_texts_service() -> FakeBotTextsService:
+    """Fake bot texts service for handler tests."""
+    return FakeBotTextsService()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

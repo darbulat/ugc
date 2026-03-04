@@ -230,6 +230,14 @@ class FakeWebAppData:
         self.data = data
 
 
+class FakeLocation:
+    """Minimal location stub (e.g. shared via request_location)."""
+
+    def __init__(self, latitude: float, longitude: float) -> None:
+        self.latitude = latitude
+        self.longitude = longitude
+
+
 class FakeMessage:
     """Minimal message stub for handler tests."""
 
@@ -243,6 +251,7 @@ class FakeMessage:
         message_id: int = 1,
         contact: FakeContact | None = None,
         web_app_data: FakeWebAppData | None = None,
+        location: FakeLocation | None = None,
     ) -> None:
         """Initialize fake message.
 
@@ -254,6 +263,7 @@ class FakeMessage:
             caption: Optional caption for photo messages
             contact: Optional contact (e.g. shared phone via request_contact)
             web_app_data: Optional Web App data (e.g. from Mini App sendData)
+            location: Optional location (e.g. shared via request_location)
         """
         self.text = text
         self.caption = caption
@@ -263,6 +273,7 @@ class FakeMessage:
         self.message_id = message_id
         self.contact = contact
         self.web_app_data = web_app_data
+        self.location = location
         self.answers: list[str | tuple[str, object | None]] = []
         self.reply_markups: list = []
         self.reply_markup = None

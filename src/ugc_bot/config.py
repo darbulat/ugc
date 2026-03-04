@@ -94,6 +94,15 @@ _FLAT_KEYS = {
         "ORDER_RADIUS_KM",
     ],
     "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
+    "market": [
+        "PAYMENT_CURRENCY",
+        "CURRENCY_SYMBOL",
+        "BOT_DEFAULT_LOCALE",
+        "BOT_START_TEXT",
+        "BOT_SUPPORT_RESPONSE_TEXT",
+        "BOT_SUPPORT_CONTACT",
+        "BOT_RECEIPT_SERVICE_DESCRIPTION",
+    ],
 }
 
 
@@ -412,6 +421,24 @@ class OrderConfig(BaseSettings):
         )
 
 
+class MarketConfig(BaseSettings):
+    """Market-specific configuration: currency, locale, optional bot texts."""
+
+    model_config = _ENV
+
+    payment_currency: str = Field(default="RUB", alias="PAYMENT_CURRENCY")
+    currency_symbol: str = Field(default="₽", alias="CURRENCY_SYMBOL")
+    default_locale: str = Field(default="ru", alias="BOT_DEFAULT_LOCALE")
+    start_text: str = Field(default="", alias="BOT_START_TEXT")
+    support_response_text: str = Field(
+        default="", alias="BOT_SUPPORT_RESPONSE_TEXT"
+    )
+    support_contact: str = Field(default="", alias="BOT_SUPPORT_CONTACT")
+    receipt_service_description: str = Field(
+        default="", alias="BOT_RECEIPT_SERVICE_DESCRIPTION"
+    )
+
+
 class ReferralConfig(BaseSettings):
     """Referral system configuration."""
 
@@ -452,6 +479,7 @@ class AppConfig(BaseModel):
     webhook: WebhookConfig
     outbox: OutboxConfig
     order: OrderConfig
+    market: MarketConfig
     referral: ReferralConfig
 
     @model_validator(mode="before")
@@ -476,6 +504,7 @@ class AppConfig(BaseModel):
             "webhook": WebhookConfig.model_validate(nested["webhook"]),
             "outbox": OutboxConfig.model_validate(nested["outbox"]),
             "order": OrderConfig.model_validate(nested["order"]),
+            "market": MarketConfig.model_validate(nested["market"]),
             "referral": ReferralConfig.model_validate(nested["referral"]),
         }
 

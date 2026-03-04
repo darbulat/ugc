@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    BotTextsRepository,
     ComplaintRepository,
     ContactPricingRepository,
     InstagramStatsRepository,
@@ -84,6 +85,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
+    BotTextModel,
     ComplaintModel,
     ContactPricingModel,
     InstagramStatsModel,
@@ -723,6 +725,38 @@ class SqlAlchemyContactPricingRepository(ContactPricingRepository):
 
 
 @dataclass(slots=True)
+class SqlAlchemyBotTextsRepository(BotTextsRepository):
+    """SQLAlchemy-backed bot texts repository (key, locale -> value)."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def get(
+        self, key: str, locale: str, session: object | None = None
+    ) -> Optional[str]:
+        """Fetch text value for key and locale."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(BotTextModel).where(
+                and_(
+                    BotTextModel.key == key,
+                    BotTextModel.locale == locale,
+                )
+            )
+        )
+        row = exec_result.scalar_one_or_none()
+        return row.value if row else None
+
+    async def get_all(
+        self, session: object | None = None
+    ) -> list[tuple[str, str, str]]:
+        """Fetch all bot_texts rows as (key, locale, value)."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(select(BotTextModel))
+        rows = exec_result.scalars().all()
+        return [(r.key, r.locale, r.value) for r in rows]
+
+
+@dataclass(slots=True)
 class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
     """SQLAlchemy-backed offer dispatch repository."""
 
@@ -1172,7 +1206,7 @@ def _to_blogger_profile_entity(
         location_geometry=_geometry_to_wkt(
             getattr(model, "location_geometry", None)
         ),
-        country=getattr(model, "country", "russia"),
+        country=getattr(model, "country", ""),
     )
 
 

@@ -101,7 +101,7 @@ def _order_creation_config() -> AppConfig:
 
 @pytest.mark.asyncio
 async def test_start_order_creation_requires_role(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Require advertiser role before creation."""
 
@@ -119,14 +119,22 @@ async def test_start_order_creation_requires_role(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
-    assert "Пользователь не найден" in message.answers[0]
+    msg = message.answers[0]
+    assert "не найден" in msg or "not found" in msg.lower()
 
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_user_not_found(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' callback with unknown user sends nothing."""
     user_service = UserRoleService(user_repo=user_repo)
@@ -145,7 +153,8 @@ async def test_start_order_creation_from_profile_callback_user_not_found(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -154,7 +163,13 @@ async def test_start_order_creation_from_profile_callback_user_not_found(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_no_advertiser(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' when advertiser profile missing."""
     await create_test_user(user_repo, external_id="81", username="no_adv")
@@ -174,7 +189,8 @@ async def test_start_order_creation_from_profile_callback_no_advertiser(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -187,7 +203,13 @@ async def test_start_order_creation_from_profile_callback_no_advertiser(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_agreement_required(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' when agreement not confirmed sends agreement."""
     user = await create_test_user(
@@ -214,7 +236,8 @@ async def test_start_order_creation_from_profile_callback_agreement_required(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -226,7 +249,13 @@ async def test_start_order_creation_from_profile_callback_agreement_required(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_from_profile_callback_success(
-    user_repo, advertiser_repo, order_repo, messenger_client, event_adapter
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
 ) -> None:
     """Profile 'Create order' with agreed advertiser shows order type."""
     from datetime import datetime, timezone
@@ -255,7 +284,8 @@ async def test_start_order_creation_from_profile_callback_success(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -265,7 +295,12 @@ async def test_start_order_creation_from_profile_callback_success(
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_new_advertiser(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow: order_type -> offer_text -> cooperation -> price -> product_link.
 
@@ -292,44 +327,68 @@ async def test_order_creation_flow_new_advertiser(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
     assert "Что вам нужно?" in message.answers[0]
 
     await handle_order_type(
-        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state
+        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_offer_text(
-        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+        FakeMessage(text=VALID_OFFER_TEXT, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_cooperation_format(
-        FakeMessage(text=COOP_PAYMENT, user=None), state
+        FakeMessage(text=COOP_PAYMENT, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_price(
         FakeMessage(text="1000", user=None),
         state,
-        TEST_MAX_ORDER_PRICE,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=TEST_MAX_ORDER_PRICE,
+        currency_symbol="₽",
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_bloggers_needed(
         FakeMessage(text="3", user=None),
         state,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(5, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_order_photo(
         FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(5, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(5, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_deadlines(
-        FakeMessage(text=DEADLINES_7, user=FakeUser(5, "adv", "Adv")), state
+        FakeMessage(text=DEADLINES_7, user=FakeUser(5, "adv", "Adv")),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     config = AppConfig.model_validate(
@@ -350,6 +409,7 @@ async def test_order_creation_flow_new_advertiser(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
     assert bot.invoices
@@ -358,7 +418,12 @@ async def test_order_creation_flow_new_advertiser(
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_with_barter(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow with barter: order_type -> offer_text -> cooperation -> barter."""
 
@@ -394,42 +459,65 @@ async def test_order_creation_flow_with_barter(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     await handle_order_type(
-        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state
+        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_offer_text(
-        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+        FakeMessage(text=VALID_OFFER_TEXT, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_cooperation_format(
-        FakeMessage(text=COOP_BARTER, user=None), state
+        FakeMessage(text=COOP_BARTER, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_barter_description(
         FakeMessage(text="Barter product with delivery", user=None),
         state,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_bloggers_needed(
         FakeMessage(text="5", user=None),
         state,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_product_link(
         FakeMessage(text="https://example.com", user=FakeUser(6, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_order_photo(
         FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(6, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(6, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_deadlines(
-        FakeMessage(text=DEADLINES_7, user=FakeUser(6, "adv", "Adv")), state
+        FakeMessage(text=DEADLINES_7, user=FakeUser(6, "adv", "Adv")),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     config = AppConfig.model_validate(
@@ -448,6 +536,7 @@ async def test_order_creation_flow_with_barter(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
     assert bot.invoices
@@ -456,7 +545,7 @@ async def test_order_creation_flow_with_barter(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_no_advertiser_profile(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Reject when user has no advertiser profile."""
 
@@ -480,7 +569,8 @@ async def test_start_order_creation_no_advertiser_profile(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -491,7 +581,7 @@ async def test_start_order_creation_no_advertiser_profile(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_shows_agreement_when_not_confirmed(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Advertiser with profile but agreement not confirmed sees agreement."""
 
@@ -522,7 +612,8 @@ async def test_start_order_creation_shows_agreement_when_not_confirmed(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -534,7 +625,7 @@ async def test_start_order_creation_shows_agreement_when_not_confirmed(
 
 @pytest.mark.asyncio
 async def test_start_order_creation_blocked_user(
-    user_repo, advertiser_repo, order_repo
+    user_repo, advertiser_repo, order_repo, config, bot_texts_service
 ) -> None:
     """Block order creation for blocked users."""
 
@@ -562,19 +653,26 @@ async def test_start_order_creation_blocked_user(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert "Заблокированные" in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_bloggers_needed_only_3_5_10() -> None:
+async def test_bloggers_needed_only_3_5_10(config, bot_texts_service) -> None:
     """Reject invalid bloggers count (only 3, 5, 10 allowed)."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="20", user=None)
-    await handle_bloggers_needed(message, state, TEST_ALLOWED_BLOGGER_COUNTS)
+    await handle_bloggers_needed(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -583,14 +681,22 @@ async def test_bloggers_needed_only_3_5_10() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_price_exceeds_max_rejected() -> None:
+async def test_handle_price_exceeds_max_rejected(
+    config, bot_texts_service
+) -> None:
     """Reject price exceeding max order price limit."""
 
     state = FakeFSMContext()
     overflow_price = str(int(TEST_MAX_ORDER_PRICE) + 1)
     message = FakeMessage(text=overflow_price, user=None)
     await handle_price(
-        message, state, TEST_MAX_ORDER_PRICE, TEST_ALLOWED_BLOGGER_COUNTS
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=TEST_MAX_ORDER_PRICE,
+        currency_symbol="₽",
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
 
     assert message.answers
@@ -600,12 +706,14 @@ async def test_handle_price_exceeds_max_rejected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_order_type_invalid() -> None:
+async def test_handle_order_type_invalid(config, bot_texts_service) -> None:
     """Reject invalid order type choice."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="Другое", user=None)
-    await handle_order_type(message, state)
+    await handle_order_type(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -614,12 +722,14 @@ async def test_handle_order_type_invalid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_offer_text_empty() -> None:
+async def test_handle_offer_text_empty(config, bot_texts_service) -> None:
     """Reject empty or too short offer text."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="   ", user=None)
-    await handle_offer_text(message, state)
+    await handle_offer_text(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -628,12 +738,16 @@ async def test_handle_offer_text_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_cooperation_format_invalid() -> None:
+async def test_handle_cooperation_format_invalid(
+    config, bot_texts_service
+) -> None:
     """Reject invalid cooperation format."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="Другое", user=None)
-    await handle_cooperation_format(message, state)
+    await handle_cooperation_format(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -642,7 +756,9 @@ async def test_handle_cooperation_format_invalid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_cooperation_format_invalid_with_client() -> None:
+async def test_handle_cooperation_format_invalid_with_client(
+    config, bot_texts_service
+) -> None:
     """Invalid cooperation format sends prompt via client."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -653,6 +769,8 @@ async def test_handle_cooperation_format_invalid_with_client() -> None:
     await handle_cooperation_format(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -663,13 +781,19 @@ async def test_handle_cooperation_format_invalid_with_client() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_price_negative() -> None:
+async def test_handle_price_negative(config, bot_texts_service) -> None:
     """Reject negative price."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="-100", user=None)
     await handle_price(
-        message, state, TEST_MAX_ORDER_PRICE, TEST_ALLOWED_BLOGGER_COUNTS
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=TEST_MAX_ORDER_PRICE,
+        currency_symbol="₽",
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
 
     assert message.answers
@@ -679,7 +803,9 @@ async def test_handle_price_negative() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_price_with_coop_both_asks_barter_description() -> None:
+async def test_handle_price_with_coop_both_asks_barter_description(
+    config, bot_texts_service
+) -> None:
     """When cooperation_format is COOP_BOTH, price step asks barter next."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -691,8 +817,11 @@ async def test_handle_price_with_coop_both_asks_barter_description() -> None:
     await handle_price(
         message,
         state,
-        TEST_MAX_ORDER_PRICE,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=TEST_MAX_ORDER_PRICE,
+        currency_symbol="₽",
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -703,7 +832,12 @@ async def test_handle_price_with_coop_both_asks_barter_description() -> None:
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_coop_both(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow with COOP_BOTH: price -> barter (required) -> bloggers -> ..."""
 
@@ -727,50 +861,76 @@ async def test_order_creation_flow_coop_both(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     await handle_order_type(
-        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None), state
+        FakeMessage(text=ORDER_TYPE_UGC_ONLY, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_offer_text(
-        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+        FakeMessage(text=VALID_OFFER_TEXT, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_cooperation_format(
-        FakeMessage(text=COOP_BOTH, user=None), state
+        FakeMessage(text=COOP_BOTH, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_price(
         FakeMessage(text="1500", user=None),
         state,
-        TEST_MAX_ORDER_PRICE,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=TEST_MAX_ORDER_PRICE,
+        currency_symbol="₽",
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_barter_description(
         FakeMessage(text="Product + delivery", user=None),
         state,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_bloggers_needed(
         FakeMessage(text="5", user=None),
         state,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_product_link(
         FakeMessage(
             text="https://example.com", user=FakeUser(13, "adv", "Adv")
         ),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_order_photo(
         FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(13, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(13, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_deadlines(
-        FakeMessage(text=DEADLINES_7, user=FakeUser(13, "adv", "Adv")), state
+        FakeMessage(text=DEADLINES_7, user=FakeUser(13, "adv", "Adv")),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     config = AppConfig.model_validate(
@@ -789,6 +949,7 @@ async def test_order_creation_flow_coop_both(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
 
@@ -800,13 +961,21 @@ async def test_order_creation_flow_coop_both(
 
 
 @pytest.mark.asyncio
-async def test_handle_barter_description_empty_when_coop_both() -> None:
+async def test_handle_barter_description_empty_when_coop_both(
+    config, bot_texts_service
+) -> None:
     """Reject empty barter when cooperation format is COOP_BOTH."""
 
     state = FakeFSMContext()
     state._data = {"cooperation_format": COOP_BOTH}
     message = FakeMessage(text="   ", user=None)
-    await handle_barter_description(message, state, TEST_ALLOWED_BLOGGER_COUNTS)
+    await handle_barter_description(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -815,12 +984,14 @@ async def test_handle_barter_description_empty_when_coop_both() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_product_link_empty() -> None:
+async def test_handle_product_link_empty(config, bot_texts_service) -> None:
     """Reject empty product link."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="", user=None)
-    await handle_product_link(message, state)
+    await handle_product_link(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     ans = message.answers[0]
@@ -829,14 +1000,16 @@ async def test_handle_product_link_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_order_photo_skip() -> None:
+async def test_handle_order_photo_skip(config, bot_texts_service) -> None:
     """When user clicks Пропустить, proceed to content_usage."""
     state = FakeFSMContext()
     state._data = {"product_link": "https://example.com"}
     state.state = OrderCreationStates.order_photo
 
     message = FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(1, "u", "U"))
-    await handle_order_photo(message, state)
+    await handle_order_photo(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -846,7 +1019,9 @@ async def test_handle_order_photo_skip() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_order_photo_add_then_photo() -> None:
+async def test_handle_order_photo_add_then_photo(
+    config, bot_texts_service
+) -> None:
     """User sends photo after Add: save file_id, proceed to content_usage."""
     state = FakeFSMContext()
     state._data = {"product_link": "https://example.com"}
@@ -856,7 +1031,9 @@ async def test_handle_order_photo_add_then_photo() -> None:
         photo=[FakePhotoSize("AgACAgIAAxkB")],
         user=FakeUser(1, "u", "U"),
     )
-    await handle_order_photo(message, state)
+    await handle_order_photo(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -868,14 +1045,18 @@ async def test_handle_order_photo_add_then_photo() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_order_photo_add_prompts_upload() -> None:
+async def test_handle_order_photo_add_prompts_upload(
+    config, bot_texts_service
+) -> None:
     """When user clicks Добавить фото, prompt to send photo."""
     state = FakeFSMContext()
     state._data = {"product_link": "https://example.com"}
     state.state = OrderCreationStates.order_photo
 
     message = FakeMessage(text=ORDER_PHOTO_ADD, user=FakeUser(1, "u", "U"))
-    await handle_order_photo(message, state)
+    await handle_order_photo(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -885,12 +1066,14 @@ async def test_handle_order_photo_add_prompts_upload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_content_usage_invalid() -> None:
+async def test_handle_content_usage_invalid(config, bot_texts_service) -> None:
     """Reject invalid content usage choice."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="Другое", user=None)
-    await handle_content_usage(message, state)
+    await handle_content_usage(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -899,12 +1082,14 @@ async def test_handle_content_usage_invalid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_deadlines_invalid() -> None:
+async def test_handle_deadlines_invalid(config, bot_texts_service) -> None:
     """Reject invalid deadlines choice."""
 
     state = FakeFSMContext()
     message = FakeMessage(text="Другое", user=None)
-    await handle_deadlines(message, state)
+    await handle_deadlines(
+        message, state, config=config, bot_texts_service=bot_texts_service
+    )
 
     assert message.answers
     first = message.answers[0]
@@ -914,7 +1099,7 @@ async def test_handle_deadlines_invalid() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_geography_empty(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Reject empty geography."""
 
@@ -945,7 +1130,12 @@ async def test_handle_geography_empty(
     message = FakeMessage(text="   ", user=FakeUser(1))
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert message.answers
@@ -956,7 +1146,7 @@ async def test_handle_geography_empty(
 
 @pytest.mark.asyncio
 async def test_handle_geography_invalid_order_type(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Handle invalid order_type in state (fallback to UGC_ONLY)."""
 
@@ -999,7 +1189,12 @@ async def test_handle_geography_invalid_order_type(
     )
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert len(order_repo.orders) == 1
@@ -1011,7 +1206,12 @@ async def test_handle_geography_invalid_order_type(
 
 @pytest.mark.asyncio
 async def test_order_creation_flow_ugc_plus_placement(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    pricing_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Flow with ORDER_TYPE_UGC_PLUS_PLACEMENT."""
 
@@ -1035,44 +1235,68 @@ async def test_order_creation_flow_ugc_plus_placement(
         user_service,
         profile_service,
         order_service,
-        _order_creation_config(),
+        config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_order_type(
-        FakeMessage(text=ORDER_TYPE_UGC_PLUS_PLACEMENT, user=None), state
+        FakeMessage(text=ORDER_TYPE_UGC_PLUS_PLACEMENT, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_offer_text(
-        FakeMessage(text=VALID_OFFER_TEXT, user=None), state
+        FakeMessage(text=VALID_OFFER_TEXT, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_cooperation_format(
-        FakeMessage(text=COOP_PAYMENT, user=None), state
+        FakeMessage(text=COOP_PAYMENT, user=None),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_price(
         FakeMessage(text="1000", user=None),
         state,
-        TEST_MAX_ORDER_PRICE,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=TEST_MAX_ORDER_PRICE,
+        currency_symbol="₽",
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_bloggers_needed(
         FakeMessage(text="3", user=None),
         state,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
     )
     await handle_product_link(
         FakeMessage(
             text="https://example.com", user=FakeUser(16, "adv", "Adv")
         ),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_order_photo(
         FakeMessage(text=ORDER_PHOTO_SKIP, user=FakeUser(16, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_content_usage(
         FakeMessage(text=CONTENT_USAGE_BOTH, user=FakeUser(16, "adv", "Adv")),
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     await handle_deadlines(
-        FakeMessage(text=DEADLINES_7, user=FakeUser(16, "adv", "Adv")), state
+        FakeMessage(text=DEADLINES_7, user=FakeUser(16, "adv", "Adv")),
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     config = AppConfig.model_validate(
@@ -1091,6 +1315,7 @@ async def test_order_creation_flow_ugc_plus_placement(
         state,
         order_service,
         config,
+        bot_texts_service,
         pricing_service,
     )
 
@@ -1103,7 +1328,7 @@ async def test_order_creation_flow_ugc_plus_placement(
 
 @pytest.mark.asyncio
 async def test_handle_geography_session_expired(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Show session expired when user_id is missing from state."""
 
@@ -1133,7 +1358,12 @@ async def test_handle_geography_session_expired(
     message = FakeMessage(text="Москва", user=FakeUser(1))
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert message.answers
@@ -1142,7 +1372,7 @@ async def test_handle_geography_session_expired(
 
 @pytest.mark.asyncio
 async def test_handle_geography_contact_price_not_configured(
-    user_repo, advertiser_repo, order_repo, pricing_repo
+    user_repo, advertiser_repo, order_repo, pricing_repo, bot_texts_service
 ) -> None:
     """Show error when contact pricing is not configured for bloggers count."""
 
@@ -1180,7 +1410,12 @@ async def test_handle_geography_contact_price_not_configured(
     message = FakeMessage(text="Москва", user=FakeUser(14, "adv", "Adv"))
 
     await handle_geography(
-        message, state, order_service, config, pricing_service
+        message,
+        state,
+        order_service,
+        config,
+        bot_texts_service,
+        pricing_service,
     )
 
     assert len(order_repo.orders) == 1
@@ -1206,7 +1441,9 @@ def _make_callback(
 
 
 @pytest.mark.asyncio
-async def test_order_type_callback_sets_state_and_asks_offer_text() -> None:
+async def test_order_type_callback_sets_state_and_asks_offer_text(
+    config, bot_texts_service
+) -> None:
     """handle_order_type_callback stores type and sends offer text step."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1217,6 +1454,8 @@ async def test_order_type_callback_sets_state_and_asks_offer_text() -> None:
     await handle_order_type_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1229,7 +1468,9 @@ async def test_order_type_callback_sets_state_and_asks_offer_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cooperation_format_callback_payment_sets_price_state() -> None:
+async def test_cooperation_format_callback_payment_sets_price_state(
+    config, bot_texts_service
+) -> None:
     """handle_cooperation_format_callback with payment asks for price."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1240,6 +1481,8 @@ async def test_cooperation_format_callback_payment_sets_price_state() -> None:
     await handle_cooperation_format_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1250,9 +1493,9 @@ async def test_cooperation_format_callback_payment_sets_price_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cooperation_format_callback_barter_asks_barter_description() -> (
-    None
-):
+async def test_cooperation_format_callback_barter_asks_barter_description(
+    config, bot_texts_service
+) -> None:
     """Cooperation callback with barter asks barter description."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1263,6 +1506,8 @@ async def test_cooperation_format_callback_barter_asks_barter_description() -> (
     await handle_cooperation_format_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1272,7 +1517,9 @@ async def test_cooperation_format_callback_barter_asks_barter_description() -> (
 
 
 @pytest.mark.asyncio
-async def test_cooperation_format_callback_both_asks_price() -> None:
+async def test_cooperation_format_callback_both_asks_price(
+    config, bot_texts_service
+) -> None:
     """handle_cooperation_format_callback with both asks price."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1283,6 +1530,8 @@ async def test_cooperation_format_callback_both_asks_price() -> None:
     await handle_cooperation_format_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1292,7 +1541,9 @@ async def test_cooperation_format_callback_both_asks_price() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_type_callback_placement_sets_state() -> None:
+async def test_order_type_callback_placement_sets_state(
+    config, bot_texts_service
+) -> None:
     """handle_order_type_callback with placement stores type and asks offer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1303,6 +1554,8 @@ async def test_order_type_callback_placement_sets_state() -> None:
     await handle_order_type_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1312,7 +1565,9 @@ async def test_order_type_callback_placement_sets_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_price_invalid_number_sends_message() -> None:
+async def test_handle_price_invalid_number_sends_message(
+    config, bot_texts_service
+) -> None:
     """handle_price with non-numeric text sends error."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1323,8 +1578,11 @@ async def test_handle_price_invalid_number_sends_message() -> None:
     await handle_price(
         message,
         state,
-        TEST_MAX_ORDER_PRICE,
-        TEST_ALLOWED_BLOGGER_COUNTS,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        max_order_price=TEST_MAX_ORDER_PRICE,
+        currency_symbol="₽",
+        allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1333,7 +1591,9 @@ async def test_handle_price_invalid_number_sends_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bloggers_needed_callback_invalid_data_only_answers() -> None:
+async def test_bloggers_needed_callback_invalid_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When callback data has invalid count (e.g. non-int), only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1344,6 +1604,8 @@ async def test_bloggers_needed_callback_invalid_data_only_answers() -> None:
     await handle_bloggers_needed_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,
@@ -1354,7 +1616,9 @@ async def test_bloggers_needed_callback_invalid_data_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_photo_callback_add_prompts_upload() -> None:
+async def test_order_photo_callback_add_prompts_upload(
+    config, bot_texts_service
+) -> None:
     """handle_order_photo_callback with add asks for photo."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1365,6 +1629,8 @@ async def test_order_photo_callback_add_prompts_upload() -> None:
     await handle_order_photo_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1374,7 +1640,9 @@ async def test_order_photo_callback_add_prompts_upload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_order_photo_message_add_sends_upload_prompt() -> None:
+async def test_handle_order_photo_message_add_sends_upload_prompt(
+    config, bot_texts_service
+) -> None:
     """Order photo message Add sends upload prompt via client/adapter."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1385,6 +1653,8 @@ async def test_handle_order_photo_message_add_sends_upload_prompt() -> None:
     await handle_order_photo(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1393,7 +1663,9 @@ async def test_handle_order_photo_message_add_sends_upload_prompt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_order_photo_invalid_sends_prompt() -> None:
+async def test_handle_order_photo_invalid_sends_prompt(
+    config, bot_texts_service
+) -> None:
     """handle_order_photo with invalid text sends choose prompt."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1404,6 +1676,8 @@ async def test_handle_order_photo_invalid_sends_prompt() -> None:
     await handle_order_photo(
         message,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1415,7 +1689,9 @@ async def test_handle_order_photo_invalid_sends_prompt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_content_usage_callback_unknown_data_only_answers() -> None:
+async def test_content_usage_callback_unknown_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When content_usage callback data is unknown, only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1426,6 +1702,8 @@ async def test_content_usage_callback_unknown_data_only_answers() -> None:
     await handle_content_usage_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1435,7 +1713,9 @@ async def test_content_usage_callback_unknown_data_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deadlines_callback_invalid_data_only_answers() -> None:
+async def test_deadlines_callback_invalid_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When deadlines callback data is invalid, only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1446,6 +1726,8 @@ async def test_deadlines_callback_invalid_data_only_answers() -> None:
     await handle_deadlines_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1480,7 +1762,7 @@ def test_deadlines_offer_from_callback_bad_prefix_returns_none() -> None:
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_confirms_and_shows_order_type(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """handle_order_agree_callback confirms agreement and shows order type."""
     from tests.helpers.factories import (
@@ -1512,18 +1794,23 @@ async def test_order_agree_callback_confirms_and_shows_order_type(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
     assert state.state == OrderCreationStates.order_type.state
-    assert any("Что вам нужно?" in s["text"] for s in client.sent_text)
+    texts = [s["text"] for s in client.sent_text]
+    assert any("Что вам нужно?" in t or "What do you need?" in t for t in texts)
     assert len(client.answered_callbacks) >= 1
 
 
 @pytest.mark.asyncio
-async def test_bloggers_needed_callback_sets_state() -> None:
+async def test_bloggers_needed_callback_sets_state(
+    config, bot_texts_service
+) -> None:
     """handle_bloggers_needed_callback stores count and asks product link."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1534,6 +1821,8 @@ async def test_bloggers_needed_callback_sets_state() -> None:
     await handle_bloggers_needed_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,
@@ -1547,7 +1836,9 @@ async def test_bloggers_needed_callback_sets_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_photo_callback_skip_sets_state() -> None:
+async def test_order_photo_callback_skip_sets_state(
+    config, bot_texts_service
+) -> None:
     """handle_order_photo_callback with skip goes to content_usage."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1558,6 +1849,8 @@ async def test_order_photo_callback_skip_sets_state() -> None:
     await handle_order_photo_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1569,7 +1862,9 @@ async def test_order_photo_callback_skip_sets_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_content_usage_callback_sets_state() -> None:
+async def test_content_usage_callback_sets_state(
+    config, bot_texts_service
+) -> None:
     """handle_content_usage_callback stores choice and asks deadlines."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1580,6 +1875,8 @@ async def test_content_usage_callback_sets_state() -> None:
     await handle_content_usage_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1589,7 +1886,7 @@ async def test_content_usage_callback_sets_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deadlines_callback_sets_state() -> None:
+async def test_deadlines_callback_sets_state(config, bot_texts_service) -> None:
     """handle_deadlines_callback stores choice and asks geography."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1600,6 +1897,8 @@ async def test_deadlines_callback_sets_state() -> None:
     await handle_deadlines_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -1610,7 +1909,7 @@ async def test_deadlines_callback_sets_state() -> None:
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_wrong_state_only_answers(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When state is not agreements, callback only answers, no flow."""
     adv_service = AdvertiserRegistrationService(
@@ -1625,6 +1924,8 @@ async def test_order_agree_callback_wrong_state_only_answers(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1636,7 +1937,7 @@ async def test_order_agree_callback_wrong_state_only_answers(
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_no_user_id_sends_session_expired(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When user_id missing in state, send session expired and clear."""
     adv_service = AdvertiserRegistrationService(
@@ -1652,18 +1953,21 @@ async def test_order_agree_callback_no_user_id_sends_session_expired(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,
     )
 
-    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
+    texts = [s["text"] for s in client.sent_text]
+    assert any("Сессия истекла" in t or "Session expired" in t for t in texts)
     assert state.cleared or state._data.get("flow_type") is None
 
 
 @pytest.mark.asyncio
 async def test_order_agree_callback_wrong_flow_type_only_answers(
-    user_repo, advertiser_repo
+    user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When flow_type is not order_creation, callback only answers."""
     user = await create_test_user(
@@ -1683,6 +1987,8 @@ async def test_order_agree_callback_wrong_flow_type_only_answers(
     await handle_order_agree_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         advertiser_registration_service=adv_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -1693,7 +1999,9 @@ async def test_order_agree_callback_wrong_flow_type_only_answers(
 
 
 @pytest.mark.asyncio
-async def test_order_type_callback_unknown_data_only_answers() -> None:
+async def test_order_type_callback_unknown_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When callback data is not UGC/placement, only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1702,7 +2010,12 @@ async def test_order_type_callback_unknown_data_only_answers() -> None:
     callback = _make_callback("order:type:unknown")
 
     await handle_order_type_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1711,7 +2024,9 @@ async def test_order_type_callback_unknown_data_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_type_callback_wrong_state_only_answers() -> None:
+async def test_order_type_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not order_type, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1720,7 +2035,12 @@ async def test_order_type_callback_wrong_state_only_answers() -> None:
     callback = _make_callback(CALLBACK_ORDER_TYPE_UGC)
 
     await handle_order_type_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1729,7 +2049,9 @@ async def test_order_type_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cooperation_format_callback_unknown_data_only_answers() -> None:
+async def test_cooperation_format_callback_unknown_data_only_answers(
+    config, bot_texts_service
+) -> None:
     """When callback data is not barter/payment/both, only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1738,7 +2060,12 @@ async def test_cooperation_format_callback_unknown_data_only_answers() -> None:
     callback = _make_callback("order:coop:unknown")
 
     await handle_cooperation_format_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1746,7 +2073,9 @@ async def test_cooperation_format_callback_unknown_data_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cooperation_format_callback_wrong_state_only_answers() -> None:
+async def test_cooperation_format_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not cooperation_format, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1755,7 +2084,12 @@ async def test_cooperation_format_callback_wrong_state_only_answers() -> None:
     callback = _make_callback(CALLBACK_ORDER_COOP_PAYMENT)
 
     await handle_cooperation_format_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1763,7 +2097,9 @@ async def test_cooperation_format_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bloggers_needed_callback_wrong_state_only_answers() -> None:
+async def test_bloggers_needed_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not bloggers_needed, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1774,6 +2110,8 @@ async def test_bloggers_needed_callback_wrong_state_only_answers() -> None:
     await handle_bloggers_needed_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,
@@ -1784,7 +2122,9 @@ async def test_bloggers_needed_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bloggers_needed_callback_invalid_count_only_answers() -> None:
+async def test_bloggers_needed_callback_invalid_count_only_answers(
+    config, bot_texts_service
+) -> None:
     """When callback data has count not in allowed set, only answer."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1795,6 +2135,8 @@ async def test_bloggers_needed_callback_invalid_count_only_answers() -> None:
     await handle_bloggers_needed_callback(
         callback,
         state,
+        config=config,
+        bot_texts_service=bot_texts_service,
         allowed_blogger_counts=TEST_ALLOWED_BLOGGER_COUNTS,
         messenger_client=client,
         event_adapter=adapter,
@@ -1806,7 +2148,9 @@ async def test_bloggers_needed_callback_invalid_count_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_photo_callback_wrong_state_only_answers() -> None:
+async def test_order_photo_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not order_photo, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1815,7 +2159,12 @@ async def test_order_photo_callback_wrong_state_only_answers() -> None:
     callback = _make_callback(CALLBACK_ORDER_PHOTO_SKIP)
 
     await handle_order_photo_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1823,7 +2172,9 @@ async def test_order_photo_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_content_usage_callback_wrong_state_only_answers() -> None:
+async def test_content_usage_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not content_usage, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1832,7 +2183,12 @@ async def test_content_usage_callback_wrong_state_only_answers() -> None:
     callback = _make_callback(CALLBACK_ORDER_CONTENT_BOTH)
 
     await handle_content_usage_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1
@@ -1840,7 +2196,9 @@ async def test_content_usage_callback_wrong_state_only_answers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deadlines_callback_wrong_state_only_answers() -> None:
+async def test_deadlines_callback_wrong_state_only_answers(
+    config, bot_texts_service
+) -> None:
     """When state is not deadlines, callback only answers."""
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1849,7 +2207,12 @@ async def test_deadlines_callback_wrong_state_only_answers() -> None:
     callback = _make_callback(f"{CALLBACK_ORDER_DEADLINES_PREFIX}7")
 
     await handle_deadlines_callback(
-        callback, state, messenger_client=client, event_adapter=adapter
+        callback,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
     )
 
     assert len(client.answered_callbacks) == 1

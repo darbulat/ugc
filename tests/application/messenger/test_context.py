@@ -126,6 +126,24 @@ async def test_message_context_edit_reply_markup_when_message_id_set(
     )
 
 
+def test_message_context_sets_web_app_data_from_incoming(
+    mock_messenger_client: MagicMock,
+) -> None:
+    """MessageContext exposes web_app_data from IncomingMessage."""
+    incoming = IncomingMessage(
+        chat_id="1",
+        user=IncomingUser(
+            external_id="1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="u",
+        ),
+        text=None,
+        web_app_data='{"lat":55.75,"lon":37.62}',
+    )
+    ctx = MessageContext(incoming, mock_messenger_client)
+    assert ctx.web_app_data == '{"lat":55.75,"lon":37.62}'
+
+
 @pytest.mark.asyncio
 async def test_callback_context_answer(
     mock_messenger_client: MagicMock,

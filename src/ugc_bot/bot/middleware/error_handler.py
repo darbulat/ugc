@@ -100,7 +100,7 @@ ERROR_MESSAGES = {
 _PRICE_EXCEEDS_PATTERN = re.compile(r"Price exceeds maximum \(([^)]+)\)\.")
 
 
-def _get_user_message(error: Exception) -> str:
+def _get_user_message(error: Exception, currency_symbol: str = "₽") -> str:
     """Get user-friendly message for an error."""
     error_type = type(error)
     error_str = str(error)
@@ -113,7 +113,7 @@ def _get_user_message(error: Exception) -> str:
             match = _PRICE_EXCEEDS_PATTERN.match(error_str)
             if match:
                 amount = match.group(1)
-                return f"Сумма превышает максимум ({amount} ₽)."
+                return f"Сумма превышает максимум ({amount} {currency_symbol})."
         if "default" in messages:
             return messages["default"]
 
@@ -260,7 +260,8 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                     user_id=user_id or "unknown",
                 )
 
-            user_message = _get_user_message(exc)
+            currency_symbol = data.get("currency_symbol", "₽")
+            user_message = _get_user_message(exc, currency_symbol)
             await _send_error_message(
                 event,
                 user_message,

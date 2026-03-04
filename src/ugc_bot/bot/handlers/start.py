@@ -3,43 +3,36 @@
 from aiogram import Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.messenger.dto import (
-    Button,
+    IncomingCallback,
     IncomingMessage,
     Keyboard,
-    KeyboardKind,
 )
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
 from ugc_bot.application.messenger.state import StateStore
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
-    CHANGE_ROLE_BUTTON_TEXT,
-    SUPPORT_BUTTON_TEXT,
-    advertiser_menu_keyboard,
-    main_menu_keyboard,
+    CALLBACK_CHANGE_ROLE,
+    CALLBACK_SUPPORT,
+    advertiser_menu_inline_keyboard,
+    build_support_telegram_url,
+    main_menu_inline_keyboard,
+    role_inline_keyboard,
 )
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
-
-START_TEXT = (
-    "UMC — сервис для UGC.\nБизнесу — подбор креаторов, креаторам — заказы."
-)
-
-SUPPORT_RESPONSE_TEXT = (
-    "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
-)
-
-CREATOR_LABEL = "Я креатор"
-ADVERTISER_LABEL = "Мне нужны UGC‑креаторы"
 
 
 @router.message(CommandStart())
@@ -48,6 +41,8 @@ async def start_command(
     state: FSMContext,
     user_role_service: UserRoleService,
     referral_service: ReferralService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -56,20 +51,76 @@ async def start_command(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
         user_role_service=user_role_service,
         referral_service=referral_service,
+        start_text=start_text,
+        role_kb=role_inline_keyboard(texts),
+    )
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_CHANGE_ROLE)
+async def change_role_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle Change role inline button — show start screen again."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = config.market.default_locale
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
+    await _change_role_button(
+        incoming=incoming,
+        state_store=AiogramStateStore(state),
+        messenger_client=messenger_client,
+        start_text=start_text,
+        role_kb=role_inline_keyboard(texts),
     )
 
 
 @router.message(Command("role"))
-@router.message(lambda msg: msg.text == CHANGE_ROLE_BUTTON_TEXT)
+@router.message(TextEqualsKey("btn_change_role"))
 async def change_role_button(
     message: Message,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -78,20 +129,96 @@ async def change_role_button(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
     await _change_role_button(
         incoming=incoming,
         state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
+        start_text=start_text,
+        role_kb=role_inline_keyboard(texts),
+    )
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_SUPPORT)
+async def support_callback(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle Support inline button — clear FSM, send support text."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = config.market.default_locale
+    support_text = (
+        await bot_texts_service.get("support_response", locale)
+    ).strip()
+    if not support_text:
+        support_text = (config.market.support_response_text or "").strip()
+    if not support_text and (config.market.support_contact or "").strip():
+        support_text = (
+            f"Служба поддержки: {config.market.support_contact.strip()}\n"
+            "Обращайтесь по любым вопросам!"
+        )
+    if not support_text:
+        support_text = (
+            "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
+        )
+    menu_texts = await bot_texts_service.get_many(
+        [
+            "btn_support",
+            "btn_change_role",
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+        ],
+        locale,
+    )
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
+    await _support_button(
+        incoming=incoming,
+        user_role_service=user_role_service,
+        profile_service=profile_service,
+        state_store=AiogramStateStore(state),
+        messenger_client=messenger_client,
+        support_text=support_text,
+        menu_texts=menu_texts,
+        support_url=support_url,
     )
 
 
 @router.message(Command("support"))
-@router.message(lambda msg: (msg.text or "").strip() == SUPPORT_BUTTON_TEXT)
+@router.message(TextEqualsKey("btn_support"))
 async def support_button(
     message: Message,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -100,27 +227,44 @@ async def support_button(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    support_text = (
+        await bot_texts_service.get("support_response", locale)
+    ).strip()
+    if not support_text:
+        support_text = (config.market.support_response_text or "").strip()
+    if not support_text and (config.market.support_contact or "").strip():
+        support_text = (
+            f"Служба поддержки: {config.market.support_contact.strip()}\n"
+            "Обращайтесь по любым вопросам!"
+        )
+    if not support_text:
+        support_text = (
+            "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
+        )
+    menu_texts = await bot_texts_service.get_many(
+        [
+            "btn_support",
+            "btn_change_role",
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+        ],
+        locale,
+    )
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
     await _support_button(
         incoming=incoming,
         user_role_service=user_role_service,
         profile_service=profile_service,
         state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
-    )
-
-
-def _role_keyboard() -> Keyboard:
-    """Build a reply keyboard for role selection."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=CREATOR_LABEL)],
-            [Button(text=ADVERTISER_LABEL)],
-            [Button(text=SUPPORT_BUTTON_TEXT)],
-        ],
-        resize=True,
-        one_time=True,
+        support_text=support_text,
+        menu_texts=menu_texts,
+        support_url=support_url,
     )
 
 
@@ -131,6 +275,8 @@ async def _start_command(
     messenger_client: MessengerClient,
     user_role_service: UserRoleService,
     referral_service: ReferralService,
+    start_text: str,
+    role_kb: Keyboard,
 ) -> None:
     """Handle the /start command. Clears FSM so /start always shows role."""
     if not incoming.user.external_id:
@@ -156,31 +302,38 @@ async def _start_command(
         )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=START_TEXT,
-        keyboard=_role_keyboard(),
+        text=start_text,
+        keyboard=role_kb,
     )
 
 
 async def _change_role_button(
     *,
-    incoming: IncomingMessage,
+    incoming: IncomingMessage | IncomingCallback,
     state_store: StateStore,
     messenger_client: MessengerClient,
+    start_text: str,
+    role_kb: Keyboard,
 ) -> None:
-    """Handle /role and 'Смена роли' — show start screen again."""
+    """Handle /role and change-role button — show start screen again."""
     await state_store.clear()
     await messenger_client.send_text(
-        chat_id=incoming.chat_id, text=START_TEXT, keyboard=_role_keyboard()
+        chat_id=incoming.chat_id,
+        text=start_text,
+        keyboard=role_kb,
     )
 
 
 async def _support_button(
     *,
-    incoming: IncomingMessage,
+    incoming: IncomingMessage | IncomingCallback,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state_store: StateStore,
     messenger_client: MessengerClient,
+    support_text: str,
+    menu_texts: dict[str, str],
+    support_url: str | None = None,
 ) -> None:
     """Handle Support: clear FSM, send support text."""
     if not incoming.user.external_id:
@@ -207,12 +360,12 @@ async def _support_button(
         else None
     )
     reply_markup = (
-        advertiser_menu_keyboard()
+        advertiser_menu_inline_keyboard(menu_texts)
         if advertiser is not None
-        else main_menu_keyboard()
+        else main_menu_inline_keyboard(menu_texts, support_url=support_url)
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=SUPPORT_RESPONSE_TEXT,
+        text=support_text,
         keyboard=reply_markup,
     )

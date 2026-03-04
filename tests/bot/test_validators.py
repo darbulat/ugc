@@ -35,9 +35,11 @@ class TestValidateNotBotCommand:
 
     def test_forbidden_commands_rejected(self) -> None:
         for cmd in FORBIDDEN_BOT_COMMANDS:
-            assert validate_not_bot_command(cmd) is not None, cmd
+            err = validate_not_bot_command(cmd)
+            assert err is not None, cmd
             assert validate_not_bot_command(cmd.upper()) is not None, cmd
-            assert "команд" in (validate_not_bot_command(cmd) or "").lower()
+            err_lower = (err or "").lower()
+            assert "команд" in err_lower or "command" in err_lower
 
     def test_profile_creator_advertiser_rejected(self) -> None:
         assert validate_not_bot_command("/profile") is not None
@@ -143,7 +145,13 @@ class TestValidateBirthDate:
         d, err = validate_birth_date("")
         assert d is None
         assert err is not None
-        assert "формат" in (err or "").lower() or "дату" in (err or "").lower()
+        err_lower = (err or "").lower()
+        assert (
+            "формат" in err_lower
+            or "дату" in err_lower
+            or "format" in err_lower
+            or "date" in err_lower
+        )
 
     def test_wrong_format_returns_error(self) -> None:
         d, err = validate_birth_date("15-05-1995")
@@ -159,15 +167,20 @@ class TestValidateBirthDate:
         d, err = validate_birth_date("32.13.2000")
         assert d is None
         assert err is not None
+        err_lower = (err or "").lower()
         assert (
-            "некоррект" in (err or "").lower() or "дату" in (err or "").lower()
+            "некоррект" in err_lower
+            or "дату" in err_lower
+            or "invalid" in err_lower
+            or "date" in err_lower
         )
 
     def test_future_date_returns_error(self) -> None:
         d, err = validate_birth_date("01.01.2030")
         assert d is None
         assert err is not None
-        assert "будущ" in (err or "").lower()
+        err_lower = (err or "").lower()
+        assert "будущ" in err_lower or "future" in err_lower
 
     def test_age_too_young_returns_error(self) -> None:
         # Use a birth date that is always under min age (10) regardless of today

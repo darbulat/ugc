@@ -235,6 +235,9 @@ def _build_markup(keyboard: Keyboard | None):
                         KeyboardButton(
                             text=btn.text,
                             request_contact=btn.request_contact,
+                            request_location=getattr(
+                                btn, "request_location", False
+                            ),
                         )
                     )
             reply_rows.append(row_buttons)

@@ -13,6 +13,7 @@ from tests.helpers.factories import (
 from tests.helpers.fakes import (
     FakeCallback,
     FakeFSMContext,
+    FakeLocation,
     FakeMessage,
     FakeMessengerClient,
     FakeUser,
@@ -35,10 +36,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_EDIT_TYPE_BLOGGER,
     CALLBACK_PROFILE_MY_PROFILE,
     CALLBACK_PROFILE_REGION_PREFIX,
-    CONFIRM_INSTAGRAM_BUTTON_TEXT,
-    MY_PROFILE_BUTTON_TEXT,
-    WORK_FORMAT_ADS_BUTTON_TEXT,
-    WORK_FORMAT_UGC_ONLY_BUTTON_TEXT,
+    CALLBACK_PROFILE_WORK_ADS,
 )
 from ugc_bot.bot.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
@@ -48,7 +46,6 @@ from ugc_bot.bot.handlers.profile import (
     edit_profile_choose_type,
     edit_profile_enter_value,
     edit_profile_start,
-    handle_city_web_app_data_profile,
     handle_profile_agree_callback,
     handle_profile_edit_callback,
     handle_profile_edit_choice_callback,
@@ -58,6 +55,7 @@ from ugc_bot.bot.handlers.profile import (
     handle_profile_region_callback,
     show_profile,
 )
+from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import (
@@ -69,6 +67,14 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
+
+_TEXTS_RU = DEFAULT_TEXTS["ru"]
+
+
+@pytest.fixture
+def config() -> AppConfig:
+    """Config for profile tests (same as _profile_test_config())."""
+    return _profile_test_config()
 
 
 def _profile_test_config() -> AppConfig:
@@ -158,9 +164,11 @@ class FakeBloggerRegistrationService:
         self,
         update_returns: BloggerProfile | None = None,
         get_by_instagram: BloggerProfile | None = None,
+        resolve_city_returns: tuple[str, str | None, str | None] | None = None,
     ) -> None:
         self.update_returns = update_returns
         self.get_by_instagram = get_by_instagram
+        self.resolve_city_returns = resolve_city_returns
         self.update_calls: list[tuple[UUID, dict]] = []
 
     async def update_blogger_profile(
@@ -168,6 +176,11 @@ class FakeBloggerRegistrationService:
     ) -> BloggerProfile | None:
         self.update_calls.append((user_id, kwargs))
         return self.update_returns
+
+    async def resolve_city_from_location(
+        self, lat: float, lon: float
+    ) -> tuple[str, str | None, str | None] | None:
+        return self.resolve_city_returns
 
     async def get_profile_by_instagram_url(
         self, url: str
@@ -246,18 +259,24 @@ def _make_blogger_profile(user_id: UUID) -> BloggerProfile:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_from_user_none() -> None:
+async def test_show_profile_from_user_none(config, bot_texts_service) -> None:
     """Show profile does nothing when from_user is None."""
     message = FakeMessage(user=None)
     service = _FakeProfileServiceUserMissing()
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert not message.answers
 
 
 @pytest.mark.asyncio
-async def test_show_profile_both_roles(user_repo) -> None:
+async def test_show_profile_both_roles(
+    user_repo, config, bot_texts_service
+) -> None:
     """Show both roles in profile output."""
 
     user = await create_test_user(
@@ -273,7 +292,11 @@ async def test_show_profile_both_roles(user_repo) -> None:
     )
 
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -286,7 +309,7 @@ async def test_show_profile_both_roles(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_missing_user() -> None:
+async def test_show_profile_missing_user(config, bot_texts_service) -> None:
     """Notify when user is missing."""
 
     class MissingProfileService:
@@ -298,7 +321,8 @@ async def test_show_profile_missing_user() -> None:
         message,
         MissingProfileService(),
         FakeFSMContext(),
-        _profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -308,6 +332,8 @@ async def test_show_profile_missing_user() -> None:
 @pytest.mark.asyncio
 async def test_show_profile_shows_agreement_when_not_confirmed(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user has profile but no agreement, show agreement and set state."""
     user = await create_test_user(
@@ -322,7 +348,13 @@ async def test_show_profile_shows_agreement_when_not_confirmed(
         user=user, has_blogger=True, has_advertiser=False
     )
     state = FakeFSMContext()
-    await show_profile(message, service, state, _profile_test_config())
+    await show_profile(
+        message,
+        service,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert message.answers
     first = (
         message.answers[0][0]
@@ -334,7 +366,9 @@ async def test_show_profile_shows_agreement_when_not_confirmed(
 
 
 @pytest.mark.asyncio
-async def test_show_profile_missing_profiles(user_repo) -> None:
+async def test_show_profile_missing_profiles(
+    user_repo, config, bot_texts_service
+) -> None:
     """Show hints when role profiles are missing."""
 
     user = await create_test_user(
@@ -359,7 +393,8 @@ async def test_show_profile_missing_profiles(user_repo) -> None:
         message,
         PartialProfileService(),
         FakeFSMContext(),
-        _profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.answers
@@ -369,7 +404,9 @@ async def test_show_profile_missing_profiles(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
+async def test_show_profile_blogger_keyboard_not_confirmed(
+    user_repo, config, bot_texts_service
+) -> None:
     """Show verification button for unconfirmed blogger."""
     user = await create_test_user(
         user_repo,
@@ -387,7 +424,11 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
     )
 
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.reply_markups
@@ -401,12 +442,14 @@ async def test_show_profile_blogger_keyboard_not_confirmed(user_repo) -> None:
     # blogger_profile_view_keyboard: Edit profile, Confirm Instagram, My profile
     assert len(rows) == 3
     assert rows[0][0].text == "Редактировать профиль"
-    assert rows[1][0].text == CONFIRM_INSTAGRAM_BUTTON_TEXT
-    assert rows[2][0].text == MY_PROFILE_BUTTON_TEXT
+    assert rows[1][0].text == _TEXTS_RU["btn_confirm_instagram"]
+    assert rows[2][0].text == _TEXTS_RU["btn_my_profile"]
 
 
 @pytest.mark.asyncio
-async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
+async def test_show_profile_blogger_keyboard_confirmed(
+    user_repo, config, bot_texts_service
+) -> None:
     """Hide verification button for confirmed blogger."""
     user = await create_test_user(
         user_repo,
@@ -424,7 +467,11 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
     )
 
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.reply_markups
@@ -438,11 +485,42 @@ async def test_show_profile_blogger_keyboard_confirmed(user_repo) -> None:
     # blogger_profile_view_keyboard when confirmed: Edit profile, My profile
     assert len(rows) == 2
     assert rows[0][0].text == "Редактировать профиль"
-    assert rows[1][0].text == MY_PROFILE_BUTTON_TEXT
+    assert rows[1][0].text == _TEXTS_RU["btn_my_profile"]
 
 
 @pytest.mark.asyncio
-async def test_show_profile_advertiser_keyboard(user_repo) -> None:
+async def test_show_profile_advertiser_only_agreement_not_confirmed(
+    user_repo, config, bot_texts_service
+) -> None:
+    """Advertiser-only, no agreement: show agreement, set advertiser state."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000816"),
+        external_id="1",
+        username="adv",
+        agreement_confirmed_at=None,
+    )
+    message = FakeMessage(user=FakeUser(1))
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    state = FakeFSMContext()
+    await show_profile(
+        message,
+        service,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
+    assert message.answers
+    assert "согласи" in str(message.answers[0]).lower()
+    assert state.state == _ADVERTISER_AGREEMENTS_STATE
+
+
+@pytest.mark.asyncio
+async def test_show_profile_advertiser_keyboard(
+    user_repo, config, bot_texts_service
+) -> None:
     """Show advertiser keyboard for advertiser."""
     user = await create_test_user(
         user_repo,
@@ -457,7 +535,11 @@ async def test_show_profile_advertiser_keyboard(user_repo) -> None:
     )
 
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert message.reply_markups
@@ -469,13 +551,13 @@ async def test_show_profile_advertiser_keyboard(user_repo) -> None:
     )
     assert rows is not None
     assert any(
-        btn.text == MY_PROFILE_BUTTON_TEXT for row in rows for btn in row
+        btn.text == _TEXTS_RU["btn_my_profile"] for row in rows for btn in row
     )
 
 
 @pytest.mark.asyncio
 async def test_profile_agree_callback_blogger_confirms_and_shows_profile(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Profile agree callback confirms blogger agreement and shows profile."""
     user = await create_test_user(
@@ -515,6 +597,9 @@ async def test_profile_agree_callback_blogger_confirms_and_shows_profile(
         user_role_service=user_role_service,
         blogger_registration_service=blogger_reg_service,
         advertiser_registration_service=adv_reg_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        currency_symbol="₽",
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -528,7 +613,7 @@ async def test_profile_agree_callback_blogger_confirms_and_shows_profile(
 
 @pytest.mark.asyncio
 async def test_profile_agree_callback_wrong_state_only_answers(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When state is not agreements, callback only answers."""
     profile_service = build_profile_service(
@@ -558,6 +643,9 @@ async def test_profile_agree_callback_wrong_state_only_answers(
         user_role_service=user_role_service,
         blogger_registration_service=blogger_reg,
         advertiser_registration_service=adv_reg,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        currency_symbol="₽",
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -568,7 +656,7 @@ async def test_profile_agree_callback_wrong_state_only_answers(
 
 @pytest.mark.asyncio
 async def test_profile_agree_callback_no_user_id_sends_expired(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When user_id missing in state, send session expired and clear."""
     profile_service = build_profile_service(
@@ -598,6 +686,9 @@ async def test_profile_agree_callback_no_user_id_sends_expired(
         user_role_service=user_role_service,
         blogger_registration_service=blogger_reg,
         advertiser_registration_service=adv_reg,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        currency_symbol="₽",
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -608,7 +699,7 @@ async def test_profile_agree_callback_no_user_id_sends_expired(
 
 @pytest.mark.asyncio
 async def test_profile_agree_callback_advertiser_confirms_and_shows_profile(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Profile agree callback for advertiser confirms and shows profile."""
     from tests.helpers.factories import create_test_advertiser_profile
@@ -648,6 +739,9 @@ async def test_profile_agree_callback_advertiser_confirms_and_shows_profile(
         user_role_service=user_role_service,
         blogger_registration_service=blogger_reg,
         advertiser_registration_service=adv_reg,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        currency_symbol="₽",
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -661,7 +755,7 @@ async def test_profile_agree_callback_advertiser_confirms_and_shows_profile(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_callback_user_not_found(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit callback when user not in DB sends 'Профиль не найден'."""
     profile_service = build_profile_service(
@@ -678,6 +772,8 @@ async def test_handle_profile_edit_callback_user_not_found(
         callback,
         FakeFSMContext(),
         profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -686,7 +782,7 @@ async def test_handle_profile_edit_callback_user_not_found(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_callback_no_profiles(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit callback when user has no blogger/advertiser profile."""
     await create_test_user(user_repo, external_id="70", username="noprofile")
@@ -704,6 +800,8 @@ async def test_handle_profile_edit_callback_no_profiles(
         callback,
         FakeFSMContext(),
         profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -712,7 +810,7 @@ async def test_handle_profile_edit_callback_no_profiles(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_callback_both_profiles(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit callback when user has both profiles shows type choice."""
     user = await create_test_user(user_repo, external_id="71", username="both")
@@ -733,6 +831,8 @@ async def test_handle_profile_edit_callback_both_profiles(
         callback,
         state,
         profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -745,7 +845,7 @@ async def test_handle_profile_edit_callback_both_profiles(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_callback_blogger_only(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit callback with only blogger profile shows field list."""
     user = await create_test_user(user_repo, external_id="72", username="blog")
@@ -765,6 +865,8 @@ async def test_handle_profile_edit_callback_blogger_only(
         callback,
         state,
         profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -777,7 +879,7 @@ async def test_handle_profile_edit_callback_blogger_only(
 
 @pytest.mark.asyncio
 async def test_handle_profile_my_profile_callback_shows_agreement(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """My profile callback when agreement not confirmed sends agreement."""
     user = await create_test_user(
@@ -802,7 +904,8 @@ async def test_handle_profile_my_profile_callback_shows_agreement(
         callback,
         state,
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -811,8 +914,47 @@ async def test_handle_profile_my_profile_callback_shows_agreement(
 
 
 @pytest.mark.asyncio
+async def test_handle_profile_my_profile_callback_advertiser_only_confirmed(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
+) -> None:
+    """My profile: only advertiser, agreement confirmed -> advertiser menu."""
+    user = await create_test_user(
+        user_repo,
+        external_id="75",
+        username="adv_only",
+        agreement_confirmed_at=datetime.now(timezone.utc),
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MY_PROFILE,
+        user=FakeUser(75),
+        message=FakeMessage(user=FakeUser(75)),
+    )
+    state = FakeFSMContext()
+    await handle_profile_my_profile_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) >= 1
+    assert any(
+        "Создать заказ" in s["text"] or "профиль" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
 async def test_handle_profile_edit_type_callback_blogger(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit type callback blogger shows blogger field list."""
     user = await create_test_user(user_repo, external_id="74", username="et")
@@ -835,7 +977,8 @@ async def test_handle_profile_edit_type_callback_blogger(
     await handle_profile_edit_type_callback(
         callback,
         state,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         profile_service=profile_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -849,7 +992,7 @@ async def test_handle_profile_edit_type_callback_blogger(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_type_callback_advertiser(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit type callback advertiser shows advertiser field list."""
     user = await create_test_user(
@@ -874,7 +1017,8 @@ async def test_handle_profile_edit_type_callback_advertiser(
     await handle_profile_edit_type_callback(
         callback,
         state,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         profile_service=profile_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -888,7 +1032,7 @@ async def test_handle_profile_edit_type_callback_advertiser(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_nickname(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback for nickname sends name prompt."""
     user = await create_test_user(user_repo, external_id="76", username="ef")
@@ -919,6 +1063,7 @@ async def test_handle_profile_edit_field_callback_nickname(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -931,7 +1076,7 @@ async def test_handle_profile_edit_field_callback_nickname(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_choice_callback_audience_gender(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit choice callback for audience_gender updates and shows profile."""
     user = await create_test_user(
@@ -963,7 +1108,8 @@ async def test_handle_profile_edit_choice_callback_audience_gender(
         callback,
         state,
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -978,7 +1124,7 @@ async def test_handle_profile_edit_choice_callback_audience_gender(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_choice_callback_blogger_gone_clears_state(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """When get_blogger_profile returns None, state is cleared and no update."""
     user = await create_test_user(
@@ -1005,7 +1151,8 @@ async def test_handle_profile_edit_choice_callback_blogger_gone_clears_state(
         callback,
         state,
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=FakeBloggerRegistrationService(),
         user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
@@ -1016,10 +1163,103 @@ async def test_handle_profile_edit_choice_callback_blogger_gone_clears_state(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_blogger_city_non_canonical_sends_picker(
-    user_repo,
+async def test_edit_choice_callback_advertiser_type_returns_early(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
-    """Editing city with non-canonical name sends picker hint."""
+    """Edit choice for advertiser type returns early, no blogger update."""
+    user = await create_test_user(
+        user_repo, external_id="77c", username="choice"
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="77c",
+        edit_profile_type="advertiser",
+        editing_field="audience_gender",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AUDIENCE_F,
+        user=FakeUser(77),
+        message=FakeMessage(user=FakeUser(77)),
+    )
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_choice_callback_work_format_success(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
+) -> None:
+    """Edit choice callback for work_format updates profile via choice_map."""
+    user = await create_test_user(user_repo, external_id="77d", username="wf")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    blogger_reg = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="77d",
+        edit_profile_type="blogger",
+        editing_field="work_format",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_WORK_ADS,
+        user=FakeUser(77),
+        message=FakeMessage(user=FakeUser(77)),
+    )
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=blogger_reg,
+        user_role_service=user_role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert any(
+        "обновлён" in s["text"] or "профиль" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_blogger_city_any_accepted(
+    user_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Editing city with any name updates profile (no picker)."""
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-00000000084a"),
@@ -1036,39 +1276,53 @@ async def test_edit_profile_enter_value_blogger_city_non_canonical_sends_picker(
     profile_service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    reg_service = FakeBloggerRegistrationService()
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
     await edit_profile_enter_value(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
-    assert "город" in text.lower() or "выберите" in text.lower()
+    assert "Профиль обновлён" in text
+    assert reg_service.update_calls
+    assert reg_service.update_calls[0][1].get("city") == "маленькийгород"
 
 
 # --- Edit profile flow ---
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_start_user_missing(user_repo) -> None:
+async def test_edit_profile_start_user_missing(
+    user_repo, config, bot_texts_service
+) -> None:
     """Edit profile start notifies when user is missing."""
     message = FakeMessage(text="Редактировать профиль", user=FakeUser(1))
     state = FakeFSMContext()
     service = _FakeProfileServiceUserMissing()
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert message.answers
     assert "Профиль не найден" in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_start_blogger_missing(user_repo) -> None:
+async def test_edit_profile_start_blogger_missing(
+    user_repo, config, bot_texts_service
+) -> None:
     """Edit profile start notifies when blogger profile is missing."""
     user = await create_test_user(
         user_repo,
@@ -1081,13 +1335,21 @@ async def test_edit_profile_start_blogger_missing(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=False, has_advertiser=False
     )
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert message.answers
     assert "Профиль не заполнен" in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_start_success(user_repo) -> None:
+async def test_edit_profile_start_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Edit profile start shows field selection."""
     user = await create_test_user(
         user_repo,
@@ -1100,14 +1362,22 @@ async def test_edit_profile_start_success(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert message.answers
     assert "Выберите раздел" in message.answers[0][0]
     assert state.state is not None
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
+async def test_edit_profile_choose_field_my_profile(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing 'Мой профиль' clears state and shows profile."""
     user = await create_test_user(
         user_repo,
@@ -1116,7 +1386,7 @@ async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
         username="user",
         agreement_confirmed_at=datetime.now(timezone.utc),
     )
-    message = FakeMessage(text=MY_PROFILE_BUTTON_TEXT, user=FakeUser(8))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_profile"], user=FakeUser(8))
     state = FakeFSMContext()
     profile_service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
@@ -1127,9 +1397,10 @@ async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        user_role_service=role_service,
     )
     assert state.cleared is True
     assert message.answers
@@ -1141,7 +1412,9 @@ async def test_edit_profile_choose_field_my_profile(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_invalid(user_repo) -> None:
+async def test_edit_profile_choose_field_invalid(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing invalid text asks to use keyboard."""
     user = await create_test_user(
         user_repo,
@@ -1160,9 +1433,10 @@ async def test_edit_profile_choose_field_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        user_role_service=role_service,
     )
     assert message.answers
     first = (
@@ -1174,7 +1448,9 @@ async def test_edit_profile_choose_field_invalid(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_nickname(user_repo) -> None:
+async def test_edit_profile_choose_field_nickname(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing Имя/ник prompts with support keyboard."""
     user = await create_test_user(
         user_repo,
@@ -1193,9 +1469,10 @@ async def test_edit_profile_choose_field_nickname(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        user_role_service=role_service,
     )
     assert message.answers
     assert "новое имя" in message.answers[0][0].lower()
@@ -1203,7 +1480,9 @@ async def test_edit_profile_choose_field_nickname(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_city(user_repo) -> None:
+async def test_edit_profile_choose_field_city(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing City prompts for new value."""
     user = await create_test_user(
         user_repo,
@@ -1222,9 +1501,10 @@ async def test_edit_profile_choose_field_city(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        user_role_service=role_service,
     )
     assert message.answers
     assert "город" in message.answers[0][0].lower()
@@ -1232,7 +1512,9 @@ async def test_edit_profile_choose_field_city(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_blogger_gender(user_repo) -> None:
+async def test_edit_profile_choose_field_blogger_gender(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing Пол prompts for blogger gender with keyboard."""
     user = await create_test_user(
         user_repo,
@@ -1251,9 +1533,10 @@ async def test_edit_profile_choose_field_blogger_gender(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        user_role_service=role_service,
     )
     assert message.answers
     assert "пол" in message.answers[0][0].lower()
@@ -1271,7 +1554,9 @@ async def test_edit_profile_choose_field_blogger_gender(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_missing_state(user_repo) -> None:
+async def test_edit_profile_enter_value_missing_state(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter value with missing state data replies session expired."""
     user = await create_test_user(
         user_repo,
@@ -1291,10 +1576,11 @@ async def test_edit_profile_enter_value_missing_state(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -1302,7 +1588,9 @@ async def test_edit_profile_enter_value_missing_state(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_blogger_missing(user_repo) -> None:
+async def test_edit_profile_enter_value_blogger_missing(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter value when blogger profile is gone replies profile not found."""
     user = await create_test_user(
         user_repo,
@@ -1326,10 +1614,11 @@ async def test_edit_profile_enter_value_blogger_missing(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -1337,7 +1626,9 @@ async def test_edit_profile_enter_value_blogger_missing(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
+async def test_edit_profile_enter_value_city_empty(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter empty city gets validation error."""
     user = await create_test_user(
         user_repo,
@@ -1362,10 +1653,11 @@ async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -1375,7 +1667,9 @@ async def test_edit_profile_enter_value_city_empty(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_city_success(user_repo) -> None:
+async def test_edit_profile_enter_value_city_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter valid city (from dictionary) updates profile and shows profile."""
     user = await create_test_user(
         user_repo,
@@ -1400,10 +1694,11 @@ async def test_edit_profile_enter_value_city_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert state.cleared is True
@@ -1416,8 +1711,166 @@ async def test_edit_profile_enter_value_city_success(user_repo) -> None:
 
 
 @pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_with_location_updates_profile(
+    user_repo, config, bot_texts_service
+) -> None:
+    """Enter city via shared location updates profile with city and geometry."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000081f"),
+        external_id="15",
+        username="user",
+    )
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(15),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_profile_type": "blogger",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "15",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(
+        update_returns=updated,
+        resolve_city_returns=("Moscow", "Moscow", "Russia"),
+    )
+    role_service = FakeUserRoleService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state.cleared is True
+    assert message.answers
+    assert reg_service.update_calls
+    call_kw = reg_service.update_calls[0][1]
+    assert call_kw.get("city") == "moscow"
+    assert call_kw.get("location_geometry") == "MULTIPOINT((37.62 55.75))"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_with_location_resolve_fails(
+    user_repo, config, bot_texts_service
+) -> None:
+    """When location reverse geocode fails, user gets error message."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000820"),
+        external_id="16",
+        username="user",
+    )
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(16),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_profile_type": "blogger",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "16",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService(resolve_city_returns=None)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert not reg_service.update_calls
+    texts = [a[0] if isinstance(a, tuple) else a for a in message.answers]
+    assert any("геопозици" in (t or "") or "город" in (t or "") for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_with_web_app_data_updates_profile(
+    user_repo, config, bot_texts_service
+) -> None:
+    """City from Mini App web_app_data updates profile and geometry."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000821"),
+        external_id="17",
+        username="user",
+    )
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(17),
+        web_app_data=FakeWebAppData(data='{"lat":55.75,"lon":37.62}'),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_profile_type": "blogger",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "17",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(
+        update_returns=updated,
+        resolve_city_returns=("Moscow", "Moscow", "Russia"),
+    )
+    role_service = FakeUserRoleService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state.cleared is True
+    assert reg_service.update_calls
+    call_kw = reg_service.update_calls[0][1]
+    assert call_kw.get("city") == "moscow"
+    assert call_kw.get("location_geometry") == "MULTIPOINT((37.62 55.75))"
+
+
+@pytest.mark.asyncio
 async def test_edit_profile_enter_value_city_multi_region_shows_region_keyboard(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Enter city in multiple regions shows region picker, state kept."""
     user = await create_test_user(
@@ -1441,10 +1894,11 @@ async def test_edit_profile_enter_value_city_multi_region_shows_region_keyboard(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert state.cleared is False
@@ -1457,7 +1911,9 @@ async def test_edit_profile_enter_value_city_multi_region_shows_region_keyboard(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_nickname_success(user_repo) -> None:
+async def test_edit_profile_enter_value_nickname_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter valid nickname updates user and shows profile."""
     user = await create_test_user(
         user_repo,
@@ -1481,10 +1937,11 @@ async def test_edit_profile_enter_value_nickname_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert state.cleared is True
@@ -1493,7 +1950,9 @@ async def test_edit_profile_enter_value_nickname_success(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_instagram_duplicate(user_repo) -> None:
+async def test_edit_profile_enter_value_instagram_duplicate(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter Instagram URL already used by another user gets error."""
     user = await create_test_user(
         user_repo,
@@ -1533,10 +1992,11 @@ async def test_edit_profile_enter_value_instagram_duplicate(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -1544,7 +2004,9 @@ async def test_edit_profile_enter_value_instagram_duplicate(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_instagram_success(user_repo) -> None:
+async def test_edit_profile_enter_value_instagram_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter valid Instagram URL updates profile."""
     user = await create_test_user(
         user_repo,
@@ -1571,10 +2033,11 @@ async def test_edit_profile_enter_value_instagram_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert state.cleared is True
@@ -1587,6 +2050,8 @@ async def test_edit_profile_enter_value_instagram_success(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_instagram_normalized_with_query(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Instagram URL with query string is normalized when saving profile."""
     user = await create_test_user(
@@ -1615,10 +2080,11 @@ async def test_edit_profile_enter_value_instagram_normalized_with_query(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert state.cleared is True
@@ -1631,6 +2097,8 @@ async def test_edit_profile_enter_value_instagram_normalized_with_query(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_audience_gender_success(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Enter valid audience gender updates profile."""
     user = await create_test_user(
@@ -1656,10 +2124,11 @@ async def test_edit_profile_enter_value_audience_gender_success(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert (
@@ -1671,6 +2140,8 @@ async def test_edit_profile_enter_value_audience_gender_success(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_blogger_gender_success(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Enter valid blogger gender (Male) updates profile."""
     user = await create_test_user(
@@ -1696,10 +2167,11 @@ async def test_edit_profile_enter_value_blogger_gender_success(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert (
@@ -1711,6 +2183,8 @@ async def test_edit_profile_enter_value_blogger_gender_success(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_blogger_gender_invalid(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Enter invalid blogger gender asks to use buttons."""
     user = await create_test_user(
@@ -1735,10 +2209,11 @@ async def test_edit_profile_enter_value_blogger_gender_invalid(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert not reg_service.update_calls
@@ -1749,7 +2224,9 @@ async def test_edit_profile_enter_value_blogger_gender_invalid(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_birth_date_success(user_repo) -> None:
+async def test_edit_profile_enter_value_birth_date_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter valid birth date updates profile."""
     user = await create_test_user(
         user_repo,
@@ -1774,10 +2251,11 @@ async def test_edit_profile_enter_value_birth_date_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert reg_service.update_calls
@@ -1785,7 +2263,9 @@ async def test_edit_profile_enter_value_birth_date_success(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_birth_date_invalid(user_repo) -> None:
+async def test_edit_profile_enter_value_birth_date_invalid(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter invalid birth date gets validation error."""
     user = await create_test_user(
         user_repo,
@@ -1809,10 +2289,11 @@ async def test_edit_profile_enter_value_birth_date_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert not reg_service.update_calls
@@ -1820,7 +2301,9 @@ async def test_edit_profile_enter_value_birth_date_invalid(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_audience_age_success(user_repo) -> None:
+async def test_edit_profile_enter_value_audience_age_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter valid audience age updates profile."""
     user = await create_test_user(
         user_repo,
@@ -1845,10 +2328,11 @@ async def test_edit_profile_enter_value_audience_age_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("audience_age_min") == 25
@@ -1856,7 +2340,9 @@ async def test_edit_profile_enter_value_audience_age_success(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_barter_success(user_repo) -> None:
+async def test_edit_profile_enter_value_barter_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter barter Yes updates profile."""
     user = await create_test_user(
         user_repo,
@@ -1881,17 +2367,20 @@ async def test_edit_profile_enter_value_barter_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("barter") is True
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
+async def test_edit_profile_enter_value_work_format_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter work format updates profile."""
     user = await create_test_user(
         user_repo,
@@ -1899,7 +2388,9 @@ async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
         external_id="21",
         username="user",
     )
-    message = FakeMessage(text=WORK_FORMAT_ADS_BUTTON_TEXT, user=FakeUser(21))
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_work_format_ads"], user=FakeUser(21)
+    )
     state = FakeFSMContext()
     state._data = {
         "editing_field": "work_format",
@@ -1916,10 +2407,11 @@ async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert (
@@ -1929,7 +2421,9 @@ async def test_edit_profile_enter_value_work_format_success(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_nickname_empty(user_repo) -> None:
+async def test_edit_profile_enter_value_nickname_empty(
+    user_repo, config, bot_texts_service
+) -> None:
     """Empty nickname gets validation error."""
     user = await create_test_user(
         user_repo,
@@ -1953,10 +2447,11 @@ async def test_edit_profile_enter_value_nickname_empty(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -1966,7 +2461,9 @@ async def test_edit_profile_enter_value_nickname_empty(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_instagram_bad_format(user_repo) -> None:
+async def test_edit_profile_enter_value_instagram_bad_format(
+    user_repo, config, bot_texts_service
+) -> None:
     """Instagram URL without instagram.com/ gets error."""
     user = await create_test_user(
         user_repo,
@@ -1990,10 +2487,11 @@ async def test_edit_profile_enter_value_instagram_bad_format(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2001,7 +2499,9 @@ async def test_edit_profile_enter_value_instagram_bad_format(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_instagram_regex_fail(user_repo) -> None:
+async def test_edit_profile_enter_value_instagram_regex_fail(
+    user_repo, config, bot_texts_service
+) -> None:
     """Instagram URL with invalid format (regex) gets error."""
     user = await create_test_user(
         user_repo,
@@ -2025,10 +2525,11 @@ async def test_edit_profile_enter_value_instagram_regex_fail(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2036,7 +2537,9 @@ async def test_edit_profile_enter_value_instagram_regex_fail(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_topics_empty(user_repo) -> None:
+async def test_edit_profile_enter_value_topics_empty(
+    user_repo, config, bot_texts_service
+) -> None:
     """Empty topics get validation error."""
     user = await create_test_user(
         user_repo,
@@ -2060,10 +2563,11 @@ async def test_edit_profile_enter_value_topics_empty(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2073,7 +2577,9 @@ async def test_edit_profile_enter_value_topics_empty(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_topics_too_many(user_repo) -> None:
+async def test_edit_profile_enter_value_topics_too_many(
+    user_repo, config, bot_texts_service
+) -> None:
     """More than 10 topics gets validation error."""
     user = await create_test_user(
         user_repo,
@@ -2097,10 +2603,11 @@ async def test_edit_profile_enter_value_topics_too_many(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2113,6 +2620,8 @@ async def test_edit_profile_enter_value_topics_too_many(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_audience_gender_invalid(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Invalid audience gender text gets error."""
     user = await create_test_user(
@@ -2137,10 +2646,11 @@ async def test_edit_profile_enter_value_audience_gender_invalid(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2148,7 +2658,9 @@ async def test_edit_profile_enter_value_audience_gender_invalid(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_audience_age_invalid(user_repo) -> None:
+async def test_edit_profile_enter_value_audience_age_invalid(
+    user_repo, config, bot_texts_service
+) -> None:
     """Invalid audience age text gets error."""
     user = await create_test_user(
         user_repo,
@@ -2172,10 +2684,11 @@ async def test_edit_profile_enter_value_audience_age_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2183,7 +2696,9 @@ async def test_edit_profile_enter_value_audience_age_invalid(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_audience_geo_empty(user_repo) -> None:
+async def test_edit_profile_enter_value_audience_geo_empty(
+    user_repo, config, bot_texts_service
+) -> None:
     """Empty audience geo gets error."""
     user = await create_test_user(
         user_repo,
@@ -2207,10 +2722,11 @@ async def test_edit_profile_enter_value_audience_geo_empty(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2222,6 +2738,8 @@ async def test_edit_profile_enter_value_audience_geo_empty(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_audience_geo_too_many(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """More than 3 cities in audience geo gets error."""
     user = await create_test_user(
@@ -2246,10 +2764,11 @@ async def test_edit_profile_enter_value_audience_geo_too_many(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2259,7 +2778,9 @@ async def test_edit_profile_enter_value_audience_geo_too_many(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_price_invalid(user_repo) -> None:
+async def test_edit_profile_enter_value_price_invalid(
+    user_repo, config, bot_texts_service
+) -> None:
     """Non-numeric price gets error."""
     user = await create_test_user(
         user_repo,
@@ -2283,10 +2804,11 @@ async def test_edit_profile_enter_value_price_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2294,7 +2816,9 @@ async def test_edit_profile_enter_value_price_invalid(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
+async def test_edit_profile_enter_value_price_zero(
+    user_repo, config, bot_texts_service
+) -> None:
     """Zero price gets error."""
     user = await create_test_user(
         user_repo,
@@ -2318,10 +2842,11 @@ async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2331,7 +2856,9 @@ async def test_edit_profile_enter_value_price_zero(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_price_exceeds_max(user_repo) -> None:
+async def test_edit_profile_enter_value_price_exceeds_max(
+    user_repo, config, bot_texts_service
+) -> None:
     """Price exceeding max order price gets validation error."""
     user = await create_test_user(
         user_repo,
@@ -2355,10 +2882,11 @@ async def test_edit_profile_enter_value_price_exceeds_max(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2369,7 +2897,9 @@ async def test_edit_profile_enter_value_price_exceeds_max(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_barter_invalid(user_repo) -> None:
+async def test_edit_profile_enter_value_barter_invalid(
+    user_repo, config, bot_texts_service
+) -> None:
     """Invalid barter text gets error."""
     user = await create_test_user(
         user_repo,
@@ -2393,10 +2923,11 @@ async def test_edit_profile_enter_value_barter_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2404,7 +2935,9 @@ async def test_edit_profile_enter_value_barter_invalid(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_work_format_invalid(user_repo) -> None:
+async def test_edit_profile_enter_value_work_format_invalid(
+    user_repo, config, bot_texts_service
+) -> None:
     """Invalid work format text gets error."""
     user = await create_test_user(
         user_repo,
@@ -2428,10 +2961,11 @@ async def test_edit_profile_enter_value_work_format_invalid(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2439,7 +2973,9 @@ async def test_edit_profile_enter_value_work_format_invalid(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_topics_success(user_repo) -> None:
+async def test_edit_profile_enter_value_topics_success(
+    user_repo, config, bot_texts_service
+) -> None:
     """Valid topics update profile."""
     user = await create_test_user(
         user_repo,
@@ -2464,10 +3000,11 @@ async def test_edit_profile_enter_value_topics_success(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("topics") == {
@@ -2476,7 +3013,9 @@ async def test_edit_profile_enter_value_topics_success(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_unknown_field(user_repo) -> None:
+async def test_edit_profile_enter_value_unknown_field(
+    user_repo, config, bot_texts_service
+) -> None:
     """Unknown editing field clears state and replies unknown field."""
     user = await create_test_user(
         user_repo,
@@ -2500,10 +3039,11 @@ async def test_edit_profile_enter_value_unknown_field(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert state.cleared is True
@@ -2512,7 +3052,9 @@ async def test_edit_profile_enter_value_unknown_field(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
+async def test_edit_profile_enter_value_update_returns_none(
+    user_repo, config, bot_texts_service
+) -> None:
     """When update_blogger_profile returns None user gets error."""
     user = await create_test_user(
         user_repo,
@@ -2536,10 +3078,11 @@ async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2549,7 +3092,9 @@ async def test_edit_profile_enter_value_update_returns_none(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_advertiser_with_optional_fields(user_repo) -> None:
+async def test_show_profile_advertiser_with_optional_fields(
+    user_repo, config, bot_texts_service
+) -> None:
     """Show advertiser profile with city, company_activity, site_link."""
     user = await create_test_user(
         user_repo,
@@ -2568,7 +3113,11 @@ async def test_show_profile_advertiser_with_optional_fields(user_repo) -> None:
         advertiser_site_link="https://brand.com",
     )
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     ans = (
         message.answers[0]
@@ -2581,7 +3130,9 @@ async def test_show_profile_advertiser_with_optional_fields(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_start_from_user_none(user_repo) -> None:
+async def test_edit_profile_start_from_user_none(
+    user_repo, config, bot_texts_service
+) -> None:
     """edit_profile_start returns when from_user is None."""
     message = FakeMessage(text="Редактировать профиль", user=None)
     state = FakeFSMContext()
@@ -2594,13 +3145,21 @@ async def test_edit_profile_start_from_user_none(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert not message.answers
 
 
 @pytest.mark.asyncio
 async def test_edit_profile_start_both_profiles_shows_type_choice(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """When user has both blogger and advertiser, show profile type choice."""
     user = await create_test_user(
@@ -2614,13 +3173,21 @@ async def test_edit_profile_start_both_profiles_shows_type_choice(
     service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=True
     )
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert "Выберите профиль для редактирования" in message.answers[0][0]
     assert state.state == EditProfileStates.choosing_profile_type
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_start_advertiser_only(user_repo) -> None:
+async def test_edit_profile_start_advertiser_only(
+    user_repo, config, bot_texts_service
+) -> None:
     """When user has only advertiser, go directly to field selection."""
     user = await create_test_user(
         user_repo,
@@ -2633,14 +3200,22 @@ async def test_edit_profile_start_advertiser_only(user_repo) -> None:
     service = FakeProfileService(
         user=user, has_blogger=False, has_advertiser=True
     )
-    await edit_profile_start(message, state, service)
+    await edit_profile_start(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+    )
     assert "Выберите раздел" in message.answers[0][0]
     assert state._data.get("edit_profile_type") == "advertiser"
     assert state.state == EditProfileStates.choosing_field
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_type_blogger(user_repo) -> None:
+async def test_edit_profile_choose_type_blogger(
+    user_repo, config, bot_texts_service
+) -> None:
     """edit_profile_choose_type selects blogger profile."""
     user = await create_test_user(
         user_repo,
@@ -2658,14 +3233,20 @@ async def test_edit_profile_choose_type_blogger(user_repo) -> None:
         user=user, has_blogger=True, has_advertiser=True
     )
     await edit_profile_choose_type(
-        message, state, service, _profile_test_config()
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert state._data.get("edit_profile_type") == "blogger"
     assert "Выберите раздел" in message.answers[0][0]
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_type_advertiser(user_repo) -> None:
+async def test_edit_profile_choose_type_advertiser(
+    user_repo, config, bot_texts_service
+) -> None:
     """edit_profile_choose_type selects advertiser profile."""
     user = await create_test_user(
         user_repo,
@@ -2683,14 +3264,20 @@ async def test_edit_profile_choose_type_advertiser(user_repo) -> None:
         user=user, has_blogger=True, has_advertiser=True
     )
     await edit_profile_choose_type(
-        message, state, service, _profile_test_config()
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert state._data.get("edit_profile_type") == "advertiser"
     assert "Выберите раздел" in message.answers[0][0]
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_type_invalid(user_repo) -> None:
+async def test_edit_profile_choose_type_invalid(
+    user_repo, config, bot_texts_service
+) -> None:
     """edit_profile_choose_type rejects invalid choice."""
     user = await create_test_user(
         user_repo,
@@ -2706,7 +3293,11 @@ async def test_edit_profile_choose_type_invalid(user_repo) -> None:
         user=user, has_blogger=True, has_advertiser=True
     )
     await edit_profile_choose_type(
-        message, state, service, _profile_test_config()
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     ans = message.answers[0]
     assert "Выберите один из вариантов" in (
@@ -2715,7 +3306,9 @@ async def test_edit_profile_choose_type_invalid(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_type_my_profile_returns(user_repo) -> None:
+async def test_edit_profile_choose_type_my_profile_returns(
+    user_repo, config, bot_texts_service
+) -> None:
     """edit_profile_choose_type with MY_PROFILE clears and shows profile."""
     user = await create_test_user(
         user_repo,
@@ -2724,7 +3317,7 @@ async def test_edit_profile_choose_type_my_profile_returns(user_repo) -> None:
         username="u",
         agreement_confirmed_at=datetime.now(timezone.utc),
     )
-    message = FakeMessage(text=MY_PROFILE_BUTTON_TEXT, user=FakeUser(45))
+    message = FakeMessage(text=_TEXTS_RU["btn_my_profile"], user=FakeUser(45))
     state = FakeFSMContext()
     state.state = EditProfileStates.choosing_profile_type
     state._data = {"edit_user_id": user.user_id, "edit_external_id": "45"}
@@ -2732,7 +3325,11 @@ async def test_edit_profile_choose_type_my_profile_returns(user_repo) -> None:
         user=user, has_blogger=True, has_advertiser=True
     )
     await edit_profile_choose_type(
-        message, state, service, _profile_test_config()
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert state.cleared
     assert "👤 Ваш профиль" in (
@@ -2743,7 +3340,9 @@ async def test_edit_profile_choose_type_my_profile_returns(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_advertiser_phone(user_repo) -> None:
+async def test_edit_profile_choose_field_advertiser_phone(
+    user_repo, config, bot_texts_service
+) -> None:
     """edit_profile_choose_field for advertiser shows phone prompt."""
     user = await create_test_user(
         user_repo,
@@ -2766,16 +3365,19 @@ async def test_edit_profile_choose_field_advertiser_phone(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        reg_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        user_role_service=role_service,
     )
     assert "телефона" in message.answers[0][0].lower()
     assert state._data.get("editing_field") == "phone"
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_advertiser_brand(user_repo) -> None:
+async def test_edit_profile_choose_field_advertiser_brand(
+    user_repo, config, bot_texts_service
+) -> None:
     """edit_profile_choose_field for advertiser shows brand prompt."""
     user = await create_test_user(
         user_repo,
@@ -2798,9 +3400,10 @@ async def test_edit_profile_choose_field_advertiser_brand(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        reg_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        user_role_service=role_service,
     )
     assert "бренда" in message.answers[0][0].lower()
     assert state._data.get("editing_field") == "brand"
@@ -2809,6 +3412,8 @@ async def test_edit_profile_choose_field_advertiser_brand(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_name_success(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser name updates user and shows profile."""
     user = await create_test_user(
@@ -2835,10 +3440,11 @@ async def test_edit_profile_enter_value_advertiser_name_success(
         message,
         state,
         service,
-        _profile_test_config(),
-        reg_service,
-        adv_service,
-        role_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=adv_service,
+        user_role_service=role_service,
         max_order_price=10_000.0,
     )
     assert state.cleared
@@ -2853,6 +3459,8 @@ async def test_edit_profile_enter_value_advertiser_name_success(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_name_empty(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser name empty gets validation error."""
     user = await create_test_user(
@@ -2877,10 +3485,11 @@ async def test_edit_profile_enter_value_advertiser_name_empty(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2892,6 +3501,8 @@ async def test_edit_profile_enter_value_advertiser_name_empty(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_phone_success(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser phone updates profile."""
     user = await create_test_user(
@@ -2920,10 +3531,11 @@ async def test_edit_profile_enter_value_advertiser_phone_success(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert adv_service.update_calls[0][1].get("phone") == "+79001234567"
@@ -2932,6 +3544,8 @@ async def test_edit_profile_enter_value_advertiser_phone_success(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_phone_empty(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser phone empty gets validation error."""
     user = await create_test_user(
@@ -2955,10 +3569,11 @@ async def test_edit_profile_enter_value_advertiser_phone_empty(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -2970,6 +3585,8 @@ async def test_edit_profile_enter_value_advertiser_phone_empty(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_brand_empty(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser brand empty gets validation error."""
     user = await create_test_user(
@@ -2993,10 +3610,11 @@ async def test_edit_profile_enter_value_advertiser_brand_empty(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3008,6 +3626,8 @@ async def test_edit_profile_enter_value_advertiser_brand_empty(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_brand_too_long(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser brand over max length gets validation error."""
     user = await create_test_user(
@@ -3032,10 +3652,11 @@ async def test_edit_profile_enter_value_advertiser_brand_too_long(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3046,7 +3667,9 @@ async def test_edit_profile_enter_value_advertiser_brand_too_long(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
+async def test_edit_profile_enter_value_advertiser_site_link(
+    user_repo, config, bot_texts_service
+) -> None:
     """Edit advertiser site_link updates profile."""
     user = await create_test_user(
         user_repo,
@@ -3077,10 +3700,11 @@ async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert adv_service.update_calls[0][1].get("site_link") == "https://site.com"
@@ -3089,6 +3713,8 @@ async def test_edit_profile_enter_value_advertiser_site_link(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_phone_invalid(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser phone with invalid format gets validation error."""
     user = await create_test_user(
@@ -3113,10 +3739,11 @@ async def test_edit_profile_enter_value_advertiser_phone_invalid(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3127,8 +3754,53 @@ async def test_edit_profile_enter_value_advertiser_phone_invalid(
 
 
 @pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_company_activity_too_long(
+    user_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Advertiser company_activity over max length gets validation error."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-00000000084c"),
+        external_id="62",
+        username="u",
+    )
+    message = FakeMessage(text="A" * 501, user=FakeUser(62))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "company_activity",
+        "edit_user_id": user.user_id,
+        "edit_external_id": "62",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    ans = message.answers[0]
+    text = ans[0] if isinstance(ans, tuple) else ans
+    assert "Максимум" in text and "символ" in text.lower()
+    assert not adv_service.update_calls
+
+
+@pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_site_link_invalid(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser site_link with invalid URL gets validation error."""
     user = await create_test_user(
@@ -3153,10 +3825,11 @@ async def test_edit_profile_enter_value_advertiser_site_link_invalid(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3167,7 +3840,9 @@ async def test_edit_profile_enter_value_advertiser_site_link_invalid(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_advertiser_missing(user_repo) -> None:
+async def test_edit_profile_enter_value_advertiser_missing(
+    user_repo, config, bot_texts_service
+) -> None:
     """Edit when advertiser profile is gone replies profile not found."""
     user = await create_test_user(
         user_repo,
@@ -3190,10 +3865,11 @@ async def test_edit_profile_enter_value_advertiser_missing(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert "Профиль рекламодателя не найден" in message.answers[0]
@@ -3202,6 +3878,8 @@ async def test_edit_profile_enter_value_advertiser_missing(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_update_none(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """When advertiser update returns None user gets error."""
     user = await create_test_user(
@@ -3226,17 +3904,20 @@ async def test_edit_profile_enter_value_advertiser_update_none(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert "Не удалось обновить" in message.answers[0]
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_barter_no(user_repo) -> None:
+async def test_edit_profile_enter_value_barter_no(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter barter No updates profile."""
     user = await create_test_user(
         user_repo,
@@ -3260,17 +3941,20 @@ async def test_edit_profile_enter_value_barter_no(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert reg_service.update_calls[0][1].get("barter") is False
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_work_format_ugc_only(user_repo) -> None:
+async def test_edit_profile_enter_value_work_format_ugc_only(
+    user_repo, config, bot_texts_service
+) -> None:
     """Enter work format UGC only updates profile."""
     user = await create_test_user(
         user_repo,
@@ -3279,7 +3963,7 @@ async def test_edit_profile_enter_value_work_format_ugc_only(user_repo) -> None:
         username="u",
     )
     message = FakeMessage(
-        text=WORK_FORMAT_UGC_ONLY_BUTTON_TEXT, user=FakeUser(57)
+        text=_TEXTS_RU["btn_work_format_ugc_only"], user=FakeUser(57)
     )
     state = FakeFSMContext()
     state._data = {
@@ -3296,10 +3980,11 @@ async def test_edit_profile_enter_value_work_format_ugc_only(user_repo) -> None:
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert (
@@ -3310,6 +3995,8 @@ async def test_edit_profile_enter_value_work_format_ugc_only(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_unknown_field(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser unknown field clears state and replies unknown."""
     user = await create_test_user(
@@ -3334,10 +4021,11 @@ async def test_edit_profile_enter_value_advertiser_unknown_field(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert state.cleared
@@ -3345,7 +4033,9 @@ async def test_edit_profile_enter_value_advertiser_unknown_field(
 
 
 @pytest.mark.asyncio
-async def test_show_profile_blogger_with_gender_display(user_repo) -> None:
+async def test_show_profile_blogger_with_gender_display(
+    user_repo, config, bot_texts_service
+) -> None:
     """Show profile displays blogger gender when set."""
     user = await create_test_user(
         user_repo,
@@ -3362,7 +4052,11 @@ async def test_show_profile_blogger_with_gender_display(user_repo) -> None:
         blogger_gender=BloggerGender.MALE,
     )
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     ans = (
         message.answers[0]
@@ -3373,7 +4067,9 @@ async def test_show_profile_blogger_with_gender_display(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_show_profile_from_user_id_falsy_returns_early(user_repo) -> None:
+async def test_show_profile_from_user_id_falsy_returns_early(
+    user_repo, config, bot_texts_service
+) -> None:
     """show_profile returns early when from_user.id is empty (no answer)."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.application.messenger.context import MessageContext
@@ -3392,13 +4088,19 @@ async def test_show_profile_from_user_id_falsy_returns_early(user_repo) -> None:
     message_ctx = MessageContext(incoming, client)
     service = _FakeProfileServiceUserMissing()
     await show_profile(
-        message_ctx, service, FakeFSMContext(), _profile_test_config()
+        message_ctx,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert len(client.sent_text) == 0
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_audience_gender(user_repo) -> None:
+async def test_edit_profile_choose_field_audience_gender(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing Пол аудитории shows audience gender keyboard."""
     user = await create_test_user(
         user_repo,
@@ -3416,9 +4118,10 @@ async def test_edit_profile_choose_field_audience_gender(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        user_role_service=FakeUserRoleService(),
     )
     assert state._data.get("editing_field") == "audience_gender"
     assert message.reply_markups
@@ -3432,7 +4135,9 @@ async def test_edit_profile_choose_field_audience_gender(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_audience_age(user_repo) -> None:
+async def test_edit_profile_choose_field_audience_age(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing Возраст аудитории shows age keyboard."""
     user = await create_test_user(
         user_repo,
@@ -3450,9 +4155,10 @@ async def test_edit_profile_choose_field_audience_age(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        user_role_service=FakeUserRoleService(),
     )
     assert state._data.get("editing_field") == "audience_age"
     kbd = message.reply_markups[0]
@@ -3465,7 +4171,9 @@ async def test_edit_profile_choose_field_audience_age(user_repo) -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_barter(user_repo) -> None:
+async def test_edit_profile_choose_field_barter(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing Бартер shows Да/Нет keyboard."""
     user = await create_test_user(
         user_repo,
@@ -3483,16 +4191,19 @@ async def test_edit_profile_choose_field_barter(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        user_role_service=FakeUserRoleService(),
     )
     assert state._data.get("editing_field") == "barter"
     assert message.reply_markups
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_work_format(user_repo) -> None:
+async def test_edit_profile_choose_field_work_format(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing Формат работы shows work format keyboard."""
     user = await create_test_user(
         user_repo,
@@ -3510,9 +4221,10 @@ async def test_edit_profile_choose_field_work_format(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        user_role_service=FakeUserRoleService(),
     )
     assert state._data.get("editing_field") == "work_format"
     kbd = message.reply_markups[0]
@@ -3522,14 +4234,16 @@ async def test_edit_profile_choose_field_work_format(user_repo) -> None:
         or getattr(kbd, "keyboard", [])
     )
     assert any(
-        WORK_FORMAT_ADS_BUTTON_TEXT in (b.text or "")
+        _TEXTS_RU["btn_work_format_ads"] in (b.text or "")
         for row in rows
         for b in row
     )
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_choose_field_advertiser_city(user_repo) -> None:
+async def test_edit_profile_choose_field_advertiser_city(
+    user_repo, config, bot_texts_service
+) -> None:
     """Choosing Город for advertiser shows default prompt."""
     user = await create_test_user(
         user_repo,
@@ -3551,9 +4265,10 @@ async def test_edit_profile_choose_field_advertiser_city(user_repo) -> None:
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        user_role_service=FakeUserRoleService(),
     )
     assert state._data.get("editing_field") == "city"
     assert message.answers
@@ -3566,6 +4281,8 @@ async def test_edit_profile_choose_field_advertiser_city(user_repo) -> None:
 @pytest.mark.asyncio
 async def test_edit_profile_choose_field_advertiser_company_activity(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Choosing Деятельность компании for advertiser shows prompt."""
     user = await create_test_user(
@@ -3588,9 +4305,10 @@ async def test_edit_profile_choose_field_advertiser_company_activity(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        user_role_service=FakeUserRoleService(),
     )
     assert state._data.get("editing_field") == "company_activity"
     assert message.answers
@@ -3599,6 +4317,8 @@ async def test_edit_profile_choose_field_advertiser_company_activity(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_city_validation_error(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser city with invalid value gets validation error."""
     user = await create_test_user(
@@ -3623,10 +4343,11 @@ async def test_edit_profile_enter_value_advertiser_city_validation_error(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3636,6 +4357,8 @@ async def test_edit_profile_enter_value_advertiser_city_validation_error(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_site_link_empty_clears(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser site_link with empty string clears link."""
     user = await create_test_user(
@@ -3664,10 +4387,11 @@ async def test_edit_profile_enter_value_advertiser_site_link_empty_clears(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert adv_service.update_calls
@@ -3676,7 +4400,7 @@ async def test_edit_profile_enter_value_advertiser_site_link_empty_clears(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_callback_no_user_returns_early(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit callback with no user returns without sending."""
     profile_service = build_profile_service(
@@ -3693,6 +4417,8 @@ async def test_handle_profile_edit_callback_no_user_returns_early(
         callback,
         FakeFSMContext(),
         profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -3701,7 +4427,7 @@ async def test_handle_profile_edit_callback_no_user_returns_early(
 
 @pytest.mark.asyncio
 async def test_handle_profile_my_profile_callback_no_user_returns_early(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """My profile callback with no user returns without sending."""
     profile_service = build_profile_service(
@@ -3718,7 +4444,8 @@ async def test_handle_profile_my_profile_callback_no_user_returns_early(
         callback,
         FakeFSMContext(),
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -3727,7 +4454,7 @@ async def test_handle_profile_my_profile_callback_no_user_returns_early(
 
 @pytest.mark.asyncio
 async def test_handle_profile_my_profile_callback_user_not_found(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """My profile callback when user not in DB sends profile not found."""
     profile_service = build_profile_service(
@@ -3744,7 +4471,8 @@ async def test_handle_profile_my_profile_callback_user_not_found(
         callback,
         FakeFSMContext(),
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -3753,7 +4481,7 @@ async def test_handle_profile_my_profile_callback_user_not_found(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_unknown_field_returns(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback with unknown field_key returns without sending."""
     user = await create_test_user(user_repo, external_id="80", username="u")
@@ -3785,6 +4513,7 @@ async def test_handle_profile_edit_field_callback_unknown_field_returns(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -3796,7 +4525,7 @@ async def test_handle_profile_edit_field_callback_unknown_field_returns(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_choice_callback_advertiser_type_returns(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit choice with profile_type advertiser returns (blogger-only)."""
     user = await create_test_user(user_repo, external_id="81", username="u")
@@ -3823,7 +4552,8 @@ async def test_handle_profile_edit_choice_callback_advertiser_type_returns(
         callback,
         state,
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=BloggerRegistrationService(
             user_repo=user_repo, blogger_repo=blogger_repo
         ),
@@ -3838,6 +4568,8 @@ async def test_handle_profile_edit_choice_callback_advertiser_type_returns(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_phone_validation_error(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Edit advertiser phone with invalid value gets validation error."""
     user = await create_test_user(
@@ -3862,10 +4594,11 @@ async def test_edit_profile_enter_value_advertiser_phone_validation_error(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3875,6 +4608,8 @@ async def test_edit_profile_enter_value_advertiser_phone_validation_error(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_advertiser_company_activity_val_error(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Advertiser company_activity too long gets validation error."""
     user = await create_test_user(
@@ -3899,10 +4634,11 @@ async def test_edit_profile_enter_value_advertiser_company_activity_val_error(
         message,
         state,
         service,
-        _profile_test_config(),
-        FakeBloggerRegistrationService(),
-        adv_service,
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3910,10 +4646,12 @@ async def test_edit_profile_enter_value_advertiser_company_activity_val_error(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_blogger_city_non_canonical(
+async def test_edit_profile_enter_value_blogger_city_any_updates(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
-    """Blogger city not in dictionary sends picker hint."""
+    """Blogger city any value is accepted and profile is updated."""
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000859"),
@@ -3931,27 +4669,32 @@ async def test_edit_profile_enter_value_blogger_city_non_canonical(
     profile_service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    reg_service = FakeBloggerRegistrationService()
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
     await edit_profile_enter_value(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
-    assert "Выберите город из списка" in text or "Выбрать город" in text
-    assert not reg_service.update_calls
+    assert "Профиль обновлён" in text
+    assert reg_service.update_calls
+    assert reg_service.update_calls[0][1].get("city") == "unknowncity123"
 
 
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_blogger_audience_geo_more_than_three(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger audience_geo with more than 3 cities sends error."""
     user = await create_test_user(
@@ -3979,10 +4722,11 @@ async def test_edit_profile_enter_value_blogger_audience_geo_more_than_three(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -3995,6 +4739,8 @@ async def test_edit_profile_enter_value_blogger_audience_geo_more_than_three(
 @pytest.mark.asyncio
 async def test_edit_profile_enter_value_blogger_price_not_a_number(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Blogger price with non-numeric text sends error."""
     user = await create_test_user(
@@ -4019,10 +4765,11 @@ async def test_edit_profile_enter_value_blogger_price_not_a_number(
         message,
         state,
         profile_service,
-        _profile_test_config(),
-        reg_service,
-        FakeAdvertiserRegistrationService(),
-        FakeUserRoleService(),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
     assert message.answers
@@ -4035,6 +4782,8 @@ async def test_edit_profile_enter_value_blogger_price_not_a_number(
 @pytest.mark.asyncio
 async def test_show_profile_blogger_confirmed_shows_inline_keyboard(
     user_repo,
+    config,
+    bot_texts_service,
 ) -> None:
     """Show profile with blogger and agreement confirmed shows keyboard."""
     user = await create_test_user(
@@ -4049,7 +4798,11 @@ async def test_show_profile_blogger_confirmed_shows_inline_keyboard(
         user=user, has_blogger=True, has_advertiser=False
     )
     await show_profile(
-        message, service, FakeFSMContext(), _profile_test_config()
+        message,
+        service,
+        FakeFSMContext(),
+        config=config,
+        bot_texts_service=bot_texts_service,
     )
     assert message.answers
     assert message.reply_markups
@@ -4057,7 +4810,7 @@ async def test_show_profile_blogger_confirmed_shows_inline_keyboard(
 
 @pytest.mark.asyncio
 async def test_handle_profile_agree_callback_get_user_returns_none(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """After confirm, get_user_by_id returns None -> send profile not found."""
     user = await create_test_user(
@@ -4094,6 +4847,9 @@ async def test_handle_profile_agree_callback_get_user_returns_none(
         user_role_service=role_service,
         blogger_registration_service=blogger_reg,
         advertiser_registration_service=adv_reg,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        currency_symbol="₽",
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -4102,7 +4858,7 @@ async def test_handle_profile_agree_callback_get_user_returns_none(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_callback_advertiser_only_path(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit callback when user has only advertiser shows advertiser fields."""
     user = await create_test_user(
@@ -4123,6 +4879,8 @@ async def test_handle_profile_edit_callback_advertiser_only_path(
         callback,
         FakeFSMContext(),
         profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
         messenger_client=client,
         event_adapter=adapter,
     )
@@ -4132,7 +4890,7 @@ async def test_handle_profile_edit_callback_advertiser_only_path(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_empty_field_key_returns(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback with prefix-only data returns without sending."""
     user = await create_test_user(user_repo, external_id="80e", username="u")
@@ -4164,6 +4922,7 @@ async def test_handle_profile_edit_field_callback_empty_field_key_returns(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -4175,7 +4934,7 @@ async def test_handle_profile_edit_field_callback_empty_field_key_returns(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_audience_gender_keyboard(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback for audience_gender sends gender keyboard."""
     user = await create_test_user(user_repo, external_id="81a", username="u")
@@ -4206,6 +4965,7 @@ async def test_handle_profile_edit_field_callback_audience_gender_keyboard(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -4220,7 +4980,7 @@ async def test_handle_profile_edit_field_callback_audience_gender_keyboard(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_blogger_gender_keyboard(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback for blogger_gender sends gender keyboard."""
     user = await create_test_user(user_repo, external_id="82b", username="u")
@@ -4251,6 +5011,7 @@ async def test_handle_profile_edit_field_callback_blogger_gender_keyboard(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -4262,7 +5023,7 @@ async def test_handle_profile_edit_field_callback_blogger_gender_keyboard(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_audience_age_keyboard(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback for audience_age sends age keyboard."""
     user = await create_test_user(user_repo, external_id="83c", username="u")
@@ -4293,6 +5054,7 @@ async def test_handle_profile_edit_field_callback_audience_age_keyboard(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -4304,7 +5066,7 @@ async def test_handle_profile_edit_field_callback_audience_age_keyboard(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_barter_keyboard(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback for barter sends barter keyboard."""
     user = await create_test_user(user_repo, external_id="84d", username="u")
@@ -4335,6 +5097,7 @@ async def test_handle_profile_edit_field_callback_barter_keyboard(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -4346,7 +5109,7 @@ async def test_handle_profile_edit_field_callback_barter_keyboard(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_work_format_keyboard(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback for work_format sends format keyboard."""
     user = await create_test_user(user_repo, external_id="85e", username="u")
@@ -4377,6 +5140,7 @@ async def test_handle_profile_edit_field_callback_work_format_keyboard(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -4391,7 +5155,7 @@ async def test_handle_profile_edit_field_callback_work_format_keyboard(
 
 @pytest.mark.asyncio
 async def test_handle_profile_edit_field_callback_city_blogger_sends_picker(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Edit field callback for city (blogger) sends city picker keyboard."""
     user = await create_test_user(user_repo, external_id="86f", username="u")
@@ -4422,6 +5186,7 @@ async def test_handle_profile_edit_field_callback_city_blogger_sends_picker(
         state,
         profile_service=profile_service,
         config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=blogger_reg,
         user_role_service=user_role_service,
         max_order_price=10_000.0,
@@ -4432,203 +5197,8 @@ async def test_handle_profile_edit_field_callback_city_blogger_sends_picker(
 
 
 @pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_success(
-    user_repo, blogger_repo, advertiser_repo
-) -> None:
-    """City from Mini App updates blogger profile and shows profile."""
-    user = await create_test_user(user_repo, external_id="87", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    updated = _make_blogger_profile(user.user_id)
-    reg_service = FakeBloggerRegistrationService(update_returns=updated)
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_user_id=user.user_id,
-        edit_external_id="87",
-    )
-    message = FakeMessage(
-        user=FakeUser(87),
-        web_app_data=FakeWebAppData("москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=_profile_test_config(),
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any("Профиль обновлён" in s["text"] for s in client.sent_text)
-    assert reg_service.update_calls
-    assert reg_service.update_calls[0][1].get("city") == "москва"
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_editing_field_not_city_returns(
-    user_repo, blogger_repo, advertiser_repo
-) -> None:
-    """When editing_field is not city, handler returns without sending."""
-    user = await create_test_user(user_repo, external_id="88", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="nickname",
-        edit_user_id=user.user_id,
-        edit_external_id="88",
-    )
-    message = FakeMessage(
-        user=FakeUser(88),
-        web_app_data=FakeWebAppData("москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=_profile_test_config(),
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert len(client.sent_text) == 0
-    assert not reg_service.update_calls
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_invalid_city(
-    user_repo, blogger_repo, advertiser_repo
-) -> None:
-    """Invalid city from Mini App sends choose from list message."""
-    user = await create_test_user(user_repo, external_id="89", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_user_id=user.user_id,
-        edit_external_id="89",
-    )
-    message = FakeMessage(
-        user=FakeUser(89),
-        web_app_data=FakeWebAppData("invalid-city-xyz"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=_profile_test_config(),
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any(
-        "Выберите город из списка" in s["text"] for s in client.sent_text
-    )
-    assert not reg_service.update_calls
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_wrong_region_rejects(
-    user_repo, blogger_repo, advertiser_repo
-) -> None:
-    """Valid city but wrong region from Mini App sends choose from list."""
-    user = await create_test_user(user_repo, external_id="89b", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_user_id=user.user_id,
-        edit_external_id="89b",
-    )
-    message = FakeMessage(
-        user=FakeUser(89),
-        web_app_data=FakeWebAppData("республика татарстан:москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=_profile_test_config(),
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any(
-        "Выберите город из списка" in s["text"] for s in client.sent_text
-    )
-    assert not reg_service.update_calls
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_user_id_missing(
-    user_repo, blogger_repo, advertiser_repo
-) -> None:
-    """When edit_user_id missing in state, send session expired."""
-    user = await create_test_user(user_repo, external_id="90", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_external_id="90",
-    )
-    message = FakeMessage(
-        user=FakeUser(90),
-        web_app_data=FakeWebAppData("москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=_profile_test_config(),
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
-    assert not reg_service.update_calls
-
-
-@pytest.mark.asyncio
 async def test_handle_profile_region_callback_success(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Profile region callback with valid region updates profile."""
     user = await create_test_user(user_repo, external_id="91", username="u")
@@ -4656,7 +5226,8 @@ async def test_handle_profile_region_callback_success(
         callback,
         state,
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -4670,7 +5241,7 @@ async def test_handle_profile_region_callback_success(
 
 @pytest.mark.asyncio
 async def test_handle_profile_region_callback_invalid_region_no_update(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Profile region callback with region not for city does not update."""
     user = await create_test_user(user_repo, external_id="92", username="u")
@@ -4696,7 +5267,8 @@ async def test_handle_profile_region_callback_invalid_region_no_update(
         callback,
         state,
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
@@ -4706,7 +5278,7 @@ async def test_handle_profile_region_callback_invalid_region_no_update(
 
 @pytest.mark.asyncio
 async def test_handle_profile_region_callback_missing_state_answers_only(
-    user_repo, blogger_repo, advertiser_repo
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
     """Profile region callback with no pending_city_edit does not update."""
     user = await create_test_user(user_repo, external_id="93", username="u")
@@ -4729,9 +5301,198 @@ async def test_handle_profile_region_callback_missing_state_answers_only(
         callback,
         state,
         profile_service=profile_service,
-        config=_profile_test_config(),
+        config=config,
+        bot_texts_service=bot_texts_service,
         blogger_registration_service=reg_service,
         messenger_client=client,
         event_adapter=adapter,
     )
     assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_brand_success(
+    user_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Valid advertiser brand updates profile (_adv_update_brand success)."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000008b1"),
+        external_id="b1",
+        username="u",
+    )
+    message = FakeMessage(text="My Brand", user=FakeUser(0xB1))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "brand",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "b1",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService(
+        update_returns=AdvertiserProfile(
+            user_id=user.user_id,
+            phone="+7",
+            brand="My Brand",
+            city="Moscow",
+            company_activity="IT",
+            site_link=None,
+        )
+    )
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert adv_service.update_calls
+    assert adv_service.update_calls[0][1].get("brand") == "My Brand"
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_advertiser_city_success(
+    user_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Valid advertiser city updates profile (_adv_update_city success)."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000008b2"),
+        external_id="b2",
+        username="u",
+    )
+    message = FakeMessage(text="Moscow", user=FakeUser(0xB2))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "b2",
+        "edit_profile_type": "advertiser",
+    }
+    service = FakeProfileService(
+        user=user, has_blogger=False, has_advertiser=True
+    )
+    adv_service = FakeAdvertiserRegistrationService(
+        update_returns=AdvertiserProfile(
+            user_id=user.user_id,
+            phone="+7",
+            brand="B",
+            city="Moscow",
+            company_activity="IT",
+            site_link=None,
+        )
+    )
+    await edit_profile_enter_value(
+        message,
+        state,
+        service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=FakeBloggerRegistrationService(),
+        advertiser_registration_service=adv_service,
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+    )
+    assert adv_service.update_calls
+    assert adv_service.update_calls[0][1].get("city") == "Moscow"
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_my_profile_callback_blogger_confirmed(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
+) -> None:
+    """Blogger, agreement confirmed -> profile text and keyboard."""
+    user = await create_test_user(
+        user_repo,
+        external_id="76",
+        username="blogger_mp",
+        agreement_confirmed_at=datetime.now(timezone.utc),
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MY_PROFILE,
+        user=FakeUser(76),
+        message=FakeMessage(user=FakeUser(76)),
+    )
+    state = FakeFSMContext()
+    await handle_profile_my_profile_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) >= 1
+    assert any(
+        "профиль" in s["text"].lower() or "instagram" in s["text"].lower()
+        for s in client.sent_text
+    )
+    assert any(s.get("keyboard") is not None for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_edit_choice_callback_empty_choice_text_returns(
+    user_repo, blogger_repo, advertiser_repo, config
+) -> None:
+    """Empty choice_text from bot_texts -> handler returns without update."""
+    user = await create_test_user(user_repo, external_id="82", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.update_data(
+        edit_user_id=user.user_id,
+        edit_external_id="82",
+        edit_profile_type="blogger",
+        editing_field="audience_gender",
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_AUDIENCE_F,
+        user=FakeUser(82),
+        message=FakeMessage(user=FakeUser(82)),
+    )
+
+    class EmptyChoiceTextsService:
+        """Empty choice_map from get_many -> handler returns early."""
+
+        async def get_many(
+            self, keys: list[str], locale: str | None = None
+        ) -> dict[str, str]:
+            return {k: "" for k in keys}
+
+    await handle_profile_edit_choice_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=EmptyChoiceTextsService(),
+        blogger_registration_service=BloggerRegistrationService(
+            user_repo=user_repo, blogger_repo=blogger_repo
+        ),
+        user_role_service=UserRoleService(user_repo=user_repo),
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(client.sent_text) == 0
