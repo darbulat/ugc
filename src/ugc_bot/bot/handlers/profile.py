@@ -890,6 +890,7 @@ async def _update_blogger_field_city(
         user_id,
         city=normalized,
         region=regions[0] if regions else None,
+        country="Russia" if regions else None,
     )
     if updated is None:
         await state.clear()
@@ -2163,7 +2164,10 @@ async def handle_profile_region_callback(
             keyboard=None,
         )
     await blogger_registration_service.update_blogger_profile(
-        user_id, city=city, region=region
+        user_id,
+        city=city,
+        region=region,
+        country="Russia",
     )
     await state.clear()
     msg_updated = await bot_texts_service.get(
@@ -2284,7 +2288,7 @@ async def edit_profile_enter_value(
                 )
             )
             if result is not None:
-                city_name, region_name, _country = result
+                city_name, region_name, country_name = result
                 normalized = normalize_geo_token(city_name)
                 if normalized:
                     wkt = wkt_multipoint_from_lat_lon(lat, lon)
@@ -2293,6 +2297,7 @@ async def edit_profile_enter_value(
                         user_id,
                         city=normalized,
                         region=region_name,
+                        country=country_name or None,
                         location_geometry=wkt,
                     )
                     if updated is not None:

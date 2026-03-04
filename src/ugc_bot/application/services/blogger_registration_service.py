@@ -419,6 +419,7 @@ class BloggerRegistrationService:
         work_format: Optional[WorkFormat] = None,
         blogger_gender: Optional[BloggerGender] = None,
         birth_date: Optional[date] = None,
+        country: Optional[str] = None,
     ) -> BloggerProfile | None:
         """Update blogger profile. Returns profile or None if not found."""
 
@@ -440,7 +441,10 @@ class BloggerRegistrationService:
             )
             new_city = city.strip() if city is not None else profile.city
             new_region = region if region is not None else profile.region
-            new_country = profile.country or ""
+            if country is not None:
+                new_country = (country or "").strip()
+            else:
+                new_country = profile.country or ""
             new_geometry = location_geometry
             if new_geometry is None and (
                 city is not None or region is not None
@@ -458,7 +462,7 @@ class BloggerRegistrationService:
                 new_geometry = geom_wkt
                 if region_nom is not None:
                     new_region = region_nom
-                if country_nom is not None:
+                if country is None and country_nom is not None:
                     new_country = country_nom
             if new_geometry is None and location_geometry is None:
                 new_geometry = profile.location_geometry
