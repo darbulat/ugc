@@ -5,6 +5,8 @@ from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 # Keys per keyboard in docstrings. Use bot_texts_service.get_many(keys, locale).
 
 # Inline callback_data (Telegram limit 64 bytes)
+CALLBACK_ROLE_CREATOR = "role:creator"
+CALLBACK_ROLE_ADVERTISER = "role:advertiser"
 CALLBACK_CREATOR_CREATE = "creator:create"
 CALLBACK_ADV_START = "adv:start"
 CALLBACK_ADV_AGREE = "adv:agree"
@@ -123,7 +125,8 @@ def flow_inline_keyboard(rows: list[list[Button]]) -> Keyboard:
 
 
 def role_keyboard(texts: dict[str, str]) -> Keyboard:
-    """Role selection. Needs: btn_creator, btn_advertiser, btn_support."""
+    """Role selection (reply). Needs: btn_creator, btn_advertiser,
+    btn_support."""
 
     return Keyboard(
         kind=KeyboardKind.REPLY,
@@ -134,6 +137,28 @@ def role_keyboard(texts: dict[str, str]) -> Keyboard:
         ],
         resize=True,
         one_time=True,
+    )
+
+
+def role_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Role selection (inline). Needs: btn_creator, btn_advertiser."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_creator"],
+                    callback_data=CALLBACK_ROLE_CREATOR,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_advertiser"],
+                    callback_data=CALLBACK_ROLE_ADVERTISER,
+                )
+            ],
+        ],
     )
 
 

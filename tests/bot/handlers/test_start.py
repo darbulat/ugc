@@ -17,7 +17,7 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_menu_keyboard,
     creator_filled_profile_keyboard,
     creator_start_keyboard,
-    role_keyboard,
+    role_inline_keyboard,
 )
 from ugc_bot.bot.handlers.start import (
     change_role_button,
@@ -57,7 +57,7 @@ async def test_start_command_sends_role_keyboard(
     keyboard = message.answers[0][1]
     assert keyboard is not None
     role_texts = {k: _TEXTS_RU[k] for k in _ROLE_KEYS}
-    assert keyboard.rows == role_keyboard(role_texts).rows
+    assert keyboard.rows == role_inline_keyboard(role_texts).rows
 
 
 @pytest.mark.asyncio
@@ -169,7 +169,7 @@ async def test_change_role_button_shows_start_screen(
     assert _TEXTS_RU["start_message"] in message.answers[0][0]
     assert message.answers[0][1] is not None
     role_texts = {k: _TEXTS_RU[k] for k in _ROLE_KEYS}
-    assert message.answers[0][1].rows == role_keyboard(role_texts).rows
+    assert message.answers[0][1].rows == role_inline_keyboard(role_texts).rows
 
 
 @pytest.mark.asyncio

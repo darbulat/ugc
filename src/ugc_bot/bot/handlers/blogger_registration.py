@@ -46,6 +46,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
+    CALLBACK_ROLE_CREATOR,
     blogger_after_registration_keyboard,
     confirm_agreement_inline_keyboard,
     creator_filled_profile_keyboard,
@@ -118,24 +119,16 @@ class BloggerRegistrationStates(StatesGroup):
 BLOGGER_FLOW_TYPE = "blogger_registration"
 
 
-@router.message(Command("creator"))
-@router.message(TextEqualsKey("btn_creator"))
-async def choose_creator_role(
-    message: Message,
+async def _choose_creator_role_impl(
+    incoming,
+    state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
-    state: FSMContext,
-    config: AppConfig,
     bot_texts_service: BotTextsService,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
+    messenger_client: MessengerClient,
+    locale: str,
 ) -> None:
-    """Handle creator role: show menu or registration prompt."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    """Shared logic for creator role: show menu or registration prompt."""
     texts = await bot_texts_service.get_many(
         [
             "btn_create_profile",
@@ -162,6 +155,65 @@ async def choose_creator_role(
         menu_keyboard=creator_filled_profile_keyboard,
         start_keyboard=creator_start_keyboard,
         texts=texts,
+    )
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_ROLE_CREATOR)
+async def choose_creator_role_inline(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle creator role via inline button."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    locale = config.market.default_locale
+    await _choose_creator_role_impl(
+        incoming,
+        state,
+        user_role_service,
+        profile_service,
+        bot_texts_service,
+        messenger_client,
+        locale,
+    )
+
+
+@router.message(Command("creator"))
+@router.message(TextEqualsKey("btn_creator"))
+async def choose_creator_role(
+    message: Message,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle creator role (message): show menu or registration prompt."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    await _choose_creator_role_impl(
+        incoming,
+        state,
+        user_role_service,
+        profile_service,
+        bot_texts_service,
+        messenger_client,
+        locale,
     )
 
 

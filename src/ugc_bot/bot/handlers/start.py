@@ -19,7 +19,7 @@ from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     advertiser_menu_keyboard,
     main_menu_keyboard,
-    role_keyboard,
+    role_inline_keyboard,
 )
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
 from ugc_bot.config import AppConfig
@@ -65,7 +65,7 @@ async def start_command(
         user_role_service=user_role_service,
         referral_service=referral_service,
         start_text=start_text,
-        role_kb=role_keyboard(texts),
+        role_kb=role_inline_keyboard(texts),
     )
 
 
@@ -103,7 +103,7 @@ async def change_role_button(
         state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
         start_text=start_text,
-        role_kb=role_keyboard(texts),
+        role_kb=role_inline_keyboard(texts),
     )
 
 

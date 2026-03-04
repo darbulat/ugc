@@ -25,6 +25,7 @@ from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_ADV_AGREE,
     CALLBACK_ADV_START,
+    CALLBACK_ROLE_ADVERTISER,
     advertiser_menu_keyboard,
     advertiser_start_keyboard,
     confirm_agreement_inline_keyboard,
@@ -77,24 +78,16 @@ ADVERTISER_INTRO_TEXT = (
 )
 
 
-@router.message(Command("advertiser"))
-@router.message(TextEqualsKey("btn_advertiser"))
-async def choose_advertiser_role(
-    message: Message,
+async def _choose_advertiser_role_impl(
+    incoming,
+    state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
-    state: FSMContext,
-    config: AppConfig,
     bot_texts_service: BotTextsService,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
+    messenger_client: MessengerClient,
+    locale: str,
 ) -> None:
-    """Handle advertiser role: persist role, show menu or reg."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    """Shared logic for advertiser role: persist role, show menu or reg."""
     texts = await bot_texts_service.get_many(
         [
             "btn_create_order",
@@ -124,6 +117,65 @@ async def choose_advertiser_role(
         menu_keyboard=advertiser_menu_keyboard,
         start_keyboard=advertiser_start_keyboard,
         texts=texts,
+    )
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_ROLE_ADVERTISER)
+async def choose_advertiser_role_inline(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle advertiser role via inline button."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    locale = config.market.default_locale
+    await _choose_advertiser_role_impl(
+        incoming,
+        state,
+        user_role_service,
+        profile_service,
+        bot_texts_service,
+        messenger_client,
+        locale,
+    )
+
+
+@router.message(Command("advertiser"))
+@router.message(TextEqualsKey("btn_advertiser"))
+async def choose_advertiser_role(
+    message: Message,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle advertiser role (message): persist role, show menu or reg."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    await _choose_advertiser_role_impl(
+        incoming,
+        state,
+        user_role_service,
+        profile_service,
+        bot_texts_service,
+        messenger_client,
+        locale,
     )
 
 

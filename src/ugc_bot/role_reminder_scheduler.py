@@ -9,7 +9,7 @@ from aiogram import Bot
 
 from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import role_keyboard
+from ugc_bot.bot.handlers.keyboards import role_inline_keyboard
 from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import load_config
@@ -70,7 +70,7 @@ def _reminder_text_and_keyboard(config):
     )
     keys = ["btn_creator", "btn_advertiser", "btn_support"]
     texts = {k: locale_texts.get(k, "") for k in keys}
-    return start_text, role_keyboard(texts)
+    return start_text, role_inline_keyboard(texts)
 
 
 async def run_once(

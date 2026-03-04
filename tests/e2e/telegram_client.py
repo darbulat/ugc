@@ -87,11 +87,48 @@ def _has_inline_buttons(msg) -> bool:
     return getattr(rm, "rows", None) is not None
 
 
-async def _get_last_bot_message_with_inline(client, entity):
-    """Return the most recent bot message with inline keyboard, or None."""
+def _message_has_callback_button(msg, callback_data: str | bytes) -> bool:
+    """True if message has an inline button with the given callback_data."""
+    if not _has_inline_buttons(msg):
+        return False
+    want = (
+        callback_data.encode()
+        if isinstance(callback_data, str)
+        else callback_data
+    )
+    rm = msg.reply_markup
+    rows = getattr(rm, "rows", None) or []
+    for row in rows:
+        buttons = (
+            row
+            if isinstance(row, (list, tuple))
+            else getattr(row, "buttons", [])
+        )
+        for btn in buttons:
+            btn_data = getattr(btn, "data", None)
+            if btn_data is not None and btn_data == want:
+                return True
+    return False
+
+
+async def _get_last_bot_message_with_inline(
+    client, entity, callback_data: str | None = None
+):
+    """Return the most recent bot message with inline keyboard, or None.
+
+    If callback_data is set, only return a message that has a button with
+    that callback_data (avoids clicking the wrong message).
+    """
     messages = await client.get_messages(entity, limit=15)
     for msg in messages:
-        if not msg.out and _has_inline_buttons(msg):
+        if (
+            not msg.out
+            and _has_inline_buttons(msg)
+            and (
+                callback_data is None
+                or _message_has_callback_button(msg, callback_data)
+            )
+        ):
             return msg
     return None
 
@@ -101,7 +138,9 @@ async def click_inline_and_get_reply(
 ) -> str | None:
     """Find last bot message with inline keyboard, click by callback_data,
     return bot reply text."""
-    msg = await _get_last_bot_message_with_inline(client, entity)
+    msg = await _get_last_bot_message_with_inline(
+        client, entity, callback_data=callback_data
+    )
     if msg is None:
         return None
     data = (

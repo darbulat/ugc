@@ -59,8 +59,8 @@ async def test_role_selection_creator(
         telegram_user_client, entity, bot_username, "/start", timeout=20
     )
 
-    text = await send_and_get_reply(
-        telegram_user_client, entity, bot_username, "Я креатор", timeout=20
+    text = await click_inline_and_get_reply(
+        telegram_user_client, entity, "role:creator", timeout=20
     )
 
     assert text is not None, "Bot did not reply to role selection"
@@ -91,12 +91,8 @@ async def test_role_selection_advertiser(
         telegram_user_client, entity, bot_username, "/start", timeout=20
     )
 
-    text = await send_and_get_reply(
-        telegram_user_client,
-        entity,
-        bot_username,
-        "Мне нужны UGC‑креаторы",
-        timeout=25,
+    text = await click_inline_and_get_reply(
+        telegram_user_client, entity, "role:advertiser", timeout=25
     )
 
     assert text is not None, "Bot did not reply to role selection"
@@ -137,8 +133,8 @@ async def test_blogger_registration_full_flow(
     )
     assert text and ("UGC" in text or "профиль" in text or "Выберите" in text)
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Я креатор", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "role:creator", timeout=15
     )
     assert text and (
         "креатор" in text or "профиль" in text or "Создать" in text
@@ -247,8 +243,8 @@ async def test_advertiser_registration_full_flow(
 
     await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    text = await click_inline_and_get_reply(
+        client, entity, "role:advertiser", timeout=25
     )
     assert text and (
         "профиль" in text
@@ -322,8 +318,8 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     )
     assert text and ("UGC" in text or "профиль" in text or "Выберите" in text)
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Я креатор", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "role:creator", timeout=15
     )
     assert text is not None
     if "Выберите действие" in text:
@@ -472,8 +468,8 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
 
     await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    text = await click_inline_and_get_reply(
+        client, entity, "role:advertiser", timeout=25
     )
     assert text and (
         "профиль" in text
@@ -576,8 +572,8 @@ async def test_order_creation_full_flow(
     client = telegram_user_client
 
     await send_and_get_reply(client, entity, bot_username, "/start", timeout=20)
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    text = await click_inline_and_get_reply(
+        client, entity, "role:advertiser", timeout=25
     )
     # Already advertiser: menu. New: click "Начать" (inline) then registration.
     if text and "Выберите действие" in text:
@@ -700,8 +696,8 @@ async def _ensure_blogger_profile(client, entity, bot_username: str) -> None:
         client, entity, bot_username, "/start", timeout=20
     )
     assert text and ("UGC" in text or "профиль" in text or "Выберите" in text)
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Я креатор", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "role:creator", timeout=15
     )
     assert text is not None
     if "Выберите действие" not in text and "Мой профиль" not in text:
@@ -714,8 +710,8 @@ async def _ensure_blogger_profile(client, entity, bot_username: str) -> None:
 async def _ensure_advertiser_profile(client, entity, bot_username: str) -> None:
     """Advertiser context (has profile/menu) or skip."""
     await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
+    text = await click_inline_and_get_reply(
+        client, entity, "role:advertiser", timeout=25
     )
     if not text or "Выберите действие" not in text:
         pytest.skip(
