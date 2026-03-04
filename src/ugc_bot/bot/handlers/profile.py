@@ -4,7 +4,7 @@ import logging
 import re
 from uuid import UUID
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -12,9 +12,7 @@ from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.geography import (
     get_regions_for_city,
-    is_canonical_city_only,
     normalize_geo_token,
-    parse_miniapp_city_id,
     region_key_to_label,
 )
 from ugc_bot.application.messenger.context import MessageContext
@@ -61,7 +59,6 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_WORK_UGC,
     advertiser_menu_inline_keyboard,
     blogger_profile_view_inline_keyboard,
-    city_picker_keyboard,
     confirm_agreement_inline_keyboard,
     edit_audience_age_inline_keyboard,
     edit_audience_gender_inline_keyboard,
@@ -601,24 +598,13 @@ async def _blog_update_city(
     config: AppConfig | None = None,
     validator_texts: dict[str, str] | None = None,
 ) -> BloggerProfile | None:
-    """Update city. Returns profile or None. Saves only canonical city."""
+    """Update city. Returns profile or None. Accepts any city text."""
     err = validate_city(text, required=True, texts=validator_texts)
     if err is not None:
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     normalized = normalize_geo_token(text)
-    if not normalized or not is_canonical_city_only(normalized):
-        if webhook_base_url and bot_texts_service and config:
-            locale = config.market.default_locale
-            texts = await bot_texts_service.get_many(
-                ["btn_city_picker", "msg_city_picker_edit"], locale
-            )
-            city_keyboard = city_picker_keyboard(webhook_base_url, texts)
-            msg_city = texts.get("msg_city_picker_edit", "")
-        else:
-            city_keyboard = flow_keyboard_remove()
-            msg_city = ""
-        await message.answer(msg_city, reply_markup=city_keyboard)
+    if not normalized:
         return None
     return await blogger_registration_service.update_blogger_profile(
         user_id, city=normalized
@@ -874,33 +860,12 @@ async def _update_blogger_field_city(
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return False
     normalized = normalize_geo_token(text)
-    if not normalized or not is_canonical_city_only(normalized):
-        updated = await _blog_update_city(
-            text,
-            user_id,
-            message,
-            blogger_registration_service,
-            config.webhook.webhook_base_url,
-            bot_texts_service,
-            config,
-            validator_texts=validator_texts,
-        )
-        if updated is None:
-            await state.clear()
-            await message.answer(
-                edit_msgs.get("msg_profile_update_failed", ""),
-                reply_markup=flow_keyboard_remove(),
-            )
-            return False
-        await state.clear()
+    if not normalized:
         await message.answer(
-            edit_msgs.get("msg_profile_updated", ""),
+            edit_msgs.get("msg_profile_update_failed", ""),
             reply_markup=flow_keyboard_remove(),
         )
-        await show_profile(
-            message, profile_service, state, config, bot_texts_service
-        )
-        return True
+        return False
     regions = get_regions_for_city(normalized)
     if len(regions) > 1:
         await state.update_data(pending_city_edit=normalized)
@@ -1661,7 +1626,6 @@ async def handle_profile_edit_field_callback(
         "btn_barter_no",
         "btn_work_format_ads",
         "btn_work_format_ugc_only",
-        "btn_city_picker",
     ]
     edit_texts = await bot_texts_service.get_many(edit_keys, locale)
     if field_key == "audience_gender":
@@ -1690,12 +1654,7 @@ async def handle_profile_edit_field_callback(
             reply_markup=edit_work_format_inline_keyboard(edit_texts),
         )
     elif field_key == "city" and profile_type == "blogger":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=city_picker_keyboard(
-                config.webhook.webhook_base_url or "", edit_texts
-            ),
-        )
+        await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
     await state.set_state(EditProfileStates.entering_value)
@@ -2083,7 +2042,6 @@ async def edit_profile_choose_field(
         "btn_barter_no",
         "btn_work_format_ads",
         "btn_work_format_ugc_only",
-        "btn_city_picker",
     ]
     load_keys = (
         [lk for lk, _ in field_label_keys]
@@ -2137,105 +2095,11 @@ async def edit_profile_choose_field(
             reply_markup=edit_work_format_inline_keyboard(edit_texts),
         )
     elif field_key == "city" and profile_type == "blogger":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=city_picker_keyboard(
-                config.webhook.webhook_base_url or "", edit_texts
-            ),
-        )
+        await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
 
     await state.set_state(EditProfileStates.entering_value)
-
-
-@router.message(
-    F.web_app_data,
-    StateFilter(EditProfileStates.entering_value),
-)
-async def handle_city_web_app_data_profile(
-    message: Message,
-    state: FSMContext,
-    profile_service: ProfileService,
-    config: AppConfig,
-    bot_texts_service: BotTextsService,
-    blogger_registration_service: BloggerRegistrationService,
-    user_role_service: UserRoleService,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
-) -> None:
-    """Handle city from Mini App on profile edit (id: region:city)."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    data = await state.get_data()
-    if data.get("editing_field") != "city":
-        return
-    raw_id = (
-        (message.web_app_data.data or "").strip()
-        if message.web_app_data
-        else ""
-    )
-    city, region = parse_miniapp_city_id(raw_id)
-    locale = config.market.default_locale
-    city_texts = await bot_texts_service.get_many(
-        [
-            "btn_city_picker",
-            "msg_choose_city",
-            "msg_session_expired_profile",
-            "msg_profile_updated",
-        ],
-        locale,
-    )
-    city_keyboard = city_picker_keyboard(
-        config.webhook.webhook_base_url or "", city_texts
-    )
-    msg_city = city_texts.get("msg_choose_city", "")
-    if not city or not is_canonical_city_only(city):
-        await messenger_client.send_text(
-            chat_id=str(message.chat.id),
-            text=msg_city,
-            keyboard=city_keyboard,
-        )
-        return
-    if region and region not in get_regions_for_city(city):
-        await messenger_client.send_text(
-            chat_id=str(message.chat.id),
-            text=msg_city,
-            keyboard=city_keyboard,
-        )
-        return
-    user_id = parse_user_id_from_state(data, key="edit_user_id")
-    if user_id is None:
-        await state.clear()
-        msg_expired = city_texts.get("msg_session_expired_profile", "")
-        await messenger_client.send_text(
-            chat_id=str(message.chat.id),
-            text=msg_expired,
-            keyboard=flow_keyboard_remove(),
-        )
-        return
-    await blogger_registration_service.update_blogger_profile(
-        user_id, city=city, region=region
-    )
-    await state.clear()
-    incoming = event_adapter.from_message(message)
-    message_ctx = MessageContext(incoming, messenger_client)
-    msg_updated = city_texts.get("msg_profile_updated", "")
-    await messenger_client.send_text(
-        chat_id=str(message.chat.id),
-        text=msg_updated,
-        keyboard=flow_keyboard_remove(),
-    )
-    await show_profile(
-        message=message_ctx,
-        profile_service=profile_service,
-        state=state,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        messenger_client=messenger_client,
-        event_adapter=event_adapter,
-    )
 
 
 @router.callback_query(

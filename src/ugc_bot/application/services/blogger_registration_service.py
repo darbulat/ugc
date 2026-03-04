@@ -166,7 +166,7 @@ class BloggerRegistrationService:
                 birth_date=birth_date,
                 region=region,
                 location_geometry=location_geometry,
-                country="russia",
+                country="",
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -280,7 +280,7 @@ class BloggerRegistrationService:
                 birth_date=birth_date,
                 region=region,
                 location_geometry=location_geometry,
-                country="russia",
+                country="",
             )
             await self.blogger_repo.save(profile, session=session)
 

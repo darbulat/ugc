@@ -98,7 +98,7 @@ class BloggerProfile:
     region: Optional[str] = None
     # WKT MultiPoint (SRID 4326), e.g. "MULTIPOINT((37.6 55.75))" (lon lat)
     location_geometry: Optional[str] = None
-    country: str = "russia"
+    country: str = ""
 
 
 @dataclass(frozen=True)

@@ -16,7 +16,6 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeMessengerClient,
     FakeUser,
-    FakeWebAppData,
 )
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -45,7 +44,6 @@ from ugc_bot.bot.handlers.profile import (
     edit_profile_choose_type,
     edit_profile_enter_value,
     edit_profile_start,
-    handle_city_web_app_data_profile,
     handle_profile_agree_callback,
     handle_profile_edit_callback,
     handle_profile_edit_choice_callback,
@@ -1247,12 +1245,12 @@ async def test_handle_profile_edit_choice_callback_work_format_success(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_blogger_city_non_canonical_sends_picker(
+async def test_edit_profile_enter_value_blogger_city_any_accepted(
     user_repo,
     config,
     bot_texts_service,
 ) -> None:
-    """Editing city with non-canonical name sends picker hint."""
+    """Editing city with any name updates profile (no picker)."""
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-00000000084a"),
@@ -1269,7 +1267,8 @@ async def test_edit_profile_enter_value_blogger_city_non_canonical_sends_picker(
     profile_service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    reg_service = FakeBloggerRegistrationService()
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
     await edit_profile_enter_value(
         message,
         state,
@@ -1284,7 +1283,9 @@ async def test_edit_profile_enter_value_blogger_city_non_canonical_sends_picker(
     assert message.answers
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
-    assert "город" in text.lower() or "выберите" in text.lower()
+    assert "Профиль обновлён" in text
+    assert reg_service.update_calls
+    assert reg_service.update_calls[0][1].get("city") == "маленькийгород"
 
 
 # --- Edit profile flow ---
@@ -4480,12 +4481,12 @@ async def test_edit_profile_enter_value_advertiser_company_activity_val_error(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_blogger_city_non_canonical(
+async def test_edit_profile_enter_value_blogger_city_any_updates(
     user_repo,
     config,
     bot_texts_service,
 ) -> None:
-    """Blogger city not in dictionary sends picker hint."""
+    """Blogger city any value is accepted and profile is updated."""
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000859"),
@@ -4503,7 +4504,8 @@ async def test_edit_profile_enter_value_blogger_city_non_canonical(
     profile_service = FakeProfileService(
         user=user, has_blogger=True, has_advertiser=False
     )
-    reg_service = FakeBloggerRegistrationService()
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
     await edit_profile_enter_value(
         message,
         state,
@@ -4518,8 +4520,9 @@ async def test_edit_profile_enter_value_blogger_city_non_canonical(
     assert message.answers
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
-    assert "Выберите город из списка" in text or "Выбрать город" in text
-    assert not reg_service.update_calls
+    assert "Профиль обновлён" in text
+    assert reg_service.update_calls
+    assert reg_service.update_calls[0][1].get("city") == "unknowncity123"
 
 
 @pytest.mark.asyncio
@@ -5026,206 +5029,6 @@ async def test_handle_profile_edit_field_callback_city_blogger_sends_picker(
         event_adapter=adapter,
     )
     assert any("город" in s["text"].lower() for s in client.sent_text)
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_success(
-    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
-) -> None:
-    """City from Mini App updates blogger profile and shows profile."""
-    user = await create_test_user(user_repo, external_id="87", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    updated = _make_blogger_profile(user.user_id)
-    reg_service = FakeBloggerRegistrationService(update_returns=updated)
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_user_id=user.user_id,
-        edit_external_id="87",
-    )
-    message = FakeMessage(
-        user=FakeUser(87),
-        web_app_data=FakeWebAppData("москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any("Профиль обновлён" in s["text"] for s in client.sent_text)
-    assert reg_service.update_calls
-    assert reg_service.update_calls[0][1].get("city") == "москва"
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_editing_field_not_city_returns(
-    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
-) -> None:
-    """When editing_field is not city, handler returns without sending."""
-    user = await create_test_user(user_repo, external_id="88", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="nickname",
-        edit_user_id=user.user_id,
-        edit_external_id="88",
-    )
-    message = FakeMessage(
-        user=FakeUser(88),
-        web_app_data=FakeWebAppData("москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert len(client.sent_text) == 0
-    assert not reg_service.update_calls
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_invalid_city(
-    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
-) -> None:
-    """Invalid city from Mini App sends choose from list message."""
-    user = await create_test_user(user_repo, external_id="89", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_user_id=user.user_id,
-        edit_external_id="89",
-    )
-    message = FakeMessage(
-        user=FakeUser(89),
-        web_app_data=FakeWebAppData("invalid-city-xyz"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any(
-        "Выберите город из списка" in s["text"] for s in client.sent_text
-    )
-    assert not reg_service.update_calls
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_wrong_region_rejects(
-    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
-) -> None:
-    """Valid city but wrong region from Mini App sends choose from list."""
-    user = await create_test_user(user_repo, external_id="89b", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_user_id=user.user_id,
-        edit_external_id="89b",
-    )
-    message = FakeMessage(
-        user=FakeUser(89),
-        web_app_data=FakeWebAppData("республика татарстан:москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any(
-        "Выберите город из списка" in s["text"] for s in client.sent_text
-    )
-    assert not reg_service.update_calls
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_profile_user_id_missing(
-    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
-) -> None:
-    """When edit_user_id missing in state, send session expired."""
-    user = await create_test_user(user_repo, external_id="90", username="u")
-    await create_test_blogger_profile(blogger_repo, user.user_id)
-    profile_service = build_profile_service(
-        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
-    )
-    reg_service = FakeBloggerRegistrationService()
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    state = FakeFSMContext()
-    await state.set_state(EditProfileStates.entering_value.state)
-    await state.update_data(
-        editing_field="city",
-        edit_external_id="90",
-    )
-    message = FakeMessage(
-        user=FakeUser(90),
-        web_app_data=FakeWebAppData("москва"),
-    )
-    await handle_city_web_app_data_profile(
-        message,
-        state,
-        profile_service=profile_service,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        blogger_registration_service=reg_service,
-        user_role_service=FakeUserRoleService(),
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    assert any("Сессия истекла" in s["text"] for s in client.sent_text)
-    assert not reg_service.update_calls
 
 
 @pytest.mark.asyncio

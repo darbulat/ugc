@@ -3,7 +3,7 @@
 import logging
 from datetime import date
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -11,9 +11,7 @@ from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.geography import (
     get_regions_for_city,
-    is_canonical_city_only,
     normalize_geo_token,
-    parse_miniapp_city_id,
     region_key_to_label,
 )
 
@@ -49,7 +47,6 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
     blogger_after_registration_keyboard,
-    city_picker_keyboard,
     confirm_agreement_inline_keyboard,
     creator_filled_profile_keyboard,
     creator_start_keyboard,
@@ -415,72 +412,12 @@ async def handle_instagram(
         return
 
     await state_store.update_data(instagram_url=instagram_url)
-    texts = await bot_texts_service.get_many(["btn_city_picker"], locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=step_city,
-        keyboard=city_picker_keyboard(config.webhook.webhook_base_url, texts),
-    )
-    await state_store.set_state(BloggerRegistrationStates.city.state)
-
-
-@router.message(
-    F.web_app_data,
-    StateFilter(BloggerRegistrationStates.city),
-)
-async def handle_city_web_app_data(
-    message: Message,
-    state: FSMContext,
-    config: AppConfig,
-    bot_texts_service: BotTextsService,
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
-) -> None:
-    """Store creator city from Mini App selection (id may be region:city)."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    locale = config.market.default_locale
-    msg_choose_city = await bot_texts_service.get("msg_choose_city", locale)
-    step_birth_date = await bot_texts_service.get(
-        "msg_step_ask_birth_date", locale
-    )
-    raw_id = (
-        (message.web_app_data.data or "").strip()
-        if message.web_app_data
-        else ""
-    )
-    city, region = parse_miniapp_city_id(raw_id)
-    if not city or not is_canonical_city_only(city):
-        await messenger_client.send_text(
-            chat_id=str(message.chat.id),
-            text=msg_choose_city,
-            keyboard=flow_keyboard_remove(),
-        )
-        return
-    if region and region not in get_regions_for_city(city):
-        await messenger_client.send_text(
-            chat_id=str(message.chat.id),
-            text=msg_choose_city,
-            keyboard=flow_keyboard_remove(),
-        )
-        return
-    state_store = AiogramStateStore(state)
-    await state_store.update_data(city=city, region=region)
-    await messenger_client.send_text(
-        chat_id=str(message.chat.id),
-        text=step_birth_date,
         keyboard=flow_keyboard_remove(),
     )
-    await state_store.set_state(BloggerRegistrationStates.birth_date.state)
-
-
-def _canonical_city_from_text(text: str) -> str | None:
-    """Canonical city id if input is a city (not region); else None."""
-    normalized = normalize_geo_token((text or "").strip())
-    if not normalized:
-        return None
-    return normalized if is_canonical_city_only(normalized) else None
+    await state_store.set_state(BloggerRegistrationStates.city.state)
 
 
 @router.message(BloggerRegistrationStates.city)
@@ -511,29 +448,16 @@ async def handle_city(
             keyboard=flow_keyboard_remove(),
         )
         return
-    msg_city_or_type = await bot_texts_service.get(
-        "msg_choose_city_or_type", locale
-    )
     msg_multi_region = await bot_texts_service.get(
         "msg_city_multiple_regions", locale
     )
     step_birth_date = await bot_texts_service.get(
         "msg_step_ask_birth_date", locale
     )
-    canonical = _canonical_city_from_text(city)
-    if canonical is None:
-        texts = await bot_texts_service.get_many(["btn_city_picker"], locale)
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_city_or_type,
-            keyboard=city_picker_keyboard(
-                config.webhook.webhook_base_url, texts
-            ),
-        )
-        return
-    regions = get_regions_for_city(canonical)
+    normalized = normalize_geo_token(city)
+    regions = get_regions_for_city(normalized)
     if len(regions) > 1:
-        await state_store.update_data(city=canonical)
+        await state_store.update_data(city=normalized)
         region_buttons = [
             [
                 Button(
@@ -550,7 +474,7 @@ async def handle_city(
         )
         return
     await state_store.update_data(
-        city=canonical, region=(regions[0] if regions else None)
+        city=normalized, region=(regions[0] if regions else None)
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,

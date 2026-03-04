@@ -105,23 +105,6 @@ def flow_keyboard_remove() -> Keyboard:
     return Keyboard(kind=KeyboardKind.REMOVE)
 
 
-def city_picker_keyboard(
-    webhook_base_url: str,
-    texts: dict[str, str],
-) -> Keyboard:
-    """Reply keyboard: Mini App for city. Needs: btn_city_picker."""
-    url = (webhook_base_url or "").rstrip("/")
-    if not url:
-        return flow_keyboard_remove()
-    miniapp_url = f"{url}/miniapp/city-picker"
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=texts["btn_city_picker"], web_app_url=miniapp_url)]],
-        resize=True,
-        one_time=True,
-    )
-
-
 def phone_request_keyboard(texts: dict[str, str]) -> Keyboard:
     """Reply keyboard: share phone. Needs: btn_phone_request."""
 
