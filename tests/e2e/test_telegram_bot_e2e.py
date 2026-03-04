@@ -9,6 +9,8 @@ import time
 import pytest
 
 from tests.e2e.telegram_client import (
+    click_inline_and_get_reply,
+    click_inline_by_index_and_get_reply,
     get_bot_message_containing,
     send_and_get_reply,
     send_to_bot,
@@ -142,8 +144,8 @@ async def test_blogger_registration_full_flow(
         "креатор" in text or "профиль" in text or "Создать" in text
     )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Создать профиль", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "creator:create", timeout=20
     )
     assert text is not None
     if "имя" in text.lower() or "зовут" in text.lower():
@@ -163,6 +165,10 @@ async def test_blogger_registration_full_flow(
     text = await send_and_get_reply(
         client, entity, bot_username, "Казань", timeout=15
     )
+    if text and "регион" in text.lower():
+        text = await click_inline_by_index_and_get_reply(
+            client, entity, index=0, timeout=15
+        )
     assert text and ("дату рождения" in text.lower() or "дд.мм" in text.lower())
 
     text = await send_and_get_reply(
@@ -170,8 +176,8 @@ async def test_blogger_registration_full_flow(
     )
     assert text and "пол" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Женский", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:gender:F", timeout=15
     )
     assert text and "тематик" in text.lower() or "контент" in text.lower()
 
@@ -188,13 +194,13 @@ async def test_blogger_registration_full_flow(
         or "наблюдениям" in text
     )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "👩 В основном женщины", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:aud:F", timeout=15
     )
     assert text and "возраст" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "25–34", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:age:25_34", timeout=15
     )
     assert text and "аудитори" in text.lower() or "город" in text.lower()
 
@@ -208,22 +214,18 @@ async def test_blogger_registration_full_flow(
     )
     assert text and "бартер" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Нет", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:barter:N", timeout=15
     )
     assert text and ("UGC" in text or "размещ" in text.lower())
 
-    text = await send_and_get_reply(
-        client,
-        entity,
-        bot_username,
-        "❌ Только UGC (без размещения)",
-        timeout=15,
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:work:ugc", timeout=15
     )
     assert text and "согласи" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:agree", timeout=15
     )
     assert text is not None, "Bot did not reply after agreement"
     assert "Профиль создан" in text or "подтвердить Instagram" in text
@@ -255,8 +257,8 @@ async def test_advertiser_registration_full_flow(
         or "Начать" in text
     )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Начать", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "adv:start", timeout=20
     )
     assert text is not None
     if "зовут" in text or "имя" in text.lower():
@@ -290,8 +292,8 @@ async def test_advertiser_registration_full_flow(
     )
     assert text and "согласи" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "adv:agree", timeout=15
     )
     assert text is not None, "Bot did not reply after agreement"
     assert "разместить заказ" in text or "заказ" in text
@@ -333,8 +335,8 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         f"Expected creator intro, got: {text!r}"
     )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Создать профиль", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "creator:create", timeout=20
     )
     assert text is not None
     if "имя" in text.lower() or "зовут" in text.lower():
@@ -357,6 +359,10 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     text = await send_and_get_reply(
         client, entity, bot_username, "Казань", timeout=15
     )
+    if text and "регион" in text.lower():
+        text = await click_inline_by_index_and_get_reply(
+            client, entity, index=0, timeout=15
+        )
     assert text and ("дату рождения" in text.lower() or "дд.мм" in text.lower())
 
     text = await send_and_get_reply(
@@ -364,8 +370,8 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     )
     assert text and "пол" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Женский", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:gender:F", timeout=15
     )
     assert text and ("тематик" in text.lower() or "контент" in text.lower())
 
@@ -382,13 +388,13 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         or "наблюдениям" in text
     )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "👩 В основном женщины", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:aud:F", timeout=15
     )
     assert text and "возраст" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "25–34", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:age:25_34", timeout=15
     )
     assert text and ("аудитори" in text.lower() or "город" in text.lower())
 
@@ -402,17 +408,13 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     )
     assert text and "бартер" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Нет", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:barter:N", timeout=15
     )
     assert text and ("UGC" in text or "размещ" in text.lower())
 
-    text = await send_and_get_reply(
-        client,
-        entity,
-        bot_username,
-        "❌ Только UGC (без размещения)",
-        timeout=15,
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:work:ugc", timeout=15
     )
     assert text and "согласи" in text.lower(), (
         "Expected agreements step before exit"
@@ -442,8 +444,8 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     )
 
     # Confirm consent and complete registration.
-    text = await send_and_get_reply(
-        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "blogger:agree", timeout=15
     )
     assert text is not None, "Bot did not reply after confirming consent"
     assert "Профиль создан" in text or "подтвердить Instagram" in text, (
@@ -480,8 +482,8 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
         or "Начать" in text
     )
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "Начать", timeout=20
+    text = await click_inline_and_get_reply(
+        client, entity, "adv:start", timeout=20
     )
     assert text is not None
     if "Выберите действие" in text:
@@ -550,8 +552,8 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
     )
 
     # Confirm consent and complete registration.
-    text = await send_and_get_reply(
-        client, entity, bot_username, "✅ Подтвердить согласие", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "adv:agree", timeout=15
     )
     assert text is not None, "Bot did not reply after confirming consent"
     assert "разместить заказ" in text or "заказ" in text, (
@@ -577,12 +579,12 @@ async def test_order_creation_full_flow(
     text = await send_and_get_reply(
         client, entity, bot_username, "Мне нужны UGC‑креаторы", timeout=25
     )
-    # Already advertiser: menu. New: "Начать" then registration.
+    # Already advertiser: menu. New: click "Начать" (inline) then registration.
     if text and "Выберите действие" in text:
         pass
     else:
-        text = await send_and_get_reply(
-            client, entity, bot_username, "Начать", timeout=20
+        text = await click_inline_and_get_reply(
+            client, entity, "adv:start", timeout=20
         )
         if text and ("зовут" in text or "имя" in text.lower()):
             text = await send_and_get_reply(
@@ -609,12 +611,8 @@ async def test_order_creation_full_flow(
                 client, entity, bot_username, "https://example.com", timeout=20
             )
         if text and "согласи" in text.lower():
-            await send_and_get_reply(
-                client,
-                entity,
-                bot_username,
-                "✅ Подтвердить согласие",
-                timeout=20,
+            await click_inline_and_get_reply(
+                client, entity, "adv:agree", timeout=20
             )
 
     text = await send_and_get_reply(
@@ -625,12 +623,8 @@ async def test_order_creation_full_flow(
         pytest.skip("Advertiser profile not filled; run test_advertiser first")
     # Bot may show order form or ask for consent first.
     if "согласи" in text.lower() or "подтвердите" in text.lower():
-        await send_and_get_reply(
-            client,
-            entity,
-            bot_username,
-            "✅ Подтвердить согласие",
-            timeout=20,
+        await click_inline_and_get_reply(
+            client, entity, "order:agree", timeout=20
         )
         text = await send_and_get_reply(
             client, entity, bot_username, "➕ Создать заказ", timeout=25
@@ -643,8 +637,8 @@ async def test_order_creation_full_flow(
         or "задач" in text.lower()
     ), f"Expected order form or prompt, got: {text!r}"
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "🎥 UGC-видео для бренда", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "order:type:ugc", timeout=15
     )
     assert text and "опис" in text.lower() or "задач" in text.lower()
 
@@ -653,8 +647,8 @@ async def test_order_creation_full_flow(
     )
     assert text and "формат" in text.lower() or "сотрудничеств" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "💰 Оплата", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "order:coop:payment", timeout=15
     )
     assert text and "бюджет" in text.lower() or "цен" in text.lower()
 
@@ -663,8 +657,8 @@ async def test_order_creation_full_flow(
     )
     assert text and "креатор" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "10", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "order:bloggers:10", timeout=15
     )
     assert text and (
         "ссылк" in text.lower()
@@ -677,18 +671,18 @@ async def test_order_creation_full_flow(
     )
     assert text and "фото" in text.lower()
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "⏭ Пропустить", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "order:photo:skip", timeout=15
     )
     assert text and "использовать" in text.lower() or "UGC" in text
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "📱 В соцсетях бренда", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "order:content:social", timeout=15
     )
     assert text and "срок" in text.lower() or "дней" in text
 
-    text = await send_and_get_reply(
-        client, entity, bot_username, "⏱ До 7 дней", timeout=15
+    text = await click_inline_and_get_reply(
+        client, entity, "order:dl:7", timeout=15
     )
     assert text and "город" in text.lower() or "регион" in text.lower()
 
@@ -751,12 +745,8 @@ async def test_blogger_profile_update(
     )
     assert text is not None, "Bot did not reply to My Profile"
     if "согласи" in text.lower() or "подтвердите" in text.lower():
-        text = await send_and_get_reply(
-            client,
-            entity,
-            bot_username,
-            "✅ Подтвердить согласие",
-            timeout=15,
+        text = await click_inline_and_get_reply(
+            client, entity, "profile:agree", timeout=15
         )
         assert text is not None
     assert "профиль" in text.lower() or "креатор" in text.lower()
@@ -813,12 +803,8 @@ async def test_advertiser_profile_update(
     )
     assert text is not None, "Bot did not reply to My Profile"
     if "согласи" in text.lower() or "подтвердите" in text.lower():
-        text = await send_and_get_reply(
-            client,
-            entity,
-            bot_username,
-            "✅ Подтвердить согласие",
-            timeout=15,
+        text = await click_inline_and_get_reply(
+            client, entity, "profile:agree", timeout=15
         )
         assert text is not None
     assert "профиль" in text.lower() or "рекламодатель" in text.lower()
