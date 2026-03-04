@@ -310,6 +310,7 @@ def dispatcher(session_factory, mock_bot: Bot, config: AppConfig) -> Dispatcher:
             session_factory=session_factory
         ),
         default_locale=config.market.default_locale,
+        transaction_manager=transaction_manager,
     )
 
     # Add repositories for easier testing

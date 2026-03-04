@@ -360,5 +360,6 @@ def build_bot_services(
         "bot_texts_service": BotTextsService(
             bot_texts_repo=repos["bot_texts_repo"],
             default_locale=config.market.default_locale,
+            transaction_manager=transaction_manager,
         ),
     }

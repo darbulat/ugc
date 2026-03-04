@@ -2,9 +2,11 @@
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from ugc_bot.application.ports import BotTextsRepository
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,7 @@ class BotTextsService:
 
     bot_texts_repo: BotTextsRepository
     default_locale: str = "ru"
+    transaction_manager: Any = None
     _cache: dict[tuple[str, str], str] = field(default_factory=dict, init=False)
     _loaded: bool = field(default=False, init=False)
 
@@ -26,9 +29,14 @@ class BotTextsService:
         """Load all texts from DB at startup and merge with DEFAULT_TEXTS.
 
         Call once after application start. Subsequent get() use only memory.
+        Uses transaction_manager when set to provide a DB session to the repo.
         """
+
+        async def _load(session: object | None) -> list[tuple[str, str, str]]:
+            return await self.bot_texts_repo.get_all(session=session)
+
         try:
-            rows = await self.bot_texts_repo.get_all()
+            rows = await with_optional_tx(self.transaction_manager, _load)
             for key, locale, value in rows:
                 self._cache[(key, locale)] = value
             count = len(rows)
