@@ -23,7 +23,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
-    blogger_verification_sent_keyboard,
+    blogger_verification_sent_inline_keyboard,
 )
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
@@ -134,7 +134,7 @@ async def start_verification(
         chat_id=incoming.chat_id,
         text=f"<code>{code_escaped}</code>",
         parse_mode="HTML",
-        keyboard=blogger_verification_sent_keyboard(texts),
+        keyboard=blogger_verification_sent_inline_keyboard(texts),
     )
 
 
@@ -212,5 +212,5 @@ async def start_verification_from_profile_callback(
         chat_id=incoming.chat_id,
         text=f"<code>{code_escaped}</code>",
         parse_mode="HTML",
-        keyboard=blogger_verification_sent_keyboard(texts),
+        keyboard=blogger_verification_sent_inline_keyboard(texts),
     )

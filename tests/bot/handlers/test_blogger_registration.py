@@ -866,9 +866,14 @@ async def test_handle_agreements_shows_verification_button(
 
     assert message.reply_markups
     keyboard = message.reply_markups[0]
-    rows = keyboard.rows if hasattr(keyboard, "rows") else keyboard.keyboard
+    rows = (
+        keyboard.rows
+        if hasattr(keyboard, "rows")
+        else getattr(keyboard, "inline_keyboard", None)
+        or getattr(keyboard, "keyboard", None)
+    )
     assert rows is not None
-    # After registration: Confirm Instagram + My profile
+    # After registration: Confirm Instagram + My profile (inline)
     assert len(rows) == 2
     assert rows[0][0].text == _TEXTS_RU["btn_confirm_instagram"]
     assert rows[1][0].text == _TEXTS_RU["btn_my_profile"]

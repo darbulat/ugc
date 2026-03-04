@@ -152,10 +152,10 @@ async def test_start_advertiser_registration_skips_name_when_username_set(
 
 
 @pytest.mark.asyncio
-async def test_phone_step_sends_phone_request_keyboard(
+async def test_phone_step_sends_phone_prompt(
     user_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
-    """When asking for phone, reply keyboard with request_contact is sent."""
+    """When asking for phone, message is sent (inline-only: user types)."""
 
     service = UserRoleService(user_repo=user_repo)
     await service.set_user(
@@ -187,10 +187,10 @@ async def test_phone_step_sends_phone_request_keyboard(
         (s for s in client.sent_text if "телефона" in s["text"]), None
     )
     assert phone_msg is not None
+    # Inline-only: keyboard is REMOVE (no reply buttons), user types phone
     keyboard = phone_msg.get("keyboard")
     assert keyboard is not None
-    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_phone_request"]
-    assert keyboard.rows[0][0].request_contact is True
+    assert keyboard.kind.value == "remove"
 
 
 @pytest.mark.asyncio

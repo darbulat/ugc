@@ -181,7 +181,7 @@ async def _notify_user_verification_success(
     try:
         from aiogram import Bot
 
-        from ugc_bot.bot.handlers.keyboards import blogger_menu_keyboard
+        from ugc_bot.bot.handlers.keyboards import blogger_menu_inline_keyboard
         from ugc_bot.infrastructure.messenger.telegram.client import (
             TelegramMessengerClient,
         )
@@ -227,7 +227,9 @@ async def _notify_user_verification_success(
             await messenger_client.send_text(
                 chat_id=user.external_id,
                 text=msg_confirmed,
-                keyboard=blogger_menu_keyboard(texts, confirmed=confirmed),
+                keyboard=blogger_menu_inline_keyboard(
+                    texts, confirmed=confirmed, verification_started=False
+                ),
             )
         finally:
             await bot.session.close()
@@ -248,7 +250,9 @@ async def _notify_user_verification_mismatch(
     try:
         from aiogram import Bot
 
-        from ugc_bot.bot.handlers.keyboards import blogger_profile_view_keyboard
+        from ugc_bot.bot.handlers.keyboards import (
+            blogger_profile_view_inline_keyboard,
+        )
         from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
         from ugc_bot.infrastructure.messenger.telegram.client import (
             TelegramMessengerClient,
@@ -295,7 +299,9 @@ async def _notify_user_verification_mismatch(
             await messenger_client.send_text(
                 chat_id=user.external_id,
                 text=msg_mismatch,
-                keyboard=blogger_profile_view_keyboard(texts, confirmed=False),
+                keyboard=blogger_profile_view_inline_keyboard(
+                    texts, confirmed=False
+                ),
             )
         finally:
             await bot.session.close()

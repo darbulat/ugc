@@ -35,7 +35,7 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     PAY_ORDER_CALLBACK_PREFIX,
-    advertiser_after_payment_keyboard,
+    advertiser_menu_inline_keyboard,
 )
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
@@ -554,7 +554,12 @@ async def successful_payment_handler(
         parse_mode="Markdown",
     )
     after_texts = await bot_texts_service.get_many(
-        ["btn_create_order", "btn_my_orders", "btn_support"],
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+        ],
         locale,
     )
     msg_important = await bot_texts_service.get(
@@ -564,5 +569,5 @@ async def successful_payment_handler(
         chat_id=incoming.chat_id,
         text=msg_important,
         parse_mode="Markdown",
-        keyboard=advertiser_after_payment_keyboard(after_texts),
+        keyboard=advertiser_menu_inline_keyboard(after_texts),
     )

@@ -3,8 +3,10 @@
 import pytest
 
 from tests.helpers.fakes import (
+    FakeCallback,
     FakeFSMContext,
     FakeMessage,
+    FakeMessengerClient,
     FakeReferralService,
     FakeUser,
 )
@@ -14,15 +16,18 @@ from ugc_bot.bot.handlers.advertiser_registration import (
 )
 from ugc_bot.bot.handlers.blogger_registration import choose_creator_role
 from ugc_bot.bot.handlers.keyboards import (
-    advertiser_menu_keyboard,
-    creator_filled_profile_keyboard,
+    advertiser_menu_inline_keyboard,
+    creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
+    main_menu_inline_keyboard,
     role_inline_keyboard,
 )
 from ugc_bot.bot.handlers.start import (
     change_role_button,
+    change_role_callback,
     start_command,
     support_button,
+    support_callback,
 )
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.domain.enums import MessengerType
@@ -260,7 +265,7 @@ async def test_choose_role_creator_with_filled_profile_shows_menu(
     assert message.answers[-1][0] == _TEXTS_RU["msg_choose_action"]
     assert (
         message.answers[-1][1].rows
-        == creator_filled_profile_keyboard(_TEXTS_RU).rows
+        == creator_filled_profile_inline_keyboard(_TEXTS_RU).rows
     )
 
 
@@ -313,7 +318,8 @@ async def test_choose_role_advertiser_with_filled_profile_shows_menu(
     assert message.answers
     assert message.answers[-1][0] == "Выберите действие:"
     assert (
-        message.answers[-1][1].rows == advertiser_menu_keyboard(_TEXTS_RU).rows
+        message.answers[-1][1].rows
+        == advertiser_menu_inline_keyboard(_TEXTS_RU).rows
     )
 
 
@@ -500,5 +506,124 @@ async def test_support_button_shows_advertiser_menu_when_has_profile(
     assert message.answers
     assert "Служба поддержки" in message.answers[0][0]
     assert (
-        message.answers[0][1].rows == advertiser_menu_keyboard(_TEXTS_RU).rows
+        message.answers[0][1].rows
+        == advertiser_menu_inline_keyboard(_TEXTS_RU).rows
+    )
+
+
+@pytest.mark.asyncio
+async def test_support_callback_sends_support_text_and_inline_menu(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """Support inline button sends support text and inline menu."""
+
+    from tests.helpers.services import build_profile_service
+
+    service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo
+    )
+    message = FakeMessage(user=FakeUser(1, "u", "User"))
+    callback = FakeCallback(
+        data="support", user=FakeUser(1, "u", "User"), message=message
+    )
+    client = FakeMessengerClient()
+    state = FakeFSMContext(state=None)
+
+    await support_callback(
+        callback,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+    )
+
+    assert len(client.sent_text) == 1
+    assert "Служба поддержки" in client.sent_text[0]["text"]
+    assert client.sent_text[0]["keyboard"] is not None
+    assert (
+        client.sent_text[0]["keyboard"].rows
+        == main_menu_inline_keyboard(_TEXTS_RU).rows
+    )
+
+
+@pytest.mark.asyncio
+async def test_support_callback_with_advertiser_shows_advertiser_menu(
+    user_repo,
+    blogger_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Support inline with advertiser profile shows advertiser menu."""
+
+    from tests.helpers.factories import create_test_advertiser_profile
+    from tests.helpers.services import build_profile_service
+
+    service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    user = await service.set_user(
+        external_id="5",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    message = FakeMessage(user=FakeUser(5, "adv", "Adv"))
+    callback = FakeCallback(
+        data="support", user=FakeUser(5, "adv", "Adv"), message=message
+    )
+    client = FakeMessengerClient()
+    state = FakeFSMContext(state=None)
+
+    await support_callback(
+        callback,
+        user_role_service=service,
+        profile_service=profile_service,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+    )
+
+    assert len(client.sent_text) == 1
+    assert (
+        client.sent_text[0]["keyboard"].rows
+        == advertiser_menu_inline_keyboard(_TEXTS_RU).rows
+    )
+
+
+@pytest.mark.asyncio
+async def test_change_role_callback_sends_start_screen(
+    config, bot_texts_service
+) -> None:
+    """Change role inline button sends start text and role keyboard."""
+
+    message = FakeMessage(user=FakeUser(2, "u", "User"))
+    callback = FakeCallback(
+        data="change_role", user=FakeUser(2, "u", "User"), message=message
+    )
+    client = FakeMessengerClient()
+    state = FakeFSMContext(state=None)
+
+    await change_role_callback(
+        callback,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+    )
+
+    assert len(client.sent_text) == 1
+    assert (
+        "UMC" in client.sent_text[0]["text"]
+        or "роль" in client.sent_text[0]["text"]
+    )
+    role_texts = {k: _TEXTS_RU[k] for k in _ROLE_KEYS}
+    assert (
+        client.sent_text[0]["keyboard"].rows
+        == role_inline_keyboard(role_texts).rows
     )

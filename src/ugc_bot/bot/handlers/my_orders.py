@@ -27,9 +27,10 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_PROFILE_AGREE,
     CALLBACK_PROFILE_MENU_MY_ORDERS,
     PAY_ORDER_CALLBACK_PREFIX,
-    flow_keyboard,
+    confirm_agreement_inline_keyboard,
 )
 from ugc_bot.bot.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
@@ -197,12 +198,11 @@ async def show_my_orders(  # noqa: C901, PLR0912
             intro=agree_texts.get("msg_confirm_agreement"),
             texts=agree_texts,
         )
-        confirm_btn = agree_texts.get("btn_confirm_agreement", "")
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
-            keyboard=flow_keyboard(
-                keyboard=[[Button(text=confirm_btn)]],
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_PROFILE_AGREE, agree_texts
             ),
             parse_mode="HTML",
         )
@@ -337,12 +337,11 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
             intro=agree_texts.get("msg_confirm_agreement"),
             texts=agree_texts,
         )
-        confirm_btn = agree_texts.get("btn_confirm_agreement", "")
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
-            keyboard=flow_keyboard(
-                keyboard=[[Button(text=confirm_btn)]],
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_PROFILE_AGREE, agree_texts
             ),
             parse_mode="HTML",
         )

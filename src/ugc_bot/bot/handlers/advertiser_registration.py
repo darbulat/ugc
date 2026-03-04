@@ -26,11 +26,10 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_ADV_AGREE,
     CALLBACK_ADV_START,
     CALLBACK_ROLE_ADVERTISER,
-    advertiser_menu_keyboard,
+    advertiser_menu_inline_keyboard,
     advertiser_start_keyboard,
     confirm_agreement_inline_keyboard,
     flow_keyboard_remove,
-    phone_request_keyboard,
 )
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
@@ -114,7 +113,7 @@ async def _choose_advertiser_role_impl(
         profile_getter=profile_service.get_advertiser_profile,
         choose_action_text=choose_action_text or ADVERTISER_CHOOSE_ACTION_TEXT,
         intro_text=intro_text,
-        menu_keyboard=advertiser_menu_keyboard,
+        menu_keyboard=advertiser_menu_inline_keyboard,
         start_keyboard=advertiser_start_keyboard,
         texts=texts,
     )
@@ -224,7 +223,7 @@ async def _advertiser_start_impl(
         await messenger_client.send_text(
             chat_id=chat_id,
             text=texts.get("msg_choose_action", "Выберите действие:"),
-            keyboard=advertiser_menu_keyboard(texts),
+            keyboard=advertiser_menu_inline_keyboard(texts),
         )
         return
     await state_store.update_data(user_id=user_id)
@@ -234,7 +233,7 @@ async def _advertiser_start_impl(
         await messenger_client.send_text(
             chat_id=chat_id,
             text=phone_prompt,
-            keyboard=phone_request_keyboard(texts),
+            keyboard=flow_keyboard_remove(),
         )
         await state_store.set_state(AdvertiserRegistrationStates.phone.state)
     else:
@@ -403,7 +402,7 @@ async def handle_name(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=phone_prompt,
-        keyboard=phone_request_keyboard(texts),
+        keyboard=flow_keyboard_remove(),
     )
     await state_store.set_state(AdvertiserRegistrationStates.phone.state)
 
@@ -430,13 +429,10 @@ async def handle_phone(
     phone = (incoming.contact_phone or incoming.text or "").strip()
     err = validate_phone(phone, texts=validator_texts)
     if err is not None:
-        texts = await bot_texts_service.get_many(
-            ["btn_phone_request"], config.market.default_locale
-        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=err,
-            keyboard=phone_request_keyboard(texts),
+            keyboard=flow_keyboard_remove(),
         )
         return
 
@@ -705,7 +701,7 @@ async def handle_agreements_confirm(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_done,
-        keyboard=advertiser_menu_keyboard(texts),
+        keyboard=advertiser_menu_inline_keyboard(texts),
     )
 
 
@@ -767,5 +763,5 @@ async def handle_advertiser_agreements_callback(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_done,
-        keyboard=advertiser_menu_keyboard(texts),
+        keyboard=advertiser_menu_inline_keyboard(texts),
     )

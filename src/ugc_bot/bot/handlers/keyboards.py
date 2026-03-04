@@ -54,51 +54,8 @@ CALLBACK_PROFILE_BARTER_N = "profile:barter:N"
 CALLBACK_PROFILE_WORK_ADS = "profile:work:ads"
 CALLBACK_PROFILE_WORK_UGC = "profile:work:ugc"
 CALLBACK_PROFILE_REGION_PREFIX = "profile:region:"
-
-
-def support_keyboard(
-    texts: dict[str, str],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Build a reply keyboard with a support button. Needs: btn_support."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=texts["btn_support"])]],
-        resize=True,
-        one_time=one_time_keyboard,
-    )
-
-
-def with_support_keyboard(
-    keyboard: list[list[Button]],
-    texts: dict[str, str],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Reply keyboard with support button appended. Needs: btn_support."""
-
-    combined = list(keyboard)
-    combined.append([Button(text=texts["btn_support"])])
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=combined,
-        resize=True,
-        one_time=one_time_keyboard,
-    )
-
-
-def flow_keyboard(
-    keyboard: list[list[Button]],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Build a reply keyboard for flow steps (no support button)."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=keyboard,
-        resize=True,
-        one_time=one_time_keyboard,
-    )
+CALLBACK_SUPPORT = "support"
+CALLBACK_CHANGE_ROLE = "change_role"
 
 
 def flow_keyboard_remove() -> Keyboard:
@@ -107,37 +64,10 @@ def flow_keyboard_remove() -> Keyboard:
     return Keyboard(kind=KeyboardKind.REMOVE)
 
 
-def phone_request_keyboard(texts: dict[str, str]) -> Keyboard:
-    """Reply keyboard: share phone. Needs: btn_phone_request."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=texts["btn_phone_request"], request_contact=True)]],
-        resize=True,
-        one_time=True,
-    )
-
-
 def flow_inline_keyboard(rows: list[list[Button]]) -> Keyboard:
     """Inline keyboard for flow steps; buttons must have callback_data."""
 
     return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
-
-
-def role_keyboard(texts: dict[str, str]) -> Keyboard:
-    """Role selection (reply). Needs: btn_creator, btn_advertiser,
-    btn_support."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=texts["btn_creator"])],
-            [Button(text=texts["btn_advertiser"])],
-            [Button(text=texts["btn_support"])],
-        ],
-        resize=True,
-        one_time=True,
-    )
 
 
 def role_inline_keyboard(texts: dict[str, str]) -> Keyboard:
@@ -178,62 +108,59 @@ def creator_start_keyboard(texts: dict[str, str]) -> Keyboard:
     )
 
 
-def creator_start_keyboard_reply(texts: dict[str, str]) -> Keyboard:
-    """Legacy reply keyboard for creator start. Needs: btn_create_profile."""
+def main_menu_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Inline: Support, Change role. Needs: btn_support, btn_change_role."""
 
     return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=texts["btn_create_profile"])]],
-        resize=True,
-        one_time=True,
-    )
-
-
-def creator_filled_profile_keyboard(
-    texts: dict[str, str],
-    one_time_keyboard: bool = False,
-) -> Keyboard:
-    """Creator filled profile: Edit, Profile, Orders. Needs: btn_*."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
+        kind=KeyboardKind.INLINE,
         rows=[
-            [Button(text=texts["btn_edit_profile"])],
-            [Button(text=texts["btn_my_profile"])],
-            [Button(text=texts["btn_my_orders"])],
-            [Button(text=texts["btn_support"])],
+            [
+                Button(
+                    text=texts["btn_support"],
+                    callback_data=CALLBACK_SUPPORT,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_change_role"],
+                    callback_data=CALLBACK_CHANGE_ROLE,
+                )
+            ],
         ],
-        resize=True,
-        one_time=one_time_keyboard,
     )
 
 
-def main_menu_keyboard(texts: dict[str, str]) -> Keyboard:
-    """Main menu: Support, Change role. Needs: btn_support, btn_change_role."""
+def creator_filled_profile_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+    """Creator filled profile (inline): Edit, Profile, Orders. Needs: btn_*."""
 
     return Keyboard(
-        kind=KeyboardKind.REPLY,
+        kind=KeyboardKind.INLINE,
         rows=[
-            [Button(text=texts["btn_support"])],
-            [Button(text=texts["btn_change_role"])],
+            [
+                Button(
+                    text=texts["btn_edit_profile"],
+                    callback_data=CALLBACK_PROFILE_EDIT,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_my_profile"],
+                    callback_data=CALLBACK_PROFILE_MY_PROFILE,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_my_orders"],
+                    callback_data=CALLBACK_PROFILE_MENU_MY_ORDERS,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_support"],
+                    callback_data=CALLBACK_SUPPORT,
+                )
+            ],
         ],
-        resize=True,
-        is_persistent=True,
-        one_time=False,
-    )
-
-
-def profile_keyboard(
-    texts: dict[str, str],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Reply keyboard with profile button. Needs: btn_my_profile."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=texts["btn_my_profile"])]],
-        resize=True,
-        one_time=one_time_keyboard,
     )
 
 
@@ -272,101 +199,73 @@ def confirm_agreement_inline_keyboard(
     )
 
 
-def advertiser_menu_keyboard(
-    texts: dict[str, str],
-    one_time_keyboard: bool = True,
-) -> Keyboard:
-    """Advertiser menu. Needs: btn_create_order, btn_my_orders, btn_*."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=texts["btn_create_order"])],
-            [Button(text=texts["btn_my_orders"])],
-            [Button(text=texts["btn_my_profile"])],
-            [Button(text=texts["btn_edit_profile"])],
-            [Button(text=texts["btn_support"])],
-        ],
-        resize=True,
-        one_time=one_time_keyboard,
-    )
-
-
-def advertiser_after_payment_keyboard(texts: dict[str, str]) -> Keyboard:
-    """After payment: Create order, My orders, Support. Needs: btn_*."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=texts["btn_create_order"])],
-            [Button(text=texts["btn_my_orders"])],
-            [Button(text=texts["btn_support"])],
-        ],
-        resize=True,
-        one_time=False,
-    )
-
-
-def blogger_menu_keyboard(
+def blogger_menu_inline_keyboard(
     texts: dict[str, str],
     confirmed: bool,
-    one_time_keyboard: bool = False,
     verification_started: bool = False,
 ) -> Keyboard:
-    """Blogger menu. Needs: btn_confirm_instagram, btn_my_profile."""
+    """Inline blogger menu. Needs: btn_confirm_instagram, btn_my_profile."""
 
-    keyboard: list[list[Button]] = []
+    rows: list[list[Button]] = []
     if not confirmed and not verification_started:
-        keyboard.append([Button(text=texts["btn_confirm_instagram"])])
-    keyboard.append([Button(text=texts["btn_my_profile"])])
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=keyboard,
-        resize=True,
-        one_time=one_time_keyboard,
+        rows.append(
+            [
+                Button(
+                    text=texts["btn_confirm_instagram"],
+                    callback_data=CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
+                )
+            ]
+        )
+    rows.append(
+        [
+            Button(
+                text=texts["btn_my_profile"],
+                callback_data=CALLBACK_PROFILE_MY_PROFILE,
+            )
+        ]
     )
+    return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
 
-def blogger_after_registration_keyboard(texts: dict[str, str]) -> Keyboard:
-    """After blogger reg. Needs: btn_confirm_instagram, btn_my_profile."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
-            [Button(text=texts["btn_confirm_instagram"])],
-            [Button(text=texts["btn_my_profile"])],
-        ],
-        resize=True,
-        one_time=False,
-    )
-
-
-def blogger_verification_sent_keyboard(texts: dict[str, str]) -> Keyboard:
-    """After code sent: My profile only. Needs: btn_my_profile."""
-
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[[Button(text=texts["btn_my_profile"])]],
-        resize=True,
-        one_time=False,
-    )
-
-
-def blogger_profile_view_keyboard(
+def blogger_after_registration_inline_keyboard(
     texts: dict[str, str],
-    confirmed: bool,
 ) -> Keyboard:
-    """Profile keys: btn_edit_profile, btn_confirm_instagram, btn_my_profile."""
+    """Inline: Confirm Instagram, My profile after blogger reg."""
 
-    keyboard = [[Button(text=texts["btn_edit_profile"])]]
-    if not confirmed:
-        keyboard.append([Button(text=texts["btn_confirm_instagram"])])
-    keyboard.append([Button(text=texts["btn_my_profile"])])
     return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=keyboard,
-        resize=True,
-        one_time=False,
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_confirm_instagram"],
+                    callback_data=CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
+                )
+            ],
+            [
+                Button(
+                    text=texts["btn_my_profile"],
+                    callback_data=CALLBACK_PROFILE_MY_PROFILE,
+                )
+            ],
+        ],
+    )
+
+
+def blogger_verification_sent_inline_keyboard(
+    texts: dict[str, str],
+) -> Keyboard:
+    """Inline after code sent: My profile only. Needs: btn_my_profile."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts["btn_my_profile"],
+                    callback_data=CALLBACK_PROFILE_MY_PROFILE,
+                )
+            ]
+        ],
     )
 
 

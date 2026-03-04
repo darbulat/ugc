@@ -31,7 +31,10 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import flow_keyboard
+from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_PROFILE_AGREE,
+    confirm_agreement_inline_keyboard,
+)
 from ugc_bot.bot.handlers.profile import _BLOGGER_AGREEMENTS_STATE
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
@@ -285,12 +288,11 @@ async def handle_offer_response(
             intro=agree_texts.get("msg_confirm_agreement"),
             texts=agree_texts,
         )
-        confirm_btn = agree_texts.get("btn_confirm_agreement", "")
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=agreements_text,
-            keyboard=flow_keyboard(
-                keyboard=[[Button(text=confirm_btn)]],
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_PROFILE_AGREE, agree_texts
             ),
             parse_mode="HTML",
         )

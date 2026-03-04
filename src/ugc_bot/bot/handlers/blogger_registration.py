@@ -47,9 +47,9 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
     CALLBACK_ROLE_CREATOR,
-    blogger_after_registration_keyboard,
+    blogger_after_registration_inline_keyboard,
     confirm_agreement_inline_keyboard,
-    creator_filled_profile_keyboard,
+    creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
     flow_inline_keyboard,
     flow_keyboard_remove,
@@ -152,7 +152,7 @@ async def _choose_creator_role_impl(
         profile_getter=profile_service.get_blogger_profile,
         choose_action_text=choose_action_text,
         intro_text=intro_text,
-        menu_keyboard=creator_filled_profile_keyboard,
+        menu_keyboard=creator_filled_profile_inline_keyboard,
         start_keyboard=creator_start_keyboard,
         texts=texts,
     )
@@ -1624,7 +1624,7 @@ async def handle_agreements_callback(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_profile_created,
-        keyboard=blogger_after_registration_keyboard(after_texts),
+        keyboard=blogger_after_registration_inline_keyboard(after_texts),
     )
 
 
@@ -1690,7 +1690,7 @@ async def handle_agreements(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_profile_created,
-        keyboard=blogger_after_registration_keyboard(after_texts),
+        keyboard=blogger_after_registration_inline_keyboard(after_texts),
     )
 
 

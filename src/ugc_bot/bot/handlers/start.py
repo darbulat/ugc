@@ -3,9 +3,13 @@
 from aiogram import Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
-from ugc_bot.application.messenger.dto import IncomingMessage, Keyboard
+from ugc_bot.application.messenger.dto import (
+    IncomingCallback,
+    IncomingMessage,
+    Keyboard,
+)
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -17,8 +21,10 @@ from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
-    advertiser_menu_keyboard,
-    main_menu_keyboard,
+    CALLBACK_CHANGE_ROLE,
+    CALLBACK_SUPPORT,
+    advertiser_menu_inline_keyboard,
+    main_menu_inline_keyboard,
     role_inline_keyboard,
 )
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
@@ -69,6 +75,44 @@ async def start_command(
     )
 
 
+@router.callback_query(lambda c: c.data == CALLBACK_CHANGE_ROLE)
+async def change_role_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle Change role inline button — show start screen again."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = config.market.default_locale
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
+    await _change_role_button(
+        incoming=incoming,
+        state_store=AiogramStateStore(state),
+        messenger_client=messenger_client,
+        start_text=start_text,
+        role_kb=role_inline_keyboard(texts),
+    )
+
+
 @router.message(Command("role"))
 @router.message(TextEqualsKey("btn_change_role"))
 async def change_role_button(
@@ -104,6 +148,60 @@ async def change_role_button(
         messenger_client=messenger_client,
         start_text=start_text,
         role_kb=role_inline_keyboard(texts),
+    )
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_SUPPORT)
+async def support_callback(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle Support inline button — clear FSM, send support text."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = config.market.default_locale
+    support_text = (
+        await bot_texts_service.get("support_response", locale)
+    ).strip()
+    if not support_text:
+        support_text = (config.market.support_response_text or "").strip()
+    if not support_text and (config.market.support_contact or "").strip():
+        support_text = (
+            f"Служба поддержки: {config.market.support_contact.strip()}\n"
+            "Обращайтесь по любым вопросам!"
+        )
+    if not support_text:
+        support_text = (
+            "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
+        )
+    menu_texts = await bot_texts_service.get_many(
+        [
+            "btn_support",
+            "btn_change_role",
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+        ],
+        locale,
+    )
+    await _support_button(
+        incoming=incoming,
+        user_role_service=user_role_service,
+        profile_service=profile_service,
+        state_store=AiogramStateStore(state),
+        messenger_client=messenger_client,
+        support_text=support_text,
+        menu_texts=menu_texts,
     )
 
 
@@ -202,7 +300,7 @@ async def _start_command(
 
 async def _change_role_button(
     *,
-    incoming: IncomingMessage,
+    incoming: IncomingMessage | IncomingCallback,
     state_store: StateStore,
     messenger_client: MessengerClient,
     start_text: str,
@@ -219,7 +317,7 @@ async def _change_role_button(
 
 async def _support_button(
     *,
-    incoming: IncomingMessage,
+    incoming: IncomingMessage | IncomingCallback,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     state_store: StateStore,
@@ -252,9 +350,9 @@ async def _support_button(
         else None
     )
     reply_markup = (
-        advertiser_menu_keyboard(menu_texts)
+        advertiser_menu_inline_keyboard(menu_texts)
         if advertiser is not None
-        else main_menu_keyboard(menu_texts)
+        else main_menu_inline_keyboard(menu_texts)
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
