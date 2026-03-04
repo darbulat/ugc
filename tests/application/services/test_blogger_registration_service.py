@@ -165,6 +165,40 @@ async def test_register_blogger_geocoder_none_leaves_geometry_empty() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_city_from_location_returns_none_when_geocoder_none() -> (
+    None
+):
+    """resolve_city_from_location returns None when geocoder is not set."""
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=None,
+    )
+    assert await service.resolve_city_from_location(55.75, 37.6) is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_from_location_returns_result_from_geocoder() -> (
+    None
+):
+    """resolve_city_from_location delegates to geocoder.reverse_geocode."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_geocoder = MagicMock()
+    mock_geocoder.reverse_geocode = AsyncMock(
+        return_value=("Kazan", "Tatarstan", "Russia")
+    )
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=mock_geocoder,
+    )
+    result = await service.resolve_city_from_location(55.79, 49.12)
+    assert result == ("Kazan", "Tatarstan", "Russia")
+    mock_geocoder.reverse_geocode.assert_called_once_with(55.79, 49.12)
+
+
+@pytest.mark.asyncio
 async def test_register_blogger_duplicate_instagram_url() -> None:
     """Reject registration with duplicate Instagram URL."""
     from datetime import datetime, timezone
@@ -1406,6 +1440,39 @@ async def test_save_blogger_before_agreement_user_not_found() -> None:
             blogger_gender=BloggerGender.MALE,
             birth_date=date(1995, 5, 15),
         )
+
+
+@pytest.mark.asyncio
+async def test_save_blogger_before_agreement_with_location_geometry() -> None:
+    """Stores location_geometry and country when provided."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+    )
+    profile = await service.save_blogger_before_agreement(
+        user_id=user_id,
+        instagram_url="https://instagram.com/geo_blogger",
+        city="Moscow",
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
+        region="Moscow Oblast",
+        location_geometry="POINT(37.6 55.75)",
+        country="Russia",
+    )
+    assert profile.location_geometry == "POINT(37.6 55.75)"
+    assert profile.region == "Moscow Oblast"
+    assert profile.country == "Russia"
 
 
 @pytest.mark.asyncio

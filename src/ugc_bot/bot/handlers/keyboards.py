@@ -92,6 +92,26 @@ def flow_keyboard_phone_request(texts: dict[str, str]) -> Keyboard:
     )
 
 
+def flow_keyboard_city_request(texts: dict[str, str]) -> Keyboard:
+    """Reply KB: Share location for city. Key: btn_location_request."""
+
+    return Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=[
+            [
+                Button(
+                    text=texts.get(
+                        "btn_location_request", "📍 Поделиться геопозицией"
+                    ),
+                    request_location=True,
+                )
+            ]
+        ],
+        one_time=True,
+        resize=True,
+    )
+
+
 def flow_inline_keyboard(rows: list[list[Button]]) -> Keyboard:
     """Inline keyboard for flow steps; buttons must have callback_data."""
 

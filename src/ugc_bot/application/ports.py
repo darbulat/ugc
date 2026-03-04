@@ -845,6 +845,12 @@ class GeocoderPort(Protocol):
         """Resolve (query, region, country) list to one MULTIPOLYGON WKT."""
         ...
 
+    async def reverse_geocode(
+        self, lat: float, lon: float
+    ) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+        """Return (city, region, country) for coordinates or None."""
+        ...
+
 
 class TransactionManager(Protocol):
     """Protocol for transaction handling used by application services.

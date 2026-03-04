@@ -38,6 +38,17 @@ class TelegramEventAdapter:
         contact = getattr(message, "contact", None)
         if contact is not None:
             contact_phone = getattr(contact, "phone_number", None)
+        location_lat = None
+        location_lon = None
+        location = getattr(message, "location", None)
+        if location is not None:
+            location_lat = getattr(location, "latitude", None)
+            location_lon = getattr(location, "longitude", None)
+            if location_lat is not None and location_lon is not None:
+                location_lat = float(location_lat)
+                location_lon = float(location_lon)
+            else:
+                location_lat = location_lon = None
         return IncomingMessage(
             chat_id=chat_id,
             user=IncomingUser(
@@ -50,6 +61,8 @@ class TelegramEventAdapter:
             photo_file_ids=photo_file_ids,
             successful_payment=successful_payment,
             contact_phone=contact_phone,
+            location_lat=location_lat,
+            location_lon=location_lon,
             raw=_safe_raw(message),
         )
 

@@ -49,6 +49,8 @@ class MessageContext:
         ]
         self.text = incoming.text
         self.contact_phone = getattr(incoming, "contact_phone", None)
+        self.location_lat = getattr(incoming, "location_lat", None)
+        self.location_lon = getattr(incoming, "location_lon", None)
 
     async def answer(
         self,

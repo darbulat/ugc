@@ -34,6 +34,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "btn_work_format_ads": "📢 Размещать рекламу у себя в аккаунте",
         "btn_work_format_ugc_only": "❌ Только UGC (без размещения)",
         "btn_phone_request": "📱 Поделиться номером телефона",
+        "btn_location_request": "📍 Поделиться геопозицией",
         "btn_city_picker": "Выбрать город",
         "btn_edit_profile_blogger": "Редактировать профиль блогера",
         "btn_edit_profile_advertiser": "Редактировать профиль рекламодателя",
@@ -603,6 +604,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Укажите реальную дату рождения (возраст до {age} лет)."
         ),
         "err_city_required": "Укажите город. Введите снова:",
+        "err_city_from_location": "Не удалось определить город по геопозиции. Введите город вручную или попробуйте ещё раз.",
         "err_company_activity_max": "Максимум {max} символов.",
         "err_nickname_no_url": "Введите имя, а не ссылку на Instagram.",
         "err_topics_empty": "Введите хотя бы одну тематику:",
@@ -836,6 +838,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "btn_work_format_ads": "📢 Place ads in my account",
         "btn_work_format_ugc_only": "❌ UGC only (no placement)",
         "btn_phone_request": "📱 Share phone number",
+        "btn_location_request": "📍 Share location",
         "btn_city_picker": "Choose city",
         "btn_edit_profile_blogger": "Edit blogger profile",
         "btn_edit_profile_advertiser": "Edit advertiser profile",
@@ -1352,6 +1355,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Enter a real date of birth (age up to {age} years)."
         ),
         "err_city_required": "Specify city. Enter again:",
+        "err_city_from_location": "Could not determine city from location. Enter city manually or try again.",
         "err_company_activity_max": "Max {max} characters.",
         "err_nickname_no_url": "Enter name, not an Instagram link.",
         "err_topics_empty": "Enter at least one topic:",

@@ -1,6 +1,11 @@
 """Tests for Telegram event adapter."""
 
-from tests.helpers.fakes import FakeContact, FakeMessage, FakeUser
+from tests.helpers.fakes import (
+    FakeContact,
+    FakeLocation,
+    FakeMessage,
+    FakeUser,
+)
 from ugc_bot.application.messenger.dto import IncomingMessage
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
@@ -35,3 +40,20 @@ def test_from_message_without_contact_contact_phone_none() -> None:
 
     assert result.contact_phone is None
     assert result.text == "Hello"
+
+
+def test_from_message_with_location_sets_location_lat_lon() -> None:
+    """Message with location sets IncomingMessage.location_lat/location_lon."""
+
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+
+    result = adapter.from_message(message)
+
+    assert isinstance(result, IncomingMessage)
+    assert result.location_lat == 55.75
+    assert result.location_lon == 37.62

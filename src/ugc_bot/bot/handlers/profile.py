@@ -32,6 +32,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.filters import TextEqualsKey
@@ -68,6 +69,7 @@ from ugc_bot.bot.handlers.keyboards import (
     edit_profile_type_inline_keyboard,
     edit_work_format_inline_keyboard,
     flow_inline_keyboard,
+    flow_keyboard_city_request,
     flow_keyboard_phone_request,
     flow_keyboard_remove,
 )
@@ -1628,6 +1630,7 @@ async def handle_profile_edit_field_callback(
         "btn_work_format_ads",
         "btn_work_format_ugc_only",
         "btn_phone_request",
+        "btn_location_request",
     ]
     edit_texts = await bot_texts_service.get_many(edit_keys, locale)
     if field_key == "audience_gender":
@@ -1656,7 +1659,9 @@ async def handle_profile_edit_field_callback(
             reply_markup=edit_work_format_inline_keyboard(edit_texts),
         )
     elif field_key == "city" and profile_type == "blogger":
-        await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
+        await message_ctx.answer(
+            prompt, reply_markup=flow_keyboard_city_request(edit_texts)
+        )
     elif field_key == "phone" and profile_type == "advertiser":
         await message_ctx.answer(
             prompt,
@@ -2107,7 +2112,9 @@ async def edit_profile_choose_field(
             reply_markup=edit_work_format_inline_keyboard(edit_texts),
         )
     elif field_key == "city" and profile_type == "blogger":
-        await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
+        await message_ctx.answer(
+            prompt, reply_markup=flow_keyboard_city_request(edit_texts)
+        )
     elif field_key == "phone" and profile_type == "advertiser":
         await message_ctx.answer(
             prompt,
@@ -2256,6 +2263,61 @@ async def edit_profile_enter_value(
         )
         await message_ctx.answer(msg_not_found)
         return
+
+    locale = config.market.default_locale
+    if (
+        field_key == "city"
+        and getattr(message_ctx, "location_lat", None) is not None
+        and getattr(message_ctx, "location_lon", None) is not None
+    ):
+        lat = message_ctx.location_lat
+        lon = message_ctx.location_lon
+        if (
+            lat is not None
+            and lon is not None
+            and -90 <= lat <= 90
+            and -180 <= lon <= 180
+        ):
+            result = (
+                await blogger_registration_service.resolve_city_from_location(
+                    lat, lon
+                )
+            )
+            if result is not None:
+                city_name, region_name, _country = result
+                normalized = normalize_geo_token(city_name)
+                if normalized:
+                    wkt = wkt_multipoint_from_lat_lon(lat, lon)
+                    reg_svc = blogger_registration_service
+                    updated = await reg_svc.update_blogger_profile(
+                        user_id,
+                        city=normalized,
+                        region=region_name,
+                        location_geometry=wkt,
+                    )
+                    if updated is not None:
+                        await state.clear()
+                        msg_updated = await bot_texts_service.get(
+                            "msg_profile_updated", locale
+                        )
+                        await message_ctx.answer(
+                            msg_updated,
+                            reply_markup=flow_keyboard_remove(),
+                        )
+                        await show_profile(
+                            message=message_ctx,
+                            profile_service=profile_service,
+                            state=state,
+                            config=config,
+                            bot_texts_service=bot_texts_service,
+                            messenger_client=messenger_client,
+                            event_adapter=event_adapter,
+                        )
+                        return
+        err_loc = await bot_texts_service.get("err_city_from_location", locale)
+        await message_ctx.answer(err_loc, reply_markup=flow_keyboard_remove())
+        return
+
     await _update_blogger_field(
         message_ctx,
         state,

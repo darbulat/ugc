@@ -846,6 +846,100 @@ async def test_search_osm_id_returns_none_when_disabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_osm_id_http_error_returns_none() -> None:
+    """_search_osm_id returns None on request exception."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(side_effect=Exception("Network error"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder._search_osm_id("Moscow") is None
+
+
+@pytest.mark.asyncio
+async def test_search_osm_id_osm_id_none_returns_none() -> None:
+    """_search_osm_id returns None when osm_id is missing."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [
+            {"lat": "55.75", "lon": "37.6", "osm_type": "relation"}
+        ]
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder._search_osm_id("Moscow") is None
+
+
+@pytest.mark.asyncio
+async def test_search_osm_id_invalid_osm_id_returns_none() -> None:
+    """_search_osm_id returns None when osm_id is not int-convertible."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [
+            {
+                "lat": "55.75",
+                "lon": "37.6",
+                "osm_type": "relation",
+                "osm_id": "not_an_int",
+            }
+        ]
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder._search_osm_id("Moscow") is None
+
+
+@pytest.mark.asyncio
+async def test_search_osm_id_first_element_not_dict_returns_none() -> None:
+    """_search_osm_id returns None when first result is not a dict."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = ["not_a_dict"]
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder._search_osm_id("Moscow") is None
+
+
+@pytest.mark.asyncio
 async def test_get_polygon_wkt_success() -> None:
     """get_polygon_wkt returns WKT when search and lookup succeed."""
     geocoder = NominatimGeocoder(
@@ -1193,3 +1287,230 @@ async def test_get_multipolygon_wkt_for_queries_country_none_uses_russia() -> (
         )
         assert result is not None
         assert "37.6 55.75" in result
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_disabled_returns_none() -> None:
+    """When disabled, reverse_geocode returns None."""
+    geocoder = NominatimGeocoder(enabled=False)
+    assert await geocoder.reverse_geocode(55.75, 37.6) is None
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_out_of_range_returns_none() -> None:
+    """Out-of-range lat/lon returns None."""
+    geocoder = NominatimGeocoder(enabled=True)
+    assert await geocoder.reverse_geocode(100, 0) is None
+    assert await geocoder.reverse_geocode(0, 200) is None
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_success() -> None:
+    """reverse_geocode returns (city, region, country) from Nominatim."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "lat": "55.7558",
+            "lon": "37.6173",
+            "address": {
+                "city": "Moscow",
+                "state": "Moscow",
+                "country": "Russia",
+            },
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        result = await geocoder.reverse_geocode(55.7558, 37.6173)
+        assert result == ("Moscow", "Moscow", "Russia")
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_prefers_town_over_county() -> None:
+    """reverse_geocode prefers city, town, village, then county."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "address": {
+                "town": "Small Town",
+                "state": "State",
+                "country": "RU",
+            },
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        result = await geocoder.reverse_geocode(55.0, 37.0)
+        assert result == ("Small Town", "State", "RU")
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_no_city_in_address_returns_none() -> (
+    None
+):
+    """When address has no city/town/village, return None."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "address": {"road": "Highway", "country": "Russia"},
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder.reverse_geocode(55.0, 37.0) is None
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_http_error_returns_none() -> None:
+    """reverse_geocode returns None on HTTP/connection error."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(side_effect=Exception("Network error"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder.reverse_geocode(55.75, 37.62) is None
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_city_from_county_only() -> None:
+    """reverse_geocode uses county when city/town/village are missing."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "address": {
+                "county": "Some County",
+                "state": "State Name",
+                "country": "Russia",
+            }
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        result = await geocoder.reverse_geocode(55.75, 37.62)
+        assert result is not None
+        assert result[0] == "Some County"
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_city_as_dict_extracts_name() -> None:
+    """reverse_geocode gets city from dict with 'name' when API returns it."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "address": {
+                "city": {"name": "Moscow", "place_id": 123},
+                "country": "Russia",
+            }
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        result = await geocoder.reverse_geocode(55.75, 37.62)
+        assert result is not None
+        assert result[0] == "Moscow"
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_response_not_dict_returns_none() -> (
+    None
+):
+    """reverse_geocode returns None when API response is not a dict."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = []
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder.reverse_geocode(55.75, 37.62) is None
+
+
+@pytest.mark.asyncio
+async def test_nominatim_reverse_geocode_address_not_dict_returns_none() -> (
+    None
+):
+    """reverse_geocode returns None when address is not a dict."""
+    geocoder = NominatimGeocoder(
+        base_url="https://nominatim.test",
+        enabled=True,
+    )
+    with patch(
+        "ugc_bot.application.services.geocoder.httpx.AsyncClient"
+    ) as client_cls:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"address": "not_a_dict"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        client_cls.return_value = mock_client
+
+        assert await geocoder.reverse_geocode(55.75, 37.62) is None

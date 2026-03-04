@@ -23,6 +23,7 @@ class Button:
     callback_data: str | None = None
     url: str | None = None
     request_contact: bool = False
+    request_location: bool = False
     web_app_url: str | None = None
 
 
@@ -80,6 +81,8 @@ class IncomingMessage:
     photo_file_ids: list[str] = field(default_factory=list)
     successful_payment: PaymentSuccess | None = None
     contact_phone: str | None = None
+    location_lat: float | None = None
+    location_lon: float | None = None
     raw: dict[str, Any] | None = None
 
 

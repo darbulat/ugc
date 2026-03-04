@@ -99,6 +99,14 @@ class BloggerRegistrationService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def resolve_city_from_location(
+        self, lat: float, lon: float
+    ) -> Optional[tuple[str, Optional[str], Optional[str]]]:
+        """Reverse geocode (lat, lon) to (city, region, country)."""
+        if self.geocoder is None:
+            return None
+        return await self.geocoder.reverse_geocode(lat, lon)
+
     async def register_blogger(
         self,
         user_id: UUID,
@@ -239,10 +247,14 @@ class BloggerRegistrationService:
         telegram_username: Optional[str] = None,
         birth_date: Optional[date] = None,
         region: Optional[str] = None,
+        location_geometry: Optional[str] = None,
+        country: Optional[str] = None,
     ) -> BloggerProfile:
         """Save blogger profile and update user before consent confirmation.
 
         Does not set agreement_confirmed_at and does not run referral/metrics.
+        When location_geometry is provided (e.g. from shared geolocation), it is
+        used as-is and country is taken from the country argument.
         """
 
         async def _run(session: object | None) -> BloggerProfile:
@@ -272,15 +284,23 @@ class BloggerRegistrationService:
                     "Пожалуйста, используйте другой аккаунт."
                 )
 
-            (
-                location_geometry,
-                region_nom,
-                country_nom,
-            ) = await _resolve_location_and_nominatim_details(
-                self.geocoder, city_clean, region=region, country=None
-            )
-            profile_region = region_nom if region_nom is not None else region
-            profile_country = country_nom if country_nom is not None else ""
+            geom_wkt: Optional[str]
+            if location_geometry is not None:
+                geom_wkt = location_geometry
+                profile_region = region
+                profile_country = (country or "").strip()
+            else:
+                (
+                    geom_wkt,
+                    region_nom,
+                    country_nom,
+                ) = await _resolve_location_and_nominatim_details(
+                    self.geocoder, city_clean, region=region, country=None
+                )
+                profile_region = (
+                    region_nom if region_nom is not None else region
+                )
+                profile_country = country_nom if country_nom is not None else ""
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -298,7 +318,7 @@ class BloggerRegistrationService:
                 blogger_gender=blogger_gender,
                 birth_date=birth_date,
                 region=profile_region,
-                location_geometry=location_geometry,
+                location_geometry=geom_wkt,
                 country=profile_country,
             )
             await self.blogger_repo.save(profile, session=session)
