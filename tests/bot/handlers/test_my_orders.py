@@ -29,11 +29,15 @@ from ugc_bot.bot.handlers.my_orders import (
     _format_order_type,
     _format_price,
     _format_price_and_barter,
+    _render_blogger_orders_page,
     paginate_orders,
     show_my_orders,
     show_my_orders_from_profile_callback,
 )
-from ugc_bot.bot.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
+from ugc_bot.bot.handlers.profile import (
+    _ADVERTISER_AGREEMENTS_STATE,
+    _BLOGGER_AGREEMENTS_STATE,
+)
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order
@@ -2197,3 +2201,338 @@ async def test_my_orders_blogger_shows_barter(
     assert "Бартер: Бартерное предложение" in answer_text
     assert "Активен" in answer_text
     assert "Формат:" in answer_text
+
+
+@pytest.mark.asyncio
+async def test_show_my_orders_from_profile_callback_user_none_returns(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
+) -> None:
+    """Callback when user not in DB: answer and return (311)."""
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MENU_MY_ORDERS,
+        user=FakeUser(99999, "unknown"),
+        message=FakeMessage(user=FakeUser(99999)),
+    )
+    await show_my_orders_from_profile_callback(
+        callback,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert messenger_client.answered_callbacks
+    assert any(
+        a.get("text")
+        and ("не найден" in a["text"] or "not found" in a["text"].lower())
+        for a in messenger_client.answered_callbacks
+    )
+    assert len(messenger_client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_show_my_orders_from_profile_callback_no_profiles_sends_fill(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
+) -> None:
+    """No advertiser/blogger profile -> fill hint (315-322)."""
+    await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000008f1"),
+        external_id=str(0x8F1),
+        username="noprofile",
+        agreement_confirmed_at=datetime.now(timezone.utc),
+    )
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MENU_MY_ORDERS,
+        user=FakeUser(0x8F1, "noprofile"),
+        message=FakeMessage(user=FakeUser(0x8F1)),
+    )
+    await show_my_orders_from_profile_callback(
+        callback,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert messenger_client.sent_text
+    assert any(
+        "профиль" in s["text"].lower() or "profile" in s["text"].lower()
+        for s in messenger_client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_show_my_orders_from_profile_callback_blogger_agreement_state(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
+) -> None:
+    """Blogger, agreement not confirmed -> BLOGGER_AGREEMENTS_STATE (350)."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000008f2"),
+        external_id=str(0x8F2),
+        username="blogger_agree",
+        agreement_confirmed_at=None,
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+    state = FakeFSMContext()
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MENU_MY_ORDERS,
+        user=FakeUser(0x8F2, "blogger_agree"),
+        message=FakeMessage(user=FakeUser(0x8F2)),
+    )
+    await show_my_orders_from_profile_callback(
+        callback,
+        state,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert state.state == _BLOGGER_AGREEMENTS_STATE
+
+
+@pytest.mark.asyncio
+async def test_show_my_orders_from_profile_callback_blogger_no_orders_msg(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
+) -> None:
+    """Blogger with no order responses gets no_blogger_orders msg."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000008f3"),
+        external_id=str(0x8F3),
+        username="blogger_no_ord",
+        agreement_confirmed_at=datetime.now(timezone.utc),
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+    callback = FakeCallback(
+        data=CALLBACK_PROFILE_MENU_MY_ORDERS,
+        user=FakeUser(0x8F3, "blogger_no_ord"),
+        message=FakeMessage(user=FakeUser(0x8F3)),
+    )
+    await show_my_orders_from_profile_callback(
+        callback,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert messenger_client.sent_text
+    assert any(
+        "пока нет" in s["text"] or "отклик" in s["text"].lower()
+        for s in messenger_client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_paginate_orders_blogger_invalid_page_defaults_to_one(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
+) -> None:
+    """paginate_orders blogger with non-numeric page uses page=1 (475-476)."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000008f4"),
+        external_id=str(0x8F4),
+        username="blogger_pg",
+    )
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+    callback = FakeCallback(
+        data=f"{_MY_ORDERS_BLOGGER_CALLBACK_PREFIX}not_a_number",
+        user=FakeUser(0x8F4),
+        message=FakeMessage(user=FakeUser(0x8F4)),
+    )
+    await paginate_orders(
+        callback,
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        currency_symbol="₽",
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    assert messenger_client.edited_text or messenger_client.sent_text
+
+
+@pytest.mark.asyncio
+async def test_render_blogger_orders_page_page1_has_forward_button(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Page=1 with 2+ pages -> forward button (692)."""
+    from ugc_bot.domain.entities import OfferDispatch
+
+    adv_user = await create_test_user(
+        user_repo, user_id=uuid4(), external_id="adv_fwd", username="adv"
+    )
+    await create_test_advertiser_profile(advertiser_repo, adv_user.user_id)
+    blogger_user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000008f5"),
+        external_id="8f5",
+        username="blogger_fwd",
+    )
+    await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
+    order_responses: list[tuple[Order, OfferDispatch]] = []
+    for i in range(6):
+        order = await create_test_order(
+            order_repo,
+            adv_user.user_id,
+            order_id=uuid4(),
+            price=100.0 * (i + 1),
+        )
+        order_responses.append(
+            (
+                order,
+                OfferDispatch(
+                    order_id=order.order_id,
+                    blogger_id=blogger_user.user_id,
+                    created_at=order.created_at,
+                ),
+            )
+        )
+    texts = await bot_texts_service.get_many(
+        list(DEFAULT_TEXTS.get("ru", {}).keys())
+        or ["msg_orders_blogger_title"],
+        "ru",
+    )
+    text, keyboard = _render_blogger_orders_page(
+        order_responses,
+        page=1,
+        currency_symbol="₽",
+        texts=texts,
+    )
+    assert "страница 1/" in text
+    assert keyboard.rows
+    last_row = keyboard.rows[-1]
+    assert any(getattr(b, "callback_data", "").endswith("2") for b in last_row)
