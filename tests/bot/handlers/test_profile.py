@@ -17,6 +17,7 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeMessengerClient,
     FakeUser,
+    FakeWebAppData,
 )
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -1809,6 +1810,60 @@ async def test_edit_profile_enter_value_city_with_location_resolve_fails(
     assert not reg_service.update_calls
     texts = [a[0] if isinstance(a, tuple) else a for a in message.answers]
     assert any("геопозици" in (t or "") or "город" in (t or "") for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_with_web_app_data_updates_profile(
+    user_repo, config, bot_texts_service
+) -> None:
+    """City from Mini App web_app_data updates profile and geometry."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000821"),
+        external_id="17",
+        username="user",
+    )
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(17),
+        web_app_data=FakeWebAppData(data='{"lat":55.75,"lon":37.62}'),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_profile_type": "blogger",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "17",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(
+        update_returns=updated,
+        resolve_city_returns=("Moscow", "Moscow", "Russia"),
+    )
+    role_service = FakeUserRoleService()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert state.cleared is True
+    assert reg_service.update_calls
+    call_kw = reg_service.update_calls[0][1]
+    assert call_kw.get("city") == "moscow"
+    assert call_kw.get("location_geometry") == "MULTIPOINT((37.62 55.75))"
 
 
 @pytest.mark.asyncio

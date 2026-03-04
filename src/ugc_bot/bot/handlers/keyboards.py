@@ -92,21 +92,34 @@ def flow_keyboard_phone_request(texts: dict[str, str]) -> Keyboard:
     )
 
 
-def flow_keyboard_city_request(texts: dict[str, str]) -> Keyboard:
-    """Reply KB: Share location for city. Key: btn_location_request."""
+def flow_keyboard_city_request(
+    texts: dict[str, str],
+    miniapp_location_url: str | None = None,
+) -> Keyboard:
+    """Reply KB: Share location and/or pick on map. Keys: btn_*."""
 
-    return Keyboard(
-        kind=KeyboardKind.REPLY,
-        rows=[
+    rows: list[list[Button]] = [
+        [
+            Button(
+                text=texts.get(
+                    "btn_location_request", "📍 Поделиться геопозицией"
+                ),
+                request_location=True,
+            )
+        ]
+    ]
+    if miniapp_location_url and miniapp_location_url.strip():
+        rows.append(
             [
                 Button(
-                    text=texts.get(
-                        "btn_location_request", "📍 Поделиться геопозицией"
-                    ),
-                    request_location=True,
+                    text=texts.get("btn_location_map", "🗺 Выбрать на карте"),
+                    web_app_url=miniapp_location_url.strip(),
                 )
             ]
-        ],
+        )
+    return Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=rows,
         one_time=True,
         resize=True,
     )

@@ -16,6 +16,7 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeMessengerClient,
     FakeUser,
+    FakeWebAppData,
 )
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.blogger_registration_service import (
@@ -300,6 +301,59 @@ async def test_instagram_success_in_handler(
     )
 
     assert state._data["instagram_url"].endswith("test_user")
+
+
+@pytest.mark.asyncio
+async def test_handle_instagram_with_webhook_base_url_sends_map_button(
+    user_repo, blogger_repo, bot_texts_service
+) -> None:
+    """City step keyboard has map Mini App button when webhook_base_url set."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///",
+            "ADMIN_USERNAME": "a",
+            "ADMIN_PASSWORD": "p",
+            "ADMIN_SECRET": "s",
+            "KAFKA_ENABLED": "false",
+            "FEEDBACK_ENABLED": "false",
+            "ROLE_REMINDER_ENABLED": "false",
+            "REDIS_URL": "redis://",
+            "USE_REDIS_STORAGE": "false",
+            "DOCS_OFFER_URL": "",
+            "DOCS_PRIVACY_URL": "",
+            "DOCS_CONSENT_URL": "",
+            "WEBHOOK_BASE_URL": "https://bot.example.com",
+            "WEBHOOK_SECRET": "secret",
+        }
+    )
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="https://instagram.com/test_user",
+        user=FakeUser(1, "user", "User"),
+    )
+    state = FakeFSMContext()
+
+    await handle_instagram(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert client.sent_text
+    last = client.sent_text[-1]
+    kb = last.get("keyboard")
+    assert kb is not None
+    assert len(kb.rows) == 2
+    assert kb.rows[1][0].web_app_url is not None
 
 
 @pytest.mark.asyncio
@@ -1094,6 +1148,39 @@ async def test_handle_city_with_location_resolve_fails_sends_error(
         "геопозици" in s["text"].lower() or "город" in s["text"].lower()
         for s in client.sent_text
     )
+
+
+@pytest.mark.asyncio
+async def test_handle_city_with_web_app_data_uses_lat_lon(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city with web_app_data (Mini App) parses JSON and uses lat/lon."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_from_location = AsyncMock(
+        return_value=("Kazan", "Tatarstan", "Russia")
+    )
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData(data='{"lat":55.79,"lon":49.12}'),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    reg_service.resolve_city_from_location.assert_called_once_with(55.79, 49.12)
+    assert state._data.get("city") == "kazan"
 
 
 @pytest.mark.asyncio

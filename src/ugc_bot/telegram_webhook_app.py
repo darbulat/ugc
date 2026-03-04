@@ -8,12 +8,14 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from ugc_bot.app import build_dispatcher, create_storage
@@ -128,6 +130,12 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telegram Webhook", lifespan=_lifespan)
+
+_miniapp_dir = Path(__file__).resolve().parent / "miniapp"
+if _miniapp_dir.is_dir():
+    app.mount(
+        "/miniapp", StaticFiles(directory=str(_miniapp_dir)), name="miniapp"
+    )
 
 
 @app.middleware("http")

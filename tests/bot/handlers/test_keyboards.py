@@ -9,6 +9,7 @@ from ugc_bot.bot.handlers.keyboards import (
     blogger_profile_view_inline_keyboard,
     blogger_verification_sent_inline_keyboard,
     creator_filled_profile_inline_keyboard,
+    flow_keyboard_city_request,
     main_menu_inline_keyboard,
 )
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
@@ -126,3 +127,32 @@ def test_blogger_verification_sent_inline_keyboard() -> None:
     assert keyboard.kind == KeyboardKind.INLINE
     assert len(keyboard.rows) == 1
     assert keyboard.rows[0][0].text == _TEXTS_RU["btn_my_profile"]
+
+
+def test_flow_keyboard_city_request_without_miniapp_url() -> None:
+    """City request keyboard has one row (location only) when no URL."""
+    texts = {
+        "btn_location_request": "Share location",
+        "btn_location_map": "Map",
+    }
+    keyboard = flow_keyboard_city_request(texts)
+
+    assert len(keyboard.rows) == 1
+    assert keyboard.rows[0][0].request_location is True
+    assert keyboard.rows[0][0].web_app_url is None
+
+
+def test_flow_keyboard_city_request_with_miniapp_url() -> None:
+    """City request keyboard has two rows when miniapp URL provided."""
+    texts = {"btn_location_request": "Share", "btn_location_map": "Pick on map"}
+    keyboard = flow_keyboard_city_request(
+        texts,
+        miniapp_location_url="https://bot.example/miniapp/location_picker.html",
+    )
+
+    assert len(keyboard.rows) == 2
+    assert keyboard.rows[0][0].request_location is True
+    assert keyboard.rows[1][0].web_app_url == (
+        "https://bot.example/miniapp/location_picker.html"
+    )
+    assert keyboard.rows[1][0].text == "Pick on map"

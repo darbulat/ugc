@@ -5,6 +5,7 @@ from tests.helpers.fakes import (
     FakeLocation,
     FakeMessage,
     FakeUser,
+    FakeWebAppData,
 )
 from ugc_bot.application.messenger.dto import IncomingMessage
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
@@ -57,3 +58,40 @@ def test_from_message_with_location_sets_location_lat_lon() -> None:
     assert isinstance(result, IncomingMessage)
     assert result.location_lat == 55.75
     assert result.location_lon == 37.62
+
+
+def test_from_message_with_web_app_data_sets_web_app_data() -> None:
+    """Message with web_app_data sets IncomingMessage.web_app_data."""
+
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData(data='{"lat":55.75,"lon":37.62}'),
+    )
+
+    result = adapter.from_message(message)
+
+    assert isinstance(result, IncomingMessage)
+    assert result.web_app_data == '{"lat":55.75,"lon":37.62}'
+
+
+def test_from_message_with_location_missing_lat_clears_both() -> None:
+    """When location has missing lat or lon, both are set to None."""
+
+    from unittest.mock import MagicMock
+
+    adapter = TelegramEventAdapter()
+    loc = MagicMock()
+    loc.latitude = None
+    loc.longitude = 37.62
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        location=loc,
+    )
+
+    result = adapter.from_message(message)
+
+    assert result.location_lat is None
+    assert result.location_lon is None

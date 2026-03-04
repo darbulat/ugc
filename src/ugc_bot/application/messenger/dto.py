@@ -83,6 +83,7 @@ class IncomingMessage:
     contact_phone: str | None = None
     location_lat: float | None = None
     location_lon: float | None = None
+    web_app_data: str | None = None
     raw: dict[str, Any] | None = None
 
 

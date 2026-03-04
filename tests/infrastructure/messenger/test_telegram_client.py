@@ -234,6 +234,33 @@ def test_build_keyboard_markup_reply_request_contact() -> None:
     assert btn.request_contact is True
 
 
+def test_build_keyboard_markup_reply_web_app_button() -> None:
+    """Reply button with web_app_url produces KeyboardButton with web_app."""
+
+    keyboard = Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=[
+            [
+                Button(
+                    text="Pick on map",
+                    web_app_url="https://bot.example/miniapp/location_picker.html",
+                )
+            ]
+        ],
+        resize=True,
+        one_time=True,
+    )
+    result = build_keyboard_markup(keyboard)
+
+    assert result is not None
+    assert len(result.keyboard) == 1
+    assert len(result.keyboard[0]) == 1
+    btn = result.keyboard[0][0]
+    assert btn.text == "Pick on map"
+    assert btn.web_app is not None
+    assert btn.web_app.url == "https://bot.example/miniapp/location_picker.html"
+
+
 def test_build_keyboard_markup_remove() -> None:
     """build_keyboard_markup returns ReplyKeyboardRemove for REMOVE kind."""
 

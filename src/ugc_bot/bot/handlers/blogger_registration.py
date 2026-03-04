@@ -1,5 +1,6 @@
 """Blogger registration flow handlers."""
 
+import json
 import logging
 from datetime import date
 
@@ -486,18 +487,24 @@ async def handle_instagram(
 
     await state_store.update_data(instagram_url=instagram_url)
     city_btn_texts = await bot_texts_service.get_many(
-        ["btn_location_request"], locale
+        ["btn_location_request", "btn_location_map"], locale
     )
+    miniapp_url = None
+    base = getattr(config.webhook, "webhook_base_url", None) or ""
+    if base:
+        miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=step_city,
-        keyboard=flow_keyboard_city_request(city_btn_texts),
+        keyboard=flow_keyboard_city_request(
+            city_btn_texts, miniapp_location_url=miniapp_url
+        ),
     )
     await state_store.set_state(BloggerRegistrationStates.city.state)
 
 
 @router.message(BloggerRegistrationStates.city)
-async def handle_city(
+async def handle_city(  # noqa: C901
     message: Message,
     state: FSMContext,
     config: AppConfig,
@@ -525,6 +532,18 @@ async def handle_city(
 
     location_lat = getattr(incoming, "location_lat", None)
     location_lon = getattr(incoming, "location_lon", None)
+    if location_lat is None and location_lon is None:
+        wad = getattr(incoming, "web_app_data", None)
+        if wad:
+            try:
+                data = json.loads(wad)
+                lat = data.get("lat")
+                lon = data.get("lon")
+                if lat is not None and lon is not None:
+                    location_lat = float(lat)
+                    location_lon = float(lon)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
     if (
         location_lat is not None
         and location_lon is not None

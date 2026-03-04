@@ -49,6 +49,10 @@ class TelegramEventAdapter:
                 location_lon = float(location_lon)
             else:
                 location_lat = location_lon = None
+        web_app_data = None
+        wad = getattr(message, "web_app_data", None)
+        if wad is not None and getattr(wad, "data", None) is not None:
+            web_app_data = str(wad.data)
         return IncomingMessage(
             chat_id=chat_id,
             user=IncomingUser(
@@ -63,6 +67,7 @@ class TelegramEventAdapter:
             contact_phone=contact_phone,
             location_lat=location_lat,
             location_lon=location_lon,
+            web_app_data=web_app_data,
             raw=_safe_raw(message),
         )
 
