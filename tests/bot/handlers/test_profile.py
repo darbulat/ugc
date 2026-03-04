@@ -25,6 +25,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
 )
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
+    UpdateBloggerProfileResult,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
@@ -165,17 +166,22 @@ class FakeBloggerRegistrationService:
         update_returns: BloggerProfile | None = None,
         get_by_instagram: BloggerProfile | None = None,
         resolve_city_returns: tuple[str, str | None, str | None] | None = None,
+        location_geometry_resolved: bool = True,
     ) -> None:
         self.update_returns = update_returns
         self.get_by_instagram = get_by_instagram
         self.resolve_city_returns = resolve_city_returns
+        self.location_geometry_resolved = location_geometry_resolved
         self.update_calls: list[tuple[UUID, dict]] = []
 
     async def update_blogger_profile(
         self, user_id: UUID, **kwargs: object
-    ) -> BloggerProfile | None:
+    ) -> UpdateBloggerProfileResult:
         self.update_calls.append((user_id, kwargs))
-        return self.update_returns
+        return UpdateBloggerProfileResult(
+            profile=self.update_returns,
+            location_geometry_resolved=self.location_geometry_resolved,
+        )
 
     async def resolve_city_from_location(
         self, lat: float, lon: float
@@ -3089,6 +3095,52 @@ async def test_edit_profile_enter_value_update_returns_none(
     first = message.answers[0]
     text = first[0] if isinstance(first, tuple) else first
     assert "Не удалось обновить" in text
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_not_place_shows_map_message(
+    user_repo, config, bot_texts_service
+) -> None:
+    """City not resolved as place: show message and map/location keyboard."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000827"),
+        external_id="23",
+        username="user",
+    )
+    message = FakeMessage(text="Казань", user=FakeUser(23))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "23",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService(
+        update_returns=None,
+        location_geometry_resolved=False,
+    )
+    role_service = FakeUserRoleService()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=role_service,
+        max_order_price=10_000.0,
+    )
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "местоположение на карте" in text or "геопозицией" in text
+    assert len(first) >= 2, "expected (text, reply_markup)"
+    reply_markup = first[1] if len(first) >= 2 else None
+    assert reply_markup is not None
 
 
 @pytest.mark.asyncio

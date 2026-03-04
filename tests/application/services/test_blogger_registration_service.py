@@ -94,8 +94,8 @@ async def test_register_blogger_with_geocoder_sets_location_geometry() -> None:
             return (
                 55.7558,
                 37.6173,
-                "",
-                "",
+                "place",
+                "city",
                 "Москва",
                 "Russia",
             )
@@ -693,10 +693,11 @@ async def test_update_blogger_profile_instagram_url_sets_confirmed_false() -> (
     service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
-    updated = await service.update_blogger_profile(
+    result = await service.update_blogger_profile(
         user_id, instagram_url="https://instagram.com/new_user"
     )
-    assert updated is not None
+    assert result.profile is not None
+    updated = result.profile
     assert updated.instagram_url == "https://instagram.com/new_user"
     assert updated.confirmed is False
 
@@ -731,10 +732,11 @@ async def test_update_blogger_profile_same_instagram_url_keeps_confirmed() -> (
     service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
     )
-    updated = await service.update_blogger_profile(
+    result = await service.update_blogger_profile(
         user_id, instagram_url="https://instagram.com/same_user"
     )
-    assert updated is not None
+    assert result.profile is not None
+    updated = result.profile
     assert updated.instagram_url == "https://instagram.com/same_user"
     assert updated.confirmed is True
 
@@ -769,14 +771,23 @@ async def test_update_blogger_profile_preserves_instagram_stats() -> None:
             instagram_stats_fetched_at=now,
         )
     )
+
+    class FakeGeocoder:
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (59.93, 30.31, "place", "city", "SPB", "Russia")
+
     service = BloggerRegistrationService(
-        user_repo=user_repo, blogger_repo=blogger_repo
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        geocoder=FakeGeocoder(),
     )
-    updated = await service.update_blogger_profile(user_id, city="SPB")
-    assert updated is not None
+    result = await service.update_blogger_profile(user_id, city="SPB")
+    assert result.profile is not None
+    updated = result.profile
     assert updated.city == "SPB"
     assert updated.instagram_user_id == "ig_123"
-    assert updated.location_geometry is None
     assert updated.instagram_followers_count == 5000
     assert updated.instagram_media_count == 100
     assert updated.instagram_username == "stats_user"
@@ -893,10 +904,20 @@ async def test_update_blogger_profile_preserves_all_optional_fields() -> None:
     now = datetime.now(timezone.utc)
     profile = _blogger_profile_with_all_optional_fields(user_id, now)
     await blogger_repo.save(profile)
+
+    class FakeGeocoder:
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (55.75, 37.6, "place", "city", "Москва", "russia")
+
     service = BloggerRegistrationService(
-        user_repo=user_repo, blogger_repo=blogger_repo
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        geocoder=FakeGeocoder(),
     )
-    await service.update_blogger_profile(user_id, city="Kazan")
+    result = await service.update_blogger_profile(user_id, city="Kazan")
+    assert result.profile is not None, "expected profile update with geocoder"
     saved = await blogger_repo.get_by_user_id(user_id)
     assert saved is not None
     assert saved.city == "Kazan"
@@ -1040,7 +1061,8 @@ async def test_update_blogger_profile_returns_none_when_not_found() -> None:
         city="Moscow",
     )
 
-    assert result is None
+    assert result.profile is None
+    assert result.location_geometry_resolved is True
 
 
 @pytest.mark.asyncio
@@ -1075,21 +1097,66 @@ async def test_update_blogger_profile_with_geocoder_sets_geometry() -> None:
         async def geocode_with_details(self, query, region=None, country=None):
             if not query:
                 return None
-            return (55.0, 37.0, "", "", "Москва", "Russia")
+            return (55.0, 37.0, "place", "city", "Москва", "Russia")
 
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         geocoder=FakeGeocoder(),
     )
-    updated = await service.update_blogger_profile(
+    result = await service.update_blogger_profile(
         user_id, city="Moscow", region="Москва"
     )
-    assert updated is not None
+    assert result.profile is not None
+    updated = result.profile
     assert updated.city == "Moscow"
     assert updated.region == "Москва"
     assert updated.country == "Russia"
     assert updated.location_geometry == "MULTIPOINT((37.0 55.0))"
+
+
+@pytest.mark.asyncio
+async def test_update_blogger_profile_city_not_place_returns_rejected() -> None:
+    """When geocoder returns non-place (e.g. building), profile is not saved."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/geo_user",
+            confirmed=False,
+            city="OldCity",
+            topics={"selected": []},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+
+    class FakeGeocoderNonPlace:
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (55.0, 37.0, "building", "yes", None, None)
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        geocoder=FakeGeocoderNonPlace(),
+    )
+    result = await service.update_blogger_profile(user_id, city="SomeAddress")
+    assert result.profile is None
+    assert result.location_geometry_resolved is False
+    saved = await blogger_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.city == "OldCity"
 
 
 @pytest.mark.asyncio
@@ -1120,10 +1187,11 @@ async def test_update_blogger_profile_location_geometry_direct() -> None:
         user_repo=user_repo, blogger_repo=blogger_repo
     )
     wkt = "MULTIPOINT((37.62 55.75))"
-    updated = await service.update_blogger_profile(
+    result = await service.update_blogger_profile(
         user_id, location_geometry=wkt
     )
-    assert updated is not None
+    assert result.profile is not None
+    updated = result.profile
     assert updated.city == "Moscow"
     assert updated.location_geometry == wkt
 
@@ -1155,13 +1223,22 @@ async def test_update_blogger_profile_with_transaction_manager(
             updated_at=now,
         )
     )
+
+    class FakeGeocoder:
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (59.93, 30.31, "place", "city", "SPB", "Russia")
+
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         transaction_manager=fake_tm,
+        geocoder=FakeGeocoder(),
     )
-    updated = await service.update_blogger_profile(user_id, city="SPB")
-    assert updated is not None
+    result = await service.update_blogger_profile(user_id, city="SPB")
+    assert result.profile is not None
+    updated = result.profile
     assert updated.city == "SPB"
 
 

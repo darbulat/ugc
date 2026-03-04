@@ -357,6 +357,7 @@ PROFILE_EDIT_MSG_KEYS = [
     "msg_profile_updated",
     "msg_unknown_field",
     "msg_profile_update_failed",
+    "err_city_not_place_use_map",
     "err_instagram_format_example",
     "err_instagram_invalid",
     "err_instagram_taken",
@@ -587,9 +588,10 @@ async def _blog_update_instagram(
     if existing is not None and existing.user_id != user_id:
         await message.answer(em.get("err_instagram_taken", ""))
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, instagram_url=text
     )
+    return result.profile
 
 
 async def _blog_update_city(
@@ -610,9 +612,10 @@ async def _blog_update_city(
     normalized = normalize_geo_token(text)
     if not normalized:
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, city=normalized
     )
+    return result.profile
 
 
 async def _blog_update_topics(
@@ -628,9 +631,10 @@ async def _blog_update_topics(
     if err is not None:
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, topics={"selected": topics}
     )
+    return result.profile
 
 
 async def _blog_update_blogger_gender(
@@ -651,9 +655,10 @@ async def _blog_update_blogger_gender(
     else:
         await message.answer(em.get("err_gender_choose", ""))
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, blogger_gender=blogger_gender
     )
+    return result.profile
 
 
 async def _blog_update_birth_date(
@@ -669,9 +674,10 @@ async def _blog_update_birth_date(
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
     assert parsed_date is not None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, birth_date=parsed_date
     )
+    return result.profile
 
 
 async def _blog_update_audience_gender(
@@ -693,9 +699,10 @@ async def _blog_update_audience_gender(
     else:
         await message.answer(em.get("msg_choose_buttons", ""))
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, audience_gender=audience_gender
     )
+    return result.profile
 
 
 def _age_buttons_from_edit_msgs(
@@ -726,9 +733,10 @@ async def _blog_update_audience_age(
         await message.answer(em.get("err_age_choose", ""))
         return None
     min_age, max_age = age_map[text_stripped]
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, audience_age_min=min_age, audience_age_max=max_age
     )
+    return result.profile
 
 
 async def _blog_update_audience_geo(
@@ -752,9 +760,10 @@ async def _blog_update_audience_geo(
             reply_markup=flow_keyboard_remove(),
         )
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, audience_geo=text
     )
+    return result.profile
 
 
 async def _blog_update_price(
@@ -780,9 +789,10 @@ async def _blog_update_price(
     if err is not None:
         await message.answer(err, reply_markup=flow_keyboard_remove())
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, price=price
     )
+    return result.profile
 
 
 async def _blog_update_barter(
@@ -803,9 +813,10 @@ async def _blog_update_barter(
     else:
         await message.answer(em.get("err_barter_choose", ""))
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, barter=barter
     )
+    return result.profile
 
 
 async def _blog_update_work_format(
@@ -833,9 +844,10 @@ async def _blog_update_work_format(
     else:
         await message.answer(em.get("msg_choose_buttons", ""))
         return None
-    return await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id, work_format=wf
     )
+    return result.profile
 
 
 async def _update_blogger_field_city(
@@ -887,13 +899,28 @@ async def _update_blogger_field_city(
             reply_markup=flow_inline_keyboard(region_buttons),
         )
         return True
-    updated = await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id,
         city=normalized,
         region=regions[0] if regions else None,
         country="Russia" if regions else None,
     )
-    if updated is None:
+    if result.profile is None and not result.location_geometry_resolved:
+        err_msg = edit_msgs.get("err_city_not_place_use_map", "")
+        miniapp_url = None
+        base = getattr(config.webhook, "webhook_base_url", None) or ""
+        if base:
+            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+        location_btn_keys = ["btn_location_request", "btn_location_map"]
+        location_texts = await bot_texts_service.get_many(
+            location_btn_keys, locale
+        )
+        reply_markup = flow_keyboard_city_request(
+            location_texts, miniapp_location_url=miniapp_url
+        )
+        await message.answer(err_msg, reply_markup=reply_markup)
+        return True
+    if result.profile is None:
         await state.clear()
         await message.answer(
             edit_msgs.get("msg_profile_update_failed", ""),
@@ -2129,16 +2156,41 @@ async def handle_profile_region_callback(
             message_id=incoming.message_id,
             keyboard=None,
         )
-    await blogger_registration_service.update_blogger_profile(
+    result = await blogger_registration_service.update_blogger_profile(
         user_id,
         city=city,
         region=region,
         country="Russia",
     )
+    locale = config.market.default_locale
+    if result.profile is None and not result.location_geometry_resolved:
+        edit_msgs = await bot_texts_service.get_many(
+            list(PROFILE_EDIT_MSG_KEYS), locale
+        )
+        err_msg = edit_msgs.get("err_city_not_place_use_map", "")
+        miniapp_url = None
+        base = getattr(config.webhook, "webhook_base_url", None) or ""
+        if base:
+            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+        location_btn_keys = ["btn_location_request", "btn_location_map"]
+        location_texts = await bot_texts_service.get_many(
+            location_btn_keys, locale
+        )
+        reply_markup = flow_keyboard_city_request(
+            location_texts, miniapp_location_url=miniapp_url
+        )
+        incoming_msg = IncomingMessage(
+            chat_id=incoming.chat_id,
+            user=incoming.user,
+            text=None,
+        )
+        message_ctx = MessageContext(incoming_msg, messenger_client)
+        await message_ctx.answer(err_msg, reply_markup=reply_markup)
+        return
+    if result.profile is None:
+        return
     await state.clear()
-    msg_updated = await bot_texts_service.get(
-        "msg_profile_updated", config.market.default_locale
-    )
+    msg_updated = await bot_texts_service.get("msg_profile_updated", locale)
     incoming_msg = IncomingMessage(
         chat_id=incoming.chat_id,
         user=incoming.user,
@@ -2206,14 +2258,14 @@ async def _try_handle_blogger_city_by_location(
         await message_ctx.answer(err_loc, reply_markup=flow_keyboard_remove())
         return True
     wkt = wkt_multipoint_from_lat_lon(lat, lon)
-    updated = await blogger_registration_service.update_blogger_profile(
+    update_result = await blogger_registration_service.update_blogger_profile(
         user_id,
         city=normalized,
         region=region_name,
         country=country_name or None,
         location_geometry=wkt,
     )
-    if updated is None:
+    if update_result.profile is None:
         return False
     await state.clear()
     msg_updated = await bot_texts_service.get("msg_profile_updated", locale)

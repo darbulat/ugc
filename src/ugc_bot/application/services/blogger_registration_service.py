@@ -21,6 +21,21 @@ from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import AudienceGender, BloggerGender, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
+# OSM/Nominatim place types accepted as populated places (city, village, etc.)
+NOMINATIM_PLACE_TYPES: frozenset[str] = frozenset(
+    {
+        "city",
+        "town",
+        "village",
+        "hamlet",
+        "locality",
+        "suburb",
+        "neighbourhood",
+        "quarter",
+        "isolated_dwelling",
+    }
+)
+
 
 def _validate_blogger_input(
     instagram_url: str,
@@ -62,7 +77,8 @@ async def _resolve_location_and_nominatim_details(
 ) -> tuple[Optional[str], Optional[str], Optional[str]]:
     """Return (wkt_geometry, region_from_nominatim, country_from_nominatim).
 
-    Uses geocode_with_details; returns (None, None, None) when unavailable.
+    Uses geocode_with_details; returns (None, None, None) when unavailable
+    or when the result is not a populated place (city, town, village, etc.).
     """
     if geocoder is None or not city.strip():
         return (None, None, None)
@@ -71,9 +87,24 @@ async def _resolve_location_and_nominatim_details(
     )
     if details is None:
         return (None, None, None)
-    lat, lon, _, _, region_nom, country_nom = details
+    lat, lon, osm_class, osm_type, region_nom, country_nom = details
+    osm_class = (osm_class or "").strip().lower()
+    osm_type = (osm_type or "").strip().lower()
+    if osm_class != "place" or osm_type not in NOMINATIM_PLACE_TYPES:
+        return (None, None, None)
     wkt = wkt_multipoint_from_lat_lon(lat, lon)
     return (wkt, region_nom, country_nom)
+
+
+@dataclass(slots=True)
+class UpdateBloggerProfileResult:
+    """Result of update_blogger_profile.
+
+    profile is None if not found or not saved.
+    """
+
+    profile: Optional[BloggerProfile]
+    location_geometry_resolved: bool = True
 
 
 @dataclass(slots=True)
@@ -420,15 +451,20 @@ class BloggerRegistrationService:
         blogger_gender: Optional[BloggerGender] = None,
         birth_date: Optional[date] = None,
         country: Optional[str] = None,
-    ) -> BloggerProfile | None:
-        """Update blogger profile. Returns profile or None if not found."""
+    ) -> UpdateBloggerProfileResult:
+        """Update blogger profile. When city is set without location_geometry,
+        if geocoding does not resolve to a populated place, profile is not
+        saved and location_geometry_resolved is False.
+        """
 
-        async def _run(session: object | None) -> BloggerProfile | None:
+        async def _run(
+            session: object | None,
+        ) -> UpdateBloggerProfileResult:
             profile = await self.blogger_repo.get_by_user_id(
                 user_id, session=session
             )
             if profile is None:
-                return None
+                return UpdateBloggerProfileResult(profile=None)
 
             new_instagram_url = (
                 instagram_url.strip()
@@ -459,6 +495,11 @@ class BloggerRegistrationService:
                     region=new_region,
                     country=profile.country or None,
                 )
+                if geom_wkt is None and city is not None:
+                    return UpdateBloggerProfileResult(
+                        profile=None,
+                        location_geometry_resolved=False,
+                    )
                 new_geometry = geom_wkt
                 if region_nom is not None:
                     new_region = region_nom
@@ -504,7 +545,7 @@ class BloggerRegistrationService:
                 else profile.birth_date,
             )
             await self.blogger_repo.save(updated, session=session)
-            return updated
+            return UpdateBloggerProfileResult(profile=updated)
 
         return await with_optional_tx(self.transaction_manager, _run)
 

@@ -377,6 +377,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_advertiser_profile_not_found": "Профиль рекламодателя не найден.",
         "msg_unknown_field": "Неизвестное поле.",
         "msg_profile_update_failed": "Не удалось обновить профиль.",
+        "err_city_not_place_use_map": (
+            "Не удалось обновить профиль. Укажите местоположение на карте "
+            "или поделитесь геопозицией."
+        ),
         "err_instagram_format_example": "Неверный формат ссылки. Пример: instagram.com/name",
         "err_instagram_invalid": "Неверный формат ссылки Instagram.",
         "err_instagram_taken": "Этот Instagram уже зарегистрирован. Используйте другой.",
@@ -1149,6 +1153,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_advertiser_profile_not_found": "Advertiser profile not found.",
         "msg_unknown_field": "Unknown field.",
         "msg_profile_update_failed": "Failed to update profile.",
+        "err_city_not_place_use_map": (
+            "Could not update profile. Please indicate your location on the "
+            "map or share your geolocation."
+        ),
         "err_instagram_format_example": "Invalid link format. Example: instagram.com/name",
         "err_instagram_invalid": "Invalid Instagram link format.",
         "err_instagram_taken": "This Instagram is already registered. Use another one.",
