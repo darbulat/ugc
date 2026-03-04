@@ -24,6 +24,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_CHANGE_ROLE,
     CALLBACK_SUPPORT,
     advertiser_menu_inline_keyboard,
+    build_support_telegram_url,
     main_menu_inline_keyboard,
     role_inline_keyboard,
 )
@@ -194,6 +195,9 @@ async def support_callback(
         ],
         locale,
     )
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
     await _support_button(
         incoming=incoming,
         user_role_service=user_role_service,
@@ -202,6 +206,7 @@ async def support_callback(
         messenger_client=messenger_client,
         support_text=support_text,
         menu_texts=menu_texts,
+        support_url=support_url,
     )
 
 
@@ -248,6 +253,9 @@ async def support_button(
         ],
         locale,
     )
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
     await _support_button(
         incoming=incoming,
         user_role_service=user_role_service,
@@ -256,6 +264,7 @@ async def support_button(
         messenger_client=messenger_client,
         support_text=support_text,
         menu_texts=menu_texts,
+        support_url=support_url,
     )
 
 
@@ -324,6 +333,7 @@ async def _support_button(
     messenger_client: MessengerClient,
     support_text: str,
     menu_texts: dict[str, str],
+    support_url: str | None = None,
 ) -> None:
     """Handle Support: clear FSM, send support text."""
     if not incoming.user.external_id:
@@ -352,7 +362,7 @@ async def _support_button(
     reply_markup = (
         advertiser_menu_inline_keyboard(menu_texts)
         if advertiser is not None
-        else main_menu_inline_keyboard(menu_texts)
+        else main_menu_inline_keyboard(menu_texts, support_url=support_url)
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,

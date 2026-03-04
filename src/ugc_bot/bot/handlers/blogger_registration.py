@@ -48,6 +48,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_CREATOR_CREATE,
     CALLBACK_ROLE_CREATOR,
     blogger_after_registration_inline_keyboard,
+    build_support_telegram_url,
     confirm_agreement_inline_keyboard,
     creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
@@ -127,6 +128,7 @@ async def _choose_creator_role_impl(
     bot_texts_service: BotTextsService,
     messenger_client: MessengerClient,
     locale: str,
+    support_url: str | None = None,
 ) -> None:
     """Shared logic for creator role: show menu or registration prompt."""
     texts = await bot_texts_service.get_many(
@@ -144,6 +146,15 @@ async def _choose_creator_role_impl(
         "msg_choose_action", locale
     )
     intro_text = await bot_texts_service.get("msg_creator_intro", locale)
+    menu_kb = (
+        (
+            lambda t: creator_filled_profile_inline_keyboard(
+                t, support_url=support_url
+            )
+        )
+        if support_url is not None
+        else creator_filled_profile_inline_keyboard
+    )
     await handle_role_choice(
         incoming,
         messenger_client,
@@ -152,7 +163,7 @@ async def _choose_creator_role_impl(
         profile_getter=profile_service.get_blogger_profile,
         choose_action_text=choose_action_text,
         intro_text=intro_text,
-        menu_keyboard=creator_filled_profile_inline_keyboard,
+        menu_keyboard=menu_kb,
         start_keyboard=creator_start_keyboard,
         texts=texts,
     )
@@ -177,6 +188,9 @@ async def choose_creator_role_inline(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     locale = config.market.default_locale
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
     await _choose_creator_role_impl(
         incoming,
         state,
@@ -185,6 +199,7 @@ async def choose_creator_role_inline(
         bot_texts_service,
         messenger_client,
         locale,
+        support_url=support_url,
     )
 
 
@@ -206,6 +221,9 @@ async def choose_creator_role(
     )
     incoming = event_adapter.from_message(message)
     locale = config.market.default_locale
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
     await _choose_creator_role_impl(
         incoming,
         state,
@@ -214,6 +232,7 @@ async def choose_creator_role(
         bot_texts_service,
         messenger_client,
         locale,
+        support_url=support_url,
     )
 
 

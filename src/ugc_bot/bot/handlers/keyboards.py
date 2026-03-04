@@ -58,6 +58,14 @@ CALLBACK_SUPPORT = "support"
 CALLBACK_CHANGE_ROLE = "change_role"
 
 
+def build_support_telegram_url(support_contact: str) -> str | None:
+    """Build t.me URL for support chat from username (with or without @)."""
+    username = (support_contact or "").strip().lstrip("@")
+    if not username:
+        return None
+    return f"https://t.me/{username}"
+
+
 def flow_keyboard_remove() -> Keyboard:
     """Remove keyboard during flow (no support button)."""
 
@@ -108,18 +116,24 @@ def creator_start_keyboard(texts: dict[str, str]) -> Keyboard:
     )
 
 
-def main_menu_inline_keyboard(texts: dict[str, str]) -> Keyboard:
-    """Inline: Support, Change role. Needs: btn_support, btn_change_role."""
+def main_menu_inline_keyboard(
+    texts: dict[str, str],
+    support_url: str | None = None,
+) -> Keyboard:
+    """Inline: Support (link if support_url), Change role. Needs: btn_*."""
 
+    support_button = (
+        Button(text=texts["btn_support"], url=support_url)
+        if support_url
+        else Button(
+            text=texts["btn_support"],
+            callback_data=CALLBACK_SUPPORT,
+        )
+    )
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
-            [
-                Button(
-                    text=texts["btn_support"],
-                    callback_data=CALLBACK_SUPPORT,
-                )
-            ],
+            [support_button],
             [
                 Button(
                     text=texts["btn_change_role"],
@@ -130,9 +144,20 @@ def main_menu_inline_keyboard(texts: dict[str, str]) -> Keyboard:
     )
 
 
-def creator_filled_profile_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+def creator_filled_profile_inline_keyboard(
+    texts: dict[str, str],
+    support_url: str | None = None,
+) -> Keyboard:
     """Creator filled profile (inline): Edit, Profile, Orders. Needs: btn_*."""
 
+    support_btn = (
+        Button(text=texts["btn_support"], url=support_url)
+        if support_url
+        else Button(
+            text=texts["btn_support"],
+            callback_data=CALLBACK_SUPPORT,
+        )
+    )
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
@@ -154,12 +179,7 @@ def creator_filled_profile_inline_keyboard(texts: dict[str, str]) -> Keyboard:
                     callback_data=CALLBACK_PROFILE_MENU_MY_ORDERS,
                 )
             ],
-            [
-                Button(
-                    text=texts["btn_support"],
-                    callback_data=CALLBACK_SUPPORT,
-                )
-            ],
+            [support_btn],
         ],
     )
 
