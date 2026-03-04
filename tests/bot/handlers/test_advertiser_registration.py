@@ -187,10 +187,12 @@ async def test_phone_step_sends_phone_prompt(
         (s for s in client.sent_text if "телефона" in s["text"]), None
     )
     assert phone_msg is not None
-    # Inline-only: keyboard is REMOVE (no reply buttons), user types phone
+    # Reply keyboard with Share phone button (request_contact)
     keyboard = phone_msg.get("keyboard")
     assert keyboard is not None
-    assert keyboard.kind.value == "remove"
+    assert keyboard.kind.value == "reply"
+    assert len(keyboard.rows) == 1 and len(keyboard.rows[0]) == 1
+    assert keyboard.rows[0][0].request_contact is True
 
 
 @pytest.mark.asyncio

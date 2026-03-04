@@ -29,6 +29,7 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_menu_inline_keyboard,
     advertiser_start_keyboard,
     confirm_agreement_inline_keyboard,
+    flow_keyboard_phone_request,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.utils import (
@@ -233,7 +234,7 @@ async def _advertiser_start_impl(
         await messenger_client.send_text(
             chat_id=chat_id,
             text=phone_prompt,
-            keyboard=flow_keyboard_remove(),
+            keyboard=flow_keyboard_phone_request(texts),
         )
         await state_store.set_state(AdvertiserRegistrationStates.phone.state)
     else:
@@ -402,7 +403,7 @@ async def handle_name(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=phone_prompt,
-        keyboard=flow_keyboard_remove(),
+        keyboard=flow_keyboard_phone_request(texts),
     )
     await state_store.set_state(AdvertiserRegistrationStates.phone.state)
 

@@ -72,6 +72,26 @@ def flow_keyboard_remove() -> Keyboard:
     return Keyboard(kind=KeyboardKind.REMOVE)
 
 
+def flow_keyboard_phone_request(texts: dict[str, str]) -> Keyboard:
+    """Reply KB: Share phone (request_contact). Key: btn_phone_request."""
+
+    return Keyboard(
+        kind=KeyboardKind.REPLY,
+        rows=[
+            [
+                Button(
+                    text=texts.get(
+                        "btn_phone_request", "📱 Поделиться номером телефона"
+                    ),
+                    request_contact=True,
+                )
+            ]
+        ],
+        one_time=True,
+        resize=True,
+    )
+
+
 def flow_inline_keyboard(rows: list[list[Button]]) -> Keyboard:
     """Inline keyboard for flow steps; buttons must have callback_data."""
 

@@ -68,6 +68,7 @@ from ugc_bot.bot.handlers.keyboards import (
     edit_profile_type_inline_keyboard,
     edit_work_format_inline_keyboard,
     flow_inline_keyboard,
+    flow_keyboard_phone_request,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.utils import (
@@ -1626,6 +1627,7 @@ async def handle_profile_edit_field_callback(
         "btn_barter_no",
         "btn_work_format_ads",
         "btn_work_format_ugc_only",
+        "btn_phone_request",
     ]
     edit_texts = await bot_texts_service.get_many(edit_keys, locale)
     if field_key == "audience_gender":
@@ -1655,6 +1657,11 @@ async def handle_profile_edit_field_callback(
         )
     elif field_key == "city" and profile_type == "blogger":
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
+    elif field_key == "phone" and profile_type == "advertiser":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=flow_keyboard_phone_request(edit_texts),
+        )
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
     await state.set_state(EditProfileStates.entering_value)
@@ -2046,7 +2053,12 @@ async def edit_profile_choose_field(
     load_keys = (
         [lk for lk, _ in field_label_keys]
         + prompt_keys_for_type
-        + [PROMPT_EDIT_GENERIC, "msg_choose_section_keyboard", "btn_my_profile"]
+        + [
+            PROMPT_EDIT_GENERIC,
+            "msg_choose_section_keyboard",
+            "btn_my_profile",
+            "btn_phone_request",
+        ]
         + edit_keys_base
     )
     field_texts = await bot_texts_service.get_many(load_keys, locale)
@@ -2096,6 +2108,11 @@ async def edit_profile_choose_field(
         )
     elif field_key == "city" and profile_type == "blogger":
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
+    elif field_key == "phone" and profile_type == "advertiser":
+        await message_ctx.answer(
+            prompt,
+            reply_markup=flow_keyboard_phone_request(edit_texts),
+        )
     else:
         await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
 
@@ -2200,7 +2217,11 @@ async def edit_profile_enter_value(
         await message_ctx.answer(msg_expired)
         return
     external_id = str(external_id_raw)
-    text = (message_ctx.text or "").strip()
+    text = (
+        (message_ctx.contact_phone or message_ctx.text or "").strip()
+        if field_key == "phone" and profile_type == "advertiser"
+        else (message_ctx.text or "").strip()
+    )
 
     if profile_type == "advertiser":
         advertiser = await profile_service.get_advertiser_profile(user_id)

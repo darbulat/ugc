@@ -48,6 +48,7 @@ class MessageContext:
             PhotoContext(file_id=pid) for pid in incoming.photo_file_ids
         ]
         self.text = incoming.text
+        self.contact_phone = getattr(incoming, "contact_phone", None)
 
     async def answer(
         self,
