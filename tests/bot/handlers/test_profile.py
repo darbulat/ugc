@@ -1,6 +1,7 @@
 """Tests for profile handler."""
 
 from datetime import date, datetime, timezone
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -1260,6 +1261,49 @@ async def test_handle_profile_edit_choice_callback_work_format_success(
 
 
 @pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_normalized_empty_shows_failed(
+    user_repo, config, bot_texts_service
+) -> None:
+    """When city normalizes to empty, show profile update failed (880-884)."""
+    user = await create_test_user(
+        user_repo,
+        external_id="50b",
+        username="user",
+    )
+    message = FakeMessage(text="Moscow", user=FakeUser(50))
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "50b",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService()
+    with patch(
+        "ugc_bot.bot.handlers.profile.normalize_geo_token",
+        return_value="",
+    ):
+        await edit_profile_enter_value(
+            message,
+            state,
+            profile_service,
+            config=config,
+            bot_texts_service=bot_texts_service,
+            blogger_registration_service=reg_service,
+            advertiser_registration_service=FakeAdvertiserRegistrationService(),
+            user_role_service=FakeUserRoleService(),
+            max_order_price=10_000.0,
+        )
+    assert message.answers
+    first = message.answers[0]
+    text = first[0] if isinstance(first, tuple) else first
+    assert "Не удалось обновить" in text or "обновить" in text
+    assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
 async def test_edit_profile_enter_value_blogger_city_any_accepted(
     user_repo,
     config,
@@ -1816,6 +1860,102 @@ async def test_edit_profile_enter_value_city_with_location_resolve_fails(
     assert not reg_service.update_calls
     texts = [a[0] if isinstance(a, tuple) else a for a in message.answers]
     assert any("геопозици" in (t or "") or "город" in (t or "") for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_with_location_update_returns_none(
+    user_repo, config, bot_texts_service
+) -> None:
+    """Location ok, update None: _try_handle returns False then text path."""
+    user = await create_test_user(
+        user_repo,
+        external_id="16c",
+        username="user",
+    )
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(16),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_profile_type": "blogger",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "16c",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    reg_service = FakeBloggerRegistrationService(
+        update_returns=None,
+        resolve_city_returns=("Moscow", "Moscow", "Russia"),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(reg_service.update_calls) == 1
+    assert reg_service.update_calls[0][1].get("city") == "moscow"
+    assert reg_service.update_calls[0][1].get("location_geometry")
+
+
+@pytest.mark.asyncio
+async def test_edit_profile_enter_value_city_web_app_data_invalid_json(
+    user_repo, config, bot_texts_service
+) -> None:
+    """Web_app_data invalid JSON does not crash; handler falls back to text."""
+    user = await create_test_user(
+        user_repo,
+        external_id="17b",
+        username="user",
+    )
+    message = FakeMessage(
+        text="Москва",
+        user=FakeUser(17),
+        web_app_data=FakeWebAppData(data="not valid json"),
+    )
+    state = FakeFSMContext()
+    state._data = {
+        "editing_field": "city",
+        "edit_profile_type": "blogger",
+        "edit_user_id": str(user.user_id),
+        "edit_external_id": "17b",
+    }
+    profile_service = FakeProfileService(
+        user=user, has_blogger=True, has_advertiser=False
+    )
+    updated = _make_blogger_profile(user.user_id)
+    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    await edit_profile_enter_value(
+        message,
+        state,
+        profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        advertiser_registration_service=FakeAdvertiserRegistrationService(),
+        user_role_service=FakeUserRoleService(),
+        max_order_price=10_000.0,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert reg_service.update_calls
+    call_kw = reg_service.update_calls[0][1]
+    assert call_kw.get("city") == "москва"
 
 
 @pytest.mark.asyncio
@@ -5360,6 +5500,53 @@ async def test_handle_profile_region_callback_missing_state_answers_only(
         event_adapter=adapter,
     )
     assert not reg_service.update_calls
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_region_callback_profile_none_shows_map(
+    user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
+) -> None:
+    """Update profile=None and geometry not resolved: show map message."""
+    user = await create_test_user(user_repo, external_id="94", username="u")
+    await create_test_blogger_profile(blogger_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
+    )
+    reg_service = FakeBloggerRegistrationService(
+        update_returns=None,
+        location_geometry_resolved=False,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(EditProfileStates.entering_value.state)
+    await state.update_data(
+        pending_city_edit="железногорск",
+        edit_user_id=str(user.user_id),
+        edit_external_id="94",
+    )
+    callback = FakeCallback(
+        data=f"{CALLBACK_PROFILE_REGION_PREFIX}красноярский край",
+        user=FakeUser(94),
+        message=FakeMessage(user=FakeUser(94)),
+    )
+    await handle_profile_region_callback(
+        callback,
+        state,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert len(reg_service.update_calls) == 1
+    assert any(
+        "местоположение" in s["text"]
+        or "карт" in s["text"]
+        or "геопозици" in s["text"]
+        for s in client.sent_text
+    )
 
 
 @pytest.mark.asyncio

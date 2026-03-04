@@ -1,6 +1,6 @@
 """Tests for blogger registration handlers."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -31,6 +31,7 @@ from ugc_bot.bot.handlers.blogger_registration import (
     _start_registration_flow,
     _work_format_from_callback,
     choose_creator_role,
+    choose_creator_role_inline,
     handle_age,
     handle_agreements,
     handle_agreements_callback,
@@ -68,6 +69,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
+    CALLBACK_ROLE_CREATOR,
 )
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
@@ -1184,6 +1186,109 @@ async def test_handle_city_with_web_app_data_uses_lat_lon(
 
 
 @pytest.mark.asyncio
+async def test_handle_city_web_app_data_invalid_json_falls_back_to_text(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city invalid web_app_data JSON: except, then fall back to text."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_from_location = AsyncMock()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        web_app_data=FakeWebAppData(data="not valid json"),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    reg_service.resolve_city_from_location.assert_not_called()
+    assert len(client.sent_text) >= 1 or message.answers
+
+
+@pytest.mark.asyncio
+async def test_handle_city_with_location_normalized_empty_sends_error(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """_handle_city_from_location when normalize returns empty sends error."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_from_location = AsyncMock(
+        return_value=("SomeCity", None, None)
+    )
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    with patch(
+        "ugc_bot.bot.handlers.blogger_registration.normalize_geo_token",
+        return_value="",
+    ):
+        await handle_city(
+            message,
+            state,
+            config=config,
+            bot_texts_service=bot_texts_service,
+            blogger_registration_service=reg_service,
+            messenger_client=client,
+            event_adapter=adapter,
+        )
+
+    assert any(
+        "геопозици" in s["text"].lower() or "город" in s["text"].lower()
+        for s in client.sent_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_city_with_location_multi_region_shows_region_buttons(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city location + city in multiple regions shows region picker."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_from_location = AsyncMock(
+        return_value=("Железногорск", None, None)
+    )
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text=None,
+        user=FakeUser(1, "u", "U"),
+        location=FakeLocation(latitude=55.75, longitude=37.62),
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert state._data.get("city") == "железногорск"
+    assert any("регион" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
 async def test_handle_city_region_callback_no_city_answers_only(
     config, bot_texts_service
 ) -> None:
@@ -1657,6 +1762,101 @@ async def test_handle_work_format_invalid_rejects(
     assert "Выберите одну из кнопок" in message.answers[0]
 
 
+def _work_format_state_data(user_id: UUID) -> dict:
+    """Minimal state data for work_format step (callback or message)."""
+    return {
+        "user_id": user_id,
+        "nickname": "x",
+        "instagram_url": "https://instagram.com/x",
+        "city": "M",
+        "birth_date": "1995-05-15",
+        "topics": {"selected": ["a"]},
+        "audience_gender": AudienceGender.ALL,
+        "audience_age_min": 18,
+        "audience_age_max": 35,
+        "audience_geo": "M",
+        "price": 1000.0,
+        "barter": False,
+        "blogger_gender": BloggerGender.MALE,
+    }
+
+
+@pytest.mark.asyncio
+async def test_work_format_callback_save_raises_non_duplicate_propagates(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_work_format_callback re-raises when save raises non-duplicate."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000000a1"),
+        external_id="a1",
+        username="u",
+    )
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.save_blogger_before_agreement = AsyncMock(
+        side_effect=RuntimeError("db error")
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    await state.update_data(**_work_format_state_data(user.user_id))
+    await state.update_data(work_format=WorkFormat.ADS_IN_ACCOUNT)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_WORK_ADS,
+        user=FakeUser(0xA1, "u", "U"),
+        message=FakeMessage(user=FakeUser(0xA1, "u", "U")),
+    )
+
+    with pytest.raises(RuntimeError, match="db error"):
+        await handle_work_format_callback(
+            callback,
+            state,
+            config=config,
+            bot_texts_service=bot_texts_service,
+            blogger_registration_service=reg_service,
+            messenger_client=client,
+            event_adapter=adapter,
+        )
+
+
+@pytest.mark.asyncio
+async def test_work_format_save_raises_non_duplicate_propagates(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_work_format re-raises when save raises non-duplicate."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000000a2"),
+        external_id="a2",
+        username="u",
+    )
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.save_blogger_before_agreement = AsyncMock(
+        side_effect=RuntimeError("save error")
+    )
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_work_format_ads"], user=FakeUser(0xA2, "u", "U")
+    )
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.work_format.state)
+    await state.update_data(**_work_format_state_data(user.user_id))
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    config = _blogger_test_config()
+
+    with pytest.raises(RuntimeError, match="save error"):
+        await handle_work_format(
+            message,
+            state,
+            config=config,
+            bot_texts_service=bot_texts_service,
+            blogger_registration_service=reg_service,
+            messenger_client=client,
+            event_adapter=adapter,
+        )
+
+
 @pytest.mark.asyncio
 async def test_handle_agreements_session_expired(
     user_repo, blogger_repo, config, bot_texts_service
@@ -1739,6 +1939,45 @@ async def test_choose_creator_role_with_profile(
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
     assert "Выберите действие" in text
+
+
+@pytest.mark.asyncio
+async def test_choose_creator_role_inline_calls_impl(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """choose_creator_role_inline answers callback and runs role impl."""
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+    user = await user_service.set_user(
+        external_id="50",
+        messenger_type=MessengerType.TELEGRAM,
+        username="creator",
+    )
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    callback = FakeCallback(
+        data=CALLBACK_ROLE_CREATOR,
+        user=FakeUser(50, "creator", "Creator"),
+        message=FakeMessage(user=FakeUser(50, "creator", "Creator")),
+    )
+
+    await choose_creator_role_inline(
+        callback,
+        state,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert any("Выберите действие" in s["text"] for s in client.sent_text)
 
 
 @pytest.mark.asyncio
@@ -2492,6 +2731,70 @@ async def test_agreements_callback_session_expired(
     assert len(client.answered_callbacks) == 1
     assert any("Сессия истекла" in s["text"] for s in client.sent_text)
     assert state.cleared or state._data.get("user_id") is None
+
+
+@pytest.mark.asyncio
+async def test_agreements_callback_confirm_raises_propagates(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """agreements_callback re-raises when confirm_blogger_agreement raises."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.confirm_blogger_agreement = AsyncMock(
+        side_effect=RuntimeError("db error")
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.agreements.state)
+    uid_56 = UUID("00000000-0000-0000-0000-000000000056")
+    await state.update_data(user_id=uid_56)
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AGREE,
+        user=FakeUser(56, "u", "U"),
+        message=FakeMessage(user=FakeUser(56, "u", "U")),
+    )
+
+    with pytest.raises(RuntimeError, match="db error"):
+        await handle_agreements_callback(
+            callback,
+            state,
+            config=config,
+            bot_texts_service=bot_texts_service,
+            blogger_registration_service=reg_service,
+            messenger_client=client,
+            event_adapter=adapter,
+        )
+
+
+@pytest.mark.asyncio
+async def test_agreements_confirm_raises_propagates(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_agreements re-raises when confirm_blogger_agreement raises."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.confirm_blogger_agreement = AsyncMock(
+        side_effect=RuntimeError("confirm error")
+    )
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_confirm_agreement"], user=FakeUser(1, "u", "U")
+    )
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.agreements.state)
+    uid_1 = UUID("00000000-0000-0000-0000-000000000001")
+    await state.update_data(user_id=uid_1)
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    with pytest.raises(RuntimeError, match="confirm error"):
+        await handle_agreements(
+            message,
+            state,
+            config=config,
+            bot_texts_service=bot_texts_service,
+            blogger_registration_service=reg_service,
+            messenger_client=client,
+            event_adapter=adapter,
+        )
 
 
 @pytest.mark.asyncio
