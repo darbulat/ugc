@@ -132,3 +132,16 @@ groups:
         annotations:
           summary: Logical replication slot inactive
           description: At least one logical replication slot is inactive. Subscriber (e.g. Beget) may be disconnected or unable to connect to the publisher.
+
+  # Backup and PITR: alert when WAL archiving fails (relevant when PITR_ENABLED=true).
+  # Metric from postgres_exporter; if the alert never fires, check /metrics for pg_stat_archiver_failed_total (name may vary by exporter version).
+  - name: backups
+    rules:
+      - alert: BackupWALArchiverFailed
+        expr: increase(pg_stat_archiver_failed_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL WAL archiving failed (PITR)
+          description: At least one WAL segment failed to archive in the last 15 minutes. Check archive_command (e.g. archive_wal.py), S3 credentials and connectivity.

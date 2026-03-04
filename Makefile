@@ -13,14 +13,14 @@ E2E_TIMEOUT ?= 90
 # DB-changing targets must not run in parallel with make -j
 .NOTPARALLEL: migrate restore-db restore-db-s3
 
-.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 all
+.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 base-backup-db list-base-backups-s3 restore-pitr all
 
 help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Development:  install-dev, format, format-check, lint, typecheck, test, coverage"
 	@echo "E2E:          e2e, e2e-dev (Playwright vs dev), e2e-telegram-dev (Telegram vs dev; E2E_DATABASE_URL, E2E_CLEAN_TELEGRAM=darbulat), e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
-	@echo "Infra:        docker-up, docker-down, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
+	@echo "Infra:        docker-up, docker-down, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3, base-backup-db, list-base-backups-s3, restore-pitr"
 	@echo "Run:          admin, instagram-stats"
 	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
 	@echo "Tests (Docker): test-docker, e2e-docker, test-all-docker (unit + integration + e2e in one run)"
@@ -175,6 +175,18 @@ list-backups-s3:
 
 list-backups:
 	docker compose run --rm db_backup ls -lh /backups/
+
+# PITR: base backup (pg_basebackup) to S3; requires S3_* and POSTGRES_* in .env
+base-backup-db:
+	docker compose run --rm db_backup python scripts/base_backup_db.py --output-dir /backups
+
+# List base backup objects in S3 (for PITR recovery)
+list-base-backups-s3:
+	docker compose run --rm db_backup python scripts/base_backup_db.py --list-s3
+
+# Print PITR recovery steps and list base backups in S3 (see docs/BACKUP.md)
+restore-pitr:
+	docker compose run --rm db_backup sh /app/scripts/restore_pitr.sh
 
 # Full pre-commit/CI check: format first, then lint/typecheck/coverage. Do not reorder (lint expects formatted code).
 all: format lint typecheck coverage

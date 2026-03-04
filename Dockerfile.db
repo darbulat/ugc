@@ -1,0 +1,19 @@
+# PostgreSQL + PostGIS image with PITR WAL archiving support.
+# When PITR_ENABLED=true, archive_command uploads WAL to S3 via archive_wal.py.
+FROM postgis/postgis:16-3.4
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-pip && \
+    pip3 install --no-cache-dir boto3 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN install -d -o postgres -g postgres /scripts
+
+COPY scripts/archive_wal.py /scripts/archive_wal.py
+COPY scripts/db_entrypoint.sh /scripts/db_entrypoint.sh
+
+RUN chown postgres:postgres /scripts/archive_wal.py /scripts/db_entrypoint.sh && \
+    chmod 755 /scripts/db_entrypoint.sh /scripts/archive_wal.py
+
+ENTRYPOINT ["/scripts/db_entrypoint.sh"]
+CMD ["postgres"]
