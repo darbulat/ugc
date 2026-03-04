@@ -373,7 +373,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                     )
                     return None
 
-                logger.info(
+                logger.debug(
                     "Retrieved Instagram profile",
                     extra={
                         "instagram_user_id": instagram_user_id,

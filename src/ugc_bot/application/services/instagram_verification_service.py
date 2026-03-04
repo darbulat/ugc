@@ -253,16 +253,6 @@ class InstagramVerificationService:
                 api_username=api_username,
             )
 
-        logger.info(
-            "Verifying code from Instagram webhook",
-            extra={
-                "user_id": valid_code.user_id,
-                "sender_id": instagram_sender_id,
-                "api_username": api_username,
-                "profile_username": profile_username,
-            },
-        )
-
         now = datetime.now(timezone.utc)
         instagram_user_id = instagram_sender_id
         instagram_followers_count = None
@@ -299,8 +289,12 @@ class InstagramVerificationService:
 
         await with_optional_tx(self.transaction_manager, _confirm)
         logger.info(
-            "Instagram profile confirmed via webhook",
-            extra={"user_id": str(valid_code.user_id)},
+            "Instagram verification success",
+            extra={
+                "user_id": str(valid_code.user_id),
+                "instagram_user_id": instagram_sender_id,
+                "username": api_username,
+            },
         )
         return VerificationSuccess(user_id=valid_code.user_id)
 
