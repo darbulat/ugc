@@ -1558,6 +1558,36 @@ async def handle_profile_edit_type_callback(
     await state.set_state(EditProfileStates.choosing_field)
 
 
+def _get_edit_field_reply_markup(
+    field_key: str,
+    profile_type: str,
+    edit_texts: dict,
+    config: AppConfig,
+):
+    """Return reply_markup for editing the given field."""
+    if field_key == "audience_gender":
+        return edit_audience_gender_inline_keyboard(edit_texts)
+    if field_key == "blogger_gender":
+        return edit_blogger_gender_inline_keyboard(edit_texts)
+    if field_key == "audience_age":
+        return edit_audience_age_inline_keyboard(edit_texts)
+    if field_key == "barter":
+        return edit_barter_inline_keyboard(edit_texts)
+    if field_key == "work_format":
+        return edit_work_format_inline_keyboard(edit_texts)
+    if field_key == "city" and profile_type == "blogger":
+        miniapp_url = None
+        base = getattr(config.webhook, "webhook_base_url", None) or ""
+        if base:
+            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+        return flow_keyboard_city_request(
+            edit_texts, miniapp_location_url=miniapp_url
+        )
+    if field_key == "phone" and profile_type == "advertiser":
+        return flow_keyboard_phone_request(edit_texts)
+    return flow_keyboard_remove()
+
+
 @router.callback_query(
     lambda c: (
         c.data
@@ -1565,7 +1595,7 @@ async def handle_profile_edit_type_callback(
         and len(c.data or "") > len(CALLBACK_PROFILE_EDIT_FIELD_PREFIX)
     )
 )
-async def handle_profile_edit_field_callback(  # noqa: C901
+async def handle_profile_edit_field_callback(
     callback: CallbackQuery,
     state: FSMContext,
     profile_service: ProfileService,
@@ -1636,49 +1666,10 @@ async def handle_profile_edit_field_callback(  # noqa: C901
         "btn_location_map",
     ]
     edit_texts = await bot_texts_service.get_many(edit_keys, locale)
-    if field_key == "audience_gender":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_audience_gender_inline_keyboard(edit_texts),
-        )
-    elif field_key == "blogger_gender":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_blogger_gender_inline_keyboard(edit_texts),
-        )
-    elif field_key == "audience_age":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_audience_age_inline_keyboard(edit_texts),
-        )
-    elif field_key == "barter":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_barter_inline_keyboard(edit_texts),
-        )
-    elif field_key == "work_format":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_work_format_inline_keyboard(edit_texts),
-        )
-    elif field_key == "city" and profile_type == "blogger":
-        miniapp_url = None
-        base = getattr(config.webhook, "webhook_base_url", None) or ""
-        if base:
-            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
-        await message_ctx.answer(
-            prompt,
-            reply_markup=flow_keyboard_city_request(
-                edit_texts, miniapp_location_url=miniapp_url
-            ),
-        )
-    elif field_key == "phone" and profile_type == "advertiser":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=flow_keyboard_phone_request(edit_texts),
-        )
-    else:
-        await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
+    reply_markup = _get_edit_field_reply_markup(
+        field_key, profile_type, edit_texts, config
+    )
+    await message_ctx.answer(prompt, reply_markup=reply_markup)
     await state.set_state(EditProfileStates.entering_value)
 
 
@@ -2000,7 +1991,7 @@ async def edit_profile_choose_type(
 
 
 @router.message(EditProfileStates.choosing_field)
-async def edit_profile_choose_field(  # noqa: C901
+async def edit_profile_choose_field(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
@@ -2095,51 +2086,10 @@ async def edit_profile_choose_field(  # noqa: C901
     prompt = field_texts.get("prompt_edit_" + field_key) or field_texts.get(
         PROMPT_EDIT_GENERIC, ""
     )
-    edit_texts = field_texts
-    if field_key == "audience_gender":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_audience_gender_inline_keyboard(edit_texts),
-        )
-    elif field_key == "blogger_gender":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_blogger_gender_inline_keyboard(edit_texts),
-        )
-    elif field_key == "audience_age":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_audience_age_inline_keyboard(edit_texts),
-        )
-    elif field_key == "barter":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_barter_inline_keyboard(edit_texts),
-        )
-    elif field_key == "work_format":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=edit_work_format_inline_keyboard(edit_texts),
-        )
-    elif field_key == "city" and profile_type == "blogger":
-        miniapp_url = None
-        base = getattr(config.webhook, "webhook_base_url", None) or ""
-        if base:
-            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
-        await message_ctx.answer(
-            prompt,
-            reply_markup=flow_keyboard_city_request(
-                edit_texts, miniapp_location_url=miniapp_url
-            ),
-        )
-    elif field_key == "phone" and profile_type == "advertiser":
-        await message_ctx.answer(
-            prompt,
-            reply_markup=flow_keyboard_phone_request(edit_texts),
-        )
-    else:
-        await message_ctx.answer(prompt, reply_markup=flow_keyboard_remove())
-
+    reply_markup = _get_edit_field_reply_markup(
+        field_key, profile_type, field_texts, config
+    )
+    await message_ctx.answer(prompt, reply_markup=reply_markup)
     await state.set_state(EditProfileStates.entering_value)
 
 
@@ -2210,8 +2160,81 @@ async def handle_profile_region_callback(
     )
 
 
+async def _try_handle_blogger_city_by_location(
+    message_ctx,
+    state: FSMContext,
+    user_id: UUID,
+    blogger_registration_service: BloggerRegistrationService,
+    profile_service: ProfileService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient,
+    event_adapter,
+    locale: str,
+) -> bool:
+    """City edit from location: resolve, save, show profile. True if handled."""
+    lat = getattr(message_ctx, "location_lat", None)
+    lon = getattr(message_ctx, "location_lon", None)
+    wad = getattr(message_ctx, "web_app_data", None)
+    if lat is None and lon is None and wad:
+        try:
+            data = json.loads(wad)
+            la = data.get("lat")
+            lo = data.get("lon")
+            if la is not None and lo is not None:
+                lat, lon = float(la), float(lo)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    if not (
+        lat is not None
+        and lon is not None
+        and -90 <= lat <= 90
+        and -180 <= lon <= 180
+    ):
+        return False
+    result = await blogger_registration_service.resolve_city_from_location(
+        lat, lon
+    )
+    if result is None:
+        err_loc = await bot_texts_service.get("err_city_from_location", locale)
+        await message_ctx.answer(err_loc, reply_markup=flow_keyboard_remove())
+        return True
+    city_name, region_name, country_name = result
+    normalized = normalize_geo_token(city_name)
+    if not normalized:
+        err_loc = await bot_texts_service.get("err_city_from_location", locale)
+        await message_ctx.answer(err_loc, reply_markup=flow_keyboard_remove())
+        return True
+    wkt = wkt_multipoint_from_lat_lon(lat, lon)
+    updated = await blogger_registration_service.update_blogger_profile(
+        user_id,
+        city=normalized,
+        region=region_name,
+        country=country_name or None,
+        location_geometry=wkt,
+    )
+    if updated is None:
+        return False
+    await state.clear()
+    msg_updated = await bot_texts_service.get("msg_profile_updated", locale)
+    await message_ctx.answer(
+        msg_updated,
+        reply_markup=flow_keyboard_remove(),
+    )
+    await show_profile(
+        message=message_ctx,
+        profile_service=profile_service,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    return True
+
+
 @router.message(EditProfileStates.entering_value)
-async def edit_profile_enter_value(  # noqa: C901
+async def edit_profile_enter_value(
     message: Message,
     state: FSMContext,
     profile_service: ProfileService,
@@ -2285,63 +2308,21 @@ async def edit_profile_enter_value(  # noqa: C901
         return
 
     locale = config.market.default_locale
-    lat = getattr(message_ctx, "location_lat", None)
-    lon = getattr(message_ctx, "location_lon", None)
-    wad = getattr(message_ctx, "web_app_data", None)
-    if field_key == "city" and lat is None and lon is None and wad:
-        try:
-            data = json.loads(wad)
-            la = data.get("lat")
-            lo = data.get("lon")
-            if la is not None and lo is not None:
-                lat, lon = float(la), float(lo)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
-    if (
-        field_key == "city"
-        and lat is not None
-        and lon is not None
-        and -90 <= lat <= 90
-        and -180 <= lon <= 180
-    ):
-        result = await blogger_registration_service.resolve_city_from_location(
-            lat, lon
+    if field_key == "city":
+        handled = await _try_handle_blogger_city_by_location(
+            message_ctx,
+            state,
+            user_id,
+            blogger_registration_service,
+            profile_service,
+            config,
+            bot_texts_service,
+            messenger_client,
+            event_adapter,
+            locale,
         )
-        if result is not None:
-            city_name, region_name, country_name = result
-            normalized = normalize_geo_token(city_name)
-            if normalized:
-                wkt = wkt_multipoint_from_lat_lon(lat, lon)
-                reg_svc = blogger_registration_service
-                updated = await reg_svc.update_blogger_profile(
-                    user_id,
-                    city=normalized,
-                    region=region_name,
-                    country=country_name or None,
-                    location_geometry=wkt,
-                )
-                if updated is not None:
-                    await state.clear()
-                    msg_updated = await bot_texts_service.get(
-                        "msg_profile_updated", locale
-                    )
-                    await message_ctx.answer(
-                        msg_updated,
-                        reply_markup=flow_keyboard_remove(),
-                    )
-                    await show_profile(
-                        message=message_ctx,
-                        profile_service=profile_service,
-                        state=state,
-                        config=config,
-                        bot_texts_service=bot_texts_service,
-                        messenger_client=messenger_client,
-                        event_adapter=event_adapter,
-                    )
-                    return
-        err_loc = await bot_texts_service.get("err_city_from_location", locale)
-        await message_ctx.answer(err_loc, reply_markup=flow_keyboard_remove())
-        return
+        if handled:
+            return
 
     await _update_blogger_field(
         message_ctx,

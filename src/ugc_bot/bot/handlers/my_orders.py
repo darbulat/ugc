@@ -130,9 +130,123 @@ _MY_ORDERS_CALLBACK_PREFIX = "my_orders:"
 _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
 
 
+async def _send_my_orders_content(
+    incoming,
+    state: FSMContext,
+    user,
+    advertiser,
+    blogger,
+    order_service: OrderService,
+    offer_response_service: OfferResponseService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient,
+    locale: str,
+) -> None:
+    """Send fill profile, agreement, or order lists depending on user state."""
+    if advertiser is None and blogger is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_fill_profile_orders", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_fill,
+        )
+        return
+
+    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    if agreement_confirmed_at is None:
+        agree_keys = [
+            "btn_confirm_agreement",
+            "msg_confirm_agreement",
+            "msg_agreements_intro_default",
+            "msg_label_offer",
+            "msg_label_privacy",
+            "msg_label_consent",
+            "msg_confirm_docs_fallback",
+        ]
+        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
+        agreements_text = format_agreements_message(
+            config,
+            intro=agree_texts.get("msg_confirm_agreement"),
+            texts=agree_texts,
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=agreements_text,
+            keyboard=confirm_agreement_inline_keyboard(
+                CALLBACK_PROFILE_AGREE, agree_texts
+            ),
+            parse_mode="HTML",
+        )
+        await state.update_data(user_id=user.user_id)
+        if blogger is not None:
+            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
+        else:
+            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
+        return
+
+    order_texts = await bot_texts_service.get_many(
+        list(MY_ORDERS_TEXTS_KEYS), locale
+    )
+    if advertiser is not None:
+        orders = sorted(
+            await order_service.list_by_advertiser(user.user_id),
+            key=lambda item: item.created_at,
+            reverse=True,
+        )
+        if orders:
+            text, keyboard = await _render_page(
+                orders,
+                page=1,
+                offer_response_service=offer_response_service,
+                currency_symbol=config.market.currency_symbol,
+                texts=order_texts,
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id, text=text, keyboard=keyboard
+            )
+        else:
+            msg_no_orders = await bot_texts_service.get("msg_no_orders", locale)
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=msg_no_orders,
+            )
+
+    if blogger is not None:
+        responses = await offer_response_service.list_by_blogger(user.user_id)
+        order_responses = []
+        for resp in sorted(
+            responses,
+            key=lambda r: (r.updated_at or r.created_at, r.created_at),
+            reverse=True,
+        ):
+            order = await order_service.get_order(resp.order_id)
+            if order is not None:
+                order_responses.append((order, resp))
+        if order_responses:
+            text, keyboard = _render_blogger_orders_page(
+                order_responses,
+                page=1,
+                currency_symbol=config.market.currency_symbol,
+                texts=order_texts,
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id, text=text, keyboard=keyboard
+            )
+        else:
+            msg_no_blogger = await bot_texts_service.get(
+                "msg_no_blogger_orders", locale
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=msg_no_blogger,
+            )
+
+
 @router.message(Command("my_orders"))
 @router.message(TextEqualsKey("btn_my_orders"))
-async def show_my_orders(  # noqa: C901, PLR0912
+async def show_my_orders(
     message: Message,
     state: FSMContext,
     user_role_service: UserRoleService,
@@ -171,108 +285,23 @@ async def show_my_orders(  # noqa: C901, PLR0912
 
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     blogger = await profile_service.get_blogger_profile(user.user_id)
-    if advertiser is None and blogger is None:
-        msg_fill = await bot_texts_service.get(
-            "msg_fill_profile_orders", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_fill,
-        )
-        return
-
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
-    if agreement_confirmed_at is None:
-        agree_keys = [
-            "btn_confirm_agreement",
-            "msg_confirm_agreement",
-            "msg_agreements_intro_default",
-            "msg_label_offer",
-            "msg_label_privacy",
-            "msg_label_consent",
-            "msg_confirm_docs_fallback",
-        ]
-        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
-        agreements_text = format_agreements_message(
-            config,
-            intro=agree_texts.get("msg_confirm_agreement"),
-            texts=agree_texts,
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=agreements_text,
-            keyboard=confirm_agreement_inline_keyboard(
-                CALLBACK_PROFILE_AGREE, agree_texts
-            ),
-            parse_mode="HTML",
-        )
-        await state.update_data(user_id=user.user_id)
-        if blogger is not None:
-            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
-        else:
-            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
-        return
-
-    order_texts = await bot_texts_service.get_many(
-        list(MY_ORDERS_TEXTS_KEYS), locale
+    await _send_my_orders_content(
+        incoming,
+        state,
+        user,
+        advertiser,
+        blogger,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
+        messenger_client,
+        locale,
     )
-    if advertiser is not None:
-        orders = sorted(
-            await order_service.list_by_advertiser(user.user_id),
-            key=lambda item: item.created_at,
-            reverse=True,
-        )
-        if orders:
-            text, keyboard = await _render_page(
-                orders,
-                page=1,
-                offer_response_service=offer_response_service,
-                currency_symbol=config.market.currency_symbol,
-                texts=order_texts,
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id, text=text, keyboard=keyboard
-            )
-        else:
-            msg_no_orders = await bot_texts_service.get("msg_no_orders", locale)
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text=msg_no_orders,
-            )
-
-    if blogger is not None:
-        responses = await offer_response_service.list_by_blogger(user.user_id)
-        order_responses = []
-        for resp in sorted(
-            responses,
-            key=lambda r: (r.updated_at or r.created_at, r.created_at),
-            reverse=True,
-        ):
-            order = await order_service.get_order(resp.order_id)
-            if order is not None:
-                order_responses.append((order, resp))
-        if order_responses:
-            text, keyboard = _render_blogger_orders_page(
-                order_responses,
-                page=1,
-                currency_symbol=config.market.currency_symbol,
-                texts=order_texts,
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id, text=text, keyboard=keyboard
-            )
-        else:
-            msg_no_blogger = await bot_texts_service.get(
-                "msg_no_blogger_orders", locale
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text=msg_no_blogger,
-            )
 
 
 @router.callback_query(lambda c: c.data == CALLBACK_PROFILE_MENU_MY_ORDERS)
-async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
+async def show_my_orders_from_profile_callback(
     callback: CallbackQuery,
     state: FSMContext,
     user_role_service: UserRoleService,
@@ -311,101 +340,19 @@ async def show_my_orders_from_profile_callback(  # noqa: C901, PLR0912
         return
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     blogger = await profile_service.get_blogger_profile(user.user_id)
-    if advertiser is None and blogger is None:
-        msg_fill = await bot_texts_service.get(
-            "msg_fill_profile_orders", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_fill,
-        )
-        return
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
-    if agreement_confirmed_at is None:
-        agree_keys = [
-            "btn_confirm_agreement",
-            "msg_confirm_agreement",
-            "msg_agreements_intro_default",
-            "msg_label_offer",
-            "msg_label_privacy",
-            "msg_label_consent",
-            "msg_confirm_docs_fallback",
-        ]
-        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
-        agreements_text = format_agreements_message(
-            config,
-            intro=agree_texts.get("msg_confirm_agreement"),
-            texts=agree_texts,
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=agreements_text,
-            keyboard=confirm_agreement_inline_keyboard(
-                CALLBACK_PROFILE_AGREE, agree_texts
-            ),
-            parse_mode="HTML",
-        )
-        await state.update_data(user_id=user.user_id)
-        if blogger is not None:
-            await state.set_state(_BLOGGER_AGREEMENTS_STATE)
-        else:
-            await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
-        return
-    order_texts = await bot_texts_service.get_many(
-        list(MY_ORDERS_TEXTS_KEYS), locale
+    await _send_my_orders_content(
+        incoming,
+        state,
+        user,
+        advertiser,
+        blogger,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
+        messenger_client,
+        locale,
     )
-    if advertiser is not None:
-        orders = sorted(
-            await order_service.list_by_advertiser(user.user_id),
-            key=lambda item: item.created_at,
-            reverse=True,
-        )
-        if orders:
-            text, keyboard = await _render_page(
-                orders,
-                page=1,
-                offer_response_service=offer_response_service,
-                currency_symbol=config.market.currency_symbol,
-                texts=order_texts,
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id, text=text, keyboard=keyboard
-            )
-        else:
-            msg_no_orders = await bot_texts_service.get("msg_no_orders", locale)
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text=msg_no_orders,
-            )
-    if blogger is not None:
-        responses = await offer_response_service.list_by_blogger(user.user_id)
-        order_responses = []
-        for resp in sorted(
-            responses,
-            key=lambda r: (r.updated_at or r.created_at, r.created_at),
-            reverse=True,
-        ):
-            order = await order_service.get_order(resp.order_id)
-            if order is not None:
-                order_responses.append((order, resp))
-        if order_responses:
-            text, keyboard = _render_blogger_orders_page(
-                order_responses,
-                page=1,
-                currency_symbol=config.market.currency_symbol,
-                texts=order_texts,
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id, text=text, keyboard=keyboard
-            )
-        else:
-            msg_no_blogger = await bot_texts_service.get(
-                "msg_no_blogger_orders", locale
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text=msg_no_blogger,
-            )
 
 
 @router.callback_query(

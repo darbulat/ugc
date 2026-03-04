@@ -352,7 +352,83 @@ def _format_ugc_type(order: Order, texts: dict[str, str] | None = None) -> str:
     return t.get("msg_order_type_ugc", "UGC-видео для бренда")
 
 
-async def _send_contact_immediately(  # noqa: C901
+def _build_advertiser_contact_content(
+    order: Order,
+    creator_name: str,
+    city: str,
+    ugc_format: str,
+    profile_url: str,
+    has_telegram: bool,
+    telegram_handle: str,
+    texts: dict[str, str],
+) -> tuple[str, Keyboard | None]:
+    """Build contact message and inline keyboard for advertiser."""
+    t = texts
+    msg_new = t.get(
+        "msg_offer_new_response",
+        "Новый отклик по вашему заказу 🙌\n\n"
+        "👤 Креатор: {creator}\n"
+        "📍 Город: {city}\n"
+        "🎬 Формат: {format}\n"
+        "💼 Готов работать на условиях оффера\n"
+        "🔗 Профиль креатора:\n{profile_url}",
+    )
+    what_next = t.get("msg_advertiser_new_response_what_next", "")
+    contact_text = msg_new.format(
+        creator=creator_name,
+        city=city,
+        format=ugc_format,
+        profile_url=profile_url,
+    ) + ("\n\n" + what_next if what_next else "")
+
+    url = profile_url.strip()
+    if url and not url.startswith("http"):
+        url = "https://" + url
+    buttons: list[Button] = []
+    if url.startswith("http"):
+        buttons.append(
+            Button(
+                text=t.get("btn_open_profile", "🔗 Открыть профиль"),
+                url=url,
+            )
+        )
+    if has_telegram and telegram_handle:
+        buttons.append(
+            Button(
+                text=t.get("btn_write_telegram", "Написать в телеграм"),
+                url=f"https://t.me/{telegram_handle.lstrip('@')}",
+            )
+        )
+    keyboard = (
+        Keyboard(kind=KeyboardKind.INLINE, rows=[buttons]) if buttons else None
+    )
+    return contact_text, keyboard
+
+
+def _build_blogger_contacts_text(
+    advertiser_telegram: str | None,
+    advertiser_phone: str | None,
+    texts: dict[str, str],
+) -> str:
+    """Build message with advertiser contacts for blogger."""
+    t = texts
+    header = t.get(
+        "msg_offer_contacts_header", "📞 Контакты заказчика для связи:\n\n"
+    )
+    parts = [header]
+    if advertiser_telegram and advertiser_telegram.strip():
+        tg = advertiser_telegram.strip().lstrip("@")
+        parts.append(f"Telegram: @{tg}\n")
+    else:
+        parts.append(t.get("lbl_telegram_dash", "Telegram: —") + "\n")
+    if advertiser_phone:
+        parts.append(f"Телефон: {advertiser_phone}")
+    else:
+        parts.append(t.get("lbl_phone_dash", "Телефон: —"))
+    return "".join(parts)
+
+
+async def _send_contact_immediately(
     order: Order,
     blogger_id: UUID,
     blogger_chat_id: str,
@@ -368,7 +444,6 @@ async def _send_contact_immediately(  # noqa: C901
     Also sends advertiser's Telegram and phone to the blogger when they get
     into the order.
     """
-    t = texts
     user = await user_role_service.get_user_by_id(blogger_id)
     profile = await profile_service.get_blogger_profile(blogger_id)
     if user is None or profile is None:
@@ -378,45 +453,18 @@ async def _send_contact_immediately(  # noqa: C901
         )
         return
 
+    t = texts
     creator_name = user.username or t.get("lbl_creator_fallback", "Креатор")
     ugc_format = _format_ugc_type(order, t)
-    msg_new = t.get(
-        "msg_offer_new_response",
-        "Новый отклик по вашему заказу 🙌\n\n"
-        "👤 Креатор: {creator}\n"
-        "📍 Город: {city}\n"
-        "🎬 Формат: {format}\n"
-        "💼 Готов работать на условиях оффера\n"
-        "🔗 Профиль креатора:\n{profile_url}",
-    )
-    what_next = t.get("msg_advertiser_new_response_what_next", "")
-    contact_text = msg_new.format(
-        creator=creator_name,
+    contact_text, open_profile_kb = _build_advertiser_contact_content(
+        order,
+        creator_name=creator_name,
         city=profile.city or "—",
-        format=ugc_format,
+        ugc_format=ugc_format,
         profile_url=profile.instagram_url,
-    ) + ("\n\n" + what_next if what_next else "")
-
-    profile_url = profile.instagram_url.strip()
-    if profile_url and not profile_url.startswith("http"):
-        profile_url = "https://" + profile_url
-    buttons: list[Button] = []
-    if profile_url.startswith("http"):
-        buttons.append(
-            Button(
-                text=t.get("btn_open_profile", "🔗 Открыть профиль"),
-                url=profile_url,
-            )
-        )
-    if user.telegram and user.telegram.strip():
-        buttons.append(
-            Button(
-                text=t.get("btn_write_telegram", "Написать в телеграм"),
-                url=f"https://t.me/{user.telegram.lstrip('@')}",
-            )
-        )
-    open_profile_kb = (
-        Keyboard(kind=KeyboardKind.INLINE, rows=[buttons]) if buttons else None
+        has_telegram=bool(user.telegram and user.telegram.strip()),
+        telegram_handle=user.telegram or "",
+        texts=t,
     )
 
     advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
@@ -445,24 +493,16 @@ async def _send_contact_immediately(  # noqa: C901
                     extra={"order_id": str(order.order_id)},
                 )
 
-    # Send advertiser's Telegram and phone to blogger
     advertiser_profile = await profile_service.get_advertiser_profile(
         order.advertiser_id
     )
-    header = t.get(
-        "msg_offer_contacts_header", "📞 Контакты заказчика для связи:\n\n"
+    blogger_contact_text = _build_blogger_contacts_text(
+        advertiser_telegram=advertiser.telegram if advertiser else None,
+        advertiser_phone=advertiser_profile.phone
+        if advertiser_profile
+        else None,
+        texts=t,
     )
-    parts = [header]
-    if advertiser and advertiser.telegram and advertiser.telegram.strip():
-        tg = advertiser.telegram.strip().lstrip("@")
-        parts.append(f"Telegram: @{tg}\n")
-    else:
-        parts.append(t.get("lbl_telegram_dash", "Telegram: —") + "\n")
-    if advertiser_profile and advertiser_profile.phone:
-        parts.append(f"Телефон: {advertiser_profile.phone}")
-    else:
-        parts.append(t.get("lbl_phone_dash", "Телефон: —"))
-    blogger_contact_text = "".join(parts)
     await send_with_retry(
         messenger_client,
         chat_id=blogger_chat_id,
@@ -473,7 +513,6 @@ async def _send_contact_immediately(  # noqa: C901
         extra={"order_id": str(order.order_id), "blogger_id": str(blogger_id)},
     )
 
-    # Create interaction for feedback tracking (72 hour timer starts)
     if interaction_service:
         await interaction_service.create_for_contacts_sent(
             order_id=order.order_id,
