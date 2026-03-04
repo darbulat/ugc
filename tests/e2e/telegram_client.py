@@ -66,15 +66,23 @@ async def send_and_get_reply(
 
 
 async def get_bot_message_containing(
-    client, entity, substring: str, timeout: float = 30.0
+    client,
+    entity,
+    substring: str | tuple[str, ...],
+    timeout: float = 30.0,
 ) -> str | None:
-    """Wait for a bot message that contains the given substring."""
+    """Wait for a bot message that contains the given substring(s).
+    substring may be a single str or a tuple of alternatives (e.g. for i18n).
+    """
+    substrings = (substring,) if isinstance(substring, str) else substring
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         messages = await client.get_messages(entity, limit=10)
         for msg in messages:
-            if not msg.out and msg.text and substring in msg.text:
-                return msg.text
+            if not msg.out and msg.text:
+                for sub in substrings:
+                    if sub in msg.text:
+                        return msg.text
         await asyncio.sleep(1)
     return None
 
