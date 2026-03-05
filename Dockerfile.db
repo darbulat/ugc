@@ -15,5 +15,6 @@ COPY scripts/db_entrypoint.sh /scripts/db_entrypoint.sh
 RUN chown postgres:postgres /scripts/archive_wal.py /scripts/db_entrypoint.sh && \
     chmod 755 /scripts/db_entrypoint.sh /scripts/archive_wal.py
 
+USER postgres
 ENTRYPOINT ["/scripts/db_entrypoint.sh"]
 CMD ["postgres"]
