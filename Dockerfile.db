@@ -4,7 +4,7 @@ FROM postgis/postgis:16-3.4
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 python3-pip && \
-    pip3 install --no-cache-dir boto3 && \
+    pip3 install --no-cache-dir --upgrade "boto3>=1.35.0" && \
     rm -rf /var/lib/apt/lists/*
 
 RUN install -d -o postgres -g postgres /scripts
