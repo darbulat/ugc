@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wrapper for archive_wal.py so archive_command has a single path and a safe PATH.
-# PostgreSQL may run archive_command with an empty or minimal PATH.
+# Wrapper for archive_wal.py; run from PGDATA/scripts so archive_command finds it (possible chroot).
 export PATH=/usr/local/bin:/usr/bin:/bin
-exec python3 /scripts/archive_wal.py "$@"
+SCRIPT_DIR=$(dirname "$0")
+exec python3 "$SCRIPT_DIR/archive_wal.py" "$@"
