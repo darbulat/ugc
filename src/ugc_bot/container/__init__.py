@@ -10,6 +10,7 @@ from sqlalchemy.engine import Engine
 if TYPE_CHECKING:
     from ugc_bot.container.types import BotServices
 
+from ugc_bot.application.ports import GeocoderPort
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
@@ -149,6 +150,10 @@ class Container:
     def build_metrics_collector(self):
         """Create metrics collector."""
         return infrastructure_factory.build_metrics_collector()
+
+    def build_geocoder(self) -> GeocoderPort:
+        """Create geocoder implementation configured for this app."""
+        return service_factory.build_geocoder(self._config)
 
     def build_issue_lock_manager(self):
         """Create lock manager for issue description (Redis or in-memory)."""

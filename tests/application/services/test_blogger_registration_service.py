@@ -100,6 +100,16 @@ async def test_register_blogger_with_geocoder_sets_location_geometry() -> None:
                 "Russia",
             )
 
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
@@ -140,6 +150,16 @@ async def test_register_blogger_geocoder_none_leaves_geometry_empty() -> None:
 
         async def geocode_with_details(self, query, region=None, country=None):
             return None
+
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return False
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return False
 
     service = BloggerRegistrationService(
         user_repo=user_repo,
@@ -778,6 +798,16 @@ async def test_update_blogger_profile_preserves_instagram_stats() -> None:
                 return None
             return (59.93, 30.31, "place", "city", "SPB", "Russia")
 
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
@@ -910,6 +940,16 @@ async def test_update_blogger_profile_preserves_all_optional_fields() -> None:
             if not query:
                 return None
             return (55.75, 37.6, "place", "city", "Москва", "russia")
+
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
 
     service = BloggerRegistrationService(
         user_repo=user_repo,
@@ -1099,6 +1139,16 @@ async def test_update_blogger_profile_with_geocoder_sets_geometry() -> None:
                 return None
             return (55.0, 37.0, "place", "city", "Москва", "Russia")
 
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
@@ -1145,6 +1195,16 @@ async def test_update_blogger_profile_city_not_place_returns_rejected() -> None:
             if not query:
                 return None
             return (55.0, 37.0, "building", "yes", None, None)
+
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return False
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return False
 
     service = BloggerRegistrationService(
         user_repo=user_repo,
@@ -1229,6 +1289,16 @@ async def test_update_blogger_profile_with_transaction_manager(
             if not query:
                 return None
             return (59.93, 30.31, "place", "city", "SPB", "Russia")
+
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
 
     service = BloggerRegistrationService(
         user_repo=user_repo,
