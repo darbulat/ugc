@@ -10,13 +10,14 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 WAL_ARCHIVE_PREFIX = "wal_archive"
 
 
-def _get_s3_config() -> dict | None:
+def _get_s3_config() -> Optional[dict]:
     """Read S3 configuration from environment for WAL archiving."""
     endpoint = os.getenv("S3_ENDPOINT_URL", "https://s3.ru1.storage.beget.cloud").strip()
     bucket = os.getenv("S3_BUCKET", "97596cccd207-ugc-s3").strip()
