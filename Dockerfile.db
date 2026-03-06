@@ -10,11 +10,12 @@ RUN apt-get update && \
 RUN install -d -o postgres -g postgres /scripts
 
 COPY scripts/archive_wal.py /scripts/archive_wal.py
+COPY scripts/archive_wal_wrapper.sh /scripts/archive_wal_wrapper.sh
 COPY scripts/archive_wal_wrapper.sh /usr/local/bin/archive_wal_wrapper.sh
 COPY scripts/db_entrypoint.sh /scripts/db_entrypoint.sh
 
-RUN chown postgres:postgres /scripts/archive_wal.py /scripts/db_entrypoint.sh && \
-    chmod 755 /scripts/db_entrypoint.sh /scripts/archive_wal.py /usr/local/bin/archive_wal_wrapper.sh
+RUN chown postgres:postgres /scripts/archive_wal.py /scripts/archive_wal_wrapper.sh /scripts/db_entrypoint.sh && \
+    chmod 755 /scripts/db_entrypoint.sh /scripts/archive_wal.py /scripts/archive_wal_wrapper.sh /usr/local/bin/archive_wal_wrapper.sh
 
 USER postgres
 ENTRYPOINT ["/scripts/db_entrypoint.sh"]
