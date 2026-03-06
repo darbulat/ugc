@@ -121,6 +121,28 @@ class BloggerRegistrationService:
             return None
         return await self.geocoder.reverse_geocode(lat, lon)
 
+    async def resolve_city_to_location(
+        self,
+        city: str,
+        region: Optional[str] = None,
+        country: Optional[str] = None,
+    ) -> Optional[tuple[str, Optional[str], Optional[str]]]:
+        """Resolve city name to (location_geometry_wkt, region, country).
+
+        Uses geocoder (with cache when CachingGeocoder is used). Returns None
+        when the city cannot be resolved to a populated place.
+        """
+        (
+            wkt,
+            region_geo,
+            country_geo,
+        ) = await _resolve_location_and_geocoder_details(
+            self.geocoder, city, region=region, country=country
+        )
+        if wkt is None:
+            return None
+        return (wkt, region_geo, country_geo)
+
     async def register_blogger(
         self,
         user_id: UUID,

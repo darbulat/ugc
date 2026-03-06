@@ -219,6 +219,55 @@ async def test_resolve_city_from_location_returns_result_from_geocoder() -> (
 
 
 @pytest.mark.asyncio
+async def test_resolve_city_to_location_returns_none_when_geocoder_none() -> (
+    None
+):
+    """resolve_city_to_location returns None when geocoder is not set."""
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=None,
+    )
+    assert await service.resolve_city_to_location("Moscow") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_to_location_returns_wkt_and_region_country() -> (
+    None
+):
+    """resolve_city_to_location returns (wkt, region, country) from geocoder."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_geocoder = MagicMock()
+    mock_geocoder.geocode_with_details = AsyncMock(
+        return_value=(
+            55.7558,
+            37.6173,
+            "place",
+            "city",
+            "Moscow",
+            "Russia",
+        )
+    )
+    mock_geocoder.accepts_as_populated_place = MagicMock(return_value=True)
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=mock_geocoder,
+    )
+    result = await service.resolve_city_to_location("Moscow")
+    assert result is not None
+    wkt, region, country = result
+    assert "MULTIPOINT" in wkt
+    assert "37.6173" in wkt and "55.7558" in wkt
+    assert region == "Moscow"
+    assert country == "Russia"
+    mock_geocoder.geocode_with_details.assert_called_once_with(
+        "Moscow", region=None, country=None
+    )
+
+
+@pytest.mark.asyncio
 async def test_register_blogger_duplicate_instagram_url() -> None:
     """Reject registration with duplicate Instagram URL."""
     from datetime import datetime, timezone
