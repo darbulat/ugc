@@ -33,39 +33,53 @@ def _get_s3_config() -> Optional[dict]:
     }
 
 
+def _make_s3_client(s3_config: dict, use_checksum_options: bool = True):
+    """Create S3 client; use_checksum_options=False for S3-compatible endpoints that reject checksum headers."""
+    import boto3
+    from botocore.config import Config
+
+    s3_kw: dict = {
+        "addressing_style": "path",
+        "payload_signing_enabled": False,
+    }
+    if use_checksum_options:
+        s3_kw["request_checksum_calculation"] = "when_required"
+        s3_kw["response_checksum_validation"] = "when_required"
+    cfg = Config(s3=s3_kw)
+    return boto3.client(
+        "s3",
+        endpoint_url=s3_config["endpoint_url"],
+        aws_access_key_id=s3_config["access_key"],
+        aws_secret_access_key=s3_config["secret_key"],
+        config=cfg,
+    )
+
+
 def upload_wal_to_s3(wal_path: Path, s3_key: str, s3_config: dict) -> bool:
     """Upload WAL file to S3. Returns True on success, False otherwise."""
     try:
         import boto3
-        from botocore.config import Config
+        from botocore.exceptions import ClientError
     except ImportError as e:
         logger.error("boto3 not available: %s", e)
         return False
 
+    with open(wal_path, "rb") as f:
+        body = f.read()
+
     try:
-        config = Config(
-            s3={
-                "addressing_style": "path",
-                "payload_signing_enabled": False,
-                "request_checksum_calculation": "when_required",
-                "response_checksum_validation": "when_required",
-            },
-        )
-        client = boto3.client(
-            "s3",
-            endpoint_url=s3_config["endpoint_url"],
-            aws_access_key_id=s3_config["access_key"],
-            aws_secret_access_key=s3_config["secret_key"],
-            config=config,
-        )
-        with open(wal_path, "rb") as f:
-            body = f.read()
+        client = _make_s3_client(s3_config, use_checksum_options=True)
         client.put_object(Bucket=s3_config["bucket"], Key=s3_key, Body=body)
         logger.info("Archived WAL to s3://%s/%s", s3_config["bucket"], s3_key)
         return True
-    except Exception as e:
-        logger.exception("WAL upload to S3 failed: %s", e)
-        return False
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") != "XAmzContentSHA256Mismatch":
+            raise
+        logger.warning("PutObject checksum rejected (S3-compatible endpoint), retrying without checksum options")
+        client = _make_s3_client(s3_config, use_checksum_options=False)
+        client.put_object(Bucket=s3_config["bucket"], Key=s3_key, Body=body)
+        logger.info("Archived WAL to s3://%s/%s", s3_config["bucket"], s3_key)
+        return True
 
 
 def main() -> int:
