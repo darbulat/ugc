@@ -10,7 +10,7 @@ if [ "$PITR_ENABLED" = "true" ] || [ "$PITR_ENABLED" = "1" ]; then
     shift
     exec postgres \
         -c "archive_mode=on" \
-        -c "archive_command='/usr/bin/python3 /scripts/archive_wal.py %p %f'" \
+        -c "archive_command='/scripts/archive_wal_wrapper.sh %p %f'" \
         "$@"
 else
     exec "$@"
