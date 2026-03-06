@@ -713,9 +713,11 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "msg_offer_accepted": "Отклик принят! Ожидайте связи от рекламодателя.",
         "msg_offer_order_filled": (
-            "Заказ уже укомплектован. Мы сохранили ваш отклик — "
-            "если кто-то откажется, с вами могут связаться."
+            "Текущая подборка блогеров уже закрыта. Мы добавим вас в лист ожидания — "
+            "если потребуется замена блогера или заказчик решит расширить подборку, "
+            "мы первыми отправим вам предложение."
         ),
+        "msg_offer_order_filled_toast": "Записали в лист ожидания",
         "msg_advertiser_after_payment_success": (
             "Оплата прошла успешно ✅\n\nПодбор креаторов по вашему заказу активирован."
         ),
@@ -1455,9 +1457,11 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "msg_offer_accepted": "Response accepted! Wait for the advertiser to contact you.",
         "msg_offer_order_filled": (
-            "Order is already filled. We saved your response — "
-            "if someone drops out, we may contact you."
+            "The current creator shortlist is closed. We've added you to the waitlist — "
+            "if we need a replacement or the advertiser expands the shortlist, "
+            "we'll send you an offer first."
         ),
+        "msg_offer_order_filled_toast": "Added to waitlist",
         "msg_advertiser_after_payment_success": (
             "Payment successful ✅\n\nCreator matching for your order is now active."
         ),

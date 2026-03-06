@@ -810,9 +810,15 @@ async def test_offer_response_handler_overflow_saved_no_contact(
     )
 
     assert callback.answers
+    # Short toast in answer_callback
     assert (
-        "укомплектован" in callback.answers[0]
-        or "сохранили ваш отклик" in callback.answers[0]
+        "лист ожидания" in callback.answers[0]
+        or "Записали" in callback.answers[0]
+    )
+    # Full text sent as a separate bot message
+    assert any(
+        "подборка блогеров уже закрыта" in str(a) or "лист ожидания" in str(a)
+        for a in message.answers
     )
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None

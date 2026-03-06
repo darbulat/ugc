@@ -114,7 +114,9 @@ async def _reply_offer_response_result(
     if result.accepted:
         text = await bot_texts_service.get("msg_offer_accepted", locale)
     else:
-        text = await bot_texts_service.get("msg_offer_order_filled", locale)
+        text = await bot_texts_service.get(
+            "msg_offer_order_filled_toast", locale
+        )
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
         text=text,
@@ -126,6 +128,14 @@ async def _reply_offer_response_result(
                 message_id=incoming.message_id,
                 keyboard=None,
             )
+    if not result.accepted:
+        msg_waitlist = await bot_texts_service.get(
+            "msg_offer_order_filled", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_waitlist,
+        )
     if result.accepted:
         if result.order.product_link:
             await messenger_client.send_text(
