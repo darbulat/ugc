@@ -89,6 +89,10 @@ _FLAT_KEYS = {
         "DADATA_TIMEOUT",
         "DADATA_API_KEY",
         "DADATA_SECRET",
+        "GEOCODER_CACHE_ENABLED",
+        "GEOCODER_CACHE_TTL_SECONDS",
+        "GEOCODER_CACHE_BACKEND",
+        "GEOCODER_CACHE_MEMORY_MAX_ENTRIES",
     ],
     "docs": [
         "DOCS_OFFER_URL",
@@ -397,6 +401,21 @@ class GeocoderConfig(BaseSettings):
     )
     dadata_api_key: str = Field(default="", alias="DADATA_API_KEY")
     dadata_secret: str = Field(default="", alias="DADATA_SECRET")
+
+    # Cache (shared for any provider)
+    cache_enabled: bool = Field(default=True, alias="GEOCODER_CACHE_ENABLED")
+    cache_ttl_seconds: int = Field(
+        default=604800,
+        alias="GEOCODER_CACHE_TTL_SECONDS",
+    )  # 7 days
+    cache_backend: Literal["redis", "memory"] = Field(
+        default="redis",
+        alias="GEOCODER_CACHE_BACKEND",
+    )
+    cache_memory_max_entries: int = Field(
+        default=10_000,
+        alias="GEOCODER_CACHE_MEMORY_MAX_ENTRIES",
+    )
 
     @field_validator("nominatim_base_url", "dadata_base_url")
     @classmethod
