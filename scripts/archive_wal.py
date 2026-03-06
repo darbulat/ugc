@@ -47,6 +47,8 @@ def upload_wal_to_s3(wal_path: Path, s3_key: str, s3_config: dict) -> bool:
             s3={
                 "addressing_style": "path",
                 "payload_signing_enabled": False,
+                "request_checksum_calculation": "when_required",
+                "response_checksum_validation": "when_required",
             },
         )
         client = boto3.client(
