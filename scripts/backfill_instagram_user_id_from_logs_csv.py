@@ -67,9 +67,6 @@ def profile_with_instagram_user_id(
         blogger_gender=profile.blogger_gender,
         instagram_user_id=instagram_user_id,
         instagram_followers_count=profile.instagram_followers_count,
-        instagram_media_count=profile.instagram_media_count,
-        instagram_follows_count=profile.instagram_follows_count,
-        instagram_biography=profile.instagram_biography,
         instagram_username=profile.instagram_username,
         instagram_stats_fetched_at=profile.instagram_stats_fetched_at,
     )

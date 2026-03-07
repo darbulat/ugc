@@ -90,8 +90,6 @@ async def test_run_once_updates_profile_stats() -> None:
     saved = await repo.get_by_user_id(user_id)
     assert saved is not None
     assert saved.instagram_followers_count == 2000
-    assert saved.instagram_media_count == 100
-    assert saved.instagram_follows_count == 300
     assert saved.instagram_username == "jane"
     assert saved.instagram_stats_fetched_at is not None
     assert saved.instagram_url == "https://instagram.com/jane"

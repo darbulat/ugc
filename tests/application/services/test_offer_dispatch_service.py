@@ -1789,11 +1789,12 @@ async def test_dispatch_gender_filter_excludes_mismatch() -> None:
 
 @pytest.mark.asyncio
 async def test_dispatch_min_publications_includes_above() -> None:
-    """Order min_publications: blogger with enough media_count included."""
+    """min_publications: blogger with enough media_count from stats included."""
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
     offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    stats_repo = InMemoryInstagramStatsRepository()
     order = Order(
         order_id=UUID("00000000-0000-0000-0000-000000000840"),
         advertiser_id=UUID("00000000-0000-0000-0000-000000000841"),
@@ -1835,7 +1836,15 @@ async def test_dispatch_min_publications_includes_above() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
-            instagram_media_count=50,
+        )
+    )
+    await stats_repo.save(
+        InstagramStats(
+            user_id=blogger_ok.user_id,
+            raw_response={},
+            fetched_at=datetime.now(timezone.utc),
+            followers_count=5000,
+            media_count=50,
         )
     )
     service = OfferDispatchService(
@@ -1844,6 +1853,7 @@ async def test_dispatch_min_publications_includes_above() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
+        instagram_stats_repo=stats_repo,
     )
     result = await service.dispatch(order.order_id)
     assert len(result) == 1
@@ -2019,7 +2029,6 @@ async def test_dispatch_min_publications_excludes_below() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
-            instagram_media_count=10,
         )
     )
     service = OfferDispatchService(
@@ -2080,7 +2089,6 @@ async def test_dispatch_max_publications_excludes_above() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
-            instagram_media_count=100,
         )
     )
     service = OfferDispatchService(
@@ -2141,7 +2149,6 @@ async def test_dispatch_min_publications_excludes_none_media_count() -> None:
             barter=False,
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
-            instagram_media_count=None,
         )
     )
     service = OfferDispatchService(
@@ -2266,7 +2273,6 @@ async def test_dispatch_uses_instagram_stats_when_repo_provided() -> None:
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
             instagram_followers_count=100,
-            instagram_media_count=5,
         )
     )
     await stats_repo.save(

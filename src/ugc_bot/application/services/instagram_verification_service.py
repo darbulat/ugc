@@ -256,16 +256,10 @@ class InstagramVerificationService:
         now = datetime.now(timezone.utc)
         instagram_user_id = instagram_sender_id
         instagram_followers_count = None
-        instagram_media_count = None
-        instagram_follows_count = None
-        instagram_biography = None
         instagram_username = None
         instagram_stats_fetched_at = None
         if profile_info:
             instagram_followers_count = profile_info.followers_count
-            instagram_media_count = profile_info.media_count
-            instagram_follows_count = profile_info.follows_count
-            instagram_biography = profile_info.biography
             instagram_username = profile_info.username
             instagram_stats_fetched_at = now
 
@@ -279,9 +273,6 @@ class InstagramVerificationService:
                 updated_at=now,
                 instagram_user_id=instagram_user_id,
                 instagram_followers_count=instagram_followers_count,
-                instagram_media_count=instagram_media_count,
-                instagram_follows_count=instagram_follows_count,
-                instagram_biography=instagram_biography,
                 instagram_username=instagram_username,
                 instagram_stats_fetched_at=instagram_stats_fetched_at,
             )

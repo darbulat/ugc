@@ -1300,7 +1300,6 @@ class AdminDashboardService:
                 BloggerProfileModel.instagram_url,
                 BloggerProfileModel.city,
                 BloggerProfileModel.instagram_followers_count,
-                BloggerProfileModel.instagram_media_count,
                 func.coalesce(responses.c.responses, 0).label("responses"),
                 func.coalesce(complaints.c.complaints, 0).label("complaints"),
             )
@@ -1328,7 +1327,7 @@ class AdminDashboardService:
         )
         if order_column is not None:
             direction = order_column.asc() if order_asc else order_column.desc()
-            if sort_by in ("followers", "media", "city"):
+            if sort_by in ("followers", "city"):
                 direction = direction.nulls_last()
             query = query.order_by(direction)
         else:
@@ -1343,7 +1342,6 @@ class AdminDashboardService:
                 instagram_url,
                 city,
                 followers_count,
-                media_count,
                 resp_count,
                 compl_count,
             ) = row
@@ -1359,7 +1357,6 @@ class AdminDashboardService:
                     "complaints": int(compl_count),
                     "status": self._user_status_label(user.status),
                     "instagram_followers_count": followers_count,
-                    "instagram_media_count": media_count,
                 }
             )
         return items
@@ -1376,8 +1373,6 @@ class AdminDashboardService:
             return UserModel.created_at
         if sort_by == "followers":
             return BloggerProfileModel.instagram_followers_count
-        if sort_by == "media":
-            return BloggerProfileModel.instagram_media_count
         if sort_by == "responses":
             return func.coalesce(responses.c.responses, 0)
         if sort_by == "complaints":

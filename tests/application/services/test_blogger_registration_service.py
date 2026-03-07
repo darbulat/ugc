@@ -835,7 +835,6 @@ async def test_update_blogger_profile_preserves_instagram_stats() -> None:
             updated_at=now,
             instagram_user_id="ig_123",
             instagram_followers_count=5000,
-            instagram_media_count=100,
             instagram_username="stats_user",
             instagram_stats_fetched_at=now,
         )
@@ -868,7 +867,6 @@ async def test_update_blogger_profile_preserves_instagram_stats() -> None:
     assert updated.city == "SPB"
     assert updated.instagram_user_id == "ig_123"
     assert updated.instagram_followers_count == 5000
-    assert updated.instagram_media_count == 100
     assert updated.instagram_username == "stats_user"
     assert updated.instagram_stats_fetched_at == now
     saved = await blogger_repo.get_by_user_id(user_id)
@@ -926,9 +924,6 @@ _BLOGGER_PROFILE_OPTIONAL_FIELDS = (
     "blogger_gender",
     "instagram_user_id",
     "instagram_followers_count",
-    "instagram_media_count",
-    "instagram_follows_count",
-    "instagram_biography",
     "instagram_username",
     "instagram_stats_fetched_at",
     "birth_date",
@@ -961,9 +956,6 @@ def _blogger_profile_with_all_optional_fields(
         blogger_gender=BloggerGender.FEMALE,
         instagram_user_id="ig_regression",
         instagram_followers_count=7000,
-        instagram_media_count=150,
-        instagram_follows_count=200,
-        instagram_biography="Test bio",
         instagram_username="regression_user",
         instagram_stats_fetched_at=now,
         birth_date=date(1990, 1, 1),

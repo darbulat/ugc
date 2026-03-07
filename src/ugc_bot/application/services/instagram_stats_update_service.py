@@ -112,9 +112,6 @@ class InstagramStatsUpdateService:
                 profile,
                 instagram_url=instagram_url,
                 instagram_followers_count=info.followers_count,
-                instagram_media_count=info.media_count,
-                instagram_follows_count=info.follows_count,
-                instagram_biography=info.biography,
                 instagram_username=info.username,
                 instagram_stats_fetched_at=now,
             )

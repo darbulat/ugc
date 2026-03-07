@@ -461,9 +461,6 @@ async def test_verify_code_by_instagram_sender_saves_instagram_stats() -> None:
     assert updated.instagram_user_id == "instagram_sender_1"
     assert updated.instagram_username == "test_user"
     assert updated.instagram_followers_count == 1000
-    assert updated.instagram_media_count == 50
-    assert updated.instagram_follows_count == 200
-    assert updated.instagram_biography == "Fitness"
     assert updated.instagram_stats_fetched_at is not None
 
 

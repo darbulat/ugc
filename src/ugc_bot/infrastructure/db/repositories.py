@@ -1195,9 +1195,6 @@ def _to_blogger_profile_entity(
         instagram_followers_count=getattr(
             model, "instagram_followers_count", None
         ),
-        instagram_media_count=getattr(model, "instagram_media_count", None),
-        instagram_follows_count=getattr(model, "instagram_follows_count", None),
-        instagram_biography=getattr(model, "instagram_biography", None),
         instagram_username=getattr(model, "instagram_username", None),
         instagram_stats_fetched_at=getattr(
             model, "instagram_stats_fetched_at", None
@@ -1235,9 +1232,6 @@ def _to_blogger_profile_model(
         blogger_gender=profile.blogger_gender,
         instagram_user_id=profile.instagram_user_id,
         instagram_followers_count=profile.instagram_followers_count,
-        instagram_media_count=profile.instagram_media_count,
-        instagram_follows_count=profile.instagram_follows_count,
-        instagram_biography=profile.instagram_biography,
         instagram_username=profile.instagram_username,
         instagram_stats_fetched_at=profile.instagram_stats_fetched_at,
         birth_date=profile.birth_date,

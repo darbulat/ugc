@@ -211,15 +211,6 @@ class BloggerProfileModel(Base):
     instagram_followers_count: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
-    instagram_media_count: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
-    instagram_follows_count: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
-    instagram_biography: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True
-    )
     instagram_username: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )

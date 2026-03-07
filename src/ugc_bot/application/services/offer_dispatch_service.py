@@ -385,14 +385,12 @@ class OfferDispatchService:
             if stats is not None:
                 followers_count = stats.followers_count
                 media_count = stats.media_count
-        needs_fallback = (
-            followers_count is None or media_count is None
-        ) and profile is not None
-        if needs_fallback and profile is not None:
-            if followers_count is None:
-                followers_count = profile.instagram_followers_count
-            if media_count is None:
-                media_count = profile.instagram_media_count
+        if (
+            profile is not None
+            and (followers_count is None or media_count is None)
+            and followers_count is None
+        ):
+            followers_count = profile.instagram_followers_count
         return followers_count, media_count
 
     async def _check_user_eligible(

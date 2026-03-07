@@ -89,9 +89,6 @@ class BloggerProfile:
     blogger_gender: Optional[BloggerGender] = None
     instagram_user_id: Optional[str] = None
     instagram_followers_count: Optional[int] = None
-    instagram_media_count: Optional[int] = None
-    instagram_follows_count: Optional[int] = None
-    instagram_biography: Optional[str] = None
     instagram_username: Optional[str] = None
     instagram_stats_fetched_at: Optional[datetime] = None
     birth_date: Optional[date] = None
