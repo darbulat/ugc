@@ -17,6 +17,7 @@ from ugc_bot.admin.app import (
     UserAdmin,
     _get_order_moderation_deps,
     _get_services,
+    _inject_order_eligible_bloggers_count,
     _update_blogger_profile_location_from_nominatim,
     _update_order_location_geometry_after_geography_change,
     create_admin_app,
@@ -1827,3 +1828,74 @@ def test_enum_aware_admin_edit_form_data_handles_attribute_error() -> None:
     result = admin._edit_form_data(model, model_view)
 
     assert isinstance(result, dict)
+
+
+@pytest.mark.asyncio
+async def test_inject_order_eligible_bloggers_count_sets_count() -> None:
+    """Context gets eligible_bloggers_count for OrderAdmin with container."""
+    order_id = UUID("00000000-0000-0000-0000-000000000070")
+    context = {}
+    model_view = OrderAdmin()
+    model = MagicMock()
+    model.order_id = order_id
+
+    mock_dispatch = MagicMock()
+    mock_dispatch.count_eligible_bloggers = AsyncMock(return_value=42)
+    mock_container = MagicMock()
+    mock_container.session_factory = True
+    mock_container.build_offer_dispatch_service = MagicMock(
+        return_value=mock_dispatch
+    )
+
+    with patch(
+        "ugc_bot.admin.app._get_admin_container",
+        return_value=mock_container,
+    ):
+        await _inject_order_eligible_bloggers_count(context, model_view, model)
+
+    assert context["eligible_bloggers_count"] == 42
+    mock_dispatch.count_eligible_bloggers.assert_awaited_once_with(order_id)
+
+
+@pytest.mark.asyncio
+async def test_inject_order_eligible_count_none_without_container() -> None:
+    """eligible_bloggers_count is None when container missing."""
+    context = {}
+    model_view = OrderAdmin()
+    model = MagicMock()
+    model.order_id = UUID("00000000-0000-0000-0000-000000000071")
+
+    with patch(
+        "ugc_bot.admin.app._get_admin_container",
+        return_value=None,
+    ):
+        await _inject_order_eligible_bloggers_count(context, model_view, model)
+
+    assert context["eligible_bloggers_count"] is None
+
+
+@pytest.mark.asyncio
+async def test_inject_order_eligible_bloggers_count_none_on_exception() -> None:
+    """eligible_bloggers_count is None when count_eligible_bloggers raises."""
+    context = {}
+    model_view = OrderAdmin()
+    model = MagicMock()
+    model.order_id = UUID("00000000-0000-0000-0000-000000000072")
+
+    mock_dispatch = MagicMock()
+    mock_dispatch.count_eligible_bloggers = AsyncMock(
+        side_effect=RuntimeError("db error")
+    )
+    mock_container = MagicMock()
+    mock_container.session_factory = True
+    mock_container.build_offer_dispatch_service = MagicMock(
+        return_value=mock_dispatch
+    )
+
+    with patch(
+        "ugc_bot.admin.app._get_admin_container",
+        return_value=mock_container,
+    ):
+        await _inject_order_eligible_bloggers_count(context, model_view, model)
+
+    assert context["eligible_bloggers_count"] is None

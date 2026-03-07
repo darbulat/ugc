@@ -1497,6 +1497,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
     ]
+    edit_template = "order_edit.html"
 
     async def update_model(self, request: Request, pk: str, data: dict):
         """Update order with banned content check and activation publishing."""
@@ -1899,6 +1900,26 @@ class DashboardLinkView(BaseView):
         return RedirectResponse(url="/admin/dashboard")
 
 
+async def _inject_order_eligible_bloggers_count(
+    context: dict[str, Any],
+    model_view: Any,
+    model: Any,
+) -> None:
+    """Set context['eligible_bloggers_count'] for OrderAdmin edit view."""
+    if not isinstance(model_view, OrderAdmin):
+        return
+    try:
+        container = _get_admin_container()
+        if container and getattr(container, "session_factory", None):
+            dispatch_svc = container.build_offer_dispatch_service()
+            count = await dispatch_svc.count_eligible_bloggers(model.order_id)
+            context["eligible_bloggers_count"] = count
+        else:
+            context["eligible_bloggers_count"] = None
+    except Exception:
+        context["eligible_bloggers_count"] = None
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -1953,6 +1974,7 @@ class EnumAwareAdmin(Admin):
             "model_view": model_view,
             "form": Form(data=form_data),
         }
+        await _inject_order_eligible_bloggers_count(context, model_view, model)
 
         if request.method == "GET":
             return await self.templates.TemplateResponse(
@@ -2062,7 +2084,11 @@ def create_admin_app() -> FastAPI:
         app, auth, dashboard_service, templates, cache=admin_cache
     )
     admin = EnumAwareAdmin(
-        app, engine, authentication_backend=auth, base_url="/admin"
+        app,
+        engine,
+        authentication_backend=auth,
+        base_url="/admin",
+        templates_dir=str(Path(__file__).parent / "templates"),
     )
 
     global _admin_container

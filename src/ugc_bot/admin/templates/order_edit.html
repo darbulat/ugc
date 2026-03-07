@@ -1,0 +1,11 @@
+{% extends "sqladmin/edit.html" %}
+{% block content %}
+{% if eligible_bloggers_count is not none %}
+<div class="col-12 mb-2">
+  <div class="alert alert-info py-2 mb-0" role="status">
+    Креаторов под выборку: <strong>{{ eligible_bloggers_count }}</strong>
+  </div>
+</div>
+{% endif %}
+{{ super() }}
+{% endblock %}
