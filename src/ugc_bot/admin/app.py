@@ -34,7 +34,6 @@ from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.geocoder import (
-    NominatimGeocoder,
     wkt_multipoint_from_lat_lon,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
@@ -115,7 +114,7 @@ async def _update_order_location_geometry_after_geography_change(
     geography_clean = (geography_raw or "").strip() or None
     new_geometry: str | None = None
     if geography_clean:
-        geocoder = NominatimGeocoder(enabled=True)
+        geocoder = container.build_geocoder()
         spec = parse_geography(geography_clean)
         if spec is not None:
             queries = get_geometry_queries_from_spec(spec)
@@ -148,10 +147,10 @@ async def _update_order_location_geometry_after_geography_change(
 async def _update_blogger_profile_location_from_nominatim(
     user_id: UUID, city: Optional[str] = None
 ) -> None:
-    """Update blogger profile location_geometry, region, country from Nominatim.
+    """Update blogger profile location_geometry, region, country via geocoder.
 
-    When admin updates blogger profile city, we geocode via Nominatim and
-    save coordinates, region and country to the profile.
+    When admin updates blogger profile city, we geocode and save coordinates,
+    region and country to the profile.
     """
     container = _get_admin_container()
     if not container:
@@ -173,7 +172,7 @@ async def _update_blogger_profile_location_from_nominatim(
             ).strip()
             if not city_for_query:
                 return
-            geocoder = NominatimGeocoder(enabled=True)
+            geocoder = container.build_geocoder()
             details = await geocoder.geocode_with_details(
                 city_for_query,
                 region=profile.region,

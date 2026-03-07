@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Any
 
+from ugc_bot.application.cache_ports import CachePort
+from ugc_bot.application.ports import GeocoderPort
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -18,6 +20,8 @@ from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.geocoder import NominatimGeocoder
+from ugc_bot.application.services.geocoder_cache import CachingGeocoder
+from ugc_bot.application.services.geocoder_dadata import DadataGeocoder
 from ugc_bot.application.services.instagram_stats_collector_service import (
     InstagramStatsCollectorService,
 )
@@ -46,7 +50,53 @@ from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.container.types import BotServices
+from ugc_bot.infrastructure.geocoder_cache_memory import GeocoderCacheMemory
+from ugc_bot.infrastructure.geocoder_cache_redis import (
+    DEFAULT_PREFIX as GEOCODER_CACHE_KEY_PREFIX,
+)
+from ugc_bot.infrastructure.geocoder_cache_redis import (
+    GeocoderCacheRedis,
+)
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
+
+
+def build_geocoder(config: AppConfig) -> GeocoderPort:
+    """Build geocoder implementation from AppConfig (with optional cache)."""
+    cfg = config.geocoder
+    bare: GeocoderPort
+    if cfg.provider == "dadata":
+        bare = DadataGeocoder(
+            base_url=cfg.dadata_base_url,
+            api_key=cfg.dadata_api_key,
+            secret=cfg.dadata_secret,
+            timeout_seconds=cfg.dadata_timeout_seconds,
+            enabled=cfg.dadata_enabled,
+        )
+    else:
+        bare = NominatimGeocoder(
+            base_url=cfg.nominatim_base_url,
+            user_agent=cfg.nominatim_user_agent,
+            timeout_seconds=cfg.nominatim_timeout_seconds,
+            enabled=cfg.nominatim_enabled,
+        )
+    if not cfg.cache_enabled:
+        return bare
+    cache_backend: CachePort
+    if cfg.cache_backend == "redis" and config.redis.redis_url:
+        cache_backend = GeocoderCacheRedis(
+            redis_url=config.redis.redis_url,
+            key_prefix=GEOCODER_CACHE_KEY_PREFIX,
+        )
+    else:
+        cache_backend = GeocoderCacheMemory(
+            max_entries=cfg.cache_memory_max_entries,
+        )
+    return CachingGeocoder(
+        delegate=bare,
+        cache=cache_backend,
+        ttl_seconds=cfg.cache_ttl_seconds,
+        cache_negative=True,
+    )
 
 
 def build_offer_dispatch_service(repos, transaction_manager):
@@ -232,6 +282,7 @@ def build_bot_services(
         user_referral_binding_repo=repos["user_referral_binding_repo"],
         transaction_manager=transaction_manager,
     )
+    geocoder = build_geocoder(config)
     return {
         "metrics_collector": metrics_collector,
         "content_moderation_service": ContentModerationService(),
@@ -246,7 +297,7 @@ def build_bot_services(
             referral_service=referral_service,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
-            geocoder=NominatimGeocoder(enabled=True),
+            geocoder=geocoder,
         ),
         "advertiser_registration_service": AdvertiserRegistrationService(
             user_repo=repos["user_repo"],
@@ -270,7 +321,7 @@ def build_bot_services(
             max_order_price=config.order.max_order_price,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
-            geocoder=NominatimGeocoder(enabled=True),
+            geocoder=geocoder,
         ),
         "offer_dispatch_service": OfferDispatchService(
             user_repo=repos["user_repo"],

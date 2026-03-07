@@ -602,25 +602,68 @@ async def _handle_city_from_location(
     return True
 
 
+async def _city_step_keyboard_async(
+    bot_texts_service: BotTextsService,
+    config: AppConfig,
+    locale: str,
+):
+    """Build city step keyboard (location + picker) for error replies."""
+    city_btn_texts = await bot_texts_service.get_many(
+        ["btn_location_request", "btn_location_map"], locale
+    )
+    miniapp_url = None
+    base = getattr(config.webhook, "webhook_base_url", None) or ""
+    if base:
+        miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+    return flow_keyboard_city_request(
+        city_btn_texts, miniapp_location_url=miniapp_url
+    )
+
+
 async def _handle_city_from_text(
     incoming,
     state_store,
     validator_texts: dict,
+    blogger_registration_service: BloggerRegistrationService,
     messenger_client: MessengerClient,
     bot_texts_service: BotTextsService,
+    config: AppConfig,
     locale: str,
 ) -> None:
-    """Process city from text. Send error or advance to region/birth_date."""
+    """Process city from text. Validate via geocoder; on success store city and
+    location_geometry, then advance to region/birth_date.
+    """
     city = (incoming.text or "").strip()
     err = validate_city(city, required=True, texts=validator_texts)
     if err is not None:
+        keyboard = await _city_step_keyboard_async(
+            bot_texts_service, config, locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=err,
-            keyboard=flow_keyboard_remove(),
+            keyboard=keyboard,
         )
         return
     normalized = normalize_geo_token(city)
+    location_result = (
+        await blogger_registration_service.resolve_city_to_location(normalized)
+    )
+    if location_result is None:
+        err_not_found = await bot_texts_service.get(
+            "err_city_not_found_use_map", locale
+        )
+        keyboard = await _city_step_keyboard_async(
+            bot_texts_service, config, locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err_not_found,
+            keyboard=keyboard,
+        )
+        return
+    location_geometry, region_geo, country_geo = location_result
+    country = (country_geo or "").strip()
     regions = get_regions_for_city(normalized)
     msg_multi_region = await bot_texts_service.get(
         "msg_city_multiple_regions", locale
@@ -629,7 +672,11 @@ async def _handle_city_from_text(
         "msg_step_ask_birth_date", locale
     )
     if len(regions) > 1:
-        await state_store.update_data(city=normalized)
+        await state_store.update_data(
+            city=normalized,
+            location_geometry=location_geometry,
+            country=country,
+        )
         region_buttons = [
             [
                 Button(
@@ -645,8 +692,12 @@ async def _handle_city_from_text(
             keyboard=flow_inline_keyboard(region_buttons),
         )
         return
+    region = regions[0] if regions else (region_geo or "")
     await state_store.update_data(
-        city=normalized, region=(regions[0] if regions else None)
+        city=normalized,
+        region=region,
+        location_geometry=location_geometry,
+        country=country,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -695,8 +746,10 @@ async def handle_city(
         incoming,
         state_store,
         validator_texts,
+        blogger_registration_service,
         messenger_client,
         bot_texts_service,
+        config,
         locale,
     )
 

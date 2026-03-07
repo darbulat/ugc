@@ -1,8 +1,47 @@
 """Geocoding service: resolve city/address to coordinates (lat, lon)."""
 
+import logging
 from typing import Any, List, Optional, Tuple
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+_NOMINATIM_POPULATED_PLACE_TYPES: frozenset[str] = frozenset(
+    {
+        "city",
+        "town",
+        "village",
+        "hamlet",
+        "locality",
+        "suburb",
+        "neighbourhood",
+        "quarter",
+        "isolated_dwelling",
+    }
+)
+
+_NOMINATIM_PLACE_OR_REGION_TYPES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("place", "city"),
+        ("place", "town"),
+        ("place", "village"),
+        ("place", "hamlet"),
+        ("place", "suburb"),
+        ("place", "neighbourhood"),
+        ("place", "locality"),
+        ("place", "isolated_dwelling"),
+        # Regions/countries are often returned either as place/country or as
+        # administrative boundaries.
+        ("place", "country"),
+        ("boundary", "administrative"),
+    }
+)
+
+
+def _normalize_place_token(value: str) -> str:
+    """Normalize provider place class/type tokens for comparisons."""
+    return (value or "").strip().lower()
 
 
 def _geojson_geometry_to_wkt(geojson: dict[str, Any]) -> Optional[str]:
@@ -130,6 +169,22 @@ class NominatimGeocoder:
         self._timeout = timeout_seconds
         self._enabled = enabled
 
+    def accepts_as_populated_place(
+        self, place_class: str, place_type: str
+    ) -> bool:
+        """Return True when Nominatim class/type represent a populated place."""
+        cls = _normalize_place_token(place_class)
+        typ = _normalize_place_token(place_type)
+        return cls == "place" and typ in _NOMINATIM_POPULATED_PLACE_TYPES
+
+    def accepts_as_place_or_region(
+        self, place_class: str, place_type: str
+    ) -> bool:
+        """Return True when Nominatim class/type represent place or region."""
+        cls = _normalize_place_token(place_class)
+        typ = _normalize_place_token(place_type)
+        return (cls, typ) in _NOMINATIM_PLACE_OR_REGION_TYPES
+
     async def geocode(
         self,
         query: str,
@@ -146,6 +201,7 @@ class NominatimGeocoder:
         else:
             q = f"{q}, {country_str}"
         url = f"{self._base_url}/search"
+        logger.info("geocoder request: GET %s q=%r", url, q)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -199,6 +255,7 @@ class NominatimGeocoder:
             parts.append(country_str)
         q = ", ".join(parts)
         url = f"{self._base_url}/search"
+        logger.info("geocoder request: GET %s q=%r addressdetails=1", url, q)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -270,6 +327,7 @@ class NominatimGeocoder:
             parts.append(country.strip())
         q = ", ".join(parts)
         url = f"{self._base_url}/search"
+        logger.info("geocoder request: GET %s q=%r (osm_id lookup)", url, q)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -317,6 +375,11 @@ class NominatimGeocoder:
         type_letter, osm_id = osm
         osm_ids_param = f"{type_letter}{osm_id}"
         url = f"{self._base_url}/lookup"
+        logger.info(
+            "geocoder request: GET %s osm_ids=%s polygon_geojson=1",
+            url,
+            osm_ids_param,
+        )
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -382,6 +445,7 @@ class NominatimGeocoder:
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return None
         url = f"{self._base_url}/reverse"
+        logger.info("geocoder request: GET %s lat=%s lon=%s", url, lat, lon)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,

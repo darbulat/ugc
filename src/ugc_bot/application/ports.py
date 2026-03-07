@@ -835,7 +835,39 @@ class GeocoderPort(Protocol):
         region: Optional[str] = None,
         country: Optional[str] = None,
     ) -> Optional[Tuple[float, float, str, str, Optional[str], Optional[str]]]:
-        """Return (lat, lon, osm_class, osm_type, region, country) or None."""
+        """Return details for query or None when not found.
+
+        Returns:
+            Tuple of:
+            - lat (float)
+            - lon (float)
+            - place_class (str): provider-specific class/category (e.g. OSM
+              class for Nominatim)
+            - place_type (str): provider-specific type (e.g. OSM type for
+              Nominatim)
+            - region (str | None): best-effort region extracted from response
+            - country (str | None): best-effort country extracted from response
+        """
+        ...
+
+    def accepts_as_populated_place(
+        self, place_class: str, place_type: str
+    ) -> bool:
+        """Return True when place_class/type represent a populated place.
+
+        This is intentionally provider-specific: each geocoder implementation
+        encapsulates its own taxonomy/mapping (OSM, Dadata, etc.).
+        """
+        ...
+
+    def accepts_as_place_or_region(
+        self, place_class: str, place_type: str
+    ) -> bool:
+        """Return True when place_class/type represent a place or a region.
+
+        Used for cases where both populated places and administrative regions
+        are acceptable (e.g. backfills from free-text city field).
+        """
         ...
 
     async def get_multipolygon_wkt_for_queries(

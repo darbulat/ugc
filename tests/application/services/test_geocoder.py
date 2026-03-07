@@ -1514,3 +1514,29 @@ async def test_nominatim_reverse_geocode_address_not_dict_returns_none() -> (
         client_cls.return_value = mock_client
 
         assert await geocoder.reverse_geocode(55.75, 37.62) is None
+
+
+def test_nominatim_accepts_as_populated_place() -> None:
+    """accepts_as_populated_place returns True for populated places."""
+    geocoder = NominatimGeocoder(enabled=True)
+    assert geocoder.accepts_as_populated_place("place", "city") is True
+    assert geocoder.accepts_as_populated_place("place", "village") is True
+    assert (
+        geocoder.accepts_as_populated_place("boundary", "administrative")
+        is False
+    )
+    assert geocoder.accepts_as_populated_place("", "") is False
+
+
+def test_nominatim_accepts_as_place_or_region() -> None:
+    """accepts_as_place_or_region returns True for places and regions."""
+    geocoder = NominatimGeocoder(enabled=True)
+    assert geocoder.accepts_as_place_or_region("place", "city") is True
+    assert geocoder.accepts_as_place_or_region("place", "country") is True
+    assert (
+        geocoder.accepts_as_place_or_region("boundary", "administrative")
+        is True
+    )
+    assert (
+        geocoder.accepts_as_place_or_region("highway", "residential") is False
+    )

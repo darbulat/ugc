@@ -4,7 +4,7 @@ Config is split into domain sections (bot, db, kafka, etc.) to simplify
 maintenance and testing. AppConfig composes them.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -76,6 +76,23 @@ _FLAT_KEYS = {
         "INSTAGRAM_STATS_COLLECTOR_DELAY_SECONDS",
         "SCRAPECREATORS_API_KEY",
         "SCRAPECREATORS_BASE_URL",
+    ],
+    "geocoder": [
+        "GEOCODER_PROVIDER",
+        "NOMINATIM_ENABLED",
+        "NOMINATIM_BASE_URL",
+        "NOMINATIM_USER_AGENT",
+        "NOMINATIM_TIMEOUT",
+        "NOMINATIM_DELAY_SECONDS",
+        "DADATA_ENABLED",
+        "DADATA_BASE_URL",
+        "DADATA_TIMEOUT",
+        "DADATA_API_KEY",
+        "DADATA_SECRET",
+        "GEOCODER_CACHE_ENABLED",
+        "GEOCODER_CACHE_TTL_SECONDS",
+        "GEOCODER_CACHE_BACKEND",
+        "GEOCODER_CACHE_MEMORY_MAX_ENTRIES",
     ],
     "docs": [
         "DOCS_OFFER_URL",
@@ -344,6 +361,68 @@ class InstagramConfig(BaseSettings):
         return v.rstrip("/") if v else v
 
 
+class GeocoderConfig(BaseSettings):
+    """Geocoding provider configuration (Nominatim, Dadata, etc.)."""
+
+    model_config = _ENV
+
+    provider: Literal["nominatim", "dadata"] = Field(
+        default="nominatim", alias="GEOCODER_PROVIDER"
+    )
+
+    # Nominatim
+    nominatim_enabled: bool = Field(default=True, alias="NOMINATIM_ENABLED")
+    nominatim_base_url: str = Field(
+        default="https://nominatim.openstreetmap.org",
+        alias="NOMINATIM_BASE_URL",
+    )
+    nominatim_user_agent: str = Field(
+        default="ugc-bot/1.0",
+        alias="NOMINATIM_USER_AGENT",
+    )
+    nominatim_timeout_seconds: float = Field(
+        default=5.0,
+        alias="NOMINATIM_TIMEOUT",
+    )
+    nominatim_delay_seconds: float = Field(
+        default=1.0,
+        alias="NOMINATIM_DELAY_SECONDS",
+    )
+
+    # Dadata
+    dadata_enabled: bool = Field(default=True, alias="DADATA_ENABLED")
+    dadata_base_url: str = Field(
+        default="https://suggestions.dadata.ru/suggestions/api/4_1/rs",
+        alias="DADATA_BASE_URL",
+    )
+    dadata_timeout_seconds: float = Field(
+        default=5.0,
+        alias="DADATA_TIMEOUT",
+    )
+    dadata_api_key: str = Field(default="", alias="DADATA_API_KEY")
+    dadata_secret: str = Field(default="", alias="DADATA_SECRET")
+
+    # Cache (shared for any provider)
+    cache_enabled: bool = Field(default=True, alias="GEOCODER_CACHE_ENABLED")
+    cache_ttl_seconds: int = Field(
+        default=604800,
+        alias="GEOCODER_CACHE_TTL_SECONDS",
+    )  # 7 days
+    cache_backend: Literal["redis", "memory"] = Field(
+        default="redis",
+        alias="GEOCODER_CACHE_BACKEND",
+    )
+    cache_memory_max_entries: int = Field(
+        default=10_000,
+        alias="GEOCODER_CACHE_MEMORY_MAX_ENTRIES",
+    )
+
+    @field_validator("nominatim_base_url", "dadata_base_url")
+    @classmethod
+    def strip_trailing_slash(cls, v: str) -> str:
+        return v.rstrip("/") if v else v
+
+
 class DocsConfig(BaseSettings):
     """URLs for legal documents (offer, privacy, consent)."""
 
@@ -475,6 +554,7 @@ class AppConfig(BaseModel):
     role_reminder: RoleReminderConfig
     redis: RedisConfig
     instagram: InstagramConfig
+    geocoder: GeocoderConfig = Field(default_factory=GeocoderConfig)
     docs: DocsConfig
     webhook: WebhookConfig
     outbox: OutboxConfig
@@ -500,6 +580,7 @@ class AppConfig(BaseModel):
             ),
             "redis": RedisConfig.model_validate(nested["redis"]),
             "instagram": InstagramConfig.model_validate(nested["instagram"]),
+            "geocoder": GeocoderConfig.model_validate(nested["geocoder"]),
             "docs": DocsConfig.model_validate(nested["docs"]),
             "webhook": WebhookConfig.model_validate(nested["webhook"]),
             "outbox": OutboxConfig.model_validate(nested["outbox"]),

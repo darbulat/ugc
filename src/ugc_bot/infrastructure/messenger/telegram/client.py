@@ -170,14 +170,24 @@ class TelegramMessengerClient(MessengerClient):
         text: str | None = None,
         show_alert: bool = False,
     ) -> None:
-        """Answer a callback query."""
-        await self._with_retry(
-            lambda: self._bot.answer_callback_query(
-                callback_query_id=callback_id,
-                text=text,
-                show_alert=show_alert,
+        """Answer a callback query.
+
+        If the query has already expired (too old or invalid ID), the error
+        is ignored so the handler can continue; the user still gets the reply.
+        """
+        try:
+            await self._with_retry(
+                lambda: self._bot.answer_callback_query(
+                    callback_query_id=callback_id,
+                    text=text,
+                    show_alert=show_alert,
+                )
             )
-        )
+        except TelegramBadRequest as exc:
+            msg = (getattr(exc, "message", None) or str(exc)).lower()
+            if "query is too old" in msg or "query id is invalid" in msg:
+                return
+            raise
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
         """Send invoice for payment."""

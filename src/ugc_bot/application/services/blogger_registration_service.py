@@ -21,21 +21,6 @@ from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import AudienceGender, BloggerGender, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
-# OSM/Nominatim place types accepted as populated places (city, village, etc.)
-NOMINATIM_PLACE_TYPES: frozenset[str] = frozenset(
-    {
-        "city",
-        "town",
-        "village",
-        "hamlet",
-        "locality",
-        "suburb",
-        "neighbourhood",
-        "quarter",
-        "isolated_dwelling",
-    }
-)
-
 
 def _validate_blogger_input(
     instagram_url: str,
@@ -69,13 +54,13 @@ def _validate_blogger_input(
     return instagram_url_clean, city_clean, audience_geo_clean
 
 
-async def _resolve_location_and_nominatim_details(
+async def _resolve_location_and_geocoder_details(
     geocoder: Optional[GeocoderPort],
     city: str,
     region: Optional[str] = None,
     country: Optional[str] = None,
 ) -> tuple[Optional[str], Optional[str], Optional[str]]:
-    """Return (wkt_geometry, region_from_nominatim, country_from_nominatim).
+    """Return (wkt_geometry, region_from_geocoder, country_from_geocoder).
 
     Uses geocode_with_details; returns (None, None, None) when unavailable
     or when the result is not a populated place (city, town, village, etc.).
@@ -87,13 +72,11 @@ async def _resolve_location_and_nominatim_details(
     )
     if details is None:
         return (None, None, None)
-    lat, lon, osm_class, osm_type, region_nom, country_nom = details
-    osm_class = (osm_class or "").strip().lower()
-    osm_type = (osm_type or "").strip().lower()
-    if osm_class != "place" or osm_type not in NOMINATIM_PLACE_TYPES:
+    lat, lon, place_class, place_type, region_geo, country_geo = details
+    if not geocoder.accepts_as_populated_place(place_class, place_type):
         return (None, None, None)
     wkt = wkt_multipoint_from_lat_lon(lat, lon)
-    return (wkt, region_nom, country_nom)
+    return (wkt, region_geo, country_geo)
 
 
 @dataclass(slots=True)
@@ -137,6 +120,28 @@ class BloggerRegistrationService:
         if self.geocoder is None:
             return None
         return await self.geocoder.reverse_geocode(lat, lon)
+
+    async def resolve_city_to_location(
+        self,
+        city: str,
+        region: Optional[str] = None,
+        country: Optional[str] = None,
+    ) -> Optional[tuple[str, Optional[str], Optional[str]]]:
+        """Resolve city name to (location_geometry_wkt, region, country).
+
+        Uses geocoder (with cache when CachingGeocoder is used). Returns None
+        when the city cannot be resolved to a populated place.
+        """
+        (
+            wkt,
+            region_geo,
+            country_geo,
+        ) = await _resolve_location_and_geocoder_details(
+            self.geocoder, city, region=region, country=country
+        )
+        if wkt is None:
+            return None
+        return (wkt, region_geo, country_geo)
 
     async def register_blogger(
         self,
@@ -195,7 +200,7 @@ class BloggerRegistrationService:
                 location_geometry,
                 region_nom,
                 country_nom,
-            ) = await _resolve_location_and_nominatim_details(
+            ) = await _resolve_location_and_geocoder_details(
                 self.geocoder, city_clean, region=region, country=None
             )
             profile_region = region_nom if region_nom is not None else region
@@ -325,7 +330,7 @@ class BloggerRegistrationService:
                     geom_wkt,
                     region_nom,
                     country_nom,
-                ) = await _resolve_location_and_nominatim_details(
+                ) = await _resolve_location_and_geocoder_details(
                     self.geocoder, city_clean, region=region, country=None
                 )
                 profile_region = (
@@ -489,7 +494,7 @@ class BloggerRegistrationService:
                     geom_wkt,
                     region_nom,
                     country_nom,
-                ) = await _resolve_location_and_nominatim_details(
+                ) = await _resolve_location_and_geocoder_details(
                     self.geocoder,
                     new_city,
                     region=new_region,

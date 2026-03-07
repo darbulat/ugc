@@ -610,6 +610,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "err_city_required": "Укажите город. Введите снова:",
         "err_city_from_location": "Не удалось определить город по геопозиции. Введите город вручную или попробуйте ещё раз.",
+        "err_city_not_found_use_map": (
+            "Не удалось определить местоположение по названию. "
+            "Введите точное название города или отправьте геолокацию."
+        ),
         "err_company_activity_max": "Максимум {max} символов.",
         "err_nickname_no_url": "Введите имя, а не ссылку на Instagram.",
         "err_topics_empty": "Введите хотя бы одну тематику:",
@@ -1368,6 +1372,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "err_city_required": "Specify city. Enter again:",
         "err_city_from_location": "Could not determine city from location. Enter city manually or try again.",
+        "err_city_not_found_use_map": (
+            "Could not determine location from the name. "
+            "Enter the exact city name or share your location."
+        ),
         "err_company_activity_max": "Max {max} characters.",
         "err_nickname_no_url": "Enter name, not an Instagram link.",
         "err_topics_empty": "Enter at least one topic:",

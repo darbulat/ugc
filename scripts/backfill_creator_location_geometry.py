@@ -2,13 +2,12 @@
 """Backfill location_geometry for blogger_profiles from city field.
 
 Parses city string by comma, slash, " и ", newline; for each token (after
-normalization and dedup) geocodes via Nominatim using profile.region and
-profile.country; builds MULTIPOINT from (lat, lon) and updates
+normalization and dedup) geocodes via configured geocoder using profile.region
+and profile.country; builds MULTIPOINT from (lat, lon) and updates
 blogger_profiles.location_geometry.
 
 (City, country, region) -> coordinates are cached in RAM for the script run
-to avoid repeated Nominatim requests. Respects Nominatim usage policy: 1
-request per second (only for cache misses).
+to avoid repeated requests.
 """
 
 import argparse
@@ -20,41 +19,18 @@ from dataclasses import replace
 from sqlalchemy import select
 
 from ugc_bot.application.geography import GEO_TOKEN_SPLIT_RE, normalize_geo_token
-from ugc_bot.application.services.geocoder import (
-    NominatimGeocoder,
-    wkt_multipoint_from_coords,
-)
+from ugc_bot.application.ports import GeocoderPort
+from ugc_bot.application.services.geocoder import wkt_multipoint_from_coords
 from ugc_bot.config import load_config
 from ugc_bot.container import repository_factory
+from ugc_bot.container.service_factory import build_geocoder
 from ugc_bot.infrastructure.db.models import BloggerProfileModel
 from ugc_bot.infrastructure.db.session import create_session_factory
 
 logger = logging.getLogger(__name__)
 
-NOMINATIM_DELAY_SECONDS = 1.0
-
 # For Nominatim, Crimea region is queried as Ukraine
 REGION_CRIMEA_NORMALIZED = "республика крым"
-
-# OSM place types we accept: populated places, cities, regions (no streets/buildings)
-_ALLOWED_OSM_PLACE_TYPES: frozenset[tuple[str, str]] = frozenset({
-    ("place", "city"),
-    ("place", "town"),
-    ("place", "village"),
-    ("place", "hamlet"),
-    ("place", "suburb"),
-    ("place", "neighbourhood"),
-    ("place", "locality"),
-    ("place", "isolated_dwelling"),
-    ("place", "country"),
-    ("boundary", "administrative"),
-})
-
-
-def _is_place_or_region(osm_class: str, osm_type: str) -> bool:
-    """True if Nominatim result is a populated place, city or region (not street/building)."""
-    key = (osm_class.strip().lower(), osm_type.strip().lower())
-    return key in _ALLOWED_OSM_PLACE_TYPES
 
 
 def _parse_city_tokens(city_raw: str | None) -> list[str]:
@@ -81,26 +57,29 @@ def _cache_key(token: str, country: str | None, region: str | None) -> str:
 
 
 async def _geocode_city_tokens(
-    geocoder: NominatimGeocoder,
+    geocoder: GeocoderPort,
     tokens: list[str],
     country: str | None,
     region: str | None,
     cache: dict[str, tuple[float, float] | None],
+    *,
+    provider: str,
+    delay_seconds: float,
 ) -> tuple[list[tuple[float, float]], str | None, str | None]:
     """Geocode each token; accept only populated places/regions.
 
-    Returns (coords, region_from_nominatim, country_from_nominatim) from
+    Returns (coords, region_from_geocoder, country_from_geocoder) from
     the first accepted result (for saving when profile.region/country empty).
     No default country: if profile country is empty, query is sent without it.
     """
     coords: list[tuple[float, float]] = []
     seen: set[tuple[float, float]] = set()
-    region_from_nominatim: str | None = None
-    country_from_nominatim: str | None = None
+    region_from_geocoder: str | None = None
+    country_from_geocoder: str | None = None
     country_for_query: str | None = (country or "").strip() or None
     region_for_query = (region or "").strip() or None
     region_norm = (region or "").strip().lower()
-    if region_norm == REGION_CRIMEA_NORMALIZED:
+    if provider == "nominatim" and region_norm == REGION_CRIMEA_NORMALIZED:
         country_for_query = "Ukraine"
     for token in tokens:
         key = _cache_key(token, country or "", region)
@@ -114,7 +93,8 @@ async def _geocode_city_tokens(
                 region=region_for_query,
                 country=country_for_query,
             )
-            await asyncio.sleep(NOMINATIM_DELAY_SECONDS)
+            if delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
             if details is None:
                 cache[key] = None
                 coord = None
@@ -124,20 +104,22 @@ async def _geocode_city_tokens(
                 (
                     lat,
                     lon,
-                    osm_class,
-                    osm_type,
+                    place_class,
+                    place_type,
                     detail_region,
                     detail_country,
                 ) = details
-                if _is_place_or_region(osm_class, osm_type):
+                if geocoder.accepts_as_place_or_region(
+                    place_class, place_type
+                ):
                     cache[key] = (lat, lon)
                     coord = (lat, lon)
                 else:
                     logger.warning(
-                        "Skipping non-place result for %r: OSM class=%r type=%r (not saved to DB)",
+                        "Skipping non-place result for %r: class=%r type=%r (not saved to DB)",
                         token.strip(),
-                        osm_class or "(empty)",
-                        osm_type or "(empty)",
+                        place_class or "(empty)",
+                        place_type or "(empty)",
                     )
                     cache[key] = None
                     coord = None
@@ -146,11 +128,11 @@ async def _geocode_city_tokens(
         if coord is not None and coord not in seen:
             seen.add(coord)
             coords.append(coord)
-            if region_from_nominatim is None and detail_region:
-                region_from_nominatim = detail_region
-            if country_from_nominatim is None and detail_country:
-                country_from_nominatim = detail_country
-    return (coords, region_from_nominatim, country_from_nominatim)
+            if region_from_geocoder is None and detail_region:
+                region_from_geocoder = detail_region
+            if country_from_geocoder is None and detail_country:
+                country_from_geocoder = detail_country
+    return (coords, region_from_geocoder, country_from_geocoder)
 
 
 async def run(
@@ -176,7 +158,12 @@ async def run(
     )
     repos = repository_factory.build_repos(session_factory)
     blogger_repo = repos["blogger_repo"]
-    geocoder = NominatimGeocoder(enabled=True)
+    geocoder = build_geocoder(config)
+    delay_seconds = (
+        config.geocoder.nominatim_delay_seconds
+        if config.geocoder.provider == "nominatim"
+        else 0.0
+    )
 
     async with session_factory() as session:
         stmt = select(
@@ -211,13 +198,15 @@ async def run(
             logger.debug("Empty tokens for user_id=%s city=%r", user_id, city_str)
             continue
 
-        coords, region_from_nominatim, country_from_nominatim = (
+        coords, region_from_geocoder, country_from_geocoder = (
             await _geocode_city_tokens(
                 geocoder,
                 tokens,
                 country_for_profile,
                 region_str,
                 geo_cache,
+                provider=config.geocoder.provider,
+                delay_seconds=delay_seconds,
             )
         )
         if not coords:
@@ -253,10 +242,10 @@ async def run(
                     errors += 1
                     continue
                 update_kw: dict = {"location_geometry": wkt}
-                if not (profile.region or "").strip() and region_from_nominatim:
-                    update_kw["region"] = region_from_nominatim
-                if not (profile.country or "").strip() and country_from_nominatim:
-                    update_kw["country"] = country_from_nominatim
+                if not (profile.region or "").strip() and region_from_geocoder:
+                    update_kw["region"] = region_from_geocoder
+                if not (profile.country or "").strip() and country_from_geocoder:
+                    update_kw["country"] = country_from_geocoder
                 updated = replace(profile, **update_kw)
                 await blogger_repo.save(updated, session=session)
                 await session.commit()

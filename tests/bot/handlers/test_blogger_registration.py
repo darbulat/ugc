@@ -996,9 +996,10 @@ async def test_handle_city_empty_rejects(
 async def test_handle_city_valid_stores_and_asks_birth_date(
     user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
-    """handle_city stores canonical city and asks for birth date."""
-    reg_service = BloggerRegistrationService(
-        user_repo=user_repo, blogger_repo=blogger_repo
+    """handle_city stores city and location_geometry, asks for birth date."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_to_location = AsyncMock(
+        return_value=("MULTIPOINT((37.62 55.75))", "Moscow", "Russia")
     )
     state = FakeFSMContext()
     message = FakeMessage(text="Москва", user=FakeUser(1, "u", "U"))
@@ -1011,7 +1012,10 @@ async def test_handle_city_valid_stores_and_asks_birth_date(
         blogger_registration_service=reg_service,
     )
 
+    reg_service.resolve_city_to_location.assert_called_once_with("москва")
     assert state._data["city"] == "москва"
+    assert state._data.get("location_geometry") == "MULTIPOINT((37.62 55.75))"
+    assert state._data.get("country") == "Russia"
     assert state.state == BloggerRegistrationStates.birth_date
     assert message.answers
     ans = message.answers[0]
@@ -1023,9 +1027,10 @@ async def test_handle_city_valid_stores_and_asks_birth_date(
 async def test_handle_city_any_city_accepted_and_asks_birth_date(
     user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
-    """handle_city accepts any city text and asks for birth date."""
-    reg_service = BloggerRegistrationService(
-        user_repo=user_repo, blogger_repo=blogger_repo
+    """handle_city with resolved city stores geometry, asks for birth date."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_to_location = AsyncMock(
+        return_value=("MULTIPOINT((49.12 55.79))", "Tatarstan", "Russia")
     )
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
@@ -1043,7 +1048,11 @@ async def test_handle_city_any_city_accepted_and_asks_birth_date(
         event_adapter=adapter,
     )
 
+    reg_service.resolve_city_to_location.assert_called_once_with(
+        "unknowncity123"
+    )
     assert state._data.get("city") == "unknowncity123"
+    assert state._data.get("location_geometry") == "MULTIPOINT((49.12 55.79))"
     assert state.state == BloggerRegistrationStates.birth_date
     assert any(
         "дату рождения" in s["text"].lower() or "дд.мм" in s["text"].lower()
@@ -1056,8 +1065,9 @@ async def test_handle_city_multi_region_shows_region_buttons(
     user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
     """handle_city with city in multiple regions shows region picker."""
-    reg_service = BloggerRegistrationService(
-        user_repo=user_repo, blogger_repo=blogger_repo
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_to_location = AsyncMock(
+        return_value=("MULTIPOINT((93.5 56.0))", "Krasnoyarsk Krai", "Russia")
     )
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
@@ -1075,9 +1085,47 @@ async def test_handle_city_multi_region_shows_region_buttons(
         event_adapter=adapter,
     )
 
+    reg_service.resolve_city_to_location.assert_called_once_with("железногорск")
     assert state._data.get("city") == "железногорск"
+    assert state._data.get("location_geometry") == "MULTIPOINT((93.5 56.0))"
     assert state.state != BloggerRegistrationStates.birth_date
     assert any("регион" in s["text"].lower() for s in client.sent_text)
+
+
+@pytest.mark.asyncio
+async def test_handle_city_text_geocoder_fails_sends_error(
+    user_repo, blogger_repo, config, bot_texts_service
+) -> None:
+    """handle_city with text when geocoder does not resolve city sends error."""
+    reg_service = MagicMock(spec=BloggerRegistrationService)
+    reg_service.resolve_city_to_location = AsyncMock(return_value=None)
+    state = FakeFSMContext()
+    await state.set_state(BloggerRegistrationStates.city.state)
+    message = FakeMessage(
+        text="НесуществующийГород123", user=FakeUser(1, "u", "U")
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_city(
+        message,
+        state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=reg_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    reg_service.resolve_city_to_location.assert_called_once_with(
+        "несуществующийгород123"
+    )
+    assert state.state == BloggerRegistrationStates.city.state
+    assert any(
+        "местоположение" in s["text"].lower()
+        or "геолокаци" in s["text"].lower()
+        for s in client.sent_text
+    )
 
 
 @pytest.mark.asyncio

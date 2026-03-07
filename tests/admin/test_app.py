@@ -1325,13 +1325,12 @@ async def test_update_order_location_geometry_with_geocoder() -> None:
             "ugc_bot.admin.app._get_order_moderation_deps",
             return_value=(MagicMock(), MagicMock(), mock_order_repo),
         ),
-        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
     ):
         mock_geocoder = MagicMock()
         mock_geocoder.get_multipolygon_wkt_for_queries = AsyncMock(
             return_value="MULTIPOLYGON(((1 2, 3 4, 5 6, 1 2)))"
         )
-        mock_geocoder_cls.return_value = mock_geocoder
+        mock_container.build_geocoder = MagicMock(return_value=mock_geocoder)
 
         await _update_order_location_geometry_after_geography_change(
             order_id, "Казань"
@@ -1399,13 +1398,12 @@ async def test_update_blogger_profile_location_from_nominatim() -> None:
             "ugc_bot.admin.app._get_admin_container",
             return_value=mock_container,
         ),
-        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
     ):
         mock_geocoder = MagicMock()
         mock_geocoder.geocode_with_details = AsyncMock(
             return_value=(55.75, 37.62, "", "", "Moscow", "Russia")
         )
-        mock_geocoder_cls.return_value = mock_geocoder
+        mock_container.build_geocoder = MagicMock(return_value=mock_geocoder)
 
         await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
 
@@ -1509,11 +1507,10 @@ async def test_blogger_profile_nominatim_geocode_none_no_save() -> None:
             "ugc_bot.admin.app._get_admin_container",
             return_value=mock_container,
         ),
-        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
     ):
         mock_geocoder = MagicMock()
         mock_geocoder.geocode_with_details = AsyncMock(return_value=None)
-        mock_geocoder_cls.return_value = mock_geocoder
+        mock_container.build_geocoder = MagicMock(return_value=mock_geocoder)
 
         await _update_blogger_profile_location_from_nominatim(
             user_id, "Unknown"
@@ -1642,14 +1639,13 @@ async def test_blogger_profile_nominatim_save_exception_logged() -> None:
             "ugc_bot.admin.app._get_admin_container",
             return_value=mock_container,
         ),
-        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
         patch("ugc_bot.admin.app.logger") as mock_logger,
     ):
         mock_geocoder = MagicMock()
         mock_geocoder.geocode_with_details = AsyncMock(
             return_value=(55.75, 37.62, "", "", "Moscow", "Russia")
         )
-        mock_geocoder_cls.return_value = mock_geocoder
+        mock_container.build_geocoder = MagicMock(return_value=mock_geocoder)
 
         await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
 
@@ -1708,11 +1704,11 @@ async def test_blogger_profile_nominatim_empty_city_skips_geocode() -> None:
             "ugc_bot.admin.app._get_admin_container",
             return_value=mock_container,
         ),
-        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
     ):
+        mock_container.build_geocoder = MagicMock()
         await _update_blogger_profile_location_from_nominatim(user_id, None)
 
-    mock_geocoder_cls.return_value.geocode_with_details.assert_not_called()
+    mock_container.build_geocoder.assert_not_called()
     mock_blogger_repo.save.assert_not_called()
 
 
@@ -1770,13 +1766,12 @@ async def test_blogger_profile_nominatim_keeps_region_country_when_none() -> (
             "ugc_bot.admin.app._get_admin_container",
             return_value=mock_container,
         ),
-        patch("ugc_bot.admin.app.NominatimGeocoder") as mock_geocoder_cls,
     ):
         mock_geocoder = MagicMock()
         mock_geocoder.geocode_with_details = AsyncMock(
             return_value=(55.75, 37.62, "", "", None, None)
         )
-        mock_geocoder_cls.return_value = mock_geocoder
+        mock_container.build_geocoder = MagicMock(return_value=mock_geocoder)
 
         await _update_blogger_profile_location_from_nominatim(user_id, "Moscow")
 
