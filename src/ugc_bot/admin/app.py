@@ -1424,6 +1424,12 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
     }
 
 
+def _truncate_50(value: str | None) -> str:
+    """Truncate string to 50 chars with ellipsis if longer."""
+    s = value or ""
+    return s[:50] + ("…" if len(s) > 50 else "")
+
+
 class OrderAdmin(ModelView, model=OrderModel):
     """Admin view for orders with moderation support."""
 
@@ -1462,9 +1468,11 @@ class OrderAdmin(ModelView, model=OrderModel):
     column_sortable_list = list(column_list)
     column_default_sort = (OrderModel.created_at, True)
     column_formatters = {
-        OrderModel.offer_text: lambda m, _: (
-            (m.offer_text or "")[:50]  # type: ignore[attr-defined]
-            + ("…" if len(m.offer_text or "") > 50 else "")  # type: ignore[attr-defined]
+        OrderModel.offer_text: lambda m, _: _truncate_50(  # type: ignore[attr-defined]
+            getattr(m, "offer_text", None)
+        ),
+        OrderModel.barter_description: lambda m, _: _truncate_50(  # type: ignore[attr-defined]
+            getattr(m, "barter_description", None)
         ),
     }
     column_labels = {

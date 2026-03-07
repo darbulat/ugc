@@ -1885,6 +1885,22 @@ def test_format_price_and_barter() -> None:
     assert "Бартер: Доп. бартер" in both_lines
     assert len(both_lines) == 2
 
+    order_long_barter = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="",
+        barter_description="A" * 60,
+        price=0.0,
+        bloggers_needed=1,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    long_barter_lines = _format_price_and_barter(order_long_barter)
+    assert long_barter_lines == ["Бартер: " + "A" * 50 + "…"]
+
 
 @pytest.mark.asyncio
 async def test_my_orders_shows_active_status_and_matched_count(

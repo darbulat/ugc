@@ -117,10 +117,10 @@ def _format_price_and_barter(
             )
         )
     if order.barter_description:
+        desc = order.barter_description
+        desc_short = desc[:50] + ("…" if len(desc) > 50 else "")
         result.append(
-            t.get("msg_order_barter", "Бартер: {desc}").format(
-                desc=order.barter_description
-            )
+            t.get("msg_order_barter", "Бартер: {desc}").format(desc=desc_short)
         )
     return result
 
