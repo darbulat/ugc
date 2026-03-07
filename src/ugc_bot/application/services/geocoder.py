@@ -1,8 +1,11 @@
 """Geocoding service: resolve city/address to coordinates (lat, lon)."""
 
+import logging
 from typing import Any, List, Optional, Tuple
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _NOMINATIM_POPULATED_PLACE_TYPES: frozenset[str] = frozenset(
     {
@@ -198,6 +201,7 @@ class NominatimGeocoder:
         else:
             q = f"{q}, {country_str}"
         url = f"{self._base_url}/search"
+        logger.info("geocoder request: GET %s q=%r", url, q)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -251,6 +255,7 @@ class NominatimGeocoder:
             parts.append(country_str)
         q = ", ".join(parts)
         url = f"{self._base_url}/search"
+        logger.info("geocoder request: GET %s q=%r addressdetails=1", url, q)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -322,6 +327,7 @@ class NominatimGeocoder:
             parts.append(country.strip())
         q = ", ".join(parts)
         url = f"{self._base_url}/search"
+        logger.info("geocoder request: GET %s q=%r (osm_id lookup)", url, q)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -369,6 +375,11 @@ class NominatimGeocoder:
         type_letter, osm_id = osm
         osm_ids_param = f"{type_letter}{osm_id}"
         url = f"{self._base_url}/lookup"
+        logger.info(
+            "geocoder request: GET %s osm_ids=%s polygon_geojson=1",
+            url,
+            osm_ids_param,
+        )
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
@@ -434,6 +445,7 @@ class NominatimGeocoder:
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return None
         url = f"{self._base_url}/reverse"
+        logger.info("geocoder request: GET %s lat=%s lon=%s", url, lat, lon)
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,

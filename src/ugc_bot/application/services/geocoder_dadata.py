@@ -1,9 +1,12 @@
 """Geocoding service implementation for Dadata Suggestions API."""
 
+import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_place_token(value: str) -> str:
@@ -47,6 +50,11 @@ class DadataGeocoder:
 
     async def _post_json(self, url: str, payload: dict) -> Optional[dict]:
         """POST JSON and return response dict, or None on any error."""
+        logger.info(
+            "geocoder request: POST %s payload=%s",
+            url,
+            {k: v for k, v in payload.items()},
+        )
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout_seconds, headers=self._headers()

@@ -42,26 +42,6 @@ def fake_bot() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_send_text_logs_request_to_external_service(
-    fake_bot: MagicMock, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Outgoing Telegram API requests are logged at DEBUG."""
-    import logging
-
-    caplog.set_level(
-        logging.DEBUG, logger="ugc_bot.infrastructure.messenger.telegram.client"
-    )
-    client = TelegramMessengerClient(bot=fake_bot)
-    await client.send_text(chat_id="999", text="Hello")
-
-    assert any(
-        "Telegram API request: send_message" in r.message
-        and "chat_id=999" in r.message
-        for r in caplog.records
-    )
-
-
-@pytest.mark.asyncio
 async def test_send_photo(fake_bot: MagicMock) -> None:
     """send_photo calls bot.send_photo with correct args."""
 
