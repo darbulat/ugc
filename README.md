@@ -17,6 +17,19 @@ skeleton, configuration templates, and a working bot powered by `aiogram`.
 5. For production: use webhook mode via `uvicorn ugc_bot.telegram_webhook_app:app`.
    Set `WEBHOOK_BASE_URL` and optionally `WEBHOOK_SECRET` in `.env`.
 
+## Production deploy (zero-downtime for app / app_2)
+
+To update the Telegram webhook app without taking both instances down at once, use rolling deploy:
+
+- **From repo root:** `make deploy-apps`  
+  Builds the app image, then updates `app`, waits for it to be healthy, then updates `app_2`. Nginx keeps routing traffic to the instance that is still up.
+- **With compose overlay:**  
+  `make deploy-apps COMPOSE_ARGS="-f docker-compose.yml -f docker-compose.prod.yml"`  
+  Or run the script directly:  
+  `./scripts/deploy_apps_zero_downtime.sh -f docker-compose.yml -f docker-compose.prod.yml`
+
+Ensure migrations are applied before or during your deploy (e.g. run `migrate` or your migration job first).
+
 ## Database migrations
 
 Set `DATABASE_URL` in `.env`, then run:
