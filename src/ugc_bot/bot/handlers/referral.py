@@ -1,5 +1,6 @@
 """Handlers for referral: /referral, /referral_list and payout button."""
 
+import contextlib
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -42,6 +43,7 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 REFERRAL_PAYOUT_CALLBACK = "referral:payout"
+PAYOUT_PAID_CALLBACK_PREFIX = "payout_paid:"
 REFERRAL_LIST_CALLBACK_PREFIX = "referral_list:"
 REFERRAL_LIST_PAGE_SIZE = 10
 REFERRAL_LIST_PENDING_LIMIT = 50
@@ -340,11 +342,23 @@ async def payout_button_callback(
             base = admin_base.rstrip("/")
             edit_url = f"{base}/payout-request-model/edit/{request.request_id}"
             support_text += f"\n\nОткрыть в админке: {edit_url}"
+        payout_paid_keyboard = Keyboard(
+            kind=KeyboardKind.INLINE,
+            rows=[
+                [
+                    Button(
+                        text="Выплачено",
+                        callback_data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{request.request_id}",
+                    )
+                ]
+            ],
+        )
         support_notified = True
         try:
             await messenger_client.send_text(
                 chat_id=support_chat_id,
                 text=support_text,
+                keyboard=payout_paid_keyboard,
             )
         except Exception as e:
             support_notified = False
@@ -371,6 +385,106 @@ async def payout_button_callback(
         text=reply_text,
         show_alert=True,
     )
+
+
+def _parse_payout_request_id_from_callback(data: str) -> UUID | None:
+    """Parse request_id from payout_paid callback. None if invalid."""
+    if not data or not data.startswith(PAYOUT_PAID_CALLBACK_PREFIX):
+        return None
+    raw = data[len(PAYOUT_PAID_CALLBACK_PREFIX) :].strip()
+    if not raw:
+        return None
+    try:
+        return UUID(raw)
+    except ValueError:
+        return None
+
+
+@router.callback_query(
+    lambda c: c.data and c.data.startswith(PAYOUT_PAID_CALLBACK_PREFIX)
+)
+async def payout_paid_callback(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    payout_request_repo: PayoutRequestRepository,
+    transaction_manager: TransactionManager,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle admin click on 'Выплачено' — set payout request status to PAID."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    request_id = _parse_payout_request_id_from_callback(incoming.data or "")
+    if request_id is None:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Неверный формат заявки.",
+            show_alert=True,
+        )
+        return
+    external_id = incoming.user.external_id
+    if not external_id:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Ошибка: пользователь не определён.",
+            show_alert=True,
+        )
+        return
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    if user is None or not user.admin:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text="Доступ запрещён.",
+            show_alert=True,
+        )
+        return
+    updated = False
+    async with transaction_manager.transaction() as session:
+        request = await payout_request_repo.get_by_id(
+            request_id, session=session
+        )
+        if request is None:
+            await messenger_client.answer_callback(
+                callback_id=incoming.callback_id,
+                text="Заявка не найдена.",
+                show_alert=True,
+            )
+            return
+        if request.status != PayoutRequestStatus.PENDING:
+            await messenger_client.answer_callback(
+                callback_id=incoming.callback_id,
+                text="Заявка уже обработана.",
+                show_alert=True,
+            )
+            return
+        updated = await payout_request_repo.update_status(
+            request_id, PayoutRequestStatus.PAID, session=session
+        )
+    if updated and incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text="Выплачено" if updated else "Ошибка обновления.",
+        show_alert=not updated,
+    )
+    if updated:
+        logger.info(
+            "Payout request marked as paid via admin button",
+            extra={
+                "request_id": str(request_id),
+                "admin_chat_id": incoming.chat_id,
+            },
+        )
 
 
 @router.message(Command("referral_list"))

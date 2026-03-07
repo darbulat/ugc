@@ -49,6 +49,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OutboxEventStatus,
+    PayoutRequestStatus,
 )
 
 
@@ -267,6 +268,19 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
     ) -> Optional[PayoutRequest]:
         """Fetch payout request by ID."""
         return self._requests.get(request_id)
+
+    async def update_status(
+        self,
+        request_id: UUID,
+        status: PayoutRequestStatus,
+        session: object | None = None,
+    ) -> bool:
+        """Update payout request status. Returns True if row was updated."""
+        request = self._requests.get(request_id)
+        if request is None:
+            return False
+        self._requests[request_id] = replace(request, status=status)
+        return True
 
     async def list_by_user(
         self, user_id: UUID, session: object | None = None

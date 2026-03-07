@@ -1,6 +1,9 @@
 """Tests for referral handlers: /referral, payout, /referral_list."""
 
+from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -11,15 +14,20 @@ from ugc_bot.application.services.referral_income_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.referral import (
+    PAYOUT_PAID_CALLBACK_PREFIX,
     REFERRAL_LIST_CALLBACK_PREFIX,
     REFERRAL_PAYOUT_CALLBACK,
     payout_button_callback,
+    payout_paid_callback,
     referral_command,
     referral_list_command,
     referral_list_pagination_callback,
 )
 from ugc_bot.config import AppConfig
+from ugc_bot.domain.entities import PayoutRequest
+from ugc_bot.domain.enums import PayoutRequestStatus
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryPayoutRequestRepository,
     InMemoryUserReferralBindingRepository,
     InMemoryUserReferralPendingRepository,
     InMemoryUserRepository,
@@ -551,6 +559,370 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
     assert client.sent_text[0]["chat_id"] == "support_chat"
     assert "Открыть в админке" in client.sent_text[0]["text"]
     assert "payout-request-model/edit/" in client.sent_text[0]["text"]
+    assert client.sent_text[0].get("keyboard") is not None
+    keyboard = client.sent_text[0]["keyboard"]
+    assert keyboard is not None
+    assert keyboard.rows
+    assert any(
+        b.callback_data
+        and b.callback_data.startswith(PAYOUT_PAID_CALLBACK_PREFIX)
+        for row in keyboard.rows
+        for b in row
+    )
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_sets_status_paid(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Admin clicks 'Выплачено'; payout request status becomes PAID."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    request_id = uuid4()
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=request_id,
+            user_id=admin_user.user_id,
+            requested_at=datetime.now(timezone.utc),
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("100.50"),
+        )
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="", user=FakeUser(1, "admin", "admin"), message_id=42
+    )
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}",
+        user=FakeUser(1, "admin", "admin"),
+        message=message,
+        callback_id="cb_paid",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert client.answered_callbacks[0]["text"] == "Выплачено"
+    updated = await payout_repo.get_by_id(request_id)
+    assert updated is not None
+    assert updated.status == PayoutRequestStatus.PAID
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_non_admin_denied(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """payout_paid_callback: non-admin gets 'Доступ запрещён'."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    request_id = uuid4()
+    regular_user = __user(external_id="99", username="user", telegram="user")
+    await user_repo.save(regular_user)
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=request_id,
+            user_id=regular_user.user_id,
+            requested_at=datetime.now(timezone.utc),
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("50.00"),
+        )
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}",
+        user=FakeUser(99, "u", "user"),
+        callback_id="cb_denied",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert "Доступ запрещён" in client.answered_callbacks[0]["text"]
+    still_pending = await payout_repo.get_by_id(request_id)
+    assert still_pending is not None
+    assert still_pending.status == PayoutRequestStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_invalid_request_id(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """payout_paid_callback: invalid callback data returns error."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    payout_repo = InMemoryPayoutRequestRepository()
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}not-a-uuid",
+        user=FakeUser(1, "admin", "admin"),
+        callback_id="cb_invalid",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert "Неверный формат" in client.answered_callbacks[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_empty_request_id_returns_error(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """payout_paid_callback: empty id after prefix returns 'Неверный формат'."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    payout_repo = InMemoryPayoutRequestRepository()
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}",
+        user=FakeUser(1, "admin", "admin"),
+        callback_id="cb_empty",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert "Неверный формат" in client.answered_callbacks[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_update_status_false_shows_error(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """When update_status returns False, callback shows 'Ошибка обновления'."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    request_id = uuid4()
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    mock_payout_repo = MagicMock()
+    mock_payout_repo.get_by_id = AsyncMock(
+        return_value=PayoutRequest(
+            request_id=request_id,
+            user_id=admin_user.user_id,
+            requested_at=datetime.now(timezone.utc),
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("50.00"),
+        )
+    )
+    mock_payout_repo.update_status = AsyncMock(return_value=False)
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}",
+        user=FakeUser(1, "admin", "admin"),
+        callback_id="cb_err",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=mock_payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert client.answered_callbacks[0]["text"] == "Ошибка обновления."
+    assert client.answered_callbacks[0]["show_alert"] is True
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_request_not_found(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """payout_paid_callback: unknown request_id returns 'Заявка не найдена'."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    payout_repo = InMemoryPayoutRequestRepository()
+    unknown_id = uuid4()
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{unknown_id}",
+        user=FakeUser(1, "admin", "admin"),
+        callback_id="cb_not_found",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert "Заявка не найдена" in client.answered_callbacks[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_already_paid(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """Already PAID request: callback returns 'Заявка уже обработана'."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    request_id = uuid4()
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=request_id,
+            user_id=admin_user.user_id,
+            requested_at=datetime.now(timezone.utc),
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("100.00"),
+        )
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}",
+        user=FakeUser(1, "admin", "admin"),
+        callback_id="cb_already",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert "Заявка уже обработана" in client.answered_callbacks[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_no_user_external_id_shows_error(
+    user_repo: InMemoryUserRepository,
+) -> None:
+    """When callback has no user (external_id empty), show user error."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    request_id = uuid4()
+    payout_repo = InMemoryPayoutRequestRepository()
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}",
+        user=None,
+        callback_id="cb_no_user",
+    )
+
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert "пользователь не определён" in client.answered_callbacks[0]["text"]
 
 
 @pytest.mark.asyncio

@@ -32,7 +32,7 @@ from ugc_bot.domain.entities import (
     UserReferralBinding,
     UserReferralPending,
 )
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.domain.enums import MessengerType, PayoutRequestStatus
 
 if TYPE_CHECKING:
     from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus
@@ -758,6 +758,15 @@ class PayoutRequestRepository(ABC):
         self, request_id: UUID, session: object | None = None
     ) -> Optional[PayoutRequest]:
         """Fetch payout request by ID."""
+
+    @abstractmethod
+    async def update_status(
+        self,
+        request_id: UUID,
+        status: PayoutRequestStatus,
+        session: object | None = None,
+    ) -> bool:
+        """Update payout request status. Returns True if row was updated."""
 
     @abstractmethod
     async def list_by_user(

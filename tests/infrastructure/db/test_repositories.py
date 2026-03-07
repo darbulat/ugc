@@ -2486,6 +2486,35 @@ async def test_payout_request_repository_get_by_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_payout_request_repository_update_status() -> None:
+    """update_status updates row and returns True when rowcount > 0."""
+    request_id = UUID("00000000-0000-0000-0000-000000000609")
+
+    class FakeSessionWithRowcount(FakeSession):
+        async def execute(self, *_args, **_kwargs):
+            return FakeResult(None, rowcount=1)
+
+    session = FakeSessionWithRowcount(None)
+
+    class FakeAsyncSessionMaker:
+        def __init__(self, sess):
+            self._session = sess
+
+        def __call__(self):
+            return self._session
+
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=FakeAsyncSessionMaker(session)
+    )
+    updated = await repo.update_status(
+        request_id,
+        PayoutRequestStatus.PAID,
+        session=session,
+    )
+    assert updated is True
+
+
+@pytest.mark.asyncio
 async def test_offer_dispatch_repository_record_sent() -> None:
     """OfferDispatch repo record_sent merges model."""
     order_id = UUID("00000000-0000-0000-0000-000000000701")

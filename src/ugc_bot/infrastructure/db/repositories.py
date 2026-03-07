@@ -80,6 +80,7 @@ from ugc_bot.domain.enums import (
     OrderType,
     OutboxEventStatus,
     PaymentStatus,
+    PayoutRequestStatus,
     WorkFormat,
 )
 from ugc_bot.infrastructure.db.models import (
@@ -2028,6 +2029,21 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         )
         result = exec_result.scalar_one_or_none()
         return _to_payout_request_entity(result) if result else None
+
+    async def update_status(
+        self,
+        request_id: UUID,
+        status: PayoutRequestStatus,
+        session: object | None = None,
+    ) -> bool:
+        """Update payout request status. Returns True if row was updated."""
+        db_session = _get_async_session(session)
+        result = await db_session.execute(
+            update(PayoutRequestModel)
+            .where(PayoutRequestModel.request_id == request_id)
+            .values(status=status)
+        )
+        return result.rowcount > 0  # type: ignore[attr-defined]
 
     async def list_by_user(
         self, user_id: UUID, session: object | None = None
