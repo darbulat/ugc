@@ -22,6 +22,12 @@ from ugc_bot.application.services.content_moderation_service import (
 from ugc_bot.application.services.geocoder import NominatimGeocoder
 from ugc_bot.application.services.geocoder_cache import CachingGeocoder
 from ugc_bot.application.services.geocoder_dadata import DadataGeocoder
+from ugc_bot.application.services.geocoder_rate_limit_store import (
+    RedisGeocoderRateLimitStore,
+)
+from ugc_bot.application.services.geocoder_rate_limiter import (
+    RateLimitedGeocoder,
+)
 from ugc_bot.application.services.instagram_stats_collector_service import (
     InstagramStatsCollectorService,
 )
@@ -73,11 +79,22 @@ def build_geocoder(config: AppConfig) -> GeocoderPort:
             enabled=cfg.dadata_enabled,
         )
     else:
-        bare = NominatimGeocoder(
+        nominatim = NominatimGeocoder(
             base_url=cfg.nominatim_base_url,
             user_agent=cfg.nominatim_user_agent,
             timeout_seconds=cfg.nominatim_timeout_seconds,
             enabled=cfg.nominatim_enabled,
+        )
+        rate_limit_store = None
+        if config.redis.redis_url:
+            rate_limit_store = RedisGeocoderRateLimitStore(
+                redis_url=config.redis.redis_url,
+                delay_seconds=cfg.nominatim_delay_seconds,
+            )
+        bare = RateLimitedGeocoder(
+            delegate=nominatim,
+            delay_seconds=cfg.nominatim_delay_seconds,
+            store=rate_limit_store,
         )
     if not cfg.cache_enabled:
         return bare

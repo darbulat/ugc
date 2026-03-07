@@ -3,6 +3,12 @@
 from ugc_bot.application.services.geocoder import NominatimGeocoder
 from ugc_bot.application.services.geocoder_cache import CachingGeocoder
 from ugc_bot.application.services.geocoder_dadata import DadataGeocoder
+from ugc_bot.application.services.geocoder_rate_limit_store import (
+    RedisGeocoderRateLimitStore,
+)
+from ugc_bot.application.services.geocoder_rate_limiter import (
+    RateLimitedGeocoder,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.container.service_factory import build_geocoder
 from ugc_bot.infrastructure.geocoder_cache_memory import GeocoderCacheMemory
@@ -18,11 +24,20 @@ def _config_with_cache_disabled(**overrides: object) -> AppConfig:
     return AppConfig.model_validate({**base, **overrides})
 
 
-def test_build_geocoder_defaults_to_nominatim_when_cache_disabled() -> None:
-    """With cache disabled, build_geocoder returns bare NominatimGeocoder."""
+def test_build_geocoder_nominatim_cache_disabled_returns_rate_limited() -> None:
+    """With cache disabled, build_geocoder returns RateLimited(Nominatim)."""
     config = _config_with_cache_disabled()
     geocoder = build_geocoder(config)
-    assert isinstance(geocoder, NominatimGeocoder)
+    assert isinstance(geocoder, RateLimitedGeocoder)
+    assert isinstance(geocoder._delegate, NominatimGeocoder)
+
+
+def test_build_geocoder_nominatim_with_redis_url_uses_redis_store() -> None:
+    """With cache disabled and REDIS_URL set, rate limit store is Redis."""
+    config = _config_with_cache_disabled(REDIS_URL="redis://localhost:6379/1")
+    geocoder = build_geocoder(config)
+    assert isinstance(geocoder, RateLimitedGeocoder)
+    assert isinstance(geocoder._store, RedisGeocoderRateLimitStore)
 
 
 def test_build_geocoder_uses_dadata_provider_when_cache_disabled() -> None:
