@@ -8,7 +8,11 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
     TelegramNetworkError,
 )
-from aiogram.methods import EditMessageReplyMarkup, SendMessage
+from aiogram.methods import (
+    AnswerCallbackQuery,
+    EditMessageReplyMarkup,
+    SendMessage,
+)
 
 from ugc_bot.application.messenger.dto import (
     Button,
@@ -35,6 +39,26 @@ def fake_bot() -> MagicMock:
     bot.answer_callback_query = AsyncMock()
     bot.send_invoice = AsyncMock()
     return bot
+
+
+@pytest.mark.asyncio
+async def test_send_text_logs_request_to_external_service(
+    fake_bot: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Outgoing Telegram API requests are logged at DEBUG."""
+    import logging
+
+    caplog.set_level(
+        logging.DEBUG, logger="ugc_bot.infrastructure.messenger.telegram.client"
+    )
+    client = TelegramMessengerClient(bot=fake_bot)
+    await client.send_text(chat_id="999", text="Hello")
+
+    assert any(
+        "Telegram API request: send_message" in r.message
+        and "chat_id=999" in r.message
+        for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio
@@ -154,6 +178,27 @@ async def test_answer_callback(fake_bot: MagicMock) -> None:
         callback_query_id="cb-123",
         text="Done",
         show_alert=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_answer_callback_ignores_expired_query(
+    fake_bot: MagicMock,
+) -> None:
+    """answer_callback does not raise when query is too old or invalid."""
+    fake_bot.answer_callback_query.side_effect = TelegramBadRequest(
+        method=AnswerCallbackQuery(callback_query_id="cb-expired"),
+        message=(
+            "Bad Request: query is too old and response timeout expired "
+            "or query ID is invalid"
+        ),
+    )
+    client = TelegramMessengerClient(bot=fake_bot)
+    await client.answer_callback(callback_id="cb-expired")
+    fake_bot.answer_callback_query.assert_called_once_with(
+        callback_query_id="cb-expired",
+        text=None,
+        show_alert=False,
     )
 
 

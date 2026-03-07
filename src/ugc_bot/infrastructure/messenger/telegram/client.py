@@ -1,6 +1,7 @@
 """Telegram messenger client implementation."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -27,6 +28,8 @@ from ugc_bot.application.messenger.dto import (
     KeyboardKind,
 )
 from ugc_bot.application.messenger.ports import MessengerClient
+
+logger = logging.getLogger(__name__)
 
 TELEGRAM_API_RETRY_ATTEMPTS = 3
 TELEGRAM_API_RETRY_DELAY_SECONDS = 0.5
@@ -91,6 +94,13 @@ class TelegramMessengerClient(MessengerClient):
         disable_preview: bool | None = None,
     ) -> None:
         """Send a text message."""
+        logger.debug(
+            "Telegram API request: send_message chat_id=%s text_len=%s "
+            "has_keyboard=%s",
+            chat_id,
+            len(text),
+            keyboard is not None,
+        )
         await self._with_retry(
             lambda: self._bot.send_message(
                 chat_id=int(chat_id),
@@ -111,6 +121,13 @@ class TelegramMessengerClient(MessengerClient):
         parse_mode: str | None = None,
     ) -> None:
         """Send a photo message."""
+        logger.debug(
+            "Telegram API request: send_photo chat_id=%s file_id=%s caption_len=%s has_keyboard=%s",
+            chat_id,
+            file_id,
+            len(caption) if caption else 0,
+            keyboard is not None,
+        )
         await self._with_retry(
             lambda: self._bot.send_photo(
                 chat_id=int(chat_id),
@@ -131,6 +148,12 @@ class TelegramMessengerClient(MessengerClient):
         parse_mode: str | None = None,
     ) -> None:
         """Edit message text."""
+        logger.debug(
+            "Telegram API request: edit_message_text chat_id=%s message_id=%s text_len=%s",
+            chat_id,
+            message_id,
+            len(text),
+        )
         await self._with_retry(
             lambda: self._bot.edit_message_text(
                 chat_id=int(chat_id),
@@ -149,6 +172,11 @@ class TelegramMessengerClient(MessengerClient):
         keyboard: Keyboard | None = None,
     ) -> None:
         """Edit message keyboard (or remove)."""
+        logger.debug(
+            "Telegram API request: edit_message_reply_markup chat_id=%s message_id=%s",
+            chat_id,
+            message_id,
+        )
         try:
             await self._with_retry(
                 lambda: self._bot.edit_message_reply_markup(
@@ -170,17 +198,38 @@ class TelegramMessengerClient(MessengerClient):
         text: str | None = None,
         show_alert: bool = False,
     ) -> None:
-        """Answer a callback query."""
-        await self._with_retry(
-            lambda: self._bot.answer_callback_query(
-                callback_query_id=callback_id,
-                text=text,
-                show_alert=show_alert,
-            )
+        """Answer a callback query.
+
+        If the query has already expired (too old or invalid ID), the error
+        is ignored so the handler can continue; the user still gets the reply.
+        """
+        logger.debug(
+            "Telegram API request: answer_callback_query callback_id=%s show_alert=%s",
+            callback_id,
+            show_alert,
         )
+        try:
+            await self._with_retry(
+                lambda: self._bot.answer_callback_query(
+                    callback_query_id=callback_id,
+                    text=text,
+                    show_alert=show_alert,
+                )
+            )
+        except TelegramBadRequest as exc:
+            msg = (getattr(exc, "message", None) or str(exc)).lower()
+            if "query is too old" in msg or "query id is invalid" in msg:
+                return
+            raise
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
         """Send invoice for payment."""
+        logger.debug(
+            "Telegram API request: send_invoice chat_id=%s title=%s currency=%s",
+            chat_id,
+            invoice.title,
+            invoice.currency,
+        )
         kwargs: dict = {
             "chat_id": int(chat_id),
             "title": invoice.title,
