@@ -48,6 +48,7 @@ from ugc_bot.domain.enums import (
     ComplaintStatus,
     InteractionStatus,
     OrderStatus,
+    PayoutRequestStatus,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.models import (
@@ -1258,6 +1259,7 @@ async def _get_obj_by_pk(
 class UserAdmin(ModelView, model=UserModel):
     """Admin view for users."""
 
+    can_delete = False
     name = "Пользователь"
     name_plural = "Пользователи"
     column_list = [
@@ -1333,10 +1335,23 @@ class UserAdmin(ModelView, model=UserModel):
 
         return result
 
+    def list_query(self, request: Request):
+        stmt = super().list_query(request)
+        return stmt.where(UserModel.status != UserStatus.DELETED)
+
+    def count_query(self, request: Request):
+        stmt = super().count_query(request)
+        return stmt.where(UserModel.status != UserStatus.DELETED)
+
+    def form_edit_query(self, request: Request):
+        stmt = super().form_edit_query(request)
+        return stmt.where(UserModel.status != UserStatus.DELETED)
+
 
 class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
     """Admin view for blogger profiles."""
 
+    can_delete = False
     name = "Профиль креатора"
     name_plural = "Профили креаторов"
     column_list = [
@@ -1387,6 +1402,7 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
 class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
     """Admin view for advertiser profiles."""
 
+    can_delete = False
     name = "Профиль заказчика"
     name_plural = "Профили заказчиков"
     column_list = [
@@ -1411,6 +1427,7 @@ class AdvertiserProfileAdmin(ModelView, model=AdvertiserProfileModel):
 class OrderAdmin(ModelView, model=OrderModel):
     """Admin view for orders with moderation support."""
 
+    can_delete = False
     name = "Заказ"
     name_plural = "Заказы"
     column_list = [
@@ -1444,6 +1461,12 @@ class OrderAdmin(ModelView, model=OrderModel):
     ]
     column_sortable_list = list(column_list)
     column_default_sort = (OrderModel.created_at, True)
+    column_formatters = {
+        OrderModel.offer_text: lambda m, _: (
+            (m.offer_text or "")[:50]  # type: ignore[attr-defined]
+            + ("…" if len(m.offer_text or "") > 50 else "")  # type: ignore[attr-defined]
+        ),
+    }
     column_labels = {
         OrderModel.order_id: "ID заказа",
         OrderModel.advertiser_id: "ID заказчика",
@@ -1570,10 +1593,23 @@ class OrderAdmin(ModelView, model=OrderModel):
 
         return result
 
+    def list_query(self, request: Request):
+        stmt = super().list_query(request)
+        return stmt.where(OrderModel.status != OrderStatus.DELETED)
+
+    def count_query(self, request: Request):
+        stmt = super().count_query(request)
+        return stmt.where(OrderModel.status != OrderStatus.DELETED)
+
+    def form_edit_query(self, request: Request):
+        stmt = super().form_edit_query(request)
+        return stmt.where(OrderModel.status != OrderStatus.DELETED)
+
 
 class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):
     """Admin view for offer dispatches and responses."""
 
+    can_delete = False
     name = "Оффер (отправка/отклик)"
     name_plural = "Офферы (отправки и отклики)"
     column_list = [
@@ -1599,6 +1635,7 @@ class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):
 class InteractionAdmin(ModelView, model=InteractionModel):
     """Admin view for interactions."""
 
+    can_delete = False
     name = "Взаимодействие"
     name_plural = "Взаимодействия"
     column_list = [
@@ -1664,12 +1701,25 @@ class InteractionAdmin(ModelView, model=InteractionModel):
 
         return result
 
+    def list_query(self, request: Request):
+        stmt = super().list_query(request)
+        return stmt.where(InteractionModel.status != InteractionStatus.DELETED)
+
+    def count_query(self, request: Request):
+        stmt = super().count_query(request)
+        return stmt.where(InteractionModel.status != InteractionStatus.DELETED)
+
+    def form_edit_query(self, request: Request):
+        stmt = super().form_edit_query(request)
+        return stmt.where(InteractionModel.status != InteractionStatus.DELETED)
+
 
 class InstagramVerificationAdmin(
     ModelView, model=InstagramVerificationCodeModel
 ):
     """Admin view for Instagram verification codes."""
 
+    can_delete = False
     name = "Код верификации Instagram"
     name_plural = "Коды верификации Instagram"
     column_list = [
@@ -1692,6 +1742,7 @@ class InstagramVerificationAdmin(
 class ComplaintAdmin(ModelView, model=ComplaintModel):
     """Admin view for complaints."""
 
+    can_delete = False
     name = "Жалоба"
     name_plural = "Жалобы"
     column_list = [
@@ -1780,10 +1831,23 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
 
         return result
 
+    def list_query(self, request: Request):
+        stmt = super().list_query(request)
+        return stmt.where(ComplaintModel.status != ComplaintStatus.DELETED)
+
+    def count_query(self, request: Request):
+        stmt = super().count_query(request)
+        return stmt.where(ComplaintModel.status != ComplaintStatus.DELETED)
+
+    def form_edit_query(self, request: Request):
+        stmt = super().form_edit_query(request)
+        return stmt.where(ComplaintModel.status != ComplaintStatus.DELETED)
+
 
 class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     """Admin view for contact pricing."""
 
+    can_delete = False
     name = "Цена контакта"
     name_plural = "Цены контактов"
     column_list = [
@@ -1806,6 +1870,7 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
 class BotTextAdmin(ModelView, model=BotTextModel):
     """Admin view for localized bot texts (key, locale, value)."""
 
+    can_delete = False
     name = "Текст бота"
     name_plural = "Тексты бота"
     column_list = [
@@ -1865,6 +1930,7 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     name = "Заявка на вывод"
     name_plural = "Заявки на вывод"
     can_create = False
+    can_delete = False
     column_list = [
         PayoutRequestModel.request_id,
         PayoutRequestModel.user_id,
@@ -1885,6 +1951,24 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
         PayoutRequestModel.status: "Статус",
         PayoutRequestModel.amount: "Сумма",
     }
+
+    def list_query(self, request: Request):
+        stmt = super().list_query(request)
+        return stmt.where(
+            PayoutRequestModel.status != PayoutRequestStatus.DELETED
+        )
+
+    def count_query(self, request: Request):
+        stmt = super().count_query(request)
+        return stmt.where(
+            PayoutRequestModel.status != PayoutRequestStatus.DELETED
+        )
+
+    def form_edit_query(self, request: Request):
+        stmt = super().form_edit_query(request)
+        return stmt.where(
+            PayoutRequestModel.status != PayoutRequestStatus.DELETED
+        )
 
 
 class DashboardLinkView(BaseView):

@@ -18,6 +18,7 @@ class UserStatus(StrEnum):
     ACTIVE = "active"
     PAUSE = "pause"
     BLOCKED = "blocked"
+    DELETED = "deleted"
 
 
 class AudienceGender(StrEnum):
@@ -56,6 +57,7 @@ class OrderStatus(StrEnum):
     PENDING_MODERATION = "pending_moderation"
     ACTIVE = "active"
     CLOSED = "closed"
+    DELETED = "deleted"
 
 
 class InteractionStatus(StrEnum):
@@ -65,6 +67,7 @@ class InteractionStatus(StrEnum):
     NO_DEAL = "no_deal"
     PENDING = "pending"
     ISSUE = "issue"
+    DELETED = "deleted"
 
 
 class ComplaintStatus(StrEnum):
@@ -74,6 +77,7 @@ class ComplaintStatus(StrEnum):
     REVIEWED = "reviewed"
     DISMISSED = "dismissed"
     ACTION_TAKEN = "action_taken"
+    DELETED = "deleted"
 
 
 class PaymentStatus(StrEnum):
@@ -99,3 +103,4 @@ class PayoutRequestStatus(StrEnum):
     PENDING = "pending"
     PAID = "paid"
     CANCELLED = "cancelled"
+    DELETED = "deleted"

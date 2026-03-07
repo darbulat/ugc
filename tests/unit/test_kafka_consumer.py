@@ -34,8 +34,10 @@ from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
 from ugc_bot.kafka_consumer import (
+    _commit_message_offset,
     _parse_order_id,
     _publish_dlq,
+    _send_offer_to_blogger,
     _send_offers,
     _start_kafka_client_with_retry,
     main,
@@ -961,3 +963,225 @@ async def test_start_kafka_client_with_retry_raises_after_max_retries(
         pytest.raises(KafkaConnectionError),
     ):
         await _start_kafka_client_with_retry(always_fail, "test client")
+
+
+@pytest.mark.asyncio
+async def test_start_kafka_client_with_retry_raises_when_not_callable() -> None:
+    """Raise TypeError when start_fn is not callable."""
+    with pytest.raises(TypeError, match="start_fn must be callable"):
+        await _start_kafka_client_with_retry("not_callable", "test client")
+
+
+@pytest.mark.asyncio
+async def test_send_offer_to_blogger_skips_when_blogger_is_advertiser() -> None:
+    """Skip sending when blogger is the order advertiser."""
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000940"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000941"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    messenger = Mock()
+    dispatch_service = Mock()
+    await _send_offer_to_blogger(
+        advertiser,
+        order,
+        "ACTIVE",
+        messenger,
+        dispatch_service,
+        retries=1,
+        retry_delay_seconds=0.0,
+        dlq_producer=None,
+        dlq_topic="dlq",
+    )
+    messenger.send_text.assert_not_called()
+    messenger.send_photo.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_offer_to_blogger_skips_when_external_id_not_digit() -> None:
+    """Skip sending when blogger external_id is not numeric."""
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000950"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000951"),
+        external_id="not_a_number",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000952"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    messenger = Mock()
+    dispatch_service = Mock()
+    await _send_offer_to_blogger(
+        blogger,
+        order,
+        "ACTIVE",
+        messenger,
+        dispatch_service,
+        retries=1,
+        retry_delay_seconds=0.0,
+        dlq_producer=None,
+        dlq_topic="dlq",
+    )
+    messenger.send_text.assert_not_called()
+    messenger.send_photo.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_commit_message_offset_returns_early_when_msg_incomplete() -> (
+    None
+):
+    """Do not commit when msg has no topic, partition or offset."""
+    consumer = AsyncMock()
+    msg_missing_offset = SimpleNamespace(topic="t", partition=0, offset=None)
+    await _commit_message_offset(consumer, msg_missing_offset)
+    consumer.commit.assert_not_called()
+
+    msg_missing_partition = SimpleNamespace(topic="t", partition=None, offset=0)
+    await _commit_message_offset(consumer, msg_missing_partition)
+    consumer.commit.assert_not_called()
+
+    msg_missing_topic = SimpleNamespace(topic=None, partition=0, offset=0)
+    await _commit_message_offset(consumer, msg_missing_topic)
+    consumer.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_consumer_logs_exception_when_send_offers_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When _send_offers raises, exception is logged and consumer stops."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "sqlite:///",
+            "KAFKA_ENABLED": True,
+            "KAFKA_BOOTSTRAP_SERVERS": "kafka:9092",
+            "KAFKA_TOPIC": "order_activated",
+            "KAFKA_GROUP_ID": "ugc-bot",
+            "KAFKA_DLQ_TOPIC": "dlq",
+            "KAFKA_SEND_RETRIES": 2,
+            "KAFKA_SEND_RETRY_DELAY_SECONDS": 0.0,
+        }
+    )
+    monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.configure_logging", lambda *_, **__: None
+    )
+    mock_container = Mock()
+    mock_container.build_offer_dispatch_service = Mock(return_value=Mock())
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.Container", lambda _: mock_container
+    )
+
+    async def send_offers_raises(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("send_offers failed")
+
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer._send_offers", send_offers_raises
+    )
+    mock_logger = Mock()
+    monkeypatch.setattr("ugc_bot.kafka_consumer.logger", mock_logger)
+
+    class FakeConsumer:
+        def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
+            self._count = 0
+
+        async def start(self) -> None:
+            self.started = True
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+        async def commit(self, offsets=None) -> None:  # type: ignore[no-untyped-def]
+            pass
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            self._count += 1
+            if self._count == 1:
+                return SimpleNamespace(
+                    topic="t",
+                    partition=0,
+                    offset=0,
+                    value={
+                        "event": "order_activated",
+                        "order_id": "00000000-0000-0000-0000-000000000999",
+                    },
+                )
+            raise asyncio.CancelledError
+
+    class FakeProducer:
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
+
+    class FakeBot:
+        def __init__(self, token: str) -> None:
+            self.session = Mock()
+            self.session.close = AsyncMock()
+
+    fake_consumer = FakeConsumer()
+    fake_producer = FakeProducer()
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.AIOKafkaConsumer",
+        lambda *a, **kw: fake_consumer,
+    )
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.AIOKafkaProducer",
+        lambda *a, **kw: fake_producer,
+    )
+    monkeypatch.setattr("ugc_bot.kafka_consumer.Bot", FakeBot)
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_consumer()
+
+    mock_logger.exception.assert_called()
+    assert "Kafka message" in mock_logger.exception.call_args[0][0]
+    assert fake_consumer.stopped is True
