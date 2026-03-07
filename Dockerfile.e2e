@@ -1,5 +1,5 @@
 # E2E test image: dev deps + Playwright.
-# Order: deps layer first, then app code, then tests last so test-only changes skip reinstall.
+# Order: heavy deps (requirements + Playwright) first so code/test-only changes use cache.
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -12,17 +12,20 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends postgresql-client gzip && \
     rm -rf /var/lib/apt/lists/*
 
-# Deps and app code: install layer needs src so pip install -e finds ugc_bot.
-COPY requirements.txt pyproject.toml conftest.py alembic.ini /app/
+# Heavy deps first: base + dev/e2e deps + Playwright — invalidates when deps change.
+COPY requirements.txt requirements-dev-e2e.txt /app/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install -r requirements-dev-e2e.txt && \
+    pip install playwright && \
+    python -m playwright install --with-deps chromium
+
+# App in editable mode only (no deps): invalidates when app code changes; runs in ~1s.
+COPY pyproject.toml conftest.py alembic.ini /app/
 COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
+RUN pip install --no-cache-dir -e . --no-deps
 
-# pytest, pytest-cov, pytest-asyncio, pytest-timeout come from [dev] in pyproject.toml
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install -r requirements.txt && \
-    pip install -e ".[dev,telegram-e2e]" && \
-    python -m playwright install --with-deps chromium
-
-# Tests last: changes here do not invalidate the dependency layer.
+# Tests last: changes here do not invalidate the dependency layers.
 COPY tests /app/tests

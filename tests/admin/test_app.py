@@ -11,10 +11,13 @@ from fastapi.testclient import TestClient
 from ugc_bot.admin.app import (
     BloggerProfileAdmin,
     ComplaintAdmin,
+    DashboardLinkView,
     EnumAwareAdmin,
     InteractionAdmin,
     OrderAdmin,
+    PayoutRequestAdmin,
     UserAdmin,
+    _api_search_json,
     _get_order_moderation_deps,
     _get_services,
     _inject_order_eligible_bloggers_count,
@@ -38,6 +41,9 @@ from ugc_bot.infrastructure.db.models import (
     InteractionModel,
     OrderModel,
     UserModel,
+)
+from ugc_bot.infrastructure.redis_cache import (
+    serialize_admin_payload,
 )
 
 # Strong admin credentials for tests (not in config _WEAK_ADMIN_VALUES).
@@ -193,6 +199,25 @@ def test_get_services() -> None:
     assert user_service is not None
     assert complaint_service is not None
     assert interaction_service is not None
+
+
+@pytest.mark.asyncio
+async def test_api_search_json_returns_cached_result_when_cache_hit() -> None:
+    """_api_search_json returns deserialized payload when cache has data."""
+    from ugc_bot.admin.dashboard_service import AdminDashboardService
+
+    cached = {"query": "john", "users": [{"user_id": "u1", "username": "john"}]}
+    serialized = serialize_admin_payload(cached)
+    mock_cache = MagicMock()
+    mock_cache.get = AsyncMock(return_value=serialized)
+    mock_dashboard_service = MagicMock(spec=AdminDashboardService)
+
+    result = await _api_search_json(
+        mock_dashboard_service, mock_cache, list_ttl=90, q="john"
+    )
+
+    assert result == cached
+    mock_dashboard_service.search_users.assert_not_called()
 
 
 def test_container_build_offer_dispatch_service() -> None:
@@ -1274,6 +1299,104 @@ async def test_update_order_location_geometry_no_container() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_order_location_geometry_no_tm_early_return() -> None:
+    """When transaction_manager is None, function returns without updating."""
+    order_id = UUID("00000000-0000-0000-0000-00000000009c")
+    mock_order_repo = MagicMock()
+    mock_container = MagicMock()
+    mock_container.transaction_manager = None
+    mock_container.build_outbox_deps = MagicMock(return_value=(None, None))
+    mock_container.build_repos = MagicMock(
+        return_value={"order_repo": mock_order_repo}
+    )
+    mock_container.build_geocoder = MagicMock()
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(MagicMock(), MagicMock(), mock_order_repo),
+        ),
+    ):
+        await _update_order_location_geometry_after_geography_change(
+            order_id, ""
+        )
+
+    mock_order_repo.get_by_id.assert_not_called()
+    mock_order_repo.save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_order_location_geometry_exception_logged() -> None:
+    """When transaction raises, exception is logged and not re-raised."""
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import OrderType
+
+    order_id = UUID("00000000-0000-0000-0000-00000000009d")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-00000000009e"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/product",
+        offer_text="Test",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        geography="Казань",
+        location_geometry=None,
+    )
+
+    mock_order_repo = MagicMock()
+    mock_order_repo.get_by_id = AsyncMock(return_value=order)
+    mock_order_repo.save = AsyncMock(side_effect=RuntimeError("db error"))
+
+    mock_session = MagicMock()
+
+    @asynccontextmanager
+    async def _tx():
+        yield mock_session
+
+    mock_tm = MagicMock()
+    mock_tm.transaction = MagicMock(return_value=_tx())
+
+    mock_container = MagicMock()
+    mock_container.transaction_manager = mock_tm
+    mock_container.build_outbox_deps = MagicMock(return_value=(None, None))
+    mock_container.build_repos = MagicMock(
+        return_value={"order_repo": mock_order_repo}
+    )
+    mock_geocoder = MagicMock()
+    mock_geocoder.get_multipolygon_wkt_for_queries = AsyncMock(
+        return_value="MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
+    )
+    mock_container.build_geocoder = MagicMock(return_value=mock_geocoder)
+
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=mock_container,
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(MagicMock(), MagicMock(), mock_order_repo),
+        ),
+        patch("ugc_bot.admin.app.logger") as mock_logger,
+    ):
+        await _update_order_location_geometry_after_geography_change(
+            order_id, "Казань"
+        )
+
+    mock_logger.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_update_order_location_geometry_with_geocoder() -> None:
     """Resolve geography to WKT and save order with new location_geometry."""
     from contextlib import asynccontextmanager
@@ -1830,6 +1953,31 @@ def test_enum_aware_admin_edit_form_data_handles_attribute_error() -> None:
     assert isinstance(result, dict)
 
 
+def test_enum_aware_admin_edit_form_data_non_enum_value() -> None:
+    """_edit_form_data sets non-Enum value as-is (e.g. str, int)."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    app = FastAPI()
+    admin = EnumAwareAdmin(app, engine, base_url="/admin")
+
+    model = MagicMock()
+    model.status = OrderStatus.PENDING_MODERATION
+    model.product_link = "https://example.com"
+    model.order_type = "ugc_only"
+
+    model_view = MagicMock()
+    model_view._form_prop_names = ["status", "product_link", "order_type"]
+
+    admin._normalize_wtform_data = MagicMock(return_value={})
+
+    result = admin._edit_form_data(model, model_view)
+
+    assert result["status"] == "pending_moderation"
+    assert result["product_link"] == "https://example.com"
+    assert result["order_type"] == "ugc_only"
+
+
 @pytest.mark.asyncio
 async def test_inject_order_eligible_bloggers_count_sets_count() -> None:
     """Context gets eligible_bloggers_count for OrderAdmin with container."""
@@ -1899,3 +2047,123 @@ async def test_inject_order_eligible_bloggers_count_none_on_exception() -> None:
         await _inject_order_eligible_bloggers_count(context, model_view, model)
 
     assert context["eligible_bloggers_count"] is None
+
+
+def test_user_admin_list_count_form_edit_query_exclude_deleted() -> None:
+    """UserAdmin list_query, count_query, form_edit_query exclude DELETED."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    request = MagicMock(
+        path_params={"pk": "00000000-0000-0000-0000-000000000001"},
+        query_params={},
+    )
+    admin = UserAdmin()
+    admin._engine = engine  # type: ignore[attr-defined]
+
+    list_stmt = admin.list_query(request)
+    count_stmt = admin.count_query(request)
+    form_edit_stmt = admin.form_edit_query(request)
+
+    assert list_stmt is not None
+    assert count_stmt is not None
+    assert form_edit_stmt is not None
+
+
+def test_order_admin_list_count_form_edit_query_exclude_deleted() -> None:
+    """OrderAdmin list_query, count_query, form_edit_query exclude DELETED."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    request = MagicMock(
+        path_params={"pk": "00000000-0000-0000-0000-000000000001"},
+        query_params={},
+    )
+    admin = OrderAdmin()
+    admin._engine = engine  # type: ignore[attr-defined]
+
+    list_stmt = admin.list_query(request)
+    count_stmt = admin.count_query(request)
+    form_edit_stmt = admin.form_edit_query(request)
+
+    assert list_stmt is not None
+    assert count_stmt is not None
+    assert form_edit_stmt is not None
+
+
+def test_interaction_admin_list_count_form_edit_query_exclude_deleted() -> None:
+    """InteractionAdmin list/count/form_edit_query exclude DELETED."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    request = MagicMock(
+        path_params={"pk": "00000000-0000-0000-0000-000000000002"},
+        query_params={},
+    )
+    admin = InteractionAdmin()
+    admin._engine = engine  # type: ignore[attr-defined]
+
+    list_stmt = admin.list_query(request)
+    count_stmt = admin.count_query(request)
+    form_edit_stmt = admin.form_edit_query(request)
+
+    assert list_stmt is not None
+    assert count_stmt is not None
+    assert form_edit_stmt is not None
+
+
+def test_complaint_admin_list_count_form_edit_query_exclude_deleted() -> None:
+    """ComplaintAdmin list/count/form_edit_query exclude DELETED."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    request = MagicMock(
+        path_params={"pk": "00000000-0000-0000-0000-000000000003"},
+        query_params={},
+    )
+    admin = ComplaintAdmin()
+    admin._engine = engine  # type: ignore[attr-defined]
+
+    list_stmt = admin.list_query(request)
+    count_stmt = admin.count_query(request)
+    form_edit_stmt = admin.form_edit_query(request)
+
+    assert list_stmt is not None
+    assert count_stmt is not None
+    assert form_edit_stmt is not None
+
+
+def test_payout_request_admin_list_count_form_edit_query_exclude_deleted() -> (
+    None
+):
+    """PayoutRequestAdmin list/count/form_edit_query exclude DELETED."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    request = MagicMock(
+        path_params={"pk": "00000000-0000-0000-0000-000000000004"},
+        query_params={},
+    )
+    admin = PayoutRequestAdmin()
+    admin._engine = engine  # type: ignore[attr-defined]
+
+    list_stmt = admin.list_query(request)
+    count_stmt = admin.count_query(request)
+    form_edit_stmt = admin.form_edit_query(request)
+
+    assert list_stmt is not None
+    assert count_stmt is not None
+    assert form_edit_stmt is not None
+
+
+@pytest.mark.asyncio
+async def test_dashboard_link_view_redirect() -> None:
+    """DashboardLinkView.dashboard_redirect redirects to /admin/dashboard."""
+    view = DashboardLinkView()
+    request = MagicMock()
+
+    with patch("ugc_bot.admin.app.login_required", lambda f: f):
+        response = await view.dashboard_redirect(request)
+
+    assert response.status_code in (302, 307)
+    assert response.headers.get("location") == "/admin/dashboard"

@@ -1596,3 +1596,198 @@ def test_admin_search_page_html(monkeypatch) -> None:
     response = client.get("/admin/search?q=jane")
     assert response.status_code == 200
     assert "jane" in response.text or "search" in response.text.lower()
+
+
+def test_admin_dashboard_redirects_to_login_when_not_authenticated(
+    monkeypatch,
+) -> None:
+    """Dashboard HTML redirects to /admin/login when auth fails."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard", AsyncMock())
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(AdminDashboardService, "get_order_card", AsyncMock())
+    app = create_admin_app()
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/admin/dashboard?period=today")
+    assert response.status_code in (302, 307)
+    assert "/admin/login" in (response.headers.get("location") or "")
+
+
+def test_admin_referrers_redirects_to_login_when_not_authenticated(
+    monkeypatch,
+) -> None:
+    """Referrers HTML redirects to /admin/login when auth fails."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard", AsyncMock())
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(AdminDashboardService, "get_order_card", AsyncMock())
+    app = create_admin_app()
+    client = TestClient(app, follow_redirects=False)
+    response = client.get(
+        "/admin/referrers?period=today&referrers_page=1&referrers_per_page=25"
+    )
+    assert response.status_code in (302, 307)
+    assert "/admin/login" in (response.headers.get("location") or "")
+
+
+def test_admin_creators_redirects_to_login_when_not_authenticated(
+    monkeypatch,
+) -> None:
+    """Creators list HTML redirects to /admin/login when auth fails."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(AdminDashboardService, "get_order_card", AsyncMock())
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard", AsyncMock())
+    app = create_admin_app()
+    client = TestClient(app, follow_redirects=False)
+    response = client.get(
+        "/admin/users/creators?period=today&page=1&per_page=25&only_new=false&with_complaints=false"
+    )
+    assert response.status_code in (302, 307)
+    assert "/admin/login" in (response.headers.get("location") or "")
+
+
+def test_admin_search_page_redirects_to_login_when_not_authenticated(
+    monkeypatch,
+) -> None:
+    """Search page redirects to /admin/login when auth fails."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+    monkeypatch.setattr(AdminDashboardService, "search_users", AsyncMock())
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard", AsyncMock())
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(AdminDashboardService, "get_order_card", AsyncMock())
+    app = create_admin_app()
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/admin/search?q=test")
+    assert response.status_code in (302, 307)
+    assert "/admin/login" in (response.headers.get("location") or "")
+
+
+def test_admin_order_api_returns_order_when_found(monkeypatch) -> None:
+    """Order API returns 200 and order dict when order exists."""
+    from uuid import uuid4
+
+    order_id = uuid4()
+    order_card = {
+        "order_id": str(order_id),
+        "status": "active",
+        "title": "Test",
+    }
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_order_card",
+        AsyncMock(return_value=order_card),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService, "get_dashboard", AsyncMock(return_value={})
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_creators",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_advertisers",
+        AsyncMock(return_value=_paginated([])),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "list_orders",
+        AsyncMock(return_value=_paginated([])),
+    )
+    app = create_admin_app()
+    client = TestClient(app)
+    response = client.get(f"/admin/api/orders/{order_id}")
+    assert response.status_code == 200
+    assert response.json() == order_card
