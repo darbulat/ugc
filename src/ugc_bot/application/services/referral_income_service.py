@@ -168,7 +168,7 @@ class ReferralIncomeService:
                 user_ids, session=session
             )
         )
-        paid_by_user: Dict[UUID, float] = dict.fromkeys(user_ids, 0.0)
+        paid_by_user: Dict[UUID, float] = {uid: 0.0 for uid in user_ids}
         for req in payout_requests:
             if (
                 req.status == PayoutRequestStatus.PAID
@@ -184,7 +184,7 @@ class ReferralIncomeService:
                 session=session,
             )
         )
-        income_by_user: Dict[UUID, float] = dict.fromkeys(user_ids, 0.0)
+        income_by_user: Dict[UUID, float] = {uid: 0.0 for uid in user_ids}
         for referrer_uid, row in rows_with_referrer:
             if not row.bloggers_needed:
                 continue

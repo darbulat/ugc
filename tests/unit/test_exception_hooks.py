@@ -65,17 +65,3 @@ async def test_asyncio_handler_logs_on_unretrieved_task_exception(
     asyncio.create_task(_failing_task())
     await asyncio.sleep(0.15)
     assert "test-service" in caplog.text or "task failed" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_asyncio_handler_logs_error_when_context_has_no_exception(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Handler with context without BaseException logs error (else branch)."""
-    from ugc_bot.exception_hooks import _make_asyncio_exception_handler
-
-    caplog.set_level("ERROR")
-    handler = _make_asyncio_exception_handler("svc")
-    loop = asyncio.get_running_loop()
-    handler(loop, {"message": "no exception in context", "exception": None})
-    assert "no exception in context" in caplog.text

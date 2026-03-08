@@ -14,6 +14,7 @@ from ugc_bot.application.errors import (
     OrderNotFoundError,
     UserNotFoundError,
 )
+from ugc_bot.application.geography import get_cities_list_for_miniapp
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -344,6 +345,12 @@ async def config(request: Request, body: InitDataBody) -> ConfigResponse:
         content_usage_options=options,
         bot_username=bot_username,
     )
+
+
+@router.get("/cities")
+async def cities() -> list[dict[str, str]]:
+    """Return cities list for city picker mini app (id, label per item)."""
+    return get_cities_list_for_miniapp()
 
 
 def _validate_advertiser_body(

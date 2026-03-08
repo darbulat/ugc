@@ -53,7 +53,7 @@ class DadataGeocoder:
         logger.info(
             "geocoder request: POST %s payload=%s",
             url,
-            dict(payload),
+            {k: v for k, v in payload.items()},
         )
         try:
             async with httpx.AsyncClient(

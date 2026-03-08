@@ -579,6 +579,17 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     assert "payment_link" in data
 
 
+def test_miniapp_api_cities_returns_list(client: TestClient) -> None:
+    """GET /miniapp/api/cities returns list of cities with id and label."""
+    response = client.get("/miniapp/api/cities")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    if data:
+        assert "id" in data[0]
+        assert "label" in data[0]
+
+
 def test_miniapp_api_config_success(client: TestClient) -> None:
     """POST /miniapp/api/config returns allowed_blogger_counts and options."""
     init_data = _make_valid_init_data("test_token", 55555)

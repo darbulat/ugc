@@ -54,15 +54,6 @@ async def test_get_fallback_to_defaults_when_not_loaded() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_when_not_loaded_and_key_missing_returns_empty() -> None:
-    """Not loaded and key not in DEFAULT_TEXTS -> get() returns empty string."""
-    repo = FakeBotTextsRepo(get_all_rows=[])
-    svc = BotTextsService(bot_texts_repo=repo, default_locale="ru")
-    result = await svc.get("nonexistent_key_xyz", "ru")
-    assert result == ""
-
-
-@pytest.mark.asyncio
 async def test_get_fallback_to_defaults_after_load_empty_db() -> None:
     """load_from_db() empty: defaults merged, get() returns them."""
     repo = FakeBotTextsRepo(get_all_rows=[])

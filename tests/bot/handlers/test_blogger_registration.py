@@ -27,7 +27,6 @@ from ugc_bot.bot.handlers.blogger_registration import (
     BloggerRegistrationStates,
     _audience_gender_from_callback,
     _blogger_gender_from_callback,
-    _get_web_app_resolved_place,
     _parse_age_range,
     _start_registration_flow,
     _work_format_from_callback,
@@ -1232,63 +1231,6 @@ async def test_handle_city_with_web_app_data_uses_lat_lon(
 
     reg_service.resolve_city_from_location.assert_called_once_with(55.79, 49.12)
     assert state._data.get("city") == "kazan"
-
-
-@pytest.mark.asyncio
-async def test_handle_city_web_app_data_with_city_region_country_skips_geocoder(
-    user_repo, blogger_repo, config, bot_texts_service
-) -> None:
-    """handle_city with web_app_data city/region/country uses them."""
-    reg_service = MagicMock(spec=BloggerRegistrationService)
-    reg_service.resolve_city_from_location = AsyncMock()
-    state = FakeFSMContext()
-    await state.set_state(BloggerRegistrationStates.city.state)
-    message = FakeMessage(
-        text=None,
-        user=FakeUser(1, "u", "U"),
-        web_app_data=FakeWebAppData(
-            data='{"lat":55.79,"lon":49.12,"city":"Kazan",'
-            '"region":"Tatarstan","country":"Russia"}'
-        ),
-    )
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-
-    await handle_city(
-        message,
-        state,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        blogger_registration_service=reg_service,
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-
-    reg_service.resolve_city_from_location.assert_not_called()
-    assert state._data.get("city") == "kazan"
-
-
-def test_get_web_app_resolved_place_empty_city_returns_none() -> None:
-    """_get_web_app_resolved_place returns None when city is empty."""
-    incoming = MagicMock()
-    incoming.web_app_data = (
-        '{"lat":1,"lon":2,"city":"","region":"R","country":"C"}'
-    )
-    assert _get_web_app_resolved_place(incoming) is None
-
-
-def test_get_web_app_resolved_place_invalid_json_returns_none() -> None:
-    """_get_web_app_resolved_place returns None on invalid JSON."""
-    incoming = MagicMock()
-    incoming.web_app_data = "not json"
-    assert _get_web_app_resolved_place(incoming) is None
-
-
-def test_get_web_app_resolved_place_no_web_app_data_returns_none() -> None:
-    """_get_web_app_resolved_place returns None when web_app_data missing."""
-    incoming = MagicMock()
-    incoming.web_app_data = None
-    assert _get_web_app_resolved_place(incoming) is None
 
 
 @pytest.mark.asyncio

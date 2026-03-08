@@ -1,7 +1,7 @@
 """Tests for profile handler."""
 
 from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -44,7 +44,6 @@ from ugc_bot.bot.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
     _BLOGGER_AGREEMENTS_STATE,
     EditProfileStates,
-    _parse_location_picker_payload,
     edit_profile_choose_field,
     edit_profile_choose_type,
     edit_profile_enter_value,
@@ -1814,86 +1813,6 @@ async def test_edit_profile_enter_value_city_with_location_updates_profile(
     call_kw = reg_service.update_calls[0][1]
     assert call_kw.get("city") == "moscow"
     assert call_kw.get("location_geometry") == "MULTIPOINT((37.62 55.75))"
-
-
-def test_parse_location_picker_payload_with_city_returns_tuple() -> None:
-    """web_app_data with city returns (lat,lon,city,region,country)."""
-    ctx = MagicMock()
-    ctx.location_lat = None
-    ctx.location_lon = None
-    ctx.web_app_data = (
-        '{"lat":55.75,"lon":37.62,"city":"Moscow",'
-        '"region":"Moscow Oblast","country":"Russia"}'
-    )
-    result = _parse_location_picker_payload(ctx)
-    assert result is not None
-    lat, lon, city, region, country = result
-    assert lat == 55.75
-    assert lon == 37.62
-    assert city == "Moscow"
-    assert region == "Moscow Oblast"
-    assert country == "Russia"
-
-
-@pytest.mark.asyncio
-async def test_edit_profile_enter_value_city_web_app_data_city_skips_resolve(
-    user_repo, config, bot_texts_service
-) -> None:
-    """City edit with web_app_data city/region/country skips resolve_city."""
-    user = await create_test_user(
-        user_repo,
-        user_id=UUID("00000000-0000-0000-0000-000000000821"),
-        external_id="17",
-        username="user",
-    )
-    message = FakeMessage(
-        text=None,
-        user=FakeUser(17),
-        web_app_data=FakeWebAppData(
-            data='{"lat":55.75,"lon":37.62,"city":"Moscow",'
-            '"region":"Moscow Oblast","country":"Russia"}'
-        ),
-    )
-    state = FakeFSMContext()
-    state._data = {
-        "editing_field": "city",
-        "edit_profile_type": "blogger",
-        "edit_user_id": str(user.user_id),
-        "edit_external_id": "17",
-    }
-    profile_service = FakeProfileService(
-        user=user, has_blogger=True, has_advertiser=False
-    )
-    reg_service = MagicMock()
-    reg_service.resolve_city_from_location = AsyncMock()
-    reg_service.update_blogger_profile = AsyncMock(
-        return_value=UpdateBloggerProfileResult(
-            profile=_make_blogger_profile(user.user_id),
-            location_geometry_resolved=True,
-        )
-    )
-    client = FakeMessengerClient()
-    adapter = TelegramEventAdapter()
-    await edit_profile_enter_value(
-        message,
-        state,
-        profile_service,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        blogger_registration_service=reg_service,
-        advertiser_registration_service=FakeAdvertiserRegistrationService(),
-        user_role_service=FakeUserRoleService(),
-        max_order_price=10_000.0,
-        messenger_client=client,
-        event_adapter=adapter,
-    )
-    reg_service.resolve_city_from_location.assert_not_called()
-    reg_service.update_blogger_profile.assert_called_once()
-    call_kw = reg_service.update_blogger_profile.call_args[1]
-    assert call_kw.get("city") == "moscow"
-    assert call_kw.get("region") == "Moscow Oblast"
-    assert call_kw.get("country") == "Russia"
-    assert "MULTIPOINT" in str(call_kw.get("location_geometry", ""))
 
 
 @pytest.mark.asyncio
