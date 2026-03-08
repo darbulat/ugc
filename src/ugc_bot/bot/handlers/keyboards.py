@@ -57,6 +57,26 @@ CALLBACK_PROFILE_REGION_PREFIX = "profile:region:"
 CALLBACK_SUPPORT = "support"
 CALLBACK_CHANGE_ROLE = "change_role"
 
+MINIAPP_OPEN_BUTTON_TEXT = "Открыть приложение"
+
+
+def miniapp_open_inline_keyboard(miniapp_url: str) -> Keyboard:
+    """Inline keyboard with single button to open Mini App."""
+    if not (miniapp_url or miniapp_url.strip()):
+        return Keyboard(kind=KeyboardKind.INLINE, rows=[])
+    url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=MINIAPP_OPEN_BUTTON_TEXT,
+                    web_app_url=url,
+                )
+            ]
+        ],
+    )
+
 
 def build_support_telegram_url(support_contact: str) -> str | None:
     """Build t.me URL for support chat from username (with or without @)."""

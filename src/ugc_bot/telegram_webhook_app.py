@@ -35,6 +35,7 @@ from ugc_bot.metrics.collector import (
     record_telegram_webhook_invalid,
     record_telegram_webhook_received,
 )
+from ugc_bot.miniapp.api import router as miniapp_api_router
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,8 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telegram Webhook", lifespan=_lifespan)
+
+app.include_router(miniapp_api_router, prefix="/miniapp")
 
 _miniapp_dir = Path(__file__).resolve().parent / "miniapp"
 if _miniapp_dir.is_dir():

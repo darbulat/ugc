@@ -2,6 +2,7 @@
 
 from ugc_bot.application.messenger.dto import KeyboardKind
 from ugc_bot.bot.handlers.keyboards import (
+    MINIAPP_OPEN_BUTTON_TEXT,
     advertiser_menu_inline_keyboard,
     advertiser_start_keyboard,
     blogger_after_registration_inline_keyboard,
@@ -11,6 +12,7 @@ from ugc_bot.bot.handlers.keyboards import (
     creator_filled_profile_inline_keyboard,
     flow_keyboard_city_request,
     main_menu_inline_keyboard,
+    miniapp_open_inline_keyboard,
 )
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 
@@ -156,3 +158,23 @@ def test_flow_keyboard_city_request_with_miniapp_url() -> None:
         "https://bot.example/miniapp/location_picker.html"
     )
     assert keyboard.rows[1][0].text == "Pick on map"
+
+
+def test_miniapp_open_inline_keyboard_with_url() -> None:
+    """miniapp_open_inline_keyboard with URL returns one web_app button."""
+    keyboard = miniapp_open_inline_keyboard("https://example.com")
+    assert keyboard.kind == KeyboardKind.INLINE
+    assert len(keyboard.rows) == 1
+    assert len(keyboard.rows[0]) == 1
+    assert keyboard.rows[0][0].text == MINIAPP_OPEN_BUTTON_TEXT
+    assert (
+        keyboard.rows[0][0].web_app_url
+        == "https://example.com/miniapp/app.html"
+    )
+
+
+def test_miniapp_open_inline_keyboard_empty_url() -> None:
+    """miniapp_open_inline_keyboard with empty URL returns no rows."""
+    keyboard = miniapp_open_inline_keyboard("")
+    assert keyboard.kind == KeyboardKind.INLINE
+    assert len(keyboard.rows) == 0

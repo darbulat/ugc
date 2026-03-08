@@ -286,6 +286,29 @@ def test_build_keyboard_markup_reply_web_app_button() -> None:
     assert btn.web_app.url == "https://bot.example/miniapp/location_picker.html"
 
 
+def test_build_keyboard_markup_inline_web_app_button() -> None:
+    """Inline button with web_app_url yields button with web_app."""
+    keyboard = Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text="Open App",
+                    web_app_url="https://bot.example/miniapp/app.html",
+                )
+            ]
+        ],
+    )
+    result = build_keyboard_markup(keyboard)
+    assert result is not None
+    assert len(result.inline_keyboard) == 1
+    assert len(result.inline_keyboard[0]) == 1
+    btn = result.inline_keyboard[0][0]
+    assert btn.text == "Open App"
+    assert btn.web_app is not None
+    assert btn.web_app.url == "https://bot.example/miniapp/app.html"
+
+
 def test_build_keyboard_markup_remove() -> None:
     """build_keyboard_markup returns ReplyKeyboardRemove for REMOVE kind."""
 
