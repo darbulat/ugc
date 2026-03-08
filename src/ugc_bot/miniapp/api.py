@@ -431,12 +431,13 @@ def _validate_blogger_body(
     err = validate_instagram_url(body.instagram_url, texts=texts)
     if err:
         return err
-    if body.display_name:
-        err = validate_nickname(body.display_name, texts=texts)
-        if err:
-            return err
-    if body.birth_date:
-        _, err = validate_birth_date(body.birth_date, texts=texts)
+    err = validate_nickname(body.display_name or "", texts=texts)
+    if err:
+        return err
+    if (body.birth_date or "").strip():
+        _, err = validate_birth_date(
+            (body.birth_date or "").strip(), texts=texts
+        )
         if err:
             return err
     err = validate_topics(body.topics, texts=texts)
@@ -552,6 +553,12 @@ async def register_blogger(
     dispatcher = request.app.state.dispatcher
     svc = dispatcher["blogger_registration_service"]
     existing = await svc.get_profile_by_instagram_url(instagram_url)
+    if existing is None and not (body.birth_date or "").strip():
+        detail = (texts or {}).get(
+            "err_birth_date_empty",
+            "Enter date of birth as DD.MM.YYYY (e.g. 15.05.1995).",
+        )
+        raise HTTPException(status_code=400, detail=detail)
     if existing is not None and existing.user_id != user_id:
         taken = (texts or {}).get(
             "err_instagram_taken",
@@ -601,10 +608,14 @@ async def register_blogger(
 def _parse_birth_date_optional(
     birth_date_str: str | None, texts: dict[str, str]
 ) -> date | None:
-    """Parse birth_date DD.MM.YYYY or return None."""
-    if not birth_date_str:
+    """Parse birth_date DD.MM.YYYY. None if empty; raise 400 if invalid."""
+    if not (birth_date_str or "").strip():
         return None
-    parsed, _ = validate_birth_date(birth_date_str, texts=texts)
+    parsed, err = validate_birth_date(
+        (birth_date_str or "").strip(), texts=texts
+    )
+    if err:
+        raise HTTPException(status_code=400, detail=err)
     return parsed
 
 

@@ -1656,10 +1656,10 @@ def test_miniapp_api_register_blogger_update_raises_user_not_found_404(
     assert "detail" in response.json()
 
 
-def test_miniapp_api_register_blogger_optional_birth_date(
+def test_miniapp_api_register_blogger_create_requires_birth_date(
     client: TestClient,
 ) -> None:
-    """Register blogger without birth_date passes None to service."""
+    """Register blogger without birth_date (create path) returns 400."""
     init_data = _make_valid_init_data("test_token", 55558)
     user_id = uuid4()
     user = User(
@@ -1675,8 +1675,6 @@ def test_miniapp_api_register_blogger_optional_birth_date(
     mock_urs.get_user = AsyncMock(return_value=user)
     mock_blogger_svc = MagicMock()
     mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
-    mock_blogger_svc.save_blogger_before_agreement = AsyncMock()
-    mock_blogger_svc.confirm_blogger_agreement = AsyncMock()
     dispatcher = app.state.dispatcher
     dispatcher["user_role_service"] = mock_urs
     dispatcher["blogger_registration_service"] = mock_blogger_svc
@@ -1696,10 +1694,11 @@ def test_miniapp_api_register_blogger_optional_birth_date(
         "display_name": "User",
     }
     response = client.post("/miniapp/api/register/blogger", json=payload)
-    assert response.status_code == 200
-    mock_blogger_svc.save_blogger_before_agreement.assert_called_once()
-    call_kw = mock_blogger_svc.save_blogger_before_agreement.call_args[1]
-    assert call_kw.get("birth_date") is None
+    assert response.status_code == 400
+    assert (
+        "birth_date" in response.json().get("detail", "").lower()
+        or "date" in response.json().get("detail", "").lower()
+    )
 
 
 def test_miniapp_api_register_blogger_update_own_profile_success(
