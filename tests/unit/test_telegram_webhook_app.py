@@ -1025,6 +1025,79 @@ def test_miniapp_api_register_blogger_success(client: TestClient) -> None:
     assert data.get("user_id") == str(user_id)
 
 
+def test_miniapp_api_register_blogger_update_own_profile_success(
+    client: TestClient,
+) -> None:
+    """POST register/blogger with own Instagram updates profile, returns 200."""
+    from ugc_bot.application.services.blogger_registration_service import (
+        UpdateBloggerProfileResult,
+    )
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    init_data = _make_valid_init_data("test_token", 55557)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55557",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    existing_profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/mine",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="РФ",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(
+        return_value=existing_profile
+    )
+    mock_blogger_svc.update_blogger_profile = AsyncMock(
+        return_value=UpdateBloggerProfileResult(profile=existing_profile)
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/mine",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "blogger_gender": "m",
+            "display_name": "TestUser",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json().get("ok") is True
+    assert response.json().get("user_id") == str(user_id)
+    mock_blogger_svc.update_blogger_profile.assert_called_once()
+    mock_blogger_svc.save_blogger_before_agreement.assert_not_called()
+
+
 def test_miniapp_api_register_blogger_instagram_taken(
     client: TestClient,
 ) -> None:

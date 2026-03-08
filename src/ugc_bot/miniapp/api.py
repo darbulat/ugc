@@ -13,6 +13,9 @@ from ugc_bot.application.errors import (
     OrderCreationError,
     UserNotFoundError,
 )
+from ugc_bot.application.services.blogger_registration_service import (
+    BloggerRegistrationService,
+)
 from ugc_bot.bot.validators import (
     VALIDATOR_ERR_KEYS,
     normalize_instagram_url,
@@ -408,6 +411,80 @@ def _validate_blogger_body(
     )
 
 
+async def _blogger_register_update(
+    svc: BloggerRegistrationService,
+    user_id: UUID,
+    body: RegisterBloggerRequest,
+    instagram_url: str,
+    birth_date_val: date | None,
+    work_format: WorkFormat,
+    audience_gender: AudienceGender,
+    blogger_gender: BloggerGender,
+    topics_dict: dict,
+) -> dict:
+    """Update existing blogger profile. Raises HTTPException on error."""
+    result = await svc.update_blogger_profile(
+        user_id,
+        instagram_url=instagram_url,
+        city=body.city,
+        region=body.region,
+        country=body.country,
+        topics=topics_dict,
+        audience_gender=audience_gender,
+        audience_age_min=body.audience_age_min,
+        audience_age_max=body.audience_age_max,
+        audience_geo=body.audience_geo,
+        price=body.price,
+        barter=body.barter,
+        work_format=work_format,
+        blogger_gender=blogger_gender,
+        birth_date=birth_date_val,
+    )
+    if result.profile is None and not result.location_geometry_resolved:
+        raise HTTPException(
+            status_code=400,
+            detail="City could not be resolved. Try another city.",
+        )
+    return {"ok": True, "user_id": str(user_id)}
+
+
+async def _blogger_register_create(
+    svc: BloggerRegistrationService,
+    user_id: UUID,
+    body: RegisterBloggerRequest,
+    instagram_url: str,
+    birth_date_val: date | None,
+    work_format: WorkFormat,
+    audience_gender: AudienceGender,
+    blogger_gender: BloggerGender,
+    topics_dict: dict,
+) -> dict:
+    """Create new blogger profile. Raises HTTPException on error."""
+    await svc.save_blogger_before_agreement(
+        user_id=user_id,
+        instagram_url=instagram_url,
+        city=body.city,
+        topics=topics_dict,
+        audience_gender=audience_gender,
+        audience_age_min=body.audience_age_min,
+        audience_age_max=body.audience_age_max,
+        audience_geo=body.audience_geo,
+        price=body.price,
+        barter=body.barter,
+        work_format=work_format,
+        blogger_gender=blogger_gender,
+        display_name=body.display_name,
+        telegram_username=body.telegram_username,
+        birth_date=birth_date_val,
+        region=body.region,
+        country=body.country,
+    )
+    await svc.confirm_blogger_agreement(
+        user_id=user_id, telegram_username=body.telegram_username
+    )
+    return {"ok": True, "user_id": str(user_id)}
+
+
 @router.post("/register/blogger")
 async def register_blogger(
     request: Request, body: RegisterBloggerRequest
@@ -433,48 +510,60 @@ async def register_blogger(
     dispatcher = request.app.state.dispatcher
     svc = dispatcher["blogger_registration_service"]
     existing = await svc.get_profile_by_instagram_url(instagram_url)
-    if existing is not None:
+    if existing is not None and existing.user_id != user_id:
         taken = (texts or {}).get(
             "err_instagram_taken",
             "This Instagram is already registered. Use another one.",
         )
         raise HTTPException(status_code=400, detail=taken)
-    birth_date_val: date | None = None
-    if body.birth_date:
-        parsed, _ = validate_birth_date(body.birth_date, texts=texts)
-        birth_date_val = parsed
+    birth_date_val = _parse_birth_date_optional(body.birth_date, texts)
     work_format = _parse_work_format(body.work_format)
     audience_gender = _parse_audience_gender(body.audience_gender)
     blogger_gender = _parse_blogger_gender(body.blogger_gender)
     topics_dict = {"selected": body.topics}
+    if existing is not None and existing.user_id == user_id:
+        try:
+            return await _blogger_register_update(
+                svc,
+                user_id,
+                body,
+                instagram_url,
+                birth_date_val,
+                work_format,
+                audience_gender,
+                blogger_gender,
+                topics_dict,
+            )
+        except UserNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except BloggerRegistrationError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     try:
-        await svc.save_blogger_before_agreement(
-            user_id=user_id,
-            instagram_url=instagram_url,
-            city=body.city,
-            topics=topics_dict,
-            audience_gender=audience_gender,
-            audience_age_min=body.audience_age_min,
-            audience_age_max=body.audience_age_max,
-            audience_geo=body.audience_geo,
-            price=body.price,
-            barter=body.barter,
-            work_format=work_format,
-            blogger_gender=blogger_gender,
-            display_name=body.display_name,
-            telegram_username=body.telegram_username,
-            birth_date=birth_date_val,
-            region=body.region,
-            country=body.country,
-        )
-        await svc.confirm_blogger_agreement(
-            user_id=user_id, telegram_username=body.telegram_username
+        return await _blogger_register_create(
+            svc,
+            user_id,
+            body,
+            instagram_url,
+            birth_date_val,
+            work_format,
+            audience_gender,
+            blogger_gender,
+            topics_dict,
         )
     except UserNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except BloggerRegistrationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"ok": True, "user_id": str(user_id)}
+
+
+def _parse_birth_date_optional(
+    birth_date_str: str | None, texts: dict[str, str]
+) -> date | None:
+    """Parse birth_date DD.MM.YYYY or return None."""
+    if not birth_date_str:
+        return None
+    parsed, _ = validate_birth_date(birth_date_str, texts=texts)
+    return parsed
 
 
 def _parse_order_type(s: str) -> OrderType:
