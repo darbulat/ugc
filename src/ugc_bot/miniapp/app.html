@@ -75,10 +75,10 @@
 
   <div id="screen-role-choice" class="screen">
     <h1>Выберите роль</h1>
-    <p class="hint" id="role-choice-hint">Зарегистрируйтесь как рекламодатель или блогер.</p>
+    <p class="hint" id="role-choice-hint">Зарегистрируйтесь как рекламодатель или креатор.</p>
     <div class="role-btns">
       <button type="button" class="btn" data-role="advertiser">Рекламодатель</button>
-      <button type="button" class="btn" data-role="blogger">Блогер</button>
+      <button type="button" class="btn" data-role="blogger">Креатор</button>
     </div>
   </div>
 
@@ -104,7 +104,7 @@
   </div>
 
   <div id="screen-register-blogger" class="screen">
-    <h1>Регистрация блогера</h1>
+    <h1>Регистрация креатора</h1>
     <form id="form-blogger">
       <label for="blg-name">Имя / ник (как к вам обращаться) *</label>
       <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Не ссылка на Instagram">
@@ -172,7 +172,7 @@
         <textarea id="ord-offer" name="offer_text" required></textarea>
         <label for="ord-price">Бюджет (₽) *</label>
         <input type="number" id="ord-price" name="price" required min="0" step="1">
-        <label for="ord-bloggers">Количество блогеров</label>
+        <label for="ord-bloggers">Количество креаторов</label>
         <select id="ord-bloggers" name="bloggers_needed"></select>
         <label for="ord-type">Тип заказа</label>
         <select id="ord-type" name="order_type">
@@ -204,17 +204,18 @@
   </div>
 
   <div id="screen-blogger-done" class="screen">
-    <h1>Вы зарегистрированы как блогер</h1>
+    <h1>Вы зарегистрированы как креатор</h1>
     <p class="hint">Возвращайтесь в бота, чтобы получать офферы и управлять профилем.</p>
     <button type="button" class="btn" id="btn-close-blogger">Закрыть</button>
     <button type="button" class="btn btn-secondary" id="btn-change-role-from-blogger">Сменить роль</button>
   </div>
 
   <div id="screen-blogger-dashboard" class="screen">
-    <h1>Личный кабинет блогера</h1>
+    <h1>Личный кабинет креатора</h1>
     <p class="hint">Управление профилем и заказами.</p>
     <button type="button" class="btn" id="btn-blogger-orders">Мои заказы</button>
     <button type="button" class="btn btn-secondary" id="btn-blogger-update-profile">Обновить профиль</button>
+    <button type="button" class="btn btn-secondary" id="btn-blogger-change-role">Сменить роль</button>
   </div>
 
   <script>
@@ -420,7 +421,7 @@
           if (me && (me.has_advertiser_profile || me.has_blogger_profile)) {
             hint.textContent = 'Можете зарегистрироваться как вторая роль или вернуться в кабинет.';
           } else {
-            hint.textContent = 'Зарегистрируйтесь как рекламодатель или блогер.';
+            hint.textContent = 'Зарегистрируйтесь как рекламодатель или креатор.';
           }
         }
       }
@@ -466,6 +467,10 @@
         showScreen('screen-role-choice');
       });
       document.getElementById('btn-change-role-from-blogger').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+      document.getElementById('btn-blogger-change-role').addEventListener('click', function() {
         updateRoleChoiceHint();
         showScreen('screen-role-choice');
       });
