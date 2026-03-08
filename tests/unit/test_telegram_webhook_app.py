@@ -802,6 +802,94 @@ def test_miniapp_api_geocode_reverse_422_invalid_coords(
     assert response.status_code == 422
 
 
+def test_miniapp_api_geocode_forward_success(client: TestClient) -> None:
+    """POST /geocode/forward returns lat, lon, city for valid city name."""
+    init_data = _make_valid_init_data("test_token", 77784)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77784",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.resolve_city_to_coordinates = AsyncMock(
+        return_value=(55.7558, 37.6173, "Московская область", "Россия")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/geocode/forward",
+        json={"init_data": init_data, "city": "Москва"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["lat"] == 55.7558
+    assert data["lon"] == 37.6173
+    assert data["city"] == "Москва"
+    assert data["region"] == "Московская область"
+    assert data["country"] == "Россия"
+
+
+def test_miniapp_api_geocode_forward_400_empty_city(client: TestClient) -> None:
+    """POST /geocode/forward returns 400 when city is empty."""
+    init_data = _make_valid_init_data("test_token", 77786)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77786",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    response = client.post(
+        "/miniapp/api/geocode/forward",
+        json={"init_data": init_data, "city": "   "},
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_geocode_forward_404_when_not_found(
+    client: TestClient,
+) -> None:
+    """POST /geocode/forward returns 404 when city not found."""
+    init_data = _make_valid_init_data("test_token", 77785)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77785",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.resolve_city_to_coordinates = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/geocode/forward",
+        json={"init_data": init_data, "city": "NonexistentCity"},
+    )
+    assert response.status_code == 404
+
+
 def test_miniapp_api_orders_list_creator_success(client: TestClient) -> None:
     """POST /orders/list/creator returns orders the creator responded to."""
     from ugc_bot.domain.entities import OfferDispatch
@@ -859,6 +947,89 @@ def test_miniapp_api_orders_list_creator_success(client: TestClient) -> None:
     assert data["orders"][0]["order_id"] == str(order_id)
     assert data["orders"][0]["product_link"] == order.product_link
     assert data["orders"][0]["payment_link"] == ""
+
+
+def test_miniapp_api_orders_list_creator_deduplicates_and_skips_missing(
+    client: TestClient,
+) -> None:
+    """List creator: duplicate order_id and get_order None are skipped."""
+    from ugc_bot.domain.entities import OfferDispatch
+
+    init_data = _make_valid_init_data("test_token", 77787)
+    user_id = uuid4()
+    order_id_a = uuid4()
+    order_id_b = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77787",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    order_a = Order(
+        order_id=order_id_a,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/a",
+        offer_text="Offer",
+        barter_description=None,
+        price=50.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+    )
+    dispatch_a = OfferDispatch(
+        order_id=order_id_a,
+        blogger_id=user_id,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        accepted=True,
+        in_offer=True,
+    )
+    dispatch_a_dup = OfferDispatch(
+        order_id=order_id_a,
+        blogger_id=user_id,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        accepted=True,
+        in_offer=True,
+    )
+    dispatch_b = OfferDispatch(
+        order_id=order_id_b,
+        blogger_id=user_id,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        accepted=True,
+        in_offer=True,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_order_svc = MagicMock()
+
+    async def get_order_side_effect(oid):
+        if oid == order_id_a:
+            return order_a
+        return None
+
+    mock_order_svc.get_order = AsyncMock(side_effect=get_order_side_effect)
+    mock_offer_svc = MagicMock()
+    mock_offer_svc.list_by_blogger = AsyncMock(
+        return_value=[dispatch_a, dispatch_a_dup, dispatch_b]
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["order_service"] = mock_order_svc
+    dispatcher["offer_response_service"] = mock_offer_svc
+    response = client.post(
+        "/miniapp/api/orders/list/creator",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["orders"]) == 1
+    assert data["orders"][0]["order_id"] == str(order_id_a)
 
 
 def test_miniapp_api_orders_get_success(client: TestClient) -> None:

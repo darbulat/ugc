@@ -130,7 +130,11 @@
       <input type="hidden" id="blg-country" name="country">
       <button type="button" class="btn btn-secondary" id="btn-blogger-city-map">Выбрать на карте</button>
       <div id="block-blogger-city-map" style="display: none;">
-        <p class="hint" id="blg-city-map-hint">Нажмите на карту, чтобы отметить город</p>
+        <p class="hint" id="blg-city-map-hint">Нажмите на карту или найдите город</p>
+        <div class="city-search-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <input type="text" id="blg-city-search" placeholder="Поиск по городу" style="flex: 1; margin-top: 0;">
+          <button type="button" class="btn btn-secondary" id="btn-blogger-city-search" style="margin-top: 0; width: auto; flex-shrink: 0;">Найти</button>
+        </div>
         <div id="blogger-city-map"></div>
       </div>
       <label for="blg-audience-geo">География аудитории *</label>
@@ -558,35 +562,73 @@
       var bloggerCityMapInited = false;
       var bloggerCityMapInstance = null;
       var bloggerCityMarker = null;
+      var hintElCityMap = document.getElementById('blg-city-map-hint');
+      function initBloggerCityMap() {
+        if (!window.L) return;
+        var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+        bloggerCityMapInstance = map;
+        map.on('click', function(e) {
+          var lat = e.latlng.lat;
+          var lon = e.latlng.lng;
+          if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
+          else bloggerCityMarker = L.marker(e.latlng).addTo(map);
+          api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
+            document.getElementById('blg-city').value = data.city || '';
+            document.getElementById('blg-region').value = data.region || '';
+            document.getElementById('blg-country').value = data.country || '';
+            if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
+          }).catch(function() {
+            if (hintElCityMap) hintElCityMap.textContent = 'Не удалось определить город для этой точки';
+          });
+        });
+      }
       document.getElementById('btn-blogger-city-map').addEventListener('click', function() {
         var block = document.getElementById('block-blogger-city-map');
         var mapEl = document.getElementById('blogger-city-map');
-        var hintEl = document.getElementById('blg-city-map-hint');
         if (!block || !mapEl) return;
         block.style.display = block.style.display === 'none' ? 'block' : 'none';
-        if (block.style.display === 'block' && !bloggerCityMapInited && window.L) {
+        if (block.style.display === 'block' && !bloggerCityMapInited) {
           bloggerCityMapInited = true;
-          setTimeout(function() {
-            var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            }).addTo(map);
-            bloggerCityMapInstance = map;
-            map.on('click', function(e) {
-              var lat = e.latlng.lat;
-              var lon = e.latlng.lng;
-              if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
-              else bloggerCityMarker = L.marker(e.latlng).addTo(map);
-              api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
-                document.getElementById('blg-city').value = data.city || '';
-                document.getElementById('blg-region').value = data.region || '';
-                document.getElementById('blg-country').value = data.country || '';
-                if (hintEl) hintEl.textContent = 'Выбрано: ' + (data.city || '');
-              }).catch(function() {
-                if (hintEl) hintEl.textContent = 'Не удалось определить город для этой точки';
-              });
-            });
-          }, 100);
+          setTimeout(initBloggerCityMap, 100);
+        }
+      });
+      document.getElementById('btn-blogger-city-search').addEventListener('click', function() {
+        var block = document.getElementById('block-blogger-city-map');
+        var query = document.getElementById('blg-city-search').value.trim();
+        if (!query) {
+          if (hintElCityMap) hintElCityMap.textContent = 'Введите название города';
+          return;
+        }
+        if (block) block.style.display = 'block';
+        if (!bloggerCityMapInited) {
+          bloggerCityMapInited = true;
+          setTimeout(initBloggerCityMap, 100);
+        }
+        api('/geocode/forward', { city: query }).then(function(data) {
+          document.getElementById('blg-city').value = data.city || '';
+          document.getElementById('blg-region').value = data.region || '';
+          document.getElementById('blg-country').value = data.country || '';
+          if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
+          function applyOnMap() {
+            if (bloggerCityMapInstance) {
+              bloggerCityMapInstance.setView([data.lat, data.lon], 12);
+              if (bloggerCityMarker) bloggerCityMarker.setLatLng([data.lat, data.lon]);
+              else bloggerCityMarker = L.marker([data.lat, data.lon]).addTo(bloggerCityMapInstance);
+            }
+          }
+          if (bloggerCityMapInstance) applyOnMap();
+          else setTimeout(applyOnMap, 250);
+        }).catch(function() {
+          if (hintElCityMap) hintElCityMap.textContent = 'Город не найден';
+        });
+      });
+      document.getElementById('blg-city-search').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btn-blogger-city-search').click();
         }
       });
 

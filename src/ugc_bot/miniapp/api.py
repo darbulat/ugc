@@ -740,6 +740,25 @@ class ReverseGeocodeResponse(BaseModel):
     country: str | None = None
 
 
+class ForwardGeocodeRequest(BaseModel):
+    """Request body for forward geocode (city name to coordinates)."""
+
+    init_data: str
+    city: str
+    region: str | None = None
+    country: str | None = None
+
+
+class ForwardGeocodeResponse(BaseModel):
+    """Forward geocode result: lat, lon, city, region, country."""
+
+    lat: float
+    lon: float
+    city: str
+    region: str | None = None
+    country: str | None = None
+
+
 @router.post("/geocode/reverse", response_model=ReverseGeocodeResponse)
 async def reverse_geocode(
     request: Request, body: ReverseGeocodeRequest
@@ -755,6 +774,36 @@ async def reverse_geocode(
         )
     city, region, country = result
     return ReverseGeocodeResponse(city=city, region=region, country=country)
+
+
+@router.post("/geocode/forward", response_model=ForwardGeocodeResponse)
+async def forward_geocode(
+    request: Request, body: ForwardGeocodeRequest
+) -> ForwardGeocodeResponse:
+    """Geocode city name to coordinates for map search."""
+    await _ensure_user_and_get_id(request, body.init_data)
+    if not (body.city or "").strip():
+        raise HTTPException(status_code=400, detail="city is required")
+    dispatcher = request.app.state.dispatcher
+    svc = dispatcher["blogger_registration_service"]
+    result = await svc.resolve_city_to_coordinates(
+        body.city.strip(),
+        region=body.region or None,
+        country=body.country or None,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="City could not be found.",
+        )
+    lat, lon, region, country = result
+    return ForwardGeocodeResponse(
+        lat=lat,
+        lon=lon,
+        city=body.city.strip(),
+        region=region,
+        country=country,
+    )
 
 
 @router.post("/orders/list", response_model=OrdersListResponse)

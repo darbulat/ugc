@@ -122,6 +122,23 @@ class BloggerRegistrationService:
             return None
         return await self.geocoder.reverse_geocode(lat, lon)
 
+    async def resolve_city_to_coordinates(
+        self,
+        city: str,
+        region: Optional[str] = None,
+        country: Optional[str] = None,
+    ) -> Optional[tuple[float, float, Optional[str], Optional[str]]]:
+        """Geocode city name to (lat, lon, region, country) for map search."""
+        if self.geocoder is None or not (city or "").strip():
+            return None
+        details = await self.geocoder.geocode_with_details(
+            city.strip(), region=region, country=country
+        )
+        if details is None:
+            return None
+        lat, lon, _pc, _pt, region_geo, country_geo = details
+        return (lat, lon, region_geo, country_geo)
+
     async def resolve_city_to_location(
         self,
         city: str,
