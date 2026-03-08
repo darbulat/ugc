@@ -727,6 +727,65 @@ def test_miniapp_api_orders_list_includes_payment_link(
     assert "payment_link" in orders[0]
 
 
+def test_miniapp_api_orders_list_creator_success(client: TestClient) -> None:
+    """POST /orders/list/creator returns orders the creator responded to."""
+    from ugc_bot.domain.entities import OfferDispatch
+
+    init_data = _make_valid_init_data("test_token", 77780)
+    user_id = uuid4()
+    order_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77780",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/p",
+        offer_text="Offer",
+        barter_description=None,
+        price=50.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+    )
+    dispatch = OfferDispatch(
+        order_id=order_id,
+        blogger_id=user_id,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        accepted=True,
+        in_offer=True,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_order_svc = MagicMock()
+    mock_order_svc.get_order = AsyncMock(return_value=order)
+    mock_offer_svc = MagicMock()
+    mock_offer_svc.list_by_blogger = AsyncMock(return_value=[dispatch])
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["order_service"] = mock_order_svc
+    dispatcher["offer_response_service"] = mock_offer_svc
+    response = client.post(
+        "/miniapp/api/orders/list/creator",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "orders" in data
+    assert len(data["orders"]) == 1
+    assert data["orders"][0]["order_id"] == str(order_id)
+    assert data["orders"][0]["product_link"] == order.product_link
+    assert data["orders"][0]["payment_link"] == ""
+
+
 def test_miniapp_api_orders_get_success(client: TestClient) -> None:
     """POST /miniapp/api/orders/get returns order detail for owner."""
     init_data = _make_valid_init_data("test_token", 77779)

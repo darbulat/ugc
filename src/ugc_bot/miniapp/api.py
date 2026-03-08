@@ -750,6 +750,43 @@ async def list_orders(
     return OrdersListResponse(orders=items)
 
 
+@router.post("/orders/list/creator", response_model=OrdersListResponse)
+async def list_creator_orders(
+    request: Request, body: OrdersListRequest
+) -> OrdersListResponse:
+    """List orders the current user (creator/blogger) has responded to."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    order_service = dispatcher["order_service"]
+    offer_response_service = dispatcher["offer_response_service"]
+    responses = await offer_response_service.list_by_blogger(user_id)
+    items: list[OrderListItem] = []
+    seen_order_ids: set[UUID] = set()
+    for resp in sorted(
+        responses,
+        key=lambda r: (r.updated_at or r.created_at, r.created_at),
+        reverse=True,
+    ):
+        if resp.order_id in seen_order_ids:
+            continue
+        seen_order_ids.add(resp.order_id)
+        order = await order_service.get_order(resp.order_id)
+        if order is None:
+            continue
+        items.append(
+            OrderListItem(
+                order_id=str(order.order_id),
+                status=order.status.value,
+                product_link=order.product_link,
+                price=float(order.price),
+                order_type=order.order_type.value,
+                created_at=order.created_at.isoformat(),
+                payment_link="",
+            )
+        )
+    return OrdersListResponse(orders=items)
+
+
 @router.post("/orders/get", response_model=OrderDetailResponse)
 async def get_order(
     request: Request, body: GetOrderRequest

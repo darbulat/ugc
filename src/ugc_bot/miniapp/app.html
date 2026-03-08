@@ -54,15 +54,15 @@
     .role-btns .btn { margin-bottom: 8px; }
     .error { color: #c00; font-size: 0.9rem; margin-top: 8px; }
     .success { color: #0a0; font-size: 0.9rem; margin-top: 8px; }
-    #orders-list { list-style: none; padding: 0; margin: 0; }
-    #orders-list li {
+    #orders-list, #blogger-orders-list { list-style: none; padding: 0; margin: 0; }
+    #orders-list li, #blogger-orders-list li {
       padding: 12px;
       margin-bottom: 8px;
       border-radius: 8px;
       background: var(--tg-theme-secondary-bg-color, #f5f5f5);
     }
-    #orders-list li strong { display: block; margin-bottom: 4px; }
-    #orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
+    #orders-list li strong, #blogger-orders-list li strong { display: block; margin-bottom: 4px; }
+    #orders-list .btn-pay, #blogger-orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
     .date-row { display: flex; gap: 8px; margin-top: 4px; }
     .date-row select { flex: 1; min-width: 0; }
     .payment-link { display: block; margin-top: 8px; word-break: break-all; font-size: 0.9rem; }
@@ -250,6 +250,11 @@
     <h1>Личный кабинет креатора</h1>
     <p class="hint">Управление профилем и заказами.</p>
     <button type="button" class="btn" id="btn-blogger-orders">Мои заказы</button>
+    <div id="block-blogger-orders-list" style="display: none; margin-top: 16px;">
+      <h2 style="font-size: 1.1rem;">Мои заказы</h2>
+      <ul id="blogger-orders-list"></ul>
+      <button type="button" class="btn btn-secondary" id="hide-blogger-orders-list">Закрыть</button>
+    </div>
     <button type="button" class="btn btn-secondary" id="btn-blogger-update-profile">Обновить профиль</button>
     <button type="button" class="btn btn-secondary" id="btn-blogger-change-role">Сменить роль</button>
   </div>
@@ -514,20 +519,28 @@
         showScreen('screen-register-blogger');
       });
       document.getElementById('btn-blogger-orders').addEventListener('click', function() {
-        if (!tg || !tg.openLink) return;
-        function openBot() {
-          var cfg = window._config;
-          var bot = (cfg && cfg.bot_username ? cfg.bot_username : '').replace(/^@/, '').trim();
-          if (bot) tg.openLink('https://t.me/' + bot);
-        }
-        if (window._config && window._config.bot_username) {
-          openBot();
-        } else {
-          loadConfig().then(function(c) {
-            window._config = c;
-            openBot();
-          }).catch(function() {});
-        }
+        var block = document.getElementById('block-blogger-orders-list');
+        var ul = document.getElementById('blogger-orders-list');
+        if (!block || !ul) return;
+        block.style.display = 'block';
+        ul.innerHTML = '';
+        api('/orders/list/creator').then(function(data) {
+          (data.orders || []).forEach(function(o) {
+            var li = document.createElement('li');
+            li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
+              o.status + ' · ' + o.price + ' ₽';
+            ul.appendChild(li);
+          });
+          if (!data.orders || data.orders.length === 0) {
+            ul.innerHTML = '<li>Вы пока не откликались на заказы</li>';
+          }
+        }).catch(function() {
+          ul.innerHTML = '<li class="error">Не удалось загрузить заказы</li>';
+        });
+      });
+      document.getElementById('hide-blogger-orders-list').addEventListener('click', function() {
+        var block = document.getElementById('block-blogger-orders-list');
+        if (block) block.style.display = 'none';
       });
 
       document.getElementById('btn-change-role-from-adv').addEventListener('click', function() {
