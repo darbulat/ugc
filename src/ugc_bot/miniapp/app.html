@@ -273,6 +273,13 @@
         if (el) el.classList.add('active');
       }
 
+      function openPaymentAndClose(url) {
+        if (!url || url === '#') return;
+        if (tg && typeof tg.openLink === 'function') tg.openLink(url);
+        else window.open(url, '_blank');
+        if (tg && typeof tg.close === 'function') tg.close();
+      }
+
       function parseApiError(detail, fallback) {
         if (typeof detail === 'string') return detail;
         if (Array.isArray(detail) && detail.length > 0) {
@@ -636,7 +643,11 @@
               payBtn.rel = 'noopener';
               payBtn.className = 'btn btn-pay';
               payBtn.textContent = 'Оплатить';
-              payBtn.addEventListener('click', function(e) { e.stopPropagation(); });
+              payBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openPaymentAndClose(payLink);
+              });
               li.appendChild(payBtn);
             }
             li.addEventListener('click', function(ev) {
@@ -690,6 +701,12 @@
           if (ul) ul.innerHTML = '<li class="error">' + (err.message || 'Не удалось загрузить заказ') + '</li>';
         });
       }
+
+      document.getElementById('btn-order-detail-pay').addEventListener('click', function(e) {
+        e.preventDefault();
+        var href = this.getAttribute('href');
+        if (href && href !== '#') openPaymentAndClose(href);
+      });
 
       document.getElementById('btn-order-detail-back').addEventListener('click', function() {
         showScreen('screen-advertiser-dashboard');
@@ -765,9 +782,16 @@
         api('/orders', payload).then(function(res) {
           var msg = 'Заказ создан. ID: ' + (res.order_id || '');
           if (res.payment_link) {
-            msg += ' <span class="payment-link">Оплатить: <a href="' + res.payment_link + '" target="_blank" rel="noopener">перейти к оплате</a></span>';
+            msg += ' <span class="payment-link">Оплатить: <a href="' + res.payment_link + '" class="link-pay-close" target="_blank" rel="noopener">перейти к оплате</a></span>';
           }
           okEl.innerHTML = msg;
+          var payLinkEl = okEl.querySelector('a.link-pay-close');
+          if (payLinkEl && res.payment_link) {
+            payLinkEl.addEventListener('click', function(e) {
+              e.preventDefault();
+              openPaymentAndClose(res.payment_link);
+            });
+          }
           document.getElementById('form-order').reset();
           if (submitBtn) submitBtn.disabled = false;
         }).catch(function(err) {
