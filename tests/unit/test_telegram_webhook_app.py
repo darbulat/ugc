@@ -1896,7 +1896,7 @@ def test_miniapp_api_register_blogger_success(client: TestClient) -> None:
 def test_miniapp_api_register_blogger_with_lat_lon_passes_location_geometry(
     client: TestClient,
 ) -> None:
-    """POST register/blogger with lat/lon passes WKT to service, no geocoder call."""
+    """Register blogger with lat/lon passes WKT to service, skips geocoder."""
     init_data = _make_valid_init_data("test_token", 55555)
     user_id = uuid4()
     user = User(

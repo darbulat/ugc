@@ -784,7 +784,12 @@ class ForwardGeocodeResponse(BaseModel):
 async def reverse_geocode(
     request: Request, body: ReverseGeocodeRequest
 ) -> ReverseGeocodeResponse:
-    """Reverse geocode (lat, lon) to city, region, country for map picker."""
+    """Reverse geocode (lat, lon) to city, region, country for map picker.
+
+    Nominatim responses are cached via CachingGeocoder when
+    GEOCODER_CACHE_ENABLED is true (default); repeated requests for the same
+    coordinates use the cache.
+    """
     await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
     svc = dispatcher["blogger_registration_service"]
@@ -801,7 +806,12 @@ async def reverse_geocode(
 async def forward_geocode(
     request: Request, body: ForwardGeocodeRequest
 ) -> ForwardGeocodeResponse:
-    """Geocode city name to coordinates for map search."""
+    """Geocode city name to coordinates for map search.
+
+    Nominatim responses are cached via CachingGeocoder when
+    GEOCODER_CACHE_ENABLED is true (default); repeated requests for the same
+    city/region/country use the cache.
+    """
     await _ensure_user_and_get_id(request, body.init_data)
     if not (body.city or "").strip():
         raise HTTPException(status_code=400, detail="city is required")
