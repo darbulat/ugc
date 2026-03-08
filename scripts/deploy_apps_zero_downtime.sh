@@ -37,6 +37,7 @@ wait_healthy() {
     return 1
 }
 
+# app and app_2 share image ugc-app:latest in docker-compose.yml, so building app once is enough
 echo "Building app image..."
 docker compose $COMPOSE_ARGS build app
 

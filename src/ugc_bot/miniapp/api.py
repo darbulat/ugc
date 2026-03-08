@@ -11,6 +11,7 @@ from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     BloggerRegistrationError,
     OrderCreationError,
+    OrderNotFoundError,
     UserNotFoundError,
 )
 from ugc_bot.application.services.blogger_registration_service import (
@@ -154,6 +155,47 @@ class OrdersListResponse(BaseModel):
     """List of orders."""
 
     orders: list[OrderListItem]
+
+
+class GetOrderRequest(BaseModel):
+    """Request to fetch one order by id."""
+
+    init_data: str
+    order_id: str
+
+
+class OrderDetailResponse(BaseModel):
+    """Full order for view/edit screen."""
+
+    order_id: str
+    status: str
+    product_link: str
+    offer_text: str
+    price: float
+    bloggers_needed: int
+    order_type: str
+    barter_description: str | None
+    content_usage: str | None
+    deadlines: str | None
+    geography: str | None
+    created_at: str
+    payment_link: str = ""
+
+
+class UpdateOrderRequest(BaseModel):
+    """Update order payload (same fields as create)."""
+
+    init_data: str
+    order_id: str
+    product_link: str
+    offer_text: str
+    price: float = Field(..., ge=0)
+    bloggers_needed: int = Field(..., ge=1)
+    order_type: str = "ugc_only"
+    barter_description: str | None = None
+    content_usage: str | None = None
+    deadlines: str | None = None
+    geography: str | None = None
 
 
 def _payment_link_for_order(order_id: str, bot_username: str) -> str:
@@ -577,7 +619,7 @@ def _parse_order_type(s: str) -> OrderType:
 
 
 def _validate_order_body(
-    body: CreateOrderRequest,
+    body: CreateOrderRequest | UpdateOrderRequest,
     texts: dict[str, str],
     max_price: float,
     currency_symbol: str,
@@ -695,3 +737,107 @@ async def list_orders(
         for o in orders
     ]
     return OrdersListResponse(orders=items)
+
+
+@router.post("/orders/get", response_model=OrderDetailResponse)
+async def get_order(
+    request: Request, body: GetOrderRequest
+) -> OrderDetailResponse:
+    """Get one order by id (advertiser must own it)."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    try:
+        order_id = UUID(body.order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Invalid order_id"
+        ) from None
+    dispatcher = request.app.state.dispatcher
+    order_service = dispatcher["order_service"]
+    order = await order_service.get_order(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.advertiser_id != user_id:
+        raise HTTPException(status_code=404, detail="Order not found")
+    cfg = request.app.state.config
+    payment_link = _payment_link_for_order(
+        str(order.order_id), cfg.bot.bot_username
+    )
+    return OrderDetailResponse(
+        order_id=str(order.order_id),
+        status=order.status.value,
+        product_link=order.product_link,
+        offer_text=order.offer_text,
+        price=float(order.price),
+        bloggers_needed=order.bloggers_needed,
+        order_type=order.order_type.value,
+        barter_description=order.barter_description,
+        content_usage=order.content_usage,
+        deadlines=order.deadlines,
+        geography=order.geography,
+        created_at=order.created_at.isoformat(),
+        payment_link=payment_link,
+    )
+
+
+@router.post("/orders/update")
+async def update_order(request: Request, body: UpdateOrderRequest) -> dict:
+    """Update order (advertiser only, same validation as create)."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    profile_service = request.app.state.dispatcher["profile_service"]
+    advertiser = await profile_service.get_advertiser_profile(user_id)
+    if advertiser is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Advertiser profile required.",
+        )
+    try:
+        order_id = UUID(body.order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Invalid order_id"
+        ) from None
+    texts = await _get_validator_texts(request)
+    config = request.app.state.config
+    err = _validate_order_body(
+        body,
+        texts,
+        config.order.max_order_price,
+        config.market.currency_symbol,
+    )
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    allowed = config.order.get_allowed_blogger_counts_set()
+    if body.bloggers_needed not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"bloggers_needed must be one of: {sorted(allowed)}",
+        )
+    order_service = request.app.state.dispatcher["order_service"]
+    order_type = _parse_order_type(body.order_type)
+    try:
+        order = await order_service.update_order(
+            order_id=order_id,
+            advertiser_id=user_id,
+            product_link=body.product_link,
+            offer_text=body.offer_text,
+            barter_description=body.barter_description,
+            price=body.price,
+            bloggers_needed=body.bloggers_needed,
+            order_type=order_type,
+            content_usage=body.content_usage,
+            deadlines=body.deadlines,
+            geography=body.geography,
+        )
+    except OrderNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except OrderCreationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    payment_link = _payment_link_for_order(
+        str(order.order_id), config.bot.bot_username
+    )
+    return {
+        "ok": True,
+        "order_id": str(order.order_id),
+        "status": order.status.value,
+        "payment_link": payment_link,
+    }

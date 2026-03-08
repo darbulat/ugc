@@ -15,6 +15,7 @@ from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     BloggerRegistrationError,
     OrderCreationError,
+    OrderNotFoundError,
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import (
@@ -726,6 +727,568 @@ def test_miniapp_api_orders_list_includes_payment_link(
     assert "payment_link" in orders[0]
 
 
+def test_miniapp_api_orders_get_success(client: TestClient) -> None:
+    """POST /miniapp/api/orders/get returns order detail for owner."""
+    init_data = _make_valid_init_data("test_token", 77779)
+    user_id = uuid4()
+    order_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77779",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/p",
+        offer_text="Offer text",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_order_svc = MagicMock()
+    mock_order_svc.get_order = AsyncMock(return_value=order)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["order_service"] = mock_order_svc
+    response = client.post(
+        "/miniapp/api/orders/get",
+        json={"init_data": init_data, "order_id": str(order_id)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["order_id"] == str(order_id)
+    assert data["product_link"] == order.product_link
+    assert data["status"] == OrderStatus.NEW.value
+    assert "payment_link" in data
+
+
+def test_miniapp_api_orders_get_404_when_not_found(client: TestClient) -> None:
+    """POST /miniapp/api/orders/get returns 404 when order missing."""
+    init_data = _make_valid_init_data("test_token", 77780)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77780",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_order_svc = MagicMock()
+    mock_order_svc.get_order = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["order_service"] = mock_order_svc
+    response = client.post(
+        "/miniapp/api/orders/get",
+        json={"init_data": init_data, "order_id": str(uuid4())},
+    )
+    assert response.status_code == 404
+
+
+def test_miniapp_api_orders_get_404_wrong_owner(client: TestClient) -> None:
+    """POST /miniapp/api/orders/get returns 404 when order belongs to other."""
+    init_data = _make_valid_init_data("test_token", 77781)
+    user_id = uuid4()
+    other_id = uuid4()
+    order_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77781",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=other_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_order_svc = MagicMock()
+    mock_order_svc.get_order = AsyncMock(return_value=order)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["order_service"] = mock_order_svc
+    response = client.post(
+        "/miniapp/api/orders/get",
+        json={"init_data": init_data, "order_id": str(order_id)},
+    )
+    assert response.status_code == 404
+
+
+def test_miniapp_api_orders_get_400_invalid_id(client: TestClient) -> None:
+    """POST /miniapp/api/orders/get with invalid order_id returns 400."""
+    init_data = _make_valid_init_data("test_token", 77782)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77782",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    response = client.post(
+        "/miniapp/api/orders/get",
+        json={"init_data": init_data, "order_id": "not-a-uuid"},
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_orders_update_success(client: TestClient) -> None:
+    """POST /miniapp/api/orders/update updates order and returns 200."""
+    init_data = _make_valid_init_data("test_token", 77783)
+    user_id = uuid4()
+    order_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77783",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="Brand",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    updated_order = Order(
+        order_id=order_id,
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_PLUS_PLACEMENT,
+        product_link="https://example.com/v2",
+        offer_text="Updated offer text with enough length.",
+        barter_description=None,
+        price=500.0,
+        bloggers_needed=5,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    mock_order_svc = MagicMock()
+    mock_order_svc.update_order = AsyncMock(return_value=updated_order)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    dispatcher["order_service"] = mock_order_svc
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(order_id),
+            "product_link": "https://example.com/v2",
+            "offer_text": "Updated offer text with enough length.",
+            "price": 500,
+            "bloggers_needed": 5,
+            "order_type": "ugc_plus_placement",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("ok") is True
+    assert data.get("order_id") == str(order_id)
+    assert "payment_link" in data
+
+
+def test_miniapp_api_orders_update_404(client: TestClient) -> None:
+    """POST /miniapp/api/orders/update returns 404 when order not found."""
+    init_data = _make_valid_init_data("test_token", 77784)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77784",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    mock_order_svc = MagicMock()
+    mock_order_svc.update_order = AsyncMock(side_effect=OrderNotFoundError("x"))
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    dispatcher["order_service"] = mock_order_svc
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(uuid4()),
+            "product_link": "https://example.com",
+            "offer_text": "Valid offer text with at least twenty chars.",
+            "price": 100,
+            "bloggers_needed": 3,
+            "order_type": "ugc_only",
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_miniapp_api_orders_update_400_bad_price(
+    client: TestClient,
+) -> None:
+    """POST /orders/update with price over max returns 400."""
+    init_data = _make_valid_init_data("test_token", 77791)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77791",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(uuid4()),
+            "product_link": "https://example.com/v2",
+            "offer_text": "Updated offer text with enough length.",
+            "price": 999999999,
+            "bloggers_needed": 3,
+            "order_type": "ugc_only",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_orders_update_400_validation_error(
+    client: TestClient,
+) -> None:
+    """POST /orders/update with invalid payload returns 400 from validation."""
+    init_data = _make_valid_init_data("test_token", 77789)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77789",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(uuid4()),
+            "product_link": "",
+            "offer_text": "Short",
+            "price": 100,
+            "bloggers_needed": 3,
+            "order_type": "ugc_only",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_orders_update_400_invalid_geography(
+    client: TestClient,
+) -> None:
+    """POST /orders/update with invalid geography returns 400."""
+    init_data = _make_valid_init_data("test_token", 77790)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77790",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(uuid4()),
+            "product_link": "https://example.com/v2",
+            "offer_text": "Updated offer text with enough length.",
+            "price": 500,
+            "bloggers_needed": 3,
+            "order_type": "ugc_only",
+            "geography": "/profile",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_orders_update_400_invalid_order_id(
+    client: TestClient,
+) -> None:
+    """POST /orders/update with invalid order_id returns 400."""
+    init_data = _make_valid_init_data("test_token", 77786)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77786",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": "not-a-uuid",
+            "product_link": "https://example.com",
+            "offer_text": "Valid offer text with at least twenty chars.",
+            "price": 100,
+            "bloggers_needed": 3,
+            "order_type": "ugc_only",
+        },
+    )
+    assert response.status_code == 400
+    assert "order_id" in response.json().get("detail", "").lower()
+
+
+def test_miniapp_api_orders_update_400_invalid_bloggers_needed(
+    client: TestClient,
+) -> None:
+    """POST /orders/update with bloggers_needed not in allowed returns 400."""
+    init_data = _make_valid_init_data("test_token", 77788)
+    user_id = uuid4()
+    order_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77788",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(order_id),
+            "product_link": "https://example.com/v2",
+            "offer_text": "Updated offer text with enough length.",
+            "price": 500,
+            "bloggers_needed": 99,
+            "order_type": "ugc_plus_placement",
+        },
+    )
+    assert response.status_code == 400
+    assert "bloggers_needed" in response.json().get("detail", "")
+
+
+def test_miniapp_api_orders_update_400_creation_error(
+    client: TestClient,
+) -> None:
+    """POST /orders/update when service raises OrderCreationError -> 400."""
+    init_data = _make_valid_init_data("test_token", 77787)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77787",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="B",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    mock_order_svc = MagicMock()
+    mock_order_svc.update_order = AsyncMock(
+        side_effect=OrderCreationError("Cannot edit")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    dispatcher["order_service"] = mock_order_svc
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(uuid4()),
+            "product_link": "https://example.com",
+            "offer_text": "Valid offer text with at least twenty chars.",
+            "price": 100,
+            "bloggers_needed": 3,
+            "order_type": "ugc_only",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_orders_update_403_no_advertiser(
+    client: TestClient,
+) -> None:
+    """POST /orders/update without advertiser profile returns 403."""
+    init_data = _make_valid_init_data("test_token", 77785)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77785",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/orders/update",
+        json={
+            "init_data": init_data,
+            "order_id": str(uuid4()),
+            "product_link": "https://example.com",
+            "offer_text": "Valid offer text with at least twenty chars.",
+            "price": 100,
+            "bloggers_needed": 3,
+            "order_type": "ugc_only",
+        },
+    )
+    assert response.status_code == 403
+
+
 def test_miniapp_api_orders_returns_403_without_advertiser_profile(
     client: TestClient,
 ) -> None:
@@ -1093,6 +1656,52 @@ def test_miniapp_api_register_blogger_update_raises_user_not_found_404(
     assert "detail" in response.json()
 
 
+def test_miniapp_api_register_blogger_optional_birth_date(
+    client: TestClient,
+) -> None:
+    """Register blogger without birth_date passes None to service."""
+    init_data = _make_valid_init_data("test_token", 55558)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55558",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock()
+    mock_blogger_svc.confirm_blogger_agreement = AsyncMock()
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    payload = {
+        "init_data": init_data,
+        "instagram_url": "https://instagram.com/newuser",
+        "city": "Moscow",
+        "audience_geo": "РФ",
+        "audience_age_min": 18,
+        "audience_age_max": 35,
+        "audience_gender": "all",
+        "price": 5000,
+        "barter": False,
+        "work_format": "ugc_only",
+        "topics": ["tech"],
+        "blogger_gender": "m",
+        "display_name": "User",
+    }
+    response = client.post("/miniapp/api/register/blogger", json=payload)
+    assert response.status_code == 200
+    mock_blogger_svc.save_blogger_before_agreement.assert_called_once()
+    call_kw = mock_blogger_svc.save_blogger_before_agreement.call_args[1]
+    assert call_kw.get("birth_date") is None
+
+
 def test_miniapp_api_register_blogger_update_own_profile_success(
     client: TestClient,
 ) -> None:
@@ -1164,6 +1773,72 @@ def test_miniapp_api_register_blogger_update_own_profile_success(
     assert response.json().get("user_id") == str(user_id)
     mock_blogger_svc.update_blogger_profile.assert_called_once()
     mock_blogger_svc.save_blogger_before_agreement.assert_not_called()
+
+
+def test_miniapp_api_register_blogger_update_raises_registration_error_400(
+    client: TestClient,
+) -> None:
+    """POST register/blogger update path BloggerRegistrationError -> 400."""
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    init_data = _make_valid_init_data("test_token", 55561)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55561",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    existing = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/me",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="РФ",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(
+        return_value=existing
+    )
+    mock_blogger_svc.update_blogger_profile = AsyncMock(
+        side_effect=BloggerRegistrationError("Invalid data")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/me",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "blogger_gender": "m",
+            "display_name": "User",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 400
 
 
 def test_miniapp_api_register_blogger_instagram_taken(
