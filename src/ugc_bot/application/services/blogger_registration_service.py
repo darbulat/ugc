@@ -9,6 +9,7 @@ from ugc_bot.application.errors import (
     BloggerRegistrationError,
     UserNotFoundError,
 )
+from ugc_bot.application.geography import is_canonical_city_only
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     GeocoderPort,
@@ -490,6 +491,13 @@ class BloggerRegistrationService:
             if new_geometry is None and (
                 city is not None or region is not None
             ):
+                # When city is not in the dictionary, do not pass profile
+                # region/country to Nominatim — it cannot determine coords.
+                if is_canonical_city_only(new_city):
+                    geo_region = new_region
+                    geo_country = profile.country or None
+                else:
+                    geo_region, geo_country = None, None
                 (
                     geom_wkt,
                     region_nom,
@@ -497,8 +505,8 @@ class BloggerRegistrationService:
                 ) = await _resolve_location_and_geocoder_details(
                     self.geocoder,
                     new_city,
-                    region=new_region,
-                    country=profile.country or None,
+                    region=geo_region,
+                    country=geo_country,
                 )
                 if geom_wkt is None and city is not None:
                     return UpdateBloggerProfileResult(
