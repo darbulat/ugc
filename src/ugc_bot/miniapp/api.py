@@ -17,6 +17,7 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
+from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.bot.validators import (
     VALIDATOR_ERR_KEYS,
     normalize_instagram_url,
@@ -122,6 +123,19 @@ class RegisterBloggerRequest(BaseModel):
     telegram_username: str | None = None
     region: str | None = None
     country: str | None = None
+    lat: float | None = None  # from map picker; skip geocoder when set
+    lon: float | None = None
+
+
+def _location_geometry_from_blogger_request(
+    body: RegisterBloggerRequest,
+) -> str | None:
+    """Build WKT from lat/lon when both are present and in valid range."""
+    if body.lat is None or body.lon is None:
+        return None
+    if not (-90 <= body.lat <= 90 and -180 <= body.lon <= 180):
+        return None
+    return wkt_multipoint_from_lat_lon(body.lat, body.lon)
 
 
 class CreateOrderRequest(BaseModel):
@@ -464,6 +478,7 @@ async def _blogger_register_update(
     audience_gender: AudienceGender,
     blogger_gender: BloggerGender,
     topics_dict: dict,
+    location_geometry: str | None = None,
 ) -> dict:
     """Update existing blogger profile. Raises HTTPException on error."""
     result = await svc.update_blogger_profile(
@@ -482,6 +497,7 @@ async def _blogger_register_update(
         work_format=work_format,
         blogger_gender=blogger_gender,
         birth_date=birth_date_val,
+        location_geometry=location_geometry,
     )
     if result.profile is None and not result.location_geometry_resolved:
         raise HTTPException(
@@ -501,6 +517,7 @@ async def _blogger_register_create(
     audience_gender: AudienceGender,
     blogger_gender: BloggerGender,
     topics_dict: dict,
+    location_geometry: str | None = None,
 ) -> dict:
     """Create new blogger profile. Raises HTTPException on error."""
     await svc.save_blogger_before_agreement(
@@ -521,6 +538,7 @@ async def _blogger_register_create(
         birth_date=birth_date_val,
         region=body.region,
         country=body.country,
+        location_geometry=location_geometry,
     )
     await svc.confirm_blogger_agreement(
         user_id=user_id, telegram_username=body.telegram_username
@@ -570,6 +588,7 @@ async def register_blogger(
     audience_gender = _parse_audience_gender(body.audience_gender)
     blogger_gender = _parse_blogger_gender(body.blogger_gender)
     topics_dict = {"selected": body.topics}
+    location_geometry = _location_geometry_from_blogger_request(body)
     if existing is not None and existing.user_id == user_id:
         try:
             return await _blogger_register_update(
@@ -582,6 +601,7 @@ async def register_blogger(
                 audience_gender,
                 blogger_gender,
                 topics_dict,
+                location_geometry=location_geometry,
             )
         except UserNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
@@ -598,6 +618,7 @@ async def register_blogger(
             audience_gender,
             blogger_gender,
             topics_dict,
+            location_geometry=location_geometry,
         )
     except UserNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

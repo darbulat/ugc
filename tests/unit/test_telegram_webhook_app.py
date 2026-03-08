@@ -1893,6 +1893,64 @@ def test_miniapp_api_register_blogger_success(client: TestClient) -> None:
     assert data.get("user_id") == str(user_id)
 
 
+def test_miniapp_api_register_blogger_with_lat_lon_passes_location_geometry(
+    client: TestClient,
+) -> None:
+    """POST register/blogger with lat/lon passes WKT to service, no geocoder call."""
+    init_data = _make_valid_init_data("test_token", 55555)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55555",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
+        return_value=MagicMock()
+    )
+    mock_blogger_svc.confirm_blogger_agreement = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/test",
+            "city": "Москва",
+            "region": "Московская область",
+            "country": "Россия",
+            "lat": 55.7558,
+            "lon": 37.6173,
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "blogger_gender": "m",
+            "display_name": "TestUser",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 200
+    mock_blogger_svc.save_blogger_before_agreement.assert_called_once()
+    call_kw = mock_blogger_svc.save_blogger_before_agreement.call_args[1]
+    assert call_kw.get("location_geometry") == "MULTIPOINT((37.6173 55.7558))"
+    assert call_kw.get("city") == "Москва"
+    assert call_kw.get("region") == "Московская область"
+    assert call_kw.get("country") == "Россия"
+
+
 def test_miniapp_api_register_blogger_update_raises_user_not_found_404(
     client: TestClient,
 ) -> None:

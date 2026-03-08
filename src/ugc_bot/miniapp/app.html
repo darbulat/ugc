@@ -125,9 +125,11 @@
       <label for="blg-topics">Тематики (через запятую, от 1 до 10) *</label>
       <input type="text" id="blg-topics" name="topics" required placeholder="красота, мода, путешествия">
       <label for="blg-city">Город *</label>
-      <input type="text" id="blg-city" name="city" required>
+      <input type="text" id="blg-city" name="city" required readonly placeholder="Выберите на карте или найдите город">
       <input type="hidden" id="blg-region" name="region">
       <input type="hidden" id="blg-country" name="country">
+      <input type="hidden" id="blg-lat" name="lat">
+      <input type="hidden" id="blg-lon" name="lon">
       <button type="button" class="btn btn-secondary" id="btn-blogger-city-map">Выбрать на карте</button>
       <div id="block-blogger-city-map" style="display: none;">
         <p class="hint" id="blg-city-map-hint">Нажмите на карту или найдите город</p>
@@ -579,6 +581,8 @@
             document.getElementById('blg-city').value = data.city || '';
             document.getElementById('blg-region').value = data.region || '';
             document.getElementById('blg-country').value = data.country || '';
+            document.getElementById('blg-lat').value = String(lat);
+            document.getElementById('blg-lon').value = String(lon);
             if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
           }).catch(function() {
             if (hintElCityMap) hintElCityMap.textContent = 'Не удалось определить город для этой точки';
@@ -611,6 +615,8 @@
           document.getElementById('blg-city').value = data.city || '';
           document.getElementById('blg-region').value = data.region || '';
           document.getElementById('blg-country').value = data.country || '';
+          document.getElementById('blg-lat').value = String(data.lat);
+          document.getElementById('blg-lon').value = String(data.lon);
           if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
           function applyOnMap() {
             if (bloggerCityMapInstance) {
@@ -701,6 +707,12 @@
         };
         if (regionEl && regionEl.value.trim()) payload.region = regionEl.value.trim();
         if (countryEl && countryEl.value.trim()) payload.country = countryEl.value.trim();
+        var latEl = document.getElementById('blg-lat');
+        var lonEl = document.getElementById('blg-lon');
+        if (latEl && lonEl && latEl.value.trim() && lonEl.value.trim()) {
+          payload.lat = parseFloat(latEl.value);
+          payload.lon = parseFloat(lonEl.value);
+        }
         api('/register/blogger', payload).then(function() {
           return loadMe();
         }).then(function() {
