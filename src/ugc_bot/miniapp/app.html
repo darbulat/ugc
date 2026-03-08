@@ -62,6 +62,10 @@
       background: var(--tg-theme-secondary-bg-color, #f5f5f5);
     }
     #orders-list li strong { display: block; margin-bottom: 4px; }
+    .date-row { display: flex; gap: 8px; margin-top: 4px; }
+    .date-row select { flex: 1; min-width: 0; }
+    .payment-link { display: block; margin-top: 8px; word-break: break-all; font-size: 0.9rem; }
+    .payment-link a { color: var(--tg-theme-link-color, #2481cc); }
   </style>
 </head>
 <body>
@@ -106,8 +110,12 @@
       <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Не ссылка на Instagram">
       <label for="blg-instagram">Ссылка на Instagram *</label>
       <input type="url" id="blg-instagram" name="instagram_url" required placeholder="https://instagram.com/username">
-      <label for="blg-birth">Дата рождения (ДД.ММ.ГГГГ) *</label>
-      <input type="text" id="blg-birth" name="birth_date" required placeholder="15.05.1995">
+      <label>Дата рождения *</label>
+      <div class="date-row">
+        <select id="blg-birth-day" name="birth_day" required aria-label="День"></select>
+        <select id="blg-birth-month" name="birth_month" required aria-label="Месяц"></select>
+        <select id="blg-birth-year" name="birth_year" required aria-label="Год"></select>
+      </div>
       <label for="blg-topics">Тематики (через запятую, от 1 до 10) *</label>
       <input type="text" id="blg-topics" name="topics" required placeholder="красота, мода, путешествия">
       <label for="blg-city">Город *</label>
@@ -164,12 +172,7 @@
         <label for="ord-price">Бюджет (₽) *</label>
         <input type="number" id="ord-price" name="price" required min="0" step="1">
         <label for="ord-bloggers">Количество блогеров</label>
-        <select id="ord-bloggers" name="bloggers_needed">
-          <option value="1">1</option>
-          <option value="3">3</option>
-          <option value="5">5</option>
-          <option value="10">10</option>
-        </select>
+        <select id="ord-bloggers" name="bloggers_needed"></select>
         <label for="ord-type">Тип заказа</label>
         <select id="ord-type" name="order_type">
           <option value="ugc_only">Только UGC</option>
@@ -182,7 +185,9 @@
         <label for="ord-deadlines">Сроки</label>
         <input type="text" id="ord-deadlines" name="deadlines" placeholder="7 дней">
         <label for="ord-content-usage">Использование контента</label>
-        <input type="text" id="ord-content-usage" name="content_usage">
+        <select id="ord-content-usage" name="content_usage">
+          <option value="">— не выбрано —</option>
+        </select>
         <div id="ord-error" class="error"></div>
         <div id="ord-success" class="success"></div>
         <button type="submit" class="btn">Создать заказ</button>
@@ -223,6 +228,15 @@
         if (el) el.classList.add('active');
       }
 
+      function parseApiError(detail, fallback) {
+        if (typeof detail === 'string') return detail;
+        if (Array.isArray(detail) && detail.length > 0) {
+          var first = detail[0];
+          return (first && first.msg) ? first.msg : JSON.stringify(detail);
+        }
+        return fallback || 'Ошибка запроса';
+      }
+
       function api(path, body) {
         var initData = getInitData();
         if (!initData) return Promise.reject(new Error('No initData'));
@@ -232,7 +246,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         }).then(function(r) {
-          if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || r.statusText); });
+          if (!r.ok) {
+            return r.json().then(function(j) {
+              throw new Error(parseApiError(j.detail, r.statusText));
+            }).catch(function(e) {
+              if (e instanceof SyntaxError) throw new Error(r.statusText || 'Ошибка запроса');
+              throw e;
+            });
+          }
           return r.json();
         });
       }
@@ -244,11 +265,124 @@
         });
       }
 
+      function loadConfig() {
+        return api('/config').then(function(data) {
+          window._config = data;
+          return data;
+        });
+      }
+
+      function fillBirthDateSelects() {
+        var day = document.getElementById('blg-birth-day');
+        var month = document.getElementById('blg-birth-month');
+        var year = document.getElementById('blg-birth-year');
+        if (!day || !month || !year) return;
+        day.innerHTML = '';
+        month.innerHTML = '';
+        year.innerHTML = '';
+        for (var d = 1; d <= 31; d++) {
+          var o = document.createElement('option');
+          o.value = d;
+          o.textContent = d;
+          day.appendChild(o);
+        }
+        var months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        for (var m = 1; m <= 12; m++) {
+          var o = document.createElement('option');
+          o.value = m;
+          o.textContent = months[m - 1];
+          month.appendChild(o);
+        }
+        var now = new Date();
+        var yEnd = now.getFullYear() - 10;
+        var yStart = now.getFullYear() - 100;
+        for (var y = yEnd; y >= yStart; y--) {
+          var o = document.createElement('option');
+          o.value = y;
+          o.textContent = y;
+          year.appendChild(o);
+        }
+      }
+
+      function fillAdvertiserForm(profile) {
+        if (!profile) return;
+        var set = function(id, val) {
+          var el = document.getElementById(id);
+          if (el && val != null && val !== '') el.value = val;
+        };
+        set('adv-name', profile.display_name);
+        set('adv-phone', profile.phone);
+        set('adv-brand', profile.brand);
+        set('adv-site', profile.site_link);
+        set('adv-city', profile.city);
+        set('adv-activity', profile.company_activity);
+      }
+
+      function fillBloggerForm(profile) {
+        if (!profile) return;
+        var set = function(id, val) {
+          var el = document.getElementById(id);
+          if (el && val != null && val !== '') el.value = val;
+        };
+        set('blg-name', profile.display_name);
+        set('blg-instagram', profile.instagram_url);
+        set('blg-city', profile.city);
+        set('blg-audience-geo', profile.audience_geo);
+        set('blg-age-min', profile.audience_age_min);
+        set('blg-age-max', profile.audience_age_max);
+        set('blg-audience-gender', profile.audience_gender);
+        set('blg-price', profile.price);
+        set('blg-barter', profile.barter ? 'true' : 'false');
+        set('blg-work-format', profile.work_format);
+        set('blg-blogger-gender', profile.blogger_gender);
+        if (profile.topics && profile.topics.length) {
+          set('blg-topics', profile.topics.join(', '));
+        }
+        if (profile.birth_date) {
+          var parts = profile.birth_date.split('.');
+          if (parts.length === 3) {
+            set('blg-birth-day', String(parseInt(parts[0], 10)));
+            set('blg-birth-month', String(parseInt(parts[1], 10)));
+            set('blg-birth-year', String(parseInt(parts[2], 10)));
+          }
+        }
+      }
+
+      function fillOrderConfig(config) {
+        if (!config) return;
+        var bloggersEl = document.getElementById('ord-bloggers');
+        var contentEl = document.getElementById('ord-content-usage');
+        if (bloggersEl) {
+          bloggersEl.innerHTML = '';
+          (config.allowed_blogger_counts || []).forEach(function(c) {
+            var o = document.createElement('option');
+            o.value = c;
+            o.textContent = c;
+            bloggersEl.appendChild(o);
+          });
+        }
+        if (contentEl) {
+          var opts = config.content_usage_options || [];
+          contentEl.innerHTML = '<option value="">— не выбрано —</option>';
+          opts.forEach(function(opt) {
+            var o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            contentEl.appendChild(o);
+          });
+        }
+      }
+
       document.getElementById('screen-role-choice').querySelectorAll('[data-role]').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var role = this.getAttribute('data-role');
-          if (role === 'advertiser') showScreen('screen-register-advertiser');
-          else if (role === 'blogger') showScreen('screen-register-blogger');
+          if (role === 'advertiser') {
+            fillAdvertiserForm(window._me && window._me.advertiser_profile);
+            showScreen('screen-register-advertiser');
+          } else if (role === 'blogger') {
+            fillBloggerForm(window._me && window._me.blogger_profile);
+            showScreen('screen-register-blogger');
+          }
         });
       });
 
@@ -308,10 +442,14 @@
         errEl.textContent = '';
         var topicsRaw = document.getElementById('blg-topics').value.trim();
         var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
+        var day = document.getElementById('blg-birth-day').value;
+        var month = document.getElementById('blg-birth-month').value;
+        var year = document.getElementById('blg-birth-year').value;
+        var birthDateStr = (day && month && year) ? (day.padStart(2,'0') + '.' + month.padStart(2,'0') + '.' + year) : null;
         var payload = {
           display_name: document.getElementById('blg-name').value.trim(),
           instagram_url: document.getElementById('blg-instagram').value.trim(),
-          birth_date: document.getElementById('blg-birth').value.trim() || null,
+          birth_date: birthDateStr,
           topics: topicsList,
           city: document.getElementById('blg-city').value.trim(),
           audience_geo: document.getElementById('blg-audience-geo').value.trim(),
@@ -333,6 +471,8 @@
       document.getElementById('btn-show-create-order').addEventListener('click', function() {
         document.getElementById('block-create-order').style.display = 'block';
         document.getElementById('block-orders-list').style.display = 'none';
+        if (!window._config) loadConfig().then(fillOrderConfig);
+        else fillOrderConfig(window._config);
       });
       document.getElementById('hide-create-order').addEventListener('click', function() {
         document.getElementById('block-create-order').style.display = 'none';
@@ -346,7 +486,8 @@
           (data.orders || []).forEach(function(o) {
             var li = document.createElement('li');
             li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
-              o.status + ' · ' + o.price + ' ₽';
+              o.status + ' · ' + o.price + ' ₽' +
+              (o.payment_link ? '<span class="payment-link"><a href="' + o.payment_link + '" target="_blank" rel="noopener">Оплатить</a></span>' : '');
             ul.appendChild(li);
           });
           if (!data.orders || data.orders.length === 0) {
@@ -366,11 +507,17 @@
         var okEl = document.getElementById('ord-success');
         errEl.textContent = '';
         okEl.textContent = '';
+        var bloggersEl = document.getElementById('ord-bloggers');
+        var bloggersVal = bloggersEl && bloggersEl.value ? parseInt(bloggersEl.value, 10) : NaN;
+        if (!bloggersEl || !bloggersEl.options.length || isNaN(bloggersVal)) {
+          errEl.textContent = 'Подождите, загрузка настроек…';
+          return;
+        }
         var payload = {
           product_link: document.getElementById('ord-link').value.trim(),
           offer_text: document.getElementById('ord-offer').value.trim(),
           price: parseFloat(document.getElementById('ord-price').value) || 0,
-          bloggers_needed: parseInt(document.getElementById('ord-bloggers').value, 10) || 1,
+          bloggers_needed: bloggersVal,
           order_type: document.getElementById('ord-type').value,
           barter_description: document.getElementById('ord-barter').value.trim() || null,
           geography: document.getElementById('ord-geography').value.trim() || null,
@@ -378,7 +525,11 @@
           content_usage: document.getElementById('ord-content-usage').value.trim() || null
         };
         api('/orders', payload).then(function(res) {
-          okEl.textContent = 'Заказ создан. ID: ' + (res.order_id || '');
+          var msg = 'Заказ создан. ID: ' + (res.order_id || '');
+          if (res.payment_link) {
+            msg += ' <span class="payment-link">Оплатить: <a href="' + res.payment_link + '" target="_blank" rel="noopener">перейти к оплате</a></span>';
+          }
+          okEl.innerHTML = msg;
           document.getElementById('form-order').reset();
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка создания заказа';
@@ -389,6 +540,7 @@
         if (tg && typeof tg.close === 'function') tg.close();
       });
 
+      fillBirthDateSelects();
       loadMe().then(function(me) {
         updateRoleChoiceHint();
         if (me.has_advertiser_profile && !me.has_blogger_profile) {

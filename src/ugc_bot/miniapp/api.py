@@ -57,13 +57,33 @@ class InitDataBody(BaseModel):
 
 
 class MeResponse(BaseModel):
-    """Current user and profile flags."""
+    """Current user and profile flags plus profile data for pre-fill."""
 
     user_id: str
     external_id: str
     role: str | None  # "advertiser" | "blogger" | null
     has_advertiser_profile: bool
     has_blogger_profile: bool
+    advertiser_profile: dict | None = None  # pre-fill form
+    blogger_profile: dict | None = None  # pre-fill form
+
+
+# Content usage options for order form (same as bot order_creation_states).
+CONTENT_USAGE_OPTIONS = [
+    ("соцсети бренда", "📱 В соцсетях бренда"),
+    ("реклама (таргет, объявления)", "📢 В рекламе (таргет, объявления)"),
+    ("соцсети и реклама бренда", "🔄 В соцсетях и рекламе"),
+]
+
+
+class ConfigResponse(BaseModel):
+    """Miniapp config: blogger counts, content usage, bot username."""
+
+    allowed_blogger_counts: list[int]
+    content_usage_options: list[
+        dict[str, str]
+    ]  # [{"value": "...", "label": "..."}]
+    bot_username: str = ""
 
 
 class RegisterAdvertiserRequest(BaseModel):
@@ -124,12 +144,21 @@ class OrderListItem(BaseModel):
     price: float
     order_type: str
     created_at: str
+    payment_link: str = ""  # t.me/bot?start=pay_ORDER_ID
 
 
 class OrdersListResponse(BaseModel):
     """List of orders."""
 
     orders: list[OrderListItem]
+
+
+def _payment_link_for_order(order_id: str, bot_username: str) -> str:
+    """Build t.me link to open bot with start=pay_ORDER_ID."""
+    username = (bot_username or "").strip().lstrip("@")
+    if not username:
+        return ""
+    return f"https://t.me/{username}?start=pay_{order_id}"
 
 
 async def _get_validator_texts(request: Request) -> dict[str, str]:
@@ -175,9 +204,35 @@ async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
     return user.user_id
 
 
+def _blogger_profile_to_dict(blogger, user) -> dict | None:
+    """Build blogger pre-fill dict for frontend."""
+    if blogger is None:
+        return None
+    birth = blogger.birth_date
+    birth_str = None
+    if isinstance(birth, date):
+        birth_str = f"{birth.day:02d}.{birth.month:02d}.{birth.year}"
+    topics = blogger.topics.get("selected", []) if blogger.topics else []
+    return {
+        "display_name": getattr(user, "username", None) or "",
+        "instagram_url": blogger.instagram_url,
+        "birth_date": birth_str,
+        "topics": topics,
+        "city": blogger.city,
+        "audience_geo": blogger.audience_geo,
+        "audience_age_min": blogger.audience_age_min,
+        "audience_age_max": blogger.audience_age_max,
+        "audience_gender": blogger.audience_gender.value,
+        "price": blogger.price,
+        "barter": blogger.barter,
+        "work_format": blogger.work_format.value,
+        "blogger_gender": (blogger.blogger_gender or BloggerGender.MALE).value,
+    }
+
+
 @router.post("/me", response_model=MeResponse)
 async def me(request: Request, body: InitDataBody) -> MeResponse:
-    """Return current user id and profile flags (advertiser/blogger)."""
+    """Return current user, profile flags and profile data for pre-fill."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
     profile_service = dispatcher["profile_service"]
@@ -193,12 +248,42 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         role = "advertiser"
     elif blogger is not None:
         role = "blogger"
+    adv_profile: dict | None = None
+    if advertiser is not None:
+        adv_profile = {
+            "phone": advertiser.phone,
+            "brand": advertiser.brand,
+            "site_link": advertiser.site_link or "",
+            "city": advertiser.city or "",
+            "company_activity": advertiser.company_activity or "",
+            "display_name": getattr(user, "username", None) or "",
+        }
+    blg_profile = _blogger_profile_to_dict(blogger, user)
     return MeResponse(
         user_id=str(user_id),
         external_id=user.external_id,
         role=role,
         has_advertiser_profile=advertiser is not None,
         has_blogger_profile=blogger is not None,
+        advertiser_profile=adv_profile,
+        blogger_profile=blg_profile,
+    )
+
+
+@router.post("/config", response_model=ConfigResponse)
+async def config(request: Request, body: InitDataBody) -> ConfigResponse:
+    """Return miniapp config: blogger counts, content usage, bot username."""
+    _ = await _ensure_user_and_get_id(request, body.init_data)
+    cfg = request.app.state.config
+    counts = sorted(cfg.order.get_allowed_blogger_counts_set())
+    options = [
+        {"value": val, "label": label} for val, label in CONTENT_USAGE_OPTIONS
+    ]
+    bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
+    return ConfigResponse(
+        allowed_blogger_counts=counts,
+        content_usage_options=options,
+        bot_username=bot_username,
     )
 
 
@@ -454,6 +539,13 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
     )
     if err:
         raise HTTPException(status_code=400, detail=err)
+    config = request.app.state.config
+    allowed = config.order.get_allowed_blogger_counts_set()
+    if body.bloggers_needed not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"bloggers_needed must be one of: {sorted(allowed)}",
+        )
     order_service = dispatcher["order_service"]
     order_type = _parse_order_type(body.order_type)
     try:
@@ -473,10 +565,14 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except OrderCreationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    payment_link = _payment_link_for_order(
+        str(order.order_id), config.bot.bot_username
+    )
     return {
         "ok": True,
         "order_id": str(order.order_id),
         "status": order.status.value,
+        "payment_link": payment_link,
     }
 
 
@@ -495,6 +591,8 @@ async def list_orders(
     dispatcher = request.app.state.dispatcher
     order_service = dispatcher["order_service"]
     orders = await order_service.list_by_advertiser(user_id)
+    cfg = request.app.state.config
+    bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
     items = [
         OrderListItem(
             order_id=str(o.order_id),
@@ -503,6 +601,7 @@ async def list_orders(
             price=float(o.price),
             order_type=o.order_type.value,
             created_at=o.created_at.isoformat(),
+            payment_link=_payment_link_for_order(str(o.order_id), bot_username),
         )
         for o in orders
     ]
