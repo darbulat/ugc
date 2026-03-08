@@ -71,7 +71,7 @@
 
   <div id="screen-role-choice" class="screen">
     <h1>Выберите роль</h1>
-    <p class="hint">Зарегистрируйтесь как рекламодатель или блогер.</p>
+    <p class="hint" id="role-choice-hint">Зарегистрируйтесь как рекламодатель или блогер.</p>
     <div class="role-btns">
       <button type="button" class="btn" data-role="advertiser">Рекламодатель</button>
       <button type="button" class="btn" data-role="blogger">Блогер</button>
@@ -81,8 +81,10 @@
   <div id="screen-register-advertiser" class="screen">
     <h1>Регистрация рекламодателя</h1>
     <form id="form-advertiser">
+      <label for="adv-name">Имя / как к вам обращаться</label>
+      <input type="text" id="adv-name" name="display_name" maxlength="100" placeholder="Иван">
       <label for="adv-phone">Телефон *</label>
-      <input type="tel" id="adv-phone" name="phone" required>
+      <input type="tel" id="adv-phone" name="phone" required placeholder="89001234567">
       <label for="adv-brand">Бренд / компания *</label>
       <input type="text" id="adv-brand" name="brand" required>
       <label for="adv-site">Сайт</label>
@@ -100,8 +102,14 @@
   <div id="screen-register-blogger" class="screen">
     <h1>Регистрация блогера</h1>
     <form id="form-blogger">
+      <label for="blg-name">Имя / ник (как к вам обращаться) *</label>
+      <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Не ссылка на Instagram">
       <label for="blg-instagram">Ссылка на Instagram *</label>
-      <input type="url" id="blg-instagram" name="instagram_url" required placeholder="https://instagram.com/...">
+      <input type="url" id="blg-instagram" name="instagram_url" required placeholder="https://instagram.com/username">
+      <label for="blg-birth">Дата рождения (ДД.ММ.ГГГГ) *</label>
+      <input type="text" id="blg-birth" name="birth_date" required placeholder="15.05.1995">
+      <label for="blg-topics">Тематики (через запятую, от 1 до 10) *</label>
+      <input type="text" id="blg-topics" name="topics" required placeholder="красота, мода, путешествия">
       <label for="blg-city">Город *</label>
       <input type="text" id="blg-city" name="city" required>
       <label for="blg-audience-geo">География аудитории *</label>
@@ -144,6 +152,7 @@
     <p class="hint">Создайте заказ или посмотрите список заказов.</p>
     <button type="button" class="btn" id="btn-show-create-order">Создать заказ</button>
     <button type="button" class="btn btn-secondary" id="btn-show-orders-list">Мои заказы</button>
+    <button type="button" class="btn btn-secondary" id="btn-change-role-from-adv">Сменить роль</button>
 
     <div id="block-create-order" style="display: none; margin-top: 16px;">
       <h2 style="font-size: 1.1rem;">Новый заказ</h2>
@@ -192,6 +201,7 @@
     <h1>Вы зарегистрированы как блогер</h1>
     <p class="hint">Возвращайтесь в бота, чтобы получать офферы и управлять профилем.</p>
     <button type="button" class="btn" id="btn-close-blogger">Закрыть</button>
+    <button type="button" class="btn btn-secondary" id="btn-change-role-from-blogger">Сменить роль</button>
   </div>
 
   <script>
@@ -242,10 +252,33 @@
         });
       });
 
+      function updateRoleChoiceHint() {
+        var me = window._me;
+        var hint = document.getElementById('role-choice-hint');
+        if (hint) {
+          if (me && (me.has_advertiser_profile || me.has_blogger_profile)) {
+            hint.textContent = 'Можете зарегистрироваться как вторая роль или вернуться в кабинет.';
+          } else {
+            hint.textContent = 'Зарегистрируйтесь как рекламодатель или блогер.';
+          }
+        }
+      }
+
       document.getElementById('back-from-advertiser').addEventListener('click', function() {
+        updateRoleChoiceHint();
         showScreen('screen-role-choice');
       });
       document.getElementById('back-from-blogger').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+
+      document.getElementById('btn-change-role-from-adv').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+      document.getElementById('btn-change-role-from-blogger').addEventListener('click', function() {
+        updateRoleChoiceHint();
         showScreen('screen-role-choice');
       });
 
@@ -258,7 +291,8 @@
           brand: document.getElementById('adv-brand').value.trim(),
           site_link: document.getElementById('adv-site').value.trim() || null,
           city: document.getElementById('adv-city').value.trim() || null,
-          company_activity: document.getElementById('adv-activity').value.trim() || null
+          company_activity: document.getElementById('adv-activity').value.trim() || null,
+          display_name: document.getElementById('adv-name').value.trim() || null
         };
         api('/register/advertiser', payload).then(function() {
           showScreen('screen-advertiser-dashboard');
@@ -272,8 +306,13 @@
         e.preventDefault();
         var errEl = document.getElementById('blg-error');
         errEl.textContent = '';
+        var topicsRaw = document.getElementById('blg-topics').value.trim();
+        var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
         var payload = {
+          display_name: document.getElementById('blg-name').value.trim(),
           instagram_url: document.getElementById('blg-instagram').value.trim(),
+          birth_date: document.getElementById('blg-birth').value.trim() || null,
+          topics: topicsList,
           city: document.getElementById('blg-city').value.trim(),
           audience_geo: document.getElementById('blg-audience-geo').value.trim(),
           audience_age_min: parseInt(document.getElementById('blg-age-min').value, 10) || 18,
@@ -282,7 +321,6 @@
           price: parseFloat(document.getElementById('blg-price').value) || 0,
           barter: document.getElementById('blg-barter').value === 'true',
           work_format: document.getElementById('blg-work-format').value,
-          topics: {},
           blogger_gender: document.getElementById('blg-blogger-gender').value
         };
         api('/register/blogger', payload).then(function() {
@@ -352,10 +390,13 @@
       });
 
       loadMe().then(function(me) {
-        if (me.has_advertiser_profile) {
+        updateRoleChoiceHint();
+        if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
-        } else if (me.has_blogger_profile) {
+        } else if (me.has_blogger_profile && !me.has_advertiser_profile) {
           showScreen('screen-blogger-done');
+        } else if (me.has_advertiser_profile && me.has_blogger_profile) {
+          showScreen('screen-advertiser-dashboard');
         } else {
           showScreen('screen-role-choice');
         }

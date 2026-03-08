@@ -58,7 +58,6 @@ from ugc_bot.bot.handlers.keyboards import (
     flow_keyboard_city_request,
     flow_keyboard_remove,
 )
-from ugc_bot.bot.handlers.profile import INSTAGRAM_URL_REGEX
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
@@ -68,6 +67,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
+    INSTAGRAM_URL_REGEX,
     VALIDATOR_ERR_KEYS,
     normalize_instagram_url,
     validate_audience_geo,

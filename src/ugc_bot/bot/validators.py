@@ -9,8 +9,13 @@ are taken from it by key (e.g. err_not_bot_command). Otherwise English
 fallbacks are used.
 """
 
+import re
 from datetime import date
 from urllib.parse import urlparse
+
+INSTAGRAM_URL_REGEX = re.compile(
+    r"^(https?://)?(www\.)?instagram\.com/[A-Za-z0-9._]+/?$"
+)
 
 
 def _msg(
@@ -41,6 +46,10 @@ VALIDATOR_ERR_KEYS = (
     "err_product_link_empty",
     "err_geo_required",
     "err_geo_max",
+    "err_instagram_empty",
+    "err_instagram_format",
+    "err_instagram_example",
+    "err_instagram_taken",
     "err_min_chars",
     "err_max_chars",
     "err_phone_empty",
@@ -225,6 +234,33 @@ def normalize_instagram_url(url: str) -> str:
     if not s.startswith("http://") and not s.startswith("https://"):
         s = f"https://{s}"
     return s
+
+
+def validate_instagram_url(
+    value: str,
+    texts: dict[str, str] | None = None,
+) -> str | None:
+    """Validate Instagram URL (instagram.com/username). Return error or None."""
+    url = normalize_instagram_url((value or "").strip())
+    if not url:
+        return _msg(
+            texts,
+            "err_instagram_empty",
+            "Link cannot be empty. Send link as instagram.com/name",
+        )
+    if "instagram.com/" not in url.lower():
+        return _msg(
+            texts,
+            "err_instagram_format",
+            "Invalid format. Need a link like instagram.com/name",
+        )
+    if not INSTAGRAM_URL_REGEX.match(url):
+        return _msg(
+            texts,
+            "err_instagram_example",
+            "Invalid Instagram link. Example: https://instagram.com/name",
+        )
+    return None
 
 
 def validate_url(
