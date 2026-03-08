@@ -724,6 +724,39 @@ class OrdersListRequest(BaseModel):
     init_data: str
 
 
+class ReverseGeocodeRequest(BaseModel):
+    """Request body for reverse geocode (coordinates to city)."""
+
+    init_data: str
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+
+
+class ReverseGeocodeResponse(BaseModel):
+    """Reverse geocode result: city, region, country."""
+
+    city: str
+    region: str | None = None
+    country: str | None = None
+
+
+@router.post("/geocode/reverse", response_model=ReverseGeocodeResponse)
+async def reverse_geocode(
+    request: Request, body: ReverseGeocodeRequest
+) -> ReverseGeocodeResponse:
+    """Reverse geocode (lat, lon) to city, region, country for map picker."""
+    await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    svc = dispatcher["blogger_registration_service"]
+    result = await svc.resolve_city_from_location(body.lat, body.lon)
+    if result is None:
+        raise HTTPException(
+            status_code=404, detail="Location could not be resolved to a city."
+        )
+    city, region, country = result
+    return ReverseGeocodeResponse(city=city, region=region, country=country)
+
+
 @router.post("/orders/list", response_model=OrdersListResponse)
 async def list_orders(
     request: Request, body: OrdersListRequest

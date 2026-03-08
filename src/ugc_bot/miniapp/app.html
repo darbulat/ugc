@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>UGC — Регистрация и заказы</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -67,6 +69,9 @@
     .date-row select { flex: 1; min-width: 0; }
     .payment-link { display: block; margin-top: 8px; word-break: break-all; font-size: 0.9rem; }
     .payment-link a { color: var(--tg-theme-link-color, #2481cc); }
+    #block-blogger-city-map { margin-top: 8px; }
+    #blogger-city-map { width: 100%; height: 240px; border-radius: 8px; border: 1px solid var(--tg-theme-hint-color, #ccc); }
+    #blg-city-map-hint { font-size: 0.85rem; color: var(--tg-theme-hint-color, #999); margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -121,6 +126,13 @@
       <input type="text" id="blg-topics" name="topics" required placeholder="красота, мода, путешествия">
       <label for="blg-city">Город *</label>
       <input type="text" id="blg-city" name="city" required>
+      <input type="hidden" id="blg-region" name="region">
+      <input type="hidden" id="blg-country" name="country">
+      <button type="button" class="btn btn-secondary" id="btn-blogger-city-map">Выбрать на карте</button>
+      <div id="block-blogger-city-map" style="display: none;">
+        <p class="hint" id="blg-city-map-hint">Нажмите на карту, чтобы отметить город</p>
+        <div id="blogger-city-map"></div>
+      </div>
       <label for="blg-audience-geo">География аудитории *</label>
       <input type="text" id="blg-audience-geo" name="audience_geo" required placeholder="РФ, СНГ и т.д.">
       <label for="blg-age-min">Возраст аудитории (от)</label>
@@ -543,6 +555,41 @@
         if (block) block.style.display = 'none';
       });
 
+      var bloggerCityMapInited = false;
+      var bloggerCityMapInstance = null;
+      var bloggerCityMarker = null;
+      document.getElementById('btn-blogger-city-map').addEventListener('click', function() {
+        var block = document.getElementById('block-blogger-city-map');
+        var mapEl = document.getElementById('blogger-city-map');
+        var hintEl = document.getElementById('blg-city-map-hint');
+        if (!block || !mapEl) return;
+        block.style.display = block.style.display === 'none' ? 'block' : 'none';
+        if (block.style.display === 'block' && !bloggerCityMapInited && window.L) {
+          bloggerCityMapInited = true;
+          setTimeout(function() {
+            var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+            bloggerCityMapInstance = map;
+            map.on('click', function(e) {
+              var lat = e.latlng.lat;
+              var lon = e.latlng.lng;
+              if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
+              else bloggerCityMarker = L.marker(e.latlng).addTo(map);
+              api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
+                document.getElementById('blg-city').value = data.city || '';
+                document.getElementById('blg-region').value = data.region || '';
+                document.getElementById('blg-country').value = data.country || '';
+                if (hintEl) hintEl.textContent = 'Выбрано: ' + (data.city || '');
+              }).catch(function() {
+                if (hintEl) hintEl.textContent = 'Не удалось определить город для этой точки';
+              });
+            });
+          }, 100);
+        }
+      });
+
       document.getElementById('btn-change-role-from-adv').addEventListener('click', function() {
         updateRoleChoiceHint();
         showScreen('screen-role-choice');
@@ -593,6 +640,8 @@
         var month = document.getElementById('blg-birth-month').value;
         var year = document.getElementById('blg-birth-year').value;
         var birthDateStr = (day && month && year) ? (day.padStart(2,'0') + '.' + month.padStart(2,'0') + '.' + year) : null;
+        var regionEl = document.getElementById('blg-region');
+        var countryEl = document.getElementById('blg-country');
         var payload = {
           display_name: document.getElementById('blg-name').value.trim(),
           instagram_url: document.getElementById('blg-instagram').value.trim(),
@@ -608,6 +657,8 @@
           work_format: document.getElementById('blg-work-format').value,
           blogger_gender: document.getElementById('blg-blogger-gender').value
         };
+        if (regionEl && regionEl.value.trim()) payload.region = regionEl.value.trim();
+        if (countryEl && countryEl.value.trim()) payload.country = countryEl.value.trim();
         api('/register/blogger', payload).then(function() {
           return loadMe();
         }).then(function() {

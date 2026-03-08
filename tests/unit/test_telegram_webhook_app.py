@@ -727,6 +727,81 @@ def test_miniapp_api_orders_list_includes_payment_link(
     assert "payment_link" in orders[0]
 
 
+def test_miniapp_api_geocode_reverse_success(client: TestClient) -> None:
+    """POST /geocode/reverse returns city, region, country for valid coords."""
+    init_data = _make_valid_init_data("test_token", 77781)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77781",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.resolve_city_from_location = AsyncMock(
+        return_value=("Москва", "Московская область", "Россия")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/geocode/reverse",
+        json={"init_data": init_data, "lat": 55.7558, "lon": 37.6173},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["city"] == "Москва"
+    assert data["region"] == "Московская область"
+    assert data["country"] == "Россия"
+
+
+def test_miniapp_api_geocode_reverse_404_when_not_resolved(
+    client: TestClient,
+) -> None:
+    """POST /geocode/reverse returns 404 when location not resolved."""
+    init_data = _make_valid_init_data("test_token", 77782)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="77782",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.resolve_city_from_location = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/geocode/reverse",
+        json={"init_data": init_data, "lat": 0.0, "lon": 0.0},
+    )
+    assert response.status_code == 404
+    assert "detail" in response.json()
+
+
+def test_miniapp_api_geocode_reverse_422_invalid_coords(
+    client: TestClient,
+) -> None:
+    """POST /geocode/reverse returns 422 for lat/lon out of range."""
+    init_data = _make_valid_init_data("test_token", 77783)
+    response = client.post(
+        "/miniapp/api/geocode/reverse",
+        json={"init_data": init_data, "lat": 100.0, "lon": 0.0},
+    )
+    assert response.status_code == 422
+
+
 def test_miniapp_api_orders_list_creator_success(client: TestClient) -> None:
     """POST /orders/list/creator returns orders the creator responded to."""
     from ugc_bot.domain.entities import OfferDispatch
