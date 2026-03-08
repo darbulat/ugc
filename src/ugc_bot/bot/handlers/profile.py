@@ -318,10 +318,8 @@ _EDIT_FIELDS_ADVERTISER_BY_KEY = [
     ("lbl_edit_company_activity", "company_activity"),
     ("lbl_edit_site_link", "site_link"),
 ]
-EDIT_FIELD_KEYS = {label_key: fkey for label_key, fkey in _EDIT_FIELDS_BY_KEY}
-EDIT_FIELD_KEYS_ADVERTISER = {
-    label_key: fkey for label_key, fkey in _EDIT_FIELDS_ADVERTISER_BY_KEY
-}
+EDIT_FIELD_KEYS = dict(_EDIT_FIELDS_BY_KEY)
+EDIT_FIELD_KEYS_ADVERTISER = dict(_EDIT_FIELDS_ADVERTISER_BY_KEY)
 EDIT_FIELD_LABEL_KEYS_BLOGGER = [lk for lk, _ in _EDIT_FIELDS_BY_KEY]
 EDIT_FIELD_LABEL_KEYS_ADVERTISER = [
     lk for lk, _ in _EDIT_FIELDS_ADVERTISER_BY_KEY
@@ -2208,6 +2206,42 @@ async def handle_profile_region_callback(
     )
 
 
+def _parse_location_picker_payload(
+    message_ctx,
+) -> tuple[float, float, str | None, str | None, str | None] | None:
+    """Parse location picker payload. Returns tuple or None."""
+    lat = getattr(message_ctx, "location_lat", None)
+    lon = getattr(message_ctx, "location_lon", None)
+    wad = getattr(message_ctx, "web_app_data", None)
+    if lat is None and lon is None and wad:
+        try:
+            data = json.loads(wad)
+            la, lo = data.get("lat"), data.get("lon")
+            if la is not None and lo is not None:
+                lat, lon = float(la), float(lo)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+    if not (
+        lat is not None
+        and lon is not None
+        and -90 <= lat <= 90
+        and -180 <= lon <= 180
+    ):
+        return None
+    city = region = country = None
+    if wad:
+        try:
+            data = json.loads(wad)
+            c = (data.get("city") or "").strip()
+            if c:
+                city = c
+                region = (data.get("region") or "").strip() or None
+                country = (data.get("country") or "").strip() or None
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+            pass
+    return (lat, lon, city, region, country)
+
+
 async def _try_handle_blogger_city_by_location(
     message_ctx,
     state: FSMContext,
@@ -2221,33 +2255,23 @@ async def _try_handle_blogger_city_by_location(
     locale: str,
 ) -> bool:
     """City edit from location: resolve, save, show profile. True if handled."""
-    lat = getattr(message_ctx, "location_lat", None)
-    lon = getattr(message_ctx, "location_lon", None)
-    wad = getattr(message_ctx, "web_app_data", None)
-    if lat is None and lon is None and wad:
-        try:
-            data = json.loads(wad)
-            la = data.get("lat")
-            lo = data.get("lon")
-            if la is not None and lo is not None:
-                lat, lon = float(la), float(lo)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
-    if not (
-        lat is not None
-        and lon is not None
-        and -90 <= lat <= 90
-        and -180 <= lon <= 180
-    ):
+    parsed = _parse_location_picker_payload(message_ctx)
+    if parsed is None:
         return False
-    result = await blogger_registration_service.resolve_city_from_location(
-        lat, lon
-    )
-    if result is None:
-        err_loc = await bot_texts_service.get("err_city_from_location", locale)
-        await message_ctx.answer(err_loc, reply_markup=flow_keyboard_remove())
-        return True
-    city_name, region_name, country_name = result
+    lat, lon, city_name, region_name, country_name = parsed
+    if city_name is None:
+        result = await blogger_registration_service.resolve_city_from_location(
+            lat, lon
+        )
+        if result is None:
+            err_loc = await bot_texts_service.get(
+                "err_city_from_location", locale
+            )
+            await message_ctx.answer(
+                err_loc, reply_markup=flow_keyboard_remove()
+            )
+            return True
+        city_name, region_name, country_name = result
     normalized = normalize_geo_token(city_name)
     if not normalized:
         err_loc = await bot_texts_service.get("err_city_from_location", locale)

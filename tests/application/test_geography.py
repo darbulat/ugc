@@ -108,6 +108,11 @@ class TestParseGeography:
         assert spec.type == "places"
         assert set(spec.values) == {"казань", "москва"}
 
+    def test_only_separators_no_tokens_returns_none(self) -> None:
+        """Input that splits to only empty/whitespace tokens returns None."""
+        spec = parse_geography("  ,  /  ,   ")
+        assert spec is None
+
 
 class TestGetGeometryQueriesFromSpec:
     """Tests for get_geometry_queries_from_spec (world/places only)."""
@@ -132,6 +137,15 @@ class TestGetGeometryQueriesFromSpec:
         assert get_geometry_queries_from_spec(
             GeographySpec(type="places", values=["казань"])
         ) == [("казань", None, "")]
+
+    def test_places_empty_values_returns_empty(self) -> None:
+        """Places spec with empty values list returns empty queries."""
+        assert (
+            get_geometry_queries_from_spec(
+                GeographySpec(type="places", values=[])
+            )
+            == []
+        )
 
 
 class TestGetCitiesListForMiniapp:
@@ -257,6 +271,13 @@ class TestResolveRegionFromCityField:
         """Empty or whitespace returns (None, 'unrecognized')."""
         assert resolve_region_from_city_field("") == (None, "unrecognized")
         assert resolve_region_from_city_field("   ") == (None, "unrecognized")
+
+    def test_only_separators_returns_unrecognized(self) -> None:
+        """Input with only separators (no valid tokens) returns unrecognized."""
+        assert resolve_region_from_city_field(" ,  / ") == (
+            None,
+            "unrecognized",
+        )
 
     def test_only_region_token_returns_unrecognized(self) -> None:
         """Only region name (no city) is treated as unrecognized city."""

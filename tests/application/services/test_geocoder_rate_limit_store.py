@@ -1,7 +1,7 @@
 """Tests for geocoder rate limit stores (in-memory and Redis)."""
 
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -64,3 +64,40 @@ async def test_redis_store_reserves_slot_via_lua() -> None:
     assert call_args[1] == 1  # numkeys
     assert call_args[2] == NOMINATIM_RATE_LIMIT_KEY
     assert call_args[4] == "1.0"  # delay_seconds
+
+
+@pytest.mark.asyncio
+async def test_redis_store_lazy_init_calls_from_url() -> None:
+    """Redis store lazy-inits client via Redis.from_url when delay > 0."""
+    with patch("redis.asyncio.Redis") as mock_redis_class:
+        mock_redis = MagicMock()
+        mock_redis.eval = AsyncMock(return_value=str(time.time() + 0.05))
+        mock_redis_class.from_url = MagicMock(return_value=mock_redis)
+        store = RedisGeocoderRateLimitStore(
+            redis_url="redis://localhost:6379/1",
+            delay_seconds=0.1,
+        )
+        assert store._redis is None
+        await store.wait_until_allowed()
+        mock_redis_class.from_url.assert_called_once_with(
+            "redis://localhost:6379/1",
+            decode_responses=True,
+        )
+        assert store._redis is mock_redis
+
+
+@pytest.mark.asyncio
+async def test_redis_store_waits_when_next_allowed_in_future() -> None:
+    """Redis store sleeps when eval returns future timestamp."""
+    store = RedisGeocoderRateLimitStore(
+        redis_url="redis://localhost:6379/0",
+        delay_seconds=0.2,
+    )
+    mock_redis = MagicMock()
+    future_ts = time.time() + 0.05
+    mock_redis.eval = AsyncMock(return_value=str(future_ts))
+    store._redis = mock_redis
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        await store.wait_until_allowed()
+        mock_sleep.assert_called_once()
+        assert mock_sleep.call_args[0][0] > 0

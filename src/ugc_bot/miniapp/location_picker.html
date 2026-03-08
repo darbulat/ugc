@@ -26,9 +26,35 @@
       font-weight: 600;
       flex-shrink: 0;
     }
+    .search-row {
+      display: flex;
+      gap: 8px;
+      padding: 8px 12px;
+      flex-shrink: 0;
+    }
+    .search-row input {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--tg-theme-hint-color, #ccc);
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #000);
+    }
+    .search-row button {
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      background: var(--tg-theme-button-color, #2481cc);
+      color: var(--tg-theme-button-text-color, #fff);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
     #map {
       flex: 1;
-      min-height: 280px;
+      min-height: 260px;
       width: 100%;
     }
     .hint {
@@ -57,7 +83,11 @@
 </head>
 <body>
   <h1>Выберите точку на карте</h1>
-  <p class="hint">Нажмите на карту, чтобы отметить город или место</p>
+  <p class="hint" id="hint">Нажмите на карту или найдите город</p>
+  <div class="search-row">
+    <input type="text" id="city-search" placeholder="Поиск по городу">
+    <button type="button" id="btn-search">Найти</button>
+  </div>
   <div id="map"></div>
   <button type="button" id="send-btn" disabled>Отправить выбранную точку</button>
 
@@ -66,17 +96,63 @@
       var DEFAULT_LAT = 55.7558;
       var DEFAULT_LON = 37.6173;
       var DEFAULT_ZOOM = 5;
+      var tg = window.Telegram && window.Telegram.WebApp;
+      var base = window.location.origin;
+
+      function getInitData() {
+        return (tg && tg.initData) ? tg.initData : '';
+      }
+
+      function api(path, body) {
+        var initData = getInitData();
+        if (!initData) return Promise.reject(new Error('No initData'));
+        var payload = typeof body === 'object' ? Object.assign({ init_data: initData }, body) : { init_data: initData };
+        return fetch(base + '/miniapp/api' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function(r) {
+          if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || r.statusText); }).catch(function(e) { if (e.message) throw e; throw new Error(r.statusText); });
+          return r.json();
+        });
+      }
 
       var mapEl = document.getElementById('map');
       var sendBtn = document.getElementById('send-btn');
+      var hintEl = document.getElementById('hint');
       var marker = null;
       var selectedLat = null;
       var selectedLon = null;
+      var selectedCity = '';
+      var selectedRegion = '';
+      var selectedCountry = '';
 
       var map = L.map('map').setView([DEFAULT_LAT, DEFAULT_LON], DEFAULT_ZOOM);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       }).addTo(map);
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            var lat = pos.coords.latitude;
+            var lon = pos.coords.longitude;
+            map.setView([lat, lon], 12);
+          },
+          function() {},
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+        );
+      }
+
+      function setSelection(lat, lon, city, region, country) {
+        selectedLat = lat;
+        selectedLon = lon;
+        selectedCity = city || '';
+        selectedRegion = region || '';
+        selectedCountry = country || '';
+        sendBtn.disabled = false;
+        if (hintEl) hintEl.textContent = city ? 'Выбрано: ' + city : 'Нажмите на карту или найдите город';
+      }
 
       map.on('click', function(e) {
         var lat = e.latlng.lat;
@@ -86,24 +162,56 @@
         } else {
           marker = L.marker(e.latlng).addTo(map);
         }
-        selectedLat = lat;
-        selectedLon = lon;
-        sendBtn.disabled = false;
+        api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
+          setSelection(lat, lon, data.city, data.region, data.country);
+        }).catch(function() {
+          setSelection(lat, lon, '', '', '');
+          if (hintEl) hintEl.textContent = 'Не удалось определить город для этой точки';
+        });
+      });
+
+      document.getElementById('btn-search').addEventListener('click', function() {
+        var query = document.getElementById('city-search').value.trim();
+        if (!query) {
+          if (hintEl) hintEl.textContent = 'Введите название города';
+          return;
+        }
+        api('/geocode/forward', { city: query }).then(function(data) {
+          map.setView([data.lat, data.lon], 12);
+          if (marker) marker.setLatLng([data.lat, data.lon]);
+          else marker = L.marker([data.lat, data.lon]).addTo(map);
+          setSelection(data.lat, data.lon, data.city, data.region, data.country);
+        }).catch(function() {
+          if (hintEl) hintEl.textContent = 'Город не найден';
+        });
+      });
+
+      document.getElementById('city-search').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btn-search').click();
+        }
       });
 
       sendBtn.addEventListener('click', function() {
         if (selectedLat == null || selectedLon == null) return;
-        var payload = JSON.stringify({ lat: selectedLat, lon: selectedLon });
-        var tg = window.Telegram && window.Telegram.WebApp;
+        var payload = {
+          lat: selectedLat,
+          lon: selectedLon,
+          city: selectedCity,
+          region: selectedRegion,
+          country: selectedCountry
+        };
+        var payloadStr = JSON.stringify(payload);
         if (tg && typeof tg.sendData === 'function') {
-          tg.sendData(payload);
+          tg.sendData(payloadStr);
           if (typeof tg.close === 'function') tg.close();
         }
       });
 
-      if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
+      if (tg) {
+        tg.ready();
+        tg.expand();
       }
     })();
   </script>

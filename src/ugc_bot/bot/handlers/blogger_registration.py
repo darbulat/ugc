@@ -529,6 +529,23 @@ def _get_location_from_incoming(incoming) -> tuple[float, float] | None:
     return None
 
 
+def _get_web_app_resolved_place(incoming) -> tuple[str, str, str] | None:
+    """(city, region, country) from web_app_data when picker sent resolved."""
+    wad = getattr(incoming, "web_app_data", None)
+    if not wad:
+        return None
+    try:
+        data = json.loads(wad)
+        city = (data.get("city") or "").strip()
+        if not city:
+            return None
+        region = (data.get("region") or "").strip()
+        country = (data.get("country") or "").strip()
+        return (city, region, country)
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return None
+
+
 async def _handle_city_from_location(
     incoming,
     state_store,
@@ -538,12 +555,23 @@ async def _handle_city_from_location(
     messenger_client: MessengerClient,
     bot_texts_service: BotTextsService,
     locale: str,
+    pre_resolved: tuple[str, str, str] | None = None,
 ) -> bool:
     """Process city from location. True if handled (success or error sent)."""
-    result = await blogger_registration_service.resolve_city_from_location(
-        location_lat, location_lon
-    )
-    if result is None:
+    resolved: tuple[str, str | None, str | None] | None
+    if pre_resolved is not None:
+        resolved = (
+            pre_resolved[0],
+            pre_resolved[1] or None,
+            pre_resolved[2] or None,
+        )
+    else:
+        resolved = (
+            await blogger_registration_service.resolve_city_from_location(
+                location_lat, location_lon
+            )
+        )
+    if resolved is None:
         err_loc = await bot_texts_service.get("err_city_from_location", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -551,7 +579,7 @@ async def _handle_city_from_location(
             keyboard=flow_keyboard_remove(),
         )
         return True
-    city_from_geo, region_from_geo, country_from_geo = result
+    city_from_geo, region_from_geo, country_from_geo = resolved
     normalized = normalize_geo_token(city_from_geo)
     if not normalized:
         err_loc = await bot_texts_service.get("err_city_from_location", locale)
@@ -730,6 +758,7 @@ async def handle_city(
 
     location = _get_location_from_incoming(incoming)
     if location is not None:
+        pre_resolved = _get_web_app_resolved_place(incoming)
         await _handle_city_from_location(
             incoming,
             state_store,
@@ -739,6 +768,7 @@ async def handle_city(
             messenger_client,
             bot_texts_service,
             locale,
+            pre_resolved=pre_resolved,
         )
         return
 
