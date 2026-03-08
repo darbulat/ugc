@@ -98,7 +98,7 @@
       <label for="adv-activity">Чем занимается компания</label>
       <input type="text" id="adv-activity" name="company_activity">
       <div id="adv-error" class="error"></div>
-      <button type="submit" class="btn">Зарегистрироваться</button>
+      <button type="submit" class="btn" id="btn-submit-advertiser">Зарегистрироваться</button>
     </form>
     <button type="button" class="btn btn-secondary" id="back-from-advertiser">Назад</button>
   </div>
@@ -150,7 +150,7 @@
         <option value="f">Женский</option>
       </select>
       <div id="blg-error" class="error"></div>
-      <button type="submit" class="btn">Зарегистрироваться</button>
+      <button type="submit" class="btn" id="btn-submit-blogger">Зарегистрироваться</button>
     </form>
     <button type="button" class="btn btn-secondary" id="back-from-blogger">Назад</button>
   </div>
@@ -160,6 +160,7 @@
     <p class="hint">Создайте заказ или посмотрите список заказов.</p>
     <button type="button" class="btn" id="btn-show-create-order">Создать заказ</button>
     <button type="button" class="btn btn-secondary" id="btn-show-orders-list">Мои заказы</button>
+    <button type="button" class="btn btn-secondary" id="btn-adv-update-profile">Обновить профиль</button>
     <button type="button" class="btn btn-secondary" id="btn-change-role-from-adv">Сменить роль</button>
 
     <div id="block-create-order" style="display: none; margin-top: 16px;">
@@ -190,7 +191,7 @@
         </select>
         <div id="ord-error" class="error"></div>
         <div id="ord-success" class="success"></div>
-        <button type="submit" class="btn">Создать заказ</button>
+        <button type="submit" class="btn" id="btn-submit-order">Создать заказ</button>
       </form>
       <button type="button" class="btn btn-secondary" id="hide-create-order">Скрыть форму</button>
     </div>
@@ -207,6 +208,13 @@
     <p class="hint">Возвращайтесь в бота, чтобы получать офферы и управлять профилем.</p>
     <button type="button" class="btn" id="btn-close-blogger">Закрыть</button>
     <button type="button" class="btn btn-secondary" id="btn-change-role-from-blogger">Сменить роль</button>
+  </div>
+
+  <div id="screen-blogger-dashboard" class="screen">
+    <h1>Личный кабинет блогера</h1>
+    <p class="hint">Управление профилем и заказами.</p>
+    <button type="button" class="btn" id="btn-blogger-orders">Мои заказы</button>
+    <button type="button" class="btn btn-secondary" id="btn-blogger-update-profile">Обновить профиль</button>
   </div>
 
   <script>
@@ -373,15 +381,34 @@
         }
       }
 
+      function updateRegisterButtonLabels() {
+        var me = window._me;
+        var advBtn = document.getElementById('btn-submit-advertiser');
+        var blgBtn = document.getElementById('btn-submit-blogger');
+        if (advBtn) advBtn.textContent = (me && me.has_advertiser_profile) ? 'Обновить' : 'Зарегистрироваться';
+        if (blgBtn) blgBtn.textContent = (me && me.has_blogger_profile) ? 'Обновить' : 'Зарегистрироваться';
+      }
+
       document.getElementById('screen-role-choice').querySelectorAll('[data-role]').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var role = this.getAttribute('data-role');
+          var me = window._me;
           if (role === 'advertiser') {
-            fillAdvertiserForm(window._me && window._me.advertiser_profile);
-            showScreen('screen-register-advertiser');
+            if (me && me.has_advertiser_profile) {
+              showScreen('screen-advertiser-dashboard');
+            } else {
+              fillAdvertiserForm(me && me.advertiser_profile);
+              updateRegisterButtonLabels();
+              showScreen('screen-register-advertiser');
+            }
           } else if (role === 'blogger') {
-            fillBloggerForm(window._me && window._me.blogger_profile);
-            showScreen('screen-register-blogger');
+            if (me && me.has_blogger_profile) {
+              showScreen('screen-blogger-dashboard');
+            } else {
+              fillBloggerForm(me && me.blogger_profile);
+              updateRegisterButtonLabels();
+              showScreen('screen-register-blogger');
+            }
           }
         });
       });
@@ -407,6 +434,33 @@
         showScreen('screen-role-choice');
       });
 
+      document.getElementById('btn-adv-update-profile').addEventListener('click', function() {
+        fillAdvertiserForm(window._me && window._me.advertiser_profile);
+        updateRegisterButtonLabels();
+        showScreen('screen-register-advertiser');
+      });
+      document.getElementById('btn-blogger-update-profile').addEventListener('click', function() {
+        fillBloggerForm(window._me && window._me.blogger_profile);
+        updateRegisterButtonLabels();
+        showScreen('screen-register-blogger');
+      });
+      document.getElementById('btn-blogger-orders').addEventListener('click', function() {
+        if (!tg || !tg.openLink) return;
+        function openBot() {
+          var cfg = window._config;
+          var bot = (cfg && cfg.bot_username ? cfg.bot_username : '').replace(/^@/, '').trim();
+          if (bot) tg.openLink('https://t.me/' + bot);
+        }
+        if (window._config && window._config.bot_username) {
+          openBot();
+        } else {
+          loadConfig().then(function(c) {
+            window._config = c;
+            openBot();
+          }).catch(function() {});
+        }
+      });
+
       document.getElementById('btn-change-role-from-adv').addEventListener('click', function() {
         updateRoleChoiceHint();
         showScreen('screen-role-choice');
@@ -428,18 +482,25 @@
           company_activity: document.getElementById('adv-activity').value.trim() || null,
           display_name: document.getElementById('adv-name').value.trim() || null
         };
+        var advSubmitBtn = document.getElementById('btn-submit-advertiser');
+        if (advSubmitBtn) advSubmitBtn.disabled = true;
         api('/register/advertiser', payload).then(function() {
+          return loadMe();
+        }).then(function() {
           showScreen('screen-advertiser-dashboard');
-          loadMe();
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
+        }).then(function() {
+          if (advSubmitBtn) advSubmitBtn.disabled = false;
         });
       });
 
       document.getElementById('form-blogger').addEventListener('submit', function(e) {
         e.preventDefault();
         var errEl = document.getElementById('blg-error');
+        var blgSubmitBtn = document.getElementById('btn-submit-blogger');
         errEl.textContent = '';
+        if (blgSubmitBtn) blgSubmitBtn.disabled = true;
         var topicsRaw = document.getElementById('blg-topics').value.trim();
         var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
         var day = document.getElementById('blg-birth-day').value;
@@ -462,9 +523,13 @@
           blogger_gender: document.getElementById('blg-blogger-gender').value
         };
         api('/register/blogger', payload).then(function() {
-          showScreen('screen-blogger-done');
+          return loadMe();
+        }).then(function() {
+          showScreen('screen-blogger-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
+        }).then(function() {
+          if (blgSubmitBtn) blgSubmitBtn.disabled = false;
         });
       });
 
@@ -486,15 +551,26 @@
           (data.orders || []).forEach(function(o) {
             var li = document.createElement('li');
             li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
-              o.status + ' · ' + o.price + ' ₽' +
-              (o.payment_link ? '<span class="payment-link"><a href="' + o.payment_link + '" target="_blank" rel="noopener">Оплатить</a></span>' : '');
+              o.status + ' · ' + o.price + ' ₽';
+            if (o.payment_link) {
+              var payBtn = document.createElement('a');
+              payBtn.href = o.payment_link;
+              payBtn.target = '_blank';
+              payBtn.rel = 'noopener';
+              payBtn.className = 'btn';
+              payBtn.style.marginTop = '8px';
+              payBtn.style.display = 'inline-block';
+              payBtn.textContent = 'Оплатить';
+              li.appendChild(payBtn);
+            }
             ul.appendChild(li);
           });
           if (!data.orders || data.orders.length === 0) {
             ul.innerHTML = '<li>Заказов пока нет</li>';
           }
         }).catch(function() {
-          document.getElementById('orders-list').innerHTML = '<li class="error">Не удалось загрузить заказы</li>';
+          var ul = document.getElementById('orders-list');
+          if (ul) ul.innerHTML = '<li class="error">Не удалось загрузить заказы</li>';
         });
       });
       document.getElementById('hide-orders-list').addEventListener('click', function() {
@@ -505,6 +581,7 @@
         e.preventDefault();
         var errEl = document.getElementById('ord-error');
         var okEl = document.getElementById('ord-success');
+        var submitBtn = document.getElementById('btn-submit-order');
         errEl.textContent = '';
         okEl.textContent = '';
         var bloggersEl = document.getElementById('ord-bloggers');
@@ -513,6 +590,7 @@
           errEl.textContent = 'Подождите, загрузка настроек…';
           return;
         }
+        if (submitBtn) submitBtn.disabled = true;
         var payload = {
           product_link: document.getElementById('ord-link').value.trim(),
           offer_text: document.getElementById('ord-offer').value.trim(),
@@ -531,8 +609,10 @@
           }
           okEl.innerHTML = msg;
           document.getElementById('form-order').reset();
+          if (submitBtn) submitBtn.disabled = false;
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка создания заказа';
+          if (submitBtn) submitBtn.disabled = false;
         });
       });
 
@@ -542,19 +622,27 @@
 
       fillBirthDateSelects();
       loadMe().then(function(me) {
+        if (!me || typeof me !== 'object') {
+          showScreen('screen-role-choice');
+          return;
+        }
         updateRoleChoiceHint();
+        updateRegisterButtonLabels();
         if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
         } else if (me.has_blogger_profile && !me.has_advertiser_profile) {
-          showScreen('screen-blogger-done');
+          showScreen('screen-blogger-dashboard');
         } else if (me.has_advertiser_profile && me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
         } else {
           showScreen('screen-role-choice');
         }
       }).catch(function(err) {
-        document.getElementById('screen-loading').querySelector('.hint').textContent =
-          'Ошибка: ' + (err.message || 'нет данных').replace(/^Ошибка: Ошибка: /, 'Ошибка: ');
+        var loadingScreen = document.getElementById('screen-loading');
+        var hintEl = loadingScreen && loadingScreen.querySelector('.hint');
+        if (hintEl) {
+          hintEl.textContent = 'Ошибка: ' + (err.message || 'нет данных').replace(/^Ошибка: Ошибка: /, 'Ошибка: ');
+        }
       });
     })();
   </script>
