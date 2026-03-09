@@ -80,3 +80,30 @@ def validate_init_data_and_get_telegram_user_id(
         raise ValueError("init_data user missing id")
 
     return str(telegram_id)
+
+
+def get_telegram_user_id_and_username(
+    init_data: str, bot_token: str
+) -> tuple[str, str | None]:
+    """Validate initData and return (Telegram user id, username or None).
+
+    Username is the Telegram @username from the user object, if present.
+    """
+    external_id = validate_init_data_and_get_telegram_user_id(
+        init_data, bot_token
+    )
+    parsed = parse_qsl(init_data.strip(), keep_blank_values=True)
+    data_dict = dict(parsed)
+    user_json = data_dict.get("user")
+    if not user_json:
+        return (external_id, None)
+    try:
+        user = json.loads(user_json)
+    except json.JSONDecodeError:
+        return (external_id, None)
+    if not isinstance(user, dict):
+        return (external_id, None)
+    username = user.get("username")
+    if username is None or not isinstance(username, str):
+        return (external_id, None)
+    return (external_id, (username.strip() or None))

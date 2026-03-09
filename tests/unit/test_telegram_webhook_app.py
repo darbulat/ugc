@@ -1004,14 +1004,17 @@ def test_miniapp_api_orders_list_includes_payment_link(
     assert "payment_link" in orders[0]
 
 
-def test_miniapp_api_payment_link_for_order_empty_username(
+def test_miniapp_api_payment_link_for_order(
     client: TestClient,
 ) -> None:
-    """_payment_link_for_order returns empty when bot_username empty."""
+    """_payment_link_for_order: empty username -> ''; non-empty -> t.me link."""
     from ugc_bot.miniapp.api import _payment_link_for_order
 
     assert _payment_link_for_order("order-123", "") == ""
     assert _payment_link_for_order("order-123", "  ") == ""
+    link = _payment_link_for_order("oid", "mybot")
+    assert link == "https://t.me/mybot?start=pay_oid"
+    assert "mybot" in _payment_link_for_order("x", "@mybot")
 
 
 def test_miniapp_api_geocode_reverse_success(client: TestClient) -> None:
@@ -2616,6 +2619,72 @@ def test_miniapp_api_register_blogger_invalid_birth_date_400(
     assert "detail" in response.json()
 
 
+def test_miniapp_api_register_blogger_update_empty_birth_date_ok(
+    client: TestClient,
+) -> None:
+    """POST register/blogger update with empty birth_date passes (None)."""
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    init_data = _make_valid_init_data("test_token", 55562)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55562",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    existing = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/me",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="РФ",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(
+        return_value=existing
+    )
+    mock_blogger_svc.update_blogger_profile = AsyncMock(
+        return_value=MagicMock(profile=existing)
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/me",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "blogger_gender": "m",
+            "display_name": "User",
+            "birth_date": "",
+        },
+    )
+    assert response.status_code == 200
+
+
 def test_miniapp_api_register_blogger_update_city_not_resolved_400(
     client: TestClient,
 ) -> None:
@@ -3255,6 +3324,44 @@ def test_miniapp_api_register_advertiser_invalid_display_name_400(
     )
     assert response.status_code == 400
     assert "detail" in response.json()
+
+
+def test_miniapp_api_register_advertiser_company_activity_too_long_400(
+    client: TestClient,
+) -> None:
+    """Register advertiser with company_activity over max length returns 400."""
+    init_data = _make_valid_init_data("test_token", 11114)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="11114",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_adv = MagicMock()
+    mock_adv.save_advertiser_before_agreement = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["advertiser_registration_service"] = mock_adv
+    long_activity = "x" * 501
+    response = client.post(
+        "/miniapp/api/register/advertiser",
+        json={
+            "init_data": init_data,
+            "phone": "+79001234567",
+            "brand": "Brand",
+            "city": "Moscow",
+            "company_activity": long_activity,
+            "display_name": "Advertiser",
+        },
+    )
+    assert response.status_code == 400
+    mock_adv.save_advertiser_before_agreement.assert_not_called()
 
 
 def test_miniapp_api_register_advertiser_site_link_validation(

@@ -46,7 +46,10 @@ from ugc_bot.domain.enums import (
     OrderType,
     WorkFormat,
 )
-from ugc_bot.miniapp.auth import validate_init_data_and_get_telegram_user_id
+from ugc_bot.miniapp.auth import (
+    get_telegram_user_id_and_username,
+    validate_init_data_and_get_telegram_user_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -245,9 +248,30 @@ def _get_telegram_user_id(request: Request, init_data: str) -> str:
         raise HTTPException(status_code=401, detail=str(e)) from e
 
 
+def _get_telegram_username_from_init_data(
+    request: Request, init_data: str
+) -> str | None:
+    """Return Telegram username from validated init_data, or None."""
+    config = request.app.state.config
+    try:
+        _, username = get_telegram_user_id_and_username(
+            init_data, config.bot.bot_token
+        )
+        return username
+    except ValueError:
+        return None
+
+
 async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
     """Ensure user exists (set_user), return internal user_id."""
-    external_id = _get_telegram_user_id(request, init_data)
+    config = request.app.state.config
+    try:
+        external_id, telegram_username = get_telegram_user_id_and_username(
+            init_data, config.bot.bot_token
+        )
+    except ValueError as e:
+        logger.warning("init_data validation failed: %s", e)
+        raise HTTPException(status_code=401, detail=str(e)) from e
     dispatcher = request.app.state.dispatcher
     user_role_service = dispatcher["user_role_service"]
     user = await user_role_service.get_user(
@@ -259,6 +283,7 @@ async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
             messenger_type=MessengerType.TELEGRAM,
             username=f"user_{external_id}",
             role_chosen=False,
+            telegram_username=telegram_username,
         )
         user = await user_role_service.get_user(
             external_id=external_id, messenger_type=MessengerType.TELEGRAM
@@ -406,6 +431,9 @@ async def register_advertiser(
 ) -> dict:
     """Save advertiser profile; return needs_agreement (confirm docs in UI)."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
+    telegram_username = _get_telegram_username_from_init_data(
+        request, body.init_data
+    )
     texts = await _get_validator_texts(request)
     err = _validate_advertiser_body(body, texts)
     if err:
@@ -421,6 +449,7 @@ async def register_advertiser(
             city=body.city,
             company_activity=body.company_activity,
             display_name=body.display_name,
+            telegram_username=telegram_username,
         )
     except UserNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -563,6 +592,7 @@ async def _blogger_register_create(
     blogger_gender: BloggerGender,
     topics_dict: dict,
     location_geometry: str | None = None,
+    telegram_username: str | None = None,
 ) -> dict:
     """Save new blogger before agreement; client calls confirm-agreement."""
     await svc.save_blogger_before_agreement(
@@ -579,7 +609,7 @@ async def _blogger_register_create(
         work_format=work_format,
         blogger_gender=blogger_gender,
         display_name=body.display_name,
-        telegram_username=body.telegram_username,
+        telegram_username=telegram_username,
         birth_date=birth_date_val,
         region=body.region,
         country=body.country,
@@ -631,6 +661,10 @@ async def register_blogger(
     blogger_gender = _parse_blogger_gender(body.blogger_gender)
     topics_dict = {"selected": body.topics}
     location_geometry = _location_geometry_from_blogger_request(body)
+    telegram_username = (
+        body.telegram_username
+        or _get_telegram_username_from_init_data(request, body.init_data)
+    )
     if existing is not None and existing.user_id == user_id:
         try:
             return await _blogger_register_update(
@@ -661,6 +695,7 @@ async def register_blogger(
             blogger_gender,
             topics_dict,
             location_geometry=location_geometry,
+            telegram_username=telegram_username,
         )
     except UserNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

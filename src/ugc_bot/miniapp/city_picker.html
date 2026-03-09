@@ -64,7 +64,7 @@
 </head>
 <body>
   <h1>Выберите город</h1>
-  <input type="text" id="search" placeholder="Начните вводить название города" autocomplete="off" />
+  <input type="text" id="search" placeholder="Загрузка…" autocomplete="off" disabled />
   <ul id="list">
     <li class="loading">Загрузка списка городов…</li>
   </ul>
@@ -76,8 +76,8 @@
       var listEl = document.getElementById('list');
 
       function normalizeForSearch(s) {
-        if (!s) return '';
-        return s.toLowerCase().replace(/\s+/g, ' ').trim();
+        if (s == null || s === '') return '';
+        return String(s).toLowerCase().replace(/\s+/g, ' ').trim();
       }
 
       function filterCities(cities, query) {
@@ -128,7 +128,9 @@
             searchEl.focus();
           })
           .catch(function() {
-            listEl.innerHTML = '<li class="error">Не удалось загрузить список городов. Попробуйте позже.</li>';
+            listEl.innerHTML =
+              '<li class="error">Не удалось загрузить список городов. Попробуйте позже.</li>';
+            searchEl.disabled = true;
           });
       }
 

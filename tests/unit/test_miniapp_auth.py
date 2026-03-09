@@ -7,13 +7,21 @@ import json
 import pytest
 
 from ugc_bot.miniapp.auth import (
+    get_telegram_user_id_and_username,
     validate_init_data_and_get_telegram_user_id,
 )
 
 
-def _make_valid_init_data(bot_token: str, user_id: int) -> str:
+def _make_valid_init_data(
+    bot_token: str,
+    user_id: int,
+    username: str | None = None,
+) -> str:
     """Build init_data string with valid HMAC for testing."""
-    user_json = json.dumps({"id": user_id, "first_name": "Test"})
+    user_obj: dict = {"id": user_id, "first_name": "Test"}
+    if username is not None:
+        user_obj["username"] = username
+    user_json = json.dumps(user_obj)
     data_dict = {
         "auth_date": "1609459200",
         "user": user_json,
@@ -131,3 +139,73 @@ class TestValidateInitDataAndGetTelegramUserId:
             init_data, bot_token
         )
         assert result == str(user_id)
+
+
+class TestGetTelegramUserIdAndUsername:
+    """Tests for get_telegram_user_id_and_username."""
+
+    def test_returns_user_id_and_username(self) -> None:
+        """Valid init_data with username returns (id, username)."""
+        bot_token = "test_bot_789"
+        init_data = _make_valid_init_data(
+            bot_token, 111222333, username="johndoe"
+        )
+        user_id, username = get_telegram_user_id_and_username(
+            init_data, bot_token
+        )
+        assert user_id == "111222333"
+        assert username == "johndoe"
+
+    def test_returns_none_username_when_missing(self) -> None:
+        """Valid init_data without username returns (id, None)."""
+        bot_token = "test_bot_789"
+        init_data = _make_valid_init_data(bot_token, 444555666)
+        user_id, username = get_telegram_user_id_and_username(
+            init_data, bot_token
+        )
+        assert user_id == "444555666"
+        assert username is None
+
+    def test_invalid_init_data_raises(self) -> None:
+        """Invalid init_data raises ValueError."""
+        with pytest.raises(ValueError):
+            get_telegram_user_id_and_username("", "token")
+
+    def test_empty_username_returns_none(self) -> None:
+        """Username that is empty string returns None."""
+        bot_token = "test_bot_789"
+        init_data = _make_valid_init_data(bot_token, 777888999, username="")
+        _, username = get_telegram_user_id_and_username(init_data, bot_token)
+        assert username is None
+
+    def test_whitespace_username_returns_none(self) -> None:
+        """Username that is only whitespace returns None."""
+        bot_token = "test_bot_789"
+        init_data = _make_valid_init_data(bot_token, 123456, username="   ")
+        _, username = get_telegram_user_id_and_username(init_data, bot_token)
+        assert username is None
+
+    def test_non_string_username_returns_none(self) -> None:
+        """User object with non-string username (e.g. number) returns None."""
+        bot_token = "test_bot_789"
+        user_obj = {"id": 321654, "username": 12345}
+        user_json = json.dumps(user_obj)
+        data_dict = {"auth_date": "1609459200", "user": user_json}
+        data_check_parts = sorted(
+            (k + "=" + v for k, v in data_dict.items()),
+            key=lambda x: x.split("=", 1)[0],
+        )
+        data_check_string = "\n".join(data_check_parts)
+        secret_key = hmac.new(
+            b"WebAppData", bot_token.encode(), hashlib.sha256
+        ).digest()
+        computed_hash = hmac.new(
+            secret_key, data_check_string.encode(), hashlib.sha256
+        ).hexdigest()
+        data_dict["hash"] = computed_hash
+        init_data = "&".join(k + "=" + v for k, v in sorted(data_dict.items()))
+        user_id, username = get_telegram_user_id_and_username(
+            init_data, bot_token
+        )
+        assert user_id == "321654"
+        assert username is None
