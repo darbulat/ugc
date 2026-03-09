@@ -78,6 +78,13 @@
     .agreement-checkbox input { width: auto; margin-top: 4px; }
     .instagram-instruction { margin: 12px 0; white-space: pre-wrap; }
     .instagram-instruction a { color: var(--tg-theme-link-color, #2481cc); }
+    .instagram-unconfirmed-warning {
+      margin: 12px 0; padding: 14px; border-radius: 10px;
+      background: var(--tg-theme-secondary-bg-color, #fef3cd);
+      border: 1px solid var(--tg-theme-hint-color, #d4a017);
+      color: var(--tg-theme-text-color, #1a1a1a);
+      font-weight: 600; font-size: 0.95rem; line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -301,6 +308,9 @@
   <div id="screen-blogger-dashboard" class="screen">
     <h1>Личный кабинет креатора</h1>
     <p class="hint">Управление профилем и заказами.</p>
+    <div id="blogger-instagram-warning" class="instagram-unconfirmed-warning" style="display: none;">
+      ⚠️ Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.
+    </div>
     <button type="button" class="btn" id="btn-blogger-confirm-instagram" style="display: none;">✅ Подтвердить Instagram</button>
     <button type="button" class="btn" id="btn-blogger-orders">Мои заказы</button>
     <div id="block-blogger-orders-list" style="display: none; margin-top: 16px;">
@@ -565,9 +575,11 @@
 
       function updateBloggerDashboardState(me) {
         var btn = document.getElementById('btn-blogger-confirm-instagram');
+        var warning = document.getElementById('blogger-instagram-warning');
         if (!btn) return;
         var show = me && me.has_blogger_profile && me.blogger_profile && !me.blogger_profile.confirmed;
         btn.style.display = show ? 'block' : 'none';
+        if (warning) warning.style.display = show ? 'block' : 'none';
       }
 
       document.getElementById('screen-role-choice').querySelectorAll('[data-role]').forEach(function(btn) {
