@@ -145,6 +145,28 @@
         });
       }
 
+      function geocodeForward(query) {
+        var initData = getInitData();
+        if (initData) {
+          return api('/geocode/forward', { city: query });
+        }
+        return fetch(base + '/miniapp/api/geocode/forward/public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ city: query })
+        }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(function(j) {
+              throw new Error(parseApiError(j.detail, r.statusText));
+            }).catch(function(e) {
+              if (e instanceof SyntaxError) throw new Error(r.statusText || 'Ошибка запроса');
+              throw e;
+            });
+          }
+          return r.json();
+        });
+      }
+
       function runSearch() {
         var query = (citySearch && citySearch.value || '').trim();
         if (!query) {
@@ -158,7 +180,7 @@
           mapHint.textContent = 'Поиск…';
           mapHint.className = 'hint';
         }
-        api('/geocode/forward', { city: query })
+        geocodeForward(query)
           .then(function(data) {
             var lat = data && (typeof data.lat === 'number' ? data.lat : parseFloat(data.lat));
             var lon = data && (typeof data.lon === 'number' ? data.lon : parseFloat(data.lon));
@@ -186,9 +208,7 @@
           .catch(function(err) {
             if (mapHint) {
               var msg = (err && err.message) ? err.message : 'Город не найден';
-              if (msg === 'No initData') {
-                msg = 'Откройте мини-приложение из Telegram';
-              } else if (msg === 'City could not be found.' || msg.indexOf('could not be found') !== -1) {
+              if (msg === 'City could not be found.' || msg.indexOf('could not be found') !== -1) {
                 msg = 'Город не найден';
               }
               mapHint.textContent = msg;

@@ -777,6 +777,14 @@ class ForwardGeocodeRequest(BaseModel):
     country: str | None = None
 
 
+class ForwardGeocodePublicRequest(BaseModel):
+    """Public forward geocode request (no auth, e.g. when opened in browser)."""
+
+    city: str
+    region: str | None = None
+    country: str | None = None
+
+
 class ForwardGeocodeResponse(BaseModel):
     """Forward geocode result: lat, lon, city, region, country."""
 
@@ -820,6 +828,38 @@ async def forward_geocode(
     city/region/country use the cache.
     """
     await _ensure_user_and_get_id(request, body.init_data)
+    if not (body.city or "").strip():
+        raise HTTPException(status_code=400, detail="city is required")
+    dispatcher = request.app.state.dispatcher
+    svc = dispatcher["blogger_registration_service"]
+    result = await svc.resolve_city_to_coordinates(
+        body.city.strip(),
+        region=body.region or None,
+        country=body.country or None,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="City could not be found.",
+        )
+    lat, lon, region, country = result
+    return ForwardGeocodeResponse(
+        lat=lat,
+        lon=lon,
+        city=body.city.strip(),
+        region=region,
+        country=country,
+    )
+
+
+@router.post("/geocode/forward/public", response_model=ForwardGeocodeResponse)
+async def forward_geocode_public(
+    request: Request, body: ForwardGeocodePublicRequest
+) -> ForwardGeocodeResponse:
+    """Geocode city name without auth (e.g. mini app opened in browser).
+
+    Same geocoder as /geocode/forward; search works when initData is missing.
+    """
     if not (body.city or "").strip():
         raise HTTPException(status_code=400, detail="city is required")
     dispatcher = request.app.state.dispatcher

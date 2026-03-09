@@ -848,6 +848,40 @@ def test_miniapp_api_geocode_forward_success(client: TestClient) -> None:
     assert data["country"] == "Россия"
 
 
+def test_miniapp_api_geocode_forward_public_success(client: TestClient) -> None:
+    """POST /geocode/forward/public returns lat, lon, city without init_data."""
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.resolve_city_to_coordinates = AsyncMock(
+        return_value=(55.8304, 49.0661, "Республика Татарстан", "Россия")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/geocode/forward/public",
+        json={"city": "Казань"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["lat"] == 55.8304
+    assert data["lon"] == 49.0661
+    assert data["city"] == "Казань"
+
+
+def test_miniapp_api_geocode_forward_public_404_when_not_found(
+    client: TestClient,
+) -> None:
+    """POST /geocode/forward/public returns 404 when city not found."""
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.resolve_city_to_coordinates = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/geocode/forward/public",
+        json={"city": "NonexistentCity"},
+    )
+    assert response.status_code == 404
+
+
 def test_miniapp_api_geocode_forward_400_empty_city(client: TestClient) -> None:
     """POST /geocode/forward returns 400 when city is empty."""
     init_data = _make_valid_init_data("test_token", 77786)
