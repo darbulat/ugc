@@ -72,6 +72,12 @@
     #block-blogger-city-map { margin-top: 8px; }
     #blogger-city-map { width: 100%; height: 240px; border-radius: 8px; border: 1px solid var(--tg-theme-hint-color, #ccc); }
     #blg-city-map-hint { font-size: 0.85rem; color: var(--tg-theme-hint-color, #999); margin-top: 4px; }
+    .agreements-links { margin: 12px 0; }
+    .agreements-links a { display: block; margin-bottom: 8px; color: var(--tg-theme-link-color, #2481cc); }
+    .agreement-checkbox { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0; cursor: pointer; }
+    .agreement-checkbox input { width: auto; margin-top: 4px; }
+    .instagram-instruction { margin: 12px 0; white-space: pre-wrap; }
+    .instagram-instruction a { color: var(--tg-theme-link-color, #2481cc); }
   </style>
 </head>
 <body>
@@ -174,6 +180,34 @@
     <button type="button" class="btn btn-secondary" id="back-from-blogger">Назад</button>
   </div>
 
+  <div id="screen-agreements-advertiser" class="screen">
+    <h1>Подтверждение согласия</h1>
+    <p class="hint" id="agreements-adv-intro">Ознакомьтесь с документами платформы и подтвердите согласие.</p>
+    <div id="agreements-adv-links" class="agreements-links"></div>
+    <p class="hint" id="agreements-adv-fallback" style="display: none;">Подтвердите согласие с документами платформы.</p>
+    <label class="agreement-checkbox">
+      <input type="checkbox" id="adv-agree-checkbox">
+      <span>Я подтверждаю согласие с документами платформы</span>
+    </label>
+    <div id="adv-agreement-error" class="error"></div>
+    <button type="button" class="btn" id="btn-confirm-adv-agreement">✅ Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="back-from-adv-agreements">Назад</button>
+  </div>
+
+  <div id="screen-agreements-blogger" class="screen">
+    <h1>Подтверждение согласия</h1>
+    <p class="hint" id="agreements-blg-intro">Ознакомьтесь с документами платформы и подтвердите согласие.</p>
+    <div id="agreements-blg-links" class="agreements-links"></div>
+    <p class="hint" id="agreements-blg-fallback" style="display: none;">Подтвердите согласие с документами платформы.</p>
+    <label class="agreement-checkbox">
+      <input type="checkbox" id="blg-agree-checkbox">
+      <span>Я подтверждаю согласие с документами платформы</span>
+    </label>
+    <div id="blg-agreement-error" class="error"></div>
+    <button type="button" class="btn" id="btn-confirm-blg-agreement">✅ Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="back-from-blg-agreements">Назад</button>
+  </div>
+
   <div id="screen-advertiser-dashboard" class="screen">
     <h1>Личный кабинет рекламодателя</h1>
     <p class="hint">Создайте заказ или посмотрите список заказов.</p>
@@ -267,6 +301,7 @@
   <div id="screen-blogger-dashboard" class="screen">
     <h1>Личный кабинет креатора</h1>
     <p class="hint">Управление профилем и заказами.</p>
+    <button type="button" class="btn" id="btn-blogger-confirm-instagram" style="display: none;">✅ Подтвердить Instagram</button>
     <button type="button" class="btn" id="btn-blogger-orders">Мои заказы</button>
     <div id="block-blogger-orders-list" style="display: none; margin-top: 16px;">
       <h2 style="font-size: 1.1rem;">Мои заказы</h2>
@@ -275,6 +310,15 @@
     </div>
     <button type="button" class="btn btn-secondary" id="btn-blogger-update-profile">Обновить профиль</button>
     <button type="button" class="btn btn-secondary" id="btn-blogger-change-role">Сменить роль</button>
+  </div>
+
+  <div id="screen-instagram-verification" class="screen">
+    <h1>Подтверждение Instagram</h1>
+    <div id="instagram-verification-instruction" class="instagram-instruction"></div>
+    <p class="hint">Ваш код (действует 15 минут):</p>
+    <div id="instagram-verification-code" class="instagram-code" style="font-family: monospace; padding: 12px; background: var(--tg-theme-secondary-bg-color, #eee); border-radius: 8px; margin: 8px 0; word-break: break-all;"></div>
+    <button type="button" class="btn" id="btn-instagram-open">Открыть Instagram</button>
+    <button type="button" class="btn btn-secondary" id="btn-instagram-verification-back">В личный кабинет</button>
   </div>
 
   <script>
@@ -423,6 +467,44 @@
         }
       }
 
+      function fillAgreementsLinks(containerId, fallbackId) {
+        var container = document.getElementById(containerId);
+        var fallbackEl = fallbackId ? document.getElementById(fallbackId) : null;
+        if (!container) return;
+        var cfg = window._config || {};
+        var offer = (cfg.docs_offer_url || '').trim();
+        var privacy = (cfg.docs_privacy_url || '').trim();
+        var consent = (cfg.docs_consent_url || '').trim();
+        container.innerHTML = '';
+        if (offer) {
+          var a = document.createElement('a');
+          a.href = offer;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = '\uD83D\uDCC4 Оферта';
+          container.appendChild(a);
+        }
+        if (privacy) {
+          var b = document.createElement('a');
+          b.href = privacy;
+          b.target = '_blank';
+          b.rel = 'noopener';
+          b.textContent = '\uD83D\uDD12 Политика конфиденциальности';
+          container.appendChild(b);
+        }
+        if (consent) {
+          var c = document.createElement('a');
+          c.href = consent;
+          c.target = '_blank';
+          c.rel = 'noopener';
+          c.textContent = '\uD83D\uDCDE Согласие на обработку персональных данных';
+          container.appendChild(c);
+        }
+        if (fallbackEl) {
+          fallbackEl.style.display = (offer || privacy || consent) ? 'none' : 'block';
+        }
+      }
+
       function fillOrderConfig(config) {
         if (!config) return;
         var bloggersEl = document.getElementById('ord-bloggers');
@@ -481,6 +563,13 @@
         if (blgBtn) blgBtn.textContent = (me && me.has_blogger_profile) ? 'Обновить' : 'Зарегистрироваться';
       }
 
+      function updateBloggerDashboardState(me) {
+        var btn = document.getElementById('btn-blogger-confirm-instagram');
+        if (!btn) return;
+        var show = me && me.has_blogger_profile && me.blogger_profile && !me.blogger_profile.confirmed;
+        btn.style.display = show ? 'block' : 'none';
+      }
+
       document.getElementById('screen-role-choice').querySelectorAll('[data-role]').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var role = this.getAttribute('data-role');
@@ -495,6 +584,7 @@
             }
           } else if (role === 'blogger') {
             if (me && me.has_blogger_profile) {
+              updateBloggerDashboardState(me);
               showScreen('screen-blogger-dashboard');
             } else {
               fillBloggerForm(me && me.blogger_profile);
@@ -649,6 +739,55 @@
         }
       });
 
+      document.getElementById('btn-confirm-adv-agreement').addEventListener('click', function() {
+        var errEl = document.getElementById('adv-agreement-error');
+        var cb = document.getElementById('adv-agree-checkbox');
+        errEl.textContent = '';
+        if (!cb || !cb.checked) {
+          errEl.textContent = 'Подтвердите согласие с документами платформы';
+          return;
+        }
+        var btn = document.getElementById('btn-confirm-adv-agreement');
+        if (btn) btn.disabled = true;
+        api('/register/advertiser/confirm-agreement', {}).then(function() {
+          return loadMe();
+        }).then(function() {
+          showScreen('screen-advertiser-dashboard');
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка';
+        }).then(function() {
+          if (btn) btn.disabled = false;
+        });
+      });
+      document.getElementById('back-from-adv-agreements').addEventListener('click', function() {
+        showScreen('screen-register-advertiser');
+      });
+
+      document.getElementById('btn-confirm-blg-agreement').addEventListener('click', function() {
+        var errEl = document.getElementById('blg-agreement-error');
+        var cb = document.getElementById('blg-agree-checkbox');
+        errEl.textContent = '';
+        if (!cb || !cb.checked) {
+          errEl.textContent = 'Подтвердите согласие с документами платформы';
+          return;
+        }
+        var btn = document.getElementById('btn-confirm-blg-agreement');
+        if (btn) btn.disabled = true;
+        api('/register/blogger/confirm-agreement', {}).then(function() {
+          return loadMe();
+        }).then(function(me) {
+          updateBloggerDashboardState(me || window._me);
+          showScreen('screen-blogger-dashboard');
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка';
+        }).then(function() {
+          if (btn) btn.disabled = false;
+        });
+      });
+      document.getElementById('back-from-blg-agreements').addEventListener('click', function() {
+        showScreen('screen-register-blogger');
+      });
+
       document.getElementById('btn-change-role-from-adv').addEventListener('click', function() {
         updateRoleChoiceHint();
         showScreen('screen-role-choice');
@@ -676,10 +815,16 @@
         };
         var advSubmitBtn = document.getElementById('btn-submit-advertiser');
         if (advSubmitBtn) advSubmitBtn.disabled = true;
-        api('/register/advertiser', payload).then(function() {
-          return loadMe();
-        }).then(function() {
-          showScreen('screen-advertiser-dashboard');
+        api('/register/advertiser', payload).then(function(res) {
+          if (res.needs_agreement) {
+            return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
+              fillAgreementsLinks('agreements-adv-links', 'agreements-adv-fallback');
+              document.getElementById('adv-agree-checkbox').checked = false;
+              document.getElementById('adv-agreement-error').textContent = '';
+              showScreen('screen-agreements-advertiser');
+            });
+          }
+          return loadMe().then(function() { showScreen('screen-advertiser-dashboard'); });
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
@@ -724,14 +869,55 @@
           payload.lat = parseFloat(latEl.value);
           payload.lon = parseFloat(lonEl.value);
         }
-        api('/register/blogger', payload).then(function() {
-          return loadMe();
-        }).then(function() {
-          showScreen('screen-blogger-dashboard');
+        api('/register/blogger', payload).then(function(res) {
+          if (res.needs_agreement) {
+            return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
+              fillAgreementsLinks('agreements-blg-links', 'agreements-blg-fallback');
+              document.getElementById('blg-agree-checkbox').checked = false;
+              document.getElementById('blg-agreement-error').textContent = '';
+              showScreen('screen-agreements-blogger');
+            });
+          }
+          return loadMe().then(function(me) {
+            updateBloggerDashboardState(me || window._me);
+            showScreen('screen-blogger-dashboard');
+          });
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
           if (blgSubmitBtn) blgSubmitBtn.disabled = false;
+        });
+      });
+
+      document.getElementById('btn-blogger-confirm-instagram').addEventListener('click', function() {
+        api('/blogger/instagram-verification/start', {}).then(function(res) {
+          if (res.already_confirmed) {
+            return loadMe().then(function(me) {
+              updateBloggerDashboardState(me || window._me);
+              showScreen('screen-blogger-dashboard');
+            });
+          }
+          window._instagramVerificationUrl = res.instagram_url || '';
+          var instrEl = document.getElementById('instagram-verification-instruction');
+          var codeEl = document.getElementById('instagram-verification-code');
+          if (instrEl) instrEl.innerHTML = (res.instruction || '').replace(/\n/g, '<br>');
+          if (codeEl) codeEl.textContent = res.code || '';
+          showScreen('screen-instagram-verification');
+        }).catch(function(err) {
+          var hint = document.querySelector('#screen-blogger-dashboard .hint');
+          if (hint) hint.textContent = (err && err.message) || 'Ошибка загрузки';
+        });
+      });
+
+      document.getElementById('btn-instagram-open').addEventListener('click', function() {
+        var url = window._instagramVerificationUrl;
+        if (url && tg && typeof tg.openLink === 'function') tg.openLink(url);
+        else if (url) window.open(url, '_blank');
+      });
+      document.getElementById('btn-instagram-verification-back').addEventListener('click', function() {
+        loadMe().then(function(me) {
+          updateBloggerDashboardState(me || window._me);
+          showScreen('screen-blogger-dashboard');
         });
       });
 
@@ -944,6 +1130,7 @@
         if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
         } else if (me.has_blogger_profile && !me.has_advertiser_profile) {
+          updateBloggerDashboardState(me);
           showScreen('screen-blogger-dashboard');
         } else if (me.has_advertiser_profile && me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');

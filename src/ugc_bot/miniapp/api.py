@@ -83,13 +83,17 @@ CONTENT_USAGE_OPTIONS = [
 
 
 class ConfigResponse(BaseModel):
-    """Miniapp config: blogger counts, content usage, bot username."""
+    """Miniapp config: blogger counts, content usage, bot username, doc URLs."""
 
     allowed_blogger_counts: list[int]
     content_usage_options: list[
         dict[str, str]
     ]  # [{"value": "...", "label": "..."}]
     bot_username: str = ""
+    docs_offer_url: str = ""
+    docs_privacy_url: str = ""
+    docs_consent_url: str = ""
+    admin_instagram_username: str = ""
 
 
 class RegisterAdvertiserRequest(BaseModel):
@@ -276,6 +280,7 @@ def _blogger_profile_to_dict(blogger, user) -> dict | None:
     return {
         "display_name": getattr(user, "username", None) or "",
         "instagram_url": blogger.instagram_url,
+        "confirmed": getattr(blogger, "confirmed", False),
         "birth_date": birth_str,
         "topics": topics,
         "city": blogger.city,
@@ -332,7 +337,7 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
 
 @router.post("/config", response_model=ConfigResponse)
 async def config(request: Request, body: InitDataBody) -> ConfigResponse:
-    """Return miniapp config: blogger counts, content usage, bot username."""
+    """Return miniapp config: counts, content usage, bot username, doc URLs."""
     _ = await _ensure_user_and_get_id(request, body.init_data)
     cfg = request.app.state.config
     counts = sorted(cfg.order.get_allowed_blogger_counts_set())
@@ -340,10 +345,24 @@ async def config(request: Request, body: InitDataBody) -> ConfigResponse:
         {"value": val, "label": label} for val, label in CONTENT_USAGE_OPTIONS
     ]
     bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
+    docs = getattr(cfg, "docs", None)
+    docs_offer_url = (docs.docs_offer_url or "").strip() if docs else ""
+    docs_privacy_url = (docs.docs_privacy_url or "").strip() if docs else ""
+    docs_consent_url = (docs.docs_consent_url or "").strip() if docs else ""
+    instagram_cfg = getattr(cfg, "instagram", None)
+    admin_instagram_username = (
+        (instagram_cfg.admin_instagram_username or "").strip().lstrip("@")
+        if instagram_cfg
+        else ""
+    )
     return ConfigResponse(
         allowed_blogger_counts=counts,
         content_usage_options=options,
         bot_username=bot_username,
+        docs_offer_url=docs_offer_url,
+        docs_privacy_url=docs_privacy_url,
+        docs_consent_url=docs_consent_url,
+        admin_instagram_username=admin_instagram_username,
     )
 
 
@@ -385,7 +404,7 @@ def _validate_advertiser_body(
 async def register_advertiser(
     request: Request, body: RegisterAdvertiserRequest
 ) -> dict:
-    """Register current user as advertiser (same validation as bot)."""
+    """Save advertiser profile; return needs_agreement (confirm docs in UI)."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     texts = await _get_validator_texts(request)
     err = _validate_advertiser_body(body, texts)
@@ -394,7 +413,7 @@ async def register_advertiser(
     dispatcher = request.app.state.dispatcher
     svc = dispatcher["advertiser_registration_service"]
     try:
-        profile = await svc.register_advertiser(
+        profile = await svc.save_advertiser_before_agreement(
             user_id=user_id,
             phone=body.phone,
             brand=body.brand,
@@ -407,7 +426,26 @@ async def register_advertiser(
         raise HTTPException(status_code=404, detail=str(e)) from e
     except AdvertiserRegistrationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"ok": True, "user_id": str(profile.user_id)}
+    return {
+        "ok": True,
+        "user_id": str(profile.user_id),
+        "needs_agreement": True,
+    }
+
+
+@router.post("/register/advertiser/confirm-agreement")
+async def confirm_advertiser_agreement_endpoint(
+    request: Request, body: InitDataBody
+) -> dict:
+    """Confirm advertiser agreement with platform documents."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    svc = dispatcher["advertiser_registration_service"]
+    try:
+        await svc.confirm_advertiser_agreement(user_id=user_id)
+    except UserNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"ok": True}
 
 
 def _parse_work_format(s: str) -> WorkFormat:
@@ -526,7 +564,7 @@ async def _blogger_register_create(
     topics_dict: dict,
     location_geometry: str | None = None,
 ) -> dict:
-    """Create new blogger profile. Raises HTTPException on error."""
+    """Save new blogger before agreement; client calls confirm-agreement."""
     await svc.save_blogger_before_agreement(
         user_id=user_id,
         instagram_url=instagram_url,
@@ -547,10 +585,7 @@ async def _blogger_register_create(
         country=body.country,
         location_geometry=location_geometry,
     )
-    await svc.confirm_blogger_agreement(
-        user_id=user_id, telegram_username=body.telegram_username
-    )
-    return {"ok": True, "user_id": str(user_id)}
+    return {"ok": True, "user_id": str(user_id), "needs_agreement": True}
 
 
 @router.post("/register/blogger")
@@ -631,6 +666,73 @@ async def register_blogger(
         raise HTTPException(status_code=404, detail=str(e)) from e
     except BloggerRegistrationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/register/blogger/confirm-agreement")
+async def confirm_blogger_agreement_endpoint(
+    request: Request, body: InitDataBody
+) -> dict:
+    """Confirm blogger agreement with platform documents."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    svc = dispatcher["blogger_registration_service"]
+    try:
+        await svc.confirm_blogger_agreement(user_id=user_id)
+    except UserNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"ok": True}
+
+
+def _format_instagram_verification_instruction(
+    template: str, admin_username: str
+) -> str:
+    """Format verification instruction with Instagram URL for miniapp."""
+    base = "https://www.instagram.com/"
+    username = (admin_username or "usemycontent").strip().lstrip("@")
+    url = f"{base}{username}/"
+    return template.replace("{url}", url)
+
+
+@router.post("/blogger/instagram-verification/start")
+async def start_instagram_verification(
+    request: Request, body: InitDataBody
+) -> dict:
+    """Start Instagram verification: return code and instruction (like bot)."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    profile_service = dispatcher["profile_service"]
+    blogger = await profile_service.get_blogger_profile(user_id)
+    if blogger is None:
+        raise HTTPException(
+            status_code=404, detail="Blogger profile not found."
+        )
+    if getattr(blogger, "confirmed", False):
+        return {"already_confirmed": True}
+    verification_service = dispatcher["instagram_verification_service"]
+    bot_texts = dispatcher["bot_texts_service"]
+    config = request.app.state.config
+    verification = await verification_service.generate_code(user_id)
+    locale = getattr(config.market, "default_locale", "ru")
+    instruction_tpl = await bot_texts.get(
+        "msg_instagram_verify_instruction", locale
+    )
+    instagram_cfg = getattr(config, "instagram", None)
+    admin_username = (
+        getattr(instagram_cfg, "admin_instagram_username", None) or ""
+        if instagram_cfg
+        else ""
+    )
+    instruction = _format_instagram_verification_instruction(
+        instruction_tpl, admin_username
+    )
+    base_url = "https://www.instagram.com/"
+    username = (admin_username or "usemycontent").strip().lstrip("@")
+    instagram_url = f"{base_url}{username}/"
+    return {
+        "code": verification.code,
+        "instruction": instruction,
+        "instagram_url": instagram_url,
+    }
 
 
 def _parse_birth_date_optional(

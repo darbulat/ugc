@@ -416,7 +416,7 @@ def test_miniapp_api_register_advertiser_user_not_found_404(
     mock_urs.set_user = AsyncMock(return_value=user)
     mock_urs.get_user = AsyncMock(return_value=user)
     mock_adv = MagicMock()
-    mock_adv.register_advertiser = AsyncMock(
+    mock_adv.save_advertiser_before_agreement = AsyncMock(
         side_effect=UserNotFoundError("User not found")
     )
     dispatcher = app.state.dispatcher
@@ -453,7 +453,7 @@ def test_miniapp_api_register_advertiser_registration_error_400(
     mock_urs.set_user = AsyncMock(return_value=user)
     mock_urs.get_user = AsyncMock(return_value=user)
     mock_adv = MagicMock()
-    mock_adv.register_advertiser = AsyncMock(
+    mock_adv.save_advertiser_before_agreement = AsyncMock(
         side_effect=AdvertiserRegistrationError("Invalid phone")
     )
     dispatcher = app.state.dispatcher
@@ -474,7 +474,7 @@ def test_miniapp_api_register_advertiser_registration_error_400(
 def test_miniapp_api_register_advertiser_success(
     client: TestClient,
 ) -> None:
-    """POST /miniapp/api/register/advertiser with valid data returns 200."""
+    """Register advertiser with valid data returns 200 and needs_agreement."""
     init_data = _make_valid_init_data("test_token", 99999)
     user_id = uuid4()
     user = User(
@@ -498,7 +498,7 @@ def test_miniapp_api_register_advertiser_success(
     mock_urs.set_user = AsyncMock(return_value=user)
     mock_urs.get_user = AsyncMock(return_value=user)
     mock_adv = MagicMock()
-    mock_adv.register_advertiser = AsyncMock(return_value=profile)
+    mock_adv.save_advertiser_before_agreement = AsyncMock(return_value=profile)
     dispatcher = app.state.dispatcher
     dispatcher["user_role_service"] = mock_urs
     dispatcher["advertiser_registration_service"] = mock_adv
@@ -514,6 +514,272 @@ def test_miniapp_api_register_advertiser_success(
     data = response.json()
     assert data.get("ok") is True
     assert data.get("user_id") == str(user_id)
+    assert data.get("needs_agreement") is True
+
+
+def test_miniapp_api_confirm_advertiser_agreement_success(
+    client: TestClient,
+) -> None:
+    """POST register/advertiser/confirm-agreement returns 200."""
+    init_data = _make_valid_init_data("test_token", 99999)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="99999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advuser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_adv = MagicMock()
+    mock_adv.confirm_advertiser_agreement = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["advertiser_registration_service"] = mock_adv
+    response = client.post(
+        "/miniapp/api/register/advertiser/confirm-agreement",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 200
+    assert response.json().get("ok") is True
+    mock_adv.confirm_advertiser_agreement.assert_called_once_with(
+        user_id=user_id
+    )
+
+
+def test_miniapp_api_confirm_advertiser_agreement_user_not_found_404(
+    client: TestClient,
+) -> None:
+    """POST confirm-advertiser-agreement when user not found returns 404."""
+    from ugc_bot.application.errors import UserNotFoundError
+
+    init_data = _make_valid_init_data("test_token", 99998)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="99998",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_adv = MagicMock()
+    mock_adv.confirm_advertiser_agreement = AsyncMock(
+        side_effect=UserNotFoundError("User not found")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["advertiser_registration_service"] = mock_adv
+    response = client.post(
+        "/miniapp/api/register/advertiser/confirm-agreement",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 404
+
+
+def test_miniapp_api_confirm_blogger_agreement_success(
+    client: TestClient,
+) -> None:
+    """POST register/blogger/confirm-agreement returns 200."""
+    init_data = _make_valid_init_data("test_token", 55555)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55555",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.confirm_blogger_agreement = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger/confirm-agreement",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 200
+    assert response.json().get("ok") is True
+    mock_blogger_svc.confirm_blogger_agreement.assert_called_once()
+
+
+def test_miniapp_api_confirm_blogger_agreement_user_not_found_404(
+    client: TestClient,
+) -> None:
+    """POST confirm-blogger-agreement when user not found returns 404."""
+    from ugc_bot.application.errors import UserNotFoundError
+
+    init_data = _make_valid_init_data("test_token", 55554)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55554",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.confirm_blogger_agreement = AsyncMock(
+        side_effect=UserNotFoundError("User not found")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger/confirm-agreement",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 404
+
+
+def test_miniapp_api_instagram_verification_start_success(
+    client: TestClient,
+) -> None:
+    """POST instagram-verification/start returns code and instruction."""
+    init_data = _make_valid_init_data("test_token", 55553)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55553",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=False,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="РФ",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        blogger_gender=None,
+    )
+    verification_code = MagicMock()
+    verification_code.code = "ABC123"
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_blogger_profile = AsyncMock(return_value=blogger)
+    mock_verif = MagicMock()
+    mock_verif.generate_code = AsyncMock(return_value=verification_code)
+    mock_texts = MagicMock()
+    mock_texts.get = AsyncMock(return_value="Send code to {url}. Your code:")
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    dispatcher["instagram_verification_service"] = mock_verif
+    dispatcher["bot_texts_service"] = mock_texts
+    response = client.post(
+        "/miniapp/api/blogger/instagram-verification/start",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "code" in data
+    assert data["code"] == "ABC123"
+    assert "instruction" in data
+    assert "instagram_url" in data
+    assert "instagram.com" in data["instagram_url"]
+    assert data.get("already_confirmed") is not True
+
+
+def test_miniapp_api_instagram_verification_start_already_confirmed(
+    client: TestClient,
+) -> None:
+    """instagram-verification/start when confirmed returns already_confirmed."""
+    init_data = _make_valid_init_data("test_token", 55552)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55552",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    blogger = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/test",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="РФ",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        blogger_gender=None,
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_blogger_profile = AsyncMock(return_value=blogger)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/blogger/instagram-verification/start",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 200
+    assert response.json().get("already_confirmed") is True
+
+
+def test_miniapp_api_instagram_verification_start_no_blogger_404(
+    client: TestClient,
+) -> None:
+    """POST instagram-verification/start when no blogger profile returns 404."""
+    init_data = _make_valid_init_data("test_token", 55551)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55551",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_blogger_profile = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    response = client.post(
+        "/miniapp/api/blogger/instagram-verification/start",
+        json={"init_data": init_data},
+    )
+    assert response.status_code == 404
 
 
 def test_miniapp_api_create_order_success(client: TestClient) -> None:
@@ -738,6 +1004,16 @@ def test_miniapp_api_orders_list_includes_payment_link(
     assert "payment_link" in orders[0]
 
 
+def test_miniapp_api_payment_link_for_order_empty_username(
+    client: TestClient,
+) -> None:
+    """_payment_link_for_order returns empty when bot_username empty."""
+    from ugc_bot.miniapp.api import _payment_link_for_order
+
+    assert _payment_link_for_order("order-123", "") == ""
+    assert _payment_link_for_order("order-123", "  ") == ""
+
+
 def test_miniapp_api_geocode_reverse_success(client: TestClient) -> None:
     """POST /geocode/reverse returns city, region, country for valid coords."""
     init_data = _make_valid_init_data("test_token", 77781)
@@ -865,6 +1141,18 @@ def test_miniapp_api_geocode_forward_public_success(client: TestClient) -> None:
     assert data["lat"] == 55.8304
     assert data["lon"] == 49.0661
     assert data["city"] == "Казань"
+
+
+def test_miniapp_api_geocode_forward_public_400_empty_city(
+    client: TestClient,
+) -> None:
+    """POST /geocode/forward/public returns 400 when city is empty."""
+    response = client.post(
+        "/miniapp/api/geocode/forward/public",
+        json={"city": ""},
+    )
+    assert response.status_code == 400
+    assert "city" in response.json().get("detail", "").lower()
 
 
 def test_miniapp_api_geocode_forward_public_404_when_not_found(
@@ -1844,6 +2132,55 @@ def test_miniapp_api_register_blogger_invalid_audience_gender_400(
     assert "audience_gender" in response.json().get("detail", "")
 
 
+def test_miniapp_api_register_blogger_omitted_blogger_gender_uses_default(
+    client: TestClient,
+) -> None:
+    """POST register/blogger with blogger_gender omitted (null) uses MALE."""
+    init_data = _make_valid_init_data("test_token", 55550)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55550",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
+        return_value=MagicMock()
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/user",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "display_name": "User",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json().get("needs_agreement") is True
+    call_kw = mock_blogger_svc.save_blogger_before_agreement.call_args[1]
+    assert call_kw.get("blogger_gender") is not None
+
+
 def test_miniapp_api_register_blogger_invalid_blogger_gender_400(
     client: TestClient,
 ) -> None:
@@ -1890,7 +2227,7 @@ def test_miniapp_api_register_blogger_invalid_blogger_gender_400(
 
 
 def test_miniapp_api_register_blogger_success(client: TestClient) -> None:
-    """POST /miniapp/api/register/blogger with valid data returns 200."""
+    """POST register/blogger with valid data returns 200 and needs_agreement."""
     init_data = _make_valid_init_data("test_token", 55555)
     user_id = uuid4()
     user = User(
@@ -1909,7 +2246,6 @@ def test_miniapp_api_register_blogger_success(client: TestClient) -> None:
     mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
         return_value=MagicMock()
     )
-    mock_blogger_svc.confirm_blogger_agreement = AsyncMock(return_value=None)
     dispatcher = app.state.dispatcher
     dispatcher["user_role_service"] = mock_urs
     dispatcher["blogger_registration_service"] = mock_blogger_svc
@@ -1936,6 +2272,7 @@ def test_miniapp_api_register_blogger_success(client: TestClient) -> None:
     data = response.json()
     assert data.get("ok") is True
     assert data.get("user_id") == str(user_id)
+    assert data.get("needs_agreement") is True
 
 
 def test_miniapp_api_register_blogger_with_lat_lon_passes_location_geometry(
@@ -1994,6 +2331,58 @@ def test_miniapp_api_register_blogger_with_lat_lon_passes_location_geometry(
     assert call_kw.get("city") == "Москва"
     assert call_kw.get("region") == "Московская область"
     assert call_kw.get("country") == "Россия"
+
+
+def test_miniapp_api_register_blogger_lat_lon_out_of_range_skips_geometry(
+    client: TestClient,
+) -> None:
+    """Blogger register with invalid lat/lon passes location_geometry=None."""
+    init_data = _make_valid_init_data("test_token", 55556)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55556",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
+        return_value=MagicMock()
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/test",
+            "city": "Moscow",
+            "lat": 100.0,
+            "lon": 0.0,
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "blogger_gender": "m",
+            "display_name": "TestUser",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 200
+    mock_blogger_svc.save_blogger_before_agreement.assert_called_once()
+    call_kw = mock_blogger_svc.save_blogger_before_agreement.call_args[1]
+    assert call_kw.get("location_geometry") is None
 
 
 def test_miniapp_api_register_blogger_update_raises_user_not_found_404(
@@ -2180,6 +2569,123 @@ def test_miniapp_api_register_blogger_update_own_profile_success(
     assert response.json().get("user_id") == str(user_id)
     mock_blogger_svc.update_blogger_profile.assert_called_once()
     mock_blogger_svc.save_blogger_before_agreement.assert_not_called()
+
+
+def test_miniapp_api_register_blogger_invalid_birth_date_400(
+    client: TestClient,
+) -> None:
+    """POST register/blogger with invalid birth_date returns 400."""
+    init_data = _make_valid_init_data("test_token", 55559)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55559",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/user",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "blogger_gender": "m",
+            "display_name": "User",
+            "birth_date": "32.13.1990",
+        },
+    )
+    assert response.status_code == 400
+    assert "detail" in response.json()
+
+
+def test_miniapp_api_register_blogger_update_city_not_resolved_400(
+    client: TestClient,
+) -> None:
+    """POST register/blogger update when city not resolved returns 400."""
+    from ugc_bot.application.services.blogger_registration_service import (
+        UpdateBloggerProfileResult,
+    )
+    from ugc_bot.domain.enums import AudienceGender, WorkFormat
+
+    init_data = _make_valid_init_data("test_token", 55560)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="55560",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    existing = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/me",
+        confirmed=True,
+        city="Moscow",
+        topics={"selected": ["tech"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="РФ",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(
+        return_value=existing
+    )
+    mock_blogger_svc.update_blogger_profile = AsyncMock(
+        return_value=UpdateBloggerProfileResult(
+            profile=None, location_geometry_resolved=False
+        )
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/me",
+            "city": "UnresolvableCity",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "blogger_gender": "m",
+            "display_name": "User",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 400
+    assert "City" in response.json().get("detail", "")
 
 
 def test_miniapp_api_register_blogger_update_raises_registration_error_400(
@@ -2694,7 +3200,7 @@ def test_miniapp_api_register_advertiser_service_error(
     mock_urs = MagicMock()
     mock_urs.get_user = AsyncMock(return_value=user)
     mock_svc = MagicMock()
-    mock_svc.register_advertiser = AsyncMock(
+    mock_svc.save_advertiser_before_agreement = AsyncMock(
         side_effect=AdvertiserRegistrationError("Brand already exists.")
     )
     dispatcher = app.state.dispatcher
