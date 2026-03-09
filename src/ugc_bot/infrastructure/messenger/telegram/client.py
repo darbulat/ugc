@@ -262,6 +262,12 @@ def _build_markup(keyboard: Keyboard | None):
 
 def _inline_button(button: Button) -> InlineKeyboardButton:
     """Build InlineKeyboardButton from neutral Button."""
+    web_app_url = getattr(button, "web_app_url", None)
+    if web_app_url:
+        return InlineKeyboardButton(
+            text=button.text,
+            web_app=WebAppInfo(url=web_app_url),
+        )
     if button.url:
         return InlineKeyboardButton(text=button.text, url=button.url)
     return InlineKeyboardButton(

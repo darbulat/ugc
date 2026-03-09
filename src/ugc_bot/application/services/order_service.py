@@ -1,12 +1,16 @@
 """Service for order creation and validation."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.errors import (
+    OrderCreationError,
+    OrderNotFoundError,
+    UserNotFoundError,
+)
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
     parse_geography,
@@ -217,5 +221,77 @@ class OrderService:
                 )
 
             return order
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    _EDITABLE_ORDER_STATUSES = frozenset(
+        {OrderStatus.NEW, OrderStatus.PENDING_MODERATION}
+    )
+
+    async def update_order(
+        self,
+        order_id: UUID,
+        advertiser_id: UUID,
+        product_link: str,
+        offer_text: str,
+        barter_description: Optional[str],
+        price: float,
+        bloggers_needed: int,
+        order_type: OrderType,
+        content_usage: Optional[str] = None,
+        deadlines: Optional[str] = None,
+        geography: Optional[str] = None,
+    ) -> Order:
+        """Update order if it belongs to advertiser and status allows edit."""
+
+        async def _run(session: object | None) -> Order:
+            order = await self.order_repo.get_by_id(order_id, session=session)
+            if order is None:
+                raise OrderNotFoundError("Order not found.")
+            if order.advertiser_id != advertiser_id:
+                raise OrderNotFoundError("Order not found.")
+            if order.status not in self._EDITABLE_ORDER_STATUSES:
+                raise OrderCreationError(
+                    "Order cannot be edited in current status."
+                )
+            product_link_clean, offer_text_clean, barter_clean = (
+                _validate_order_input(
+                    product_link,
+                    offer_text,
+                    price,
+                    barter_description,
+                    bloggers_needed,
+                    self.allowed_blogger_counts,
+                    self.max_order_price,
+                )
+            )
+            geography_clean = (geography or "").strip() or None
+            order_location_geometry = order.location_geometry
+            if geography_clean and self.geocoder:
+                spec = parse_geography(geography_clean)
+                if spec is not None:
+                    queries = get_geometry_queries_from_spec(spec)
+                    if queries:
+                        geocoder = self.geocoder
+                        order_location_geometry = (
+                            await geocoder.get_multipolygon_wkt_for_queries(
+                                queries
+                            )
+                        )
+            updated = replace(
+                order,
+                product_link=product_link_clean,
+                offer_text=offer_text_clean,
+                barter_description=barter_clean,
+                price=price,
+                bloggers_needed=bloggers_needed,
+                order_type=order_type,
+                content_usage=(content_usage or "").strip() or None,
+                deadlines=(deadlines or "").strip() or None,
+                geography=geography_clean,
+                location_geometry=order_location_geometry,
+            )
+            await self.order_repo.save(updated, session=session)
+            return updated
 
         return await with_optional_tx(self.transaction_manager, _run)

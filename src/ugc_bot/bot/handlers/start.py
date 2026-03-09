@@ -26,6 +26,7 @@ from ugc_bot.bot.handlers.keyboards import (
     advertiser_menu_inline_keyboard,
     build_support_telegram_url,
     main_menu_inline_keyboard,
+    miniapp_open_inline_keyboard,
     role_inline_keyboard,
 )
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
@@ -33,6 +34,39 @@ from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
+
+
+@router.message(Command("app"))
+async def app_miniapp_command(
+    message: Message,
+    config: AppConfig,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Send a message with button to open Mini App (registration and orders)."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    base_url = getattr(config.webhook, "webhook_base_url", None) or ""
+    if not base_url:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Mini App временно недоступен.",
+        )
+        return
+    keyboard = miniapp_open_inline_keyboard(base_url)
+    if not keyboard.rows:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Mini App временно недоступен.",
+        )
+        return
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Откройте приложение для регистрации и создания заказов.",
+        keyboard=keyboard,
+    )
 
 
 @router.message(CommandStart())

@@ -125,10 +125,12 @@ class AdvertiserRegistrationService:
         city: Optional[str] = None,
         company_activity: Optional[str] = None,
         display_name: Optional[str] = None,
+        telegram_username: Optional[str] = None,
     ) -> AdvertiserProfile:
         """Save advertiser profile and update user before consent confirmation.
 
         Does not set agreement_confirmed_at and does not run referral/metrics.
+        When telegram_username is provided, updates user.telegram.
         """
         phone = phone.strip()
         brand = brand.strip()
@@ -166,6 +168,11 @@ class AdvertiserRegistrationService:
                 if display_name and display_name.strip()
                 else user.username
             )
+            telegram = (
+                telegram_username
+                if telegram_username is not None
+                else user.telegram
+            )
             updated_user = User(
                 user_id=user.user_id,
                 external_id=user.external_id,
@@ -176,7 +183,7 @@ class AdvertiserRegistrationService:
                 created_at=user.created_at,
                 role_chosen_at=role_chosen_at,
                 last_role_reminder_at=user.last_role_reminder_at,
-                telegram=user.telegram,
+                telegram=telegram,
                 admin=user.admin,
                 referral_code=user.referral_code,
                 referral_payout_rate=getattr(

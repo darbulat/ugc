@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>UGC — Регистрация и заказы</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #000);
+      min-height: 100vh;
+      padding: 12px;
+    }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    h1 { font-size: 1.2rem; margin: 0 0 12px 0; font-weight: 600; }
+    .hint { font-size: 0.9rem; color: var(--tg-theme-hint-color, #999); margin-bottom: 12px; }
+    label { display: block; font-size: 0.9rem; margin-top: 10px; margin-bottom: 4px; }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--tg-theme-hint-color, #ccc);
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #000);
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    .btn {
+      display: block;
+      width: 100%;
+      margin-top: 16px;
+      padding: 14px 20px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      background: var(--tg-theme-button-color, #2481cc);
+      color: var(--tg-theme-button-text-color, #fff);
+      cursor: pointer;
+      text-align: center;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--tg-theme-secondary-bg-color, #e0e0e0);
+      color: var(--tg-theme-text-color, #000);
+      margin-top: 8px;
+    }
+    .role-btns .btn { margin-bottom: 8px; }
+    .error { color: #c00; font-size: 0.9rem; margin-top: 8px; }
+    .success { color: #0a0; font-size: 0.9rem; margin-top: 8px; }
+    #orders-list, #blogger-orders-list { list-style: none; padding: 0; margin: 0; }
+    #orders-list li, #blogger-orders-list li {
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+    }
+    #orders-list li strong, #blogger-orders-list li strong { display: block; margin-bottom: 4px; }
+    #orders-list .btn-pay, #blogger-orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
+    .date-row { display: flex; gap: 8px; margin-top: 4px; }
+    .date-row select { flex: 1; min-width: 0; }
+    .payment-link { display: block; margin-top: 8px; word-break: break-all; font-size: 0.9rem; }
+    .payment-link a { color: var(--tg-theme-link-color, #2481cc); }
+    #block-blogger-city-map { margin-top: 8px; }
+    #blogger-city-map { width: 100%; height: 240px; border-radius: 8px; border: 1px solid var(--tg-theme-hint-color, #ccc); }
+    #blg-city-map-hint { font-size: 0.85rem; color: var(--tg-theme-hint-color, #999); margin-top: 4px; }
+    .agreements-links { margin: 12px 0; }
+    .agreements-links a { display: block; margin-bottom: 8px; color: var(--tg-theme-link-color, #2481cc); }
+    .agreement-checkbox { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0; cursor: pointer; }
+    .agreement-checkbox input { width: auto; margin-top: 4px; }
+    .instagram-instruction { margin: 12px 0; white-space: pre-wrap; }
+    .instagram-instruction a { color: var(--tg-theme-link-color, #2481cc); }
+    .instagram-unconfirmed-warning {
+      margin: 12px 0; padding: 14px; border-radius: 10px;
+      background: var(--tg-theme-secondary-bg-color, #fef3cd);
+      border: 1px solid var(--tg-theme-hint-color, #d4a017);
+      color: var(--tg-theme-text-color, #1a1a1a);
+      font-weight: 600; font-size: 0.95rem; line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div id="screen-loading" class="screen active">
+    <p class="hint">Загрузка…</p>
+  </div>
+
+  <div id="screen-role-choice" class="screen">
+    <h1>Выберите роль</h1>
+    <p class="hint" id="role-choice-hint">Зарегистрируйтесь как рекламодатель или креатор.</p>
+    <div class="role-btns">
+      <button type="button" class="btn" data-role="advertiser">Рекламодатель</button>
+      <button type="button" class="btn" data-role="blogger">Креатор</button>
+    </div>
+  </div>
+
+  <div id="screen-register-advertiser" class="screen">
+    <h1>Регистрация рекламодателя</h1>
+    <form id="form-advertiser">
+      <label for="adv-name">Имя / как к вам обращаться</label>
+      <input type="text" id="adv-name" name="display_name" maxlength="100" placeholder="Иван">
+      <label for="adv-phone">Телефон *</label>
+      <input type="tel" id="adv-phone" name="phone" required placeholder="89001234567">
+      <label for="adv-brand">Бренд / компания *</label>
+      <input type="text" id="adv-brand" name="brand" required>
+      <label for="adv-site">Сайт</label>
+      <input type="url" id="adv-site" name="site_link" placeholder="https://">
+      <label for="adv-city">Город</label>
+      <input type="text" id="adv-city" name="city">
+      <label for="adv-activity">Чем занимается компания</label>
+      <input type="text" id="adv-activity" name="company_activity">
+      <div id="adv-error" class="error"></div>
+      <button type="submit" class="btn" id="btn-submit-advertiser">Зарегистрироваться</button>
+    </form>
+    <button type="button" class="btn btn-secondary" id="back-from-advertiser">Назад</button>
+  </div>
+
+  <div id="screen-register-blogger" class="screen">
+    <h1>Регистрация креатора</h1>
+    <form id="form-blogger">
+      <label for="blg-name">Имя / ник (как к вам обращаться) *</label>
+      <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Не ссылка на Instagram">
+      <label for="blg-instagram">Ссылка на Instagram *</label>
+      <input type="url" id="blg-instagram" name="instagram_url" required placeholder="https://instagram.com/username">
+      <label>Дата рождения *</label>
+      <div class="date-row">
+        <select id="blg-birth-day" name="birth_day" required aria-label="День"></select>
+        <select id="blg-birth-month" name="birth_month" required aria-label="Месяц"></select>
+        <select id="blg-birth-year" name="birth_year" required aria-label="Год"></select>
+      </div>
+      <label for="blg-topics">Тематики (через запятую, от 1 до 10) *</label>
+      <input type="text" id="blg-topics" name="topics" required placeholder="красота, мода, путешествия">
+      <label for="blg-city">Город *</label>
+      <input type="text" id="blg-city" name="city" required readonly placeholder="Выберите на карте или найдите город">
+      <input type="hidden" id="blg-region" name="region">
+      <input type="hidden" id="blg-country" name="country">
+      <input type="hidden" id="blg-lat" name="lat">
+      <input type="hidden" id="blg-lon" name="lon">
+      <button type="button" class="btn btn-secondary" id="btn-blogger-city-map">Выбрать на карте</button>
+      <div id="block-blogger-city-map" style="display: none;">
+        <p class="hint" id="blg-city-map-hint">Нажмите на карту или найдите город</p>
+        <div class="city-search-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <input type="text" id="blg-city-search" placeholder="Поиск по городу" style="flex: 1; margin-top: 0;">
+          <button type="button" class="btn btn-secondary" id="btn-blogger-city-search" style="margin-top: 0; width: auto; flex-shrink: 0;">Найти</button>
+        </div>
+        <div id="blogger-city-map"></div>
+      </div>
+      <label for="blg-audience-geo">География аудитории *</label>
+      <input type="text" id="blg-audience-geo" name="audience_geo" required placeholder="РФ, СНГ и т.д.">
+      <label for="blg-age-min">Возраст аудитории (от)</label>
+      <input type="number" id="blg-age-min" name="audience_age_min" value="18" min="1">
+      <label for="blg-age-max">Возраст аудитории (до)</label>
+      <input type="number" id="blg-age-max" name="audience_age_max" value="35" min="1">
+      <label for="blg-audience-gender">Пол аудитории</label>
+      <select id="blg-audience-gender" name="audience_gender">
+        <option value="all">Вся</option>
+        <option value="m">Мужская</option>
+        <option value="f">Женская</option>
+      </select>
+      <label for="blg-price">Цена за интеграцию (₽) *</label>
+      <input type="number" id="blg-price" name="price" required min="1" step="1">
+      <label for="blg-barter">Готов к бартеру</label>
+      <select id="blg-barter" name="barter">
+        <option value="false">Нет</option>
+        <option value="true">Да</option>
+      </select>
+      <label for="blg-work-format">Формат работы</label>
+      <select id="blg-work-format" name="work_format">
+        <option value="ugc_only">Только UGC</option>
+        <option value="ads_in_account">Реклама в сторис/постах</option>
+      </select>
+      <label for="blg-blogger-gender">Ваш пол</label>
+      <select id="blg-blogger-gender" name="blogger_gender">
+        <option value="m">Мужской</option>
+        <option value="f">Женский</option>
+      </select>
+      <div id="blg-error" class="error"></div>
+      <button type="submit" class="btn" id="btn-submit-blogger">Зарегистрироваться</button>
+    </form>
+    <button type="button" class="btn btn-secondary" id="back-from-blogger">Назад</button>
+  </div>
+
+  <div id="screen-agreements-advertiser" class="screen">
+    <h1>Подтверждение согласия</h1>
+    <p class="hint" id="agreements-adv-intro">Ознакомьтесь с документами платформы и подтвердите согласие.</p>
+    <div id="agreements-adv-links" class="agreements-links"></div>
+    <p class="hint" id="agreements-adv-fallback" style="display: none;">Подтвердите согласие с документами платформы.</p>
+    <label class="agreement-checkbox">
+      <input type="checkbox" id="adv-agree-checkbox">
+      <span>Я подтверждаю согласие с документами платформы</span>
+    </label>
+    <div id="adv-agreement-error" class="error"></div>
+    <button type="button" class="btn" id="btn-confirm-adv-agreement">✅ Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="back-from-adv-agreements">Назад</button>
+  </div>
+
+  <div id="screen-agreements-blogger" class="screen">
+    <h1>Подтверждение согласия</h1>
+    <p class="hint" id="agreements-blg-intro">Ознакомьтесь с документами платформы и подтвердите согласие.</p>
+    <div id="agreements-blg-links" class="agreements-links"></div>
+    <p class="hint" id="agreements-blg-fallback" style="display: none;">Подтвердите согласие с документами платформы.</p>
+    <label class="agreement-checkbox">
+      <input type="checkbox" id="blg-agree-checkbox">
+      <span>Я подтверждаю согласие с документами платформы</span>
+    </label>
+    <div id="blg-agreement-error" class="error"></div>
+    <button type="button" class="btn" id="btn-confirm-blg-agreement">✅ Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="back-from-blg-agreements">Назад</button>
+  </div>
+
+  <div id="screen-advertiser-dashboard" class="screen">
+    <h1>Личный кабинет рекламодателя</h1>
+    <p class="hint">Создайте заказ или посмотрите список заказов.</p>
+    <button type="button" class="btn" id="btn-show-create-order">Создать заказ</button>
+    <button type="button" class="btn btn-secondary" id="btn-show-orders-list">Мои заказы</button>
+    <button type="button" class="btn btn-secondary" id="btn-adv-update-profile">Обновить профиль</button>
+    <button type="button" class="btn btn-secondary" id="btn-change-role-from-adv">Сменить роль</button>
+
+    <div id="block-create-order" style="display: none; margin-top: 16px;">
+      <h2 style="font-size: 1.1rem;">Новый заказ</h2>
+      <form id="form-order">
+        <label for="ord-link">Ссылка на товар *</label>
+        <input type="url" id="ord-link" name="product_link" required>
+        <label for="ord-offer">Текст оффера *</label>
+        <textarea id="ord-offer" name="offer_text" required></textarea>
+        <label for="ord-price">Бюджет (₽) *</label>
+        <input type="number" id="ord-price" name="price" required min="0" step="1">
+        <label for="ord-bloggers">Количество креаторов</label>
+        <select id="ord-bloggers" name="bloggers_needed"></select>
+        <label for="ord-type">Тип заказа</label>
+        <select id="ord-type" name="order_type">
+          <option value="ugc_only">Только UGC</option>
+          <option value="ugc_plus_placement">UGC + размещение</option>
+        </select>
+        <label for="ord-barter">Описание бартера (если бартер)</label>
+        <input type="text" id="ord-barter" name="barter_description">
+        <label for="ord-geography">География</label>
+        <input type="text" id="ord-geography" name="geography" placeholder="Москва, РФ">
+        <label for="ord-deadlines">Сроки</label>
+        <input type="text" id="ord-deadlines" name="deadlines" placeholder="7 дней">
+        <label for="ord-content-usage">Использование контента</label>
+        <select id="ord-content-usage" name="content_usage">
+          <option value="">— не выбрано —</option>
+        </select>
+        <div id="ord-error" class="error"></div>
+        <div id="ord-success" class="success"></div>
+        <button type="submit" class="btn" id="btn-submit-order">Создать заказ</button>
+      </form>
+      <button type="button" class="btn btn-secondary" id="hide-create-order">Скрыть форму</button>
+    </div>
+
+    <div id="block-orders-list" style="display: none; margin-top: 16px;">
+      <h2 style="font-size: 1.1rem;">Мои заказы</h2>
+      <ul id="orders-list"></ul>
+      <button type="button" class="btn btn-secondary" id="hide-orders-list">Закрыть</button>
+    </div>
+  </div>
+
+  <div id="screen-order-detail" class="screen">
+    <h1 id="order-detail-title">Заказ</h1>
+    <p class="hint" id="order-detail-status"></p>
+    <form id="form-order-detail">
+      <label for="ord-detail-link">Ссылка на товар *</label>
+      <input type="url" id="ord-detail-link" name="product_link" required>
+      <label for="ord-detail-offer">Текст оффера *</label>
+      <textarea id="ord-detail-offer" name="offer_text" required></textarea>
+      <label for="ord-detail-price">Бюджет (₽) *</label>
+      <input type="number" id="ord-detail-price" name="price" required min="0" step="1">
+      <label for="ord-detail-bloggers">Количество креаторов</label>
+      <select id="ord-detail-bloggers" name="bloggers_needed"></select>
+      <label for="ord-detail-type">Тип заказа</label>
+      <select id="ord-detail-type" name="order_type">
+        <option value="ugc_only">Только UGC</option>
+        <option value="ugc_plus_placement">UGC + размещение</option>
+      </select>
+      <label for="ord-detail-barter">Описание бартера (если бартер)</label>
+      <input type="text" id="ord-detail-barter" name="barter_description">
+      <label for="ord-detail-geography">География</label>
+      <input type="text" id="ord-detail-geography" name="geography" placeholder="Москва, РФ">
+      <label for="ord-detail-deadlines">Сроки</label>
+      <input type="text" id="ord-detail-deadlines" name="deadlines" placeholder="7 дней">
+      <label for="ord-detail-content-usage">Использование контента</label>
+      <select id="ord-detail-content-usage" name="content_usage">
+        <option value="">— не выбрано —</option>
+      </select>
+      <div id="ord-detail-error" class="error"></div>
+      <div id="ord-detail-success" class="success"></div>
+      <button type="submit" class="btn" id="btn-order-detail-save">Сохранить</button>
+    </form>
+    <a id="btn-order-detail-pay" href="#" target="_blank" rel="noopener" class="btn btn-pay" style="display: none;">Оплатить</a>
+    <button type="button" class="btn btn-secondary" id="btn-order-detail-back">Назад к списку</button>
+  </div>
+
+  <div id="screen-blogger-done" class="screen">
+    <h1>Вы зарегистрированы как креатор</h1>
+    <p class="hint">Возвращайтесь в бота, чтобы получать офферы и управлять профилем.</p>
+    <button type="button" class="btn" id="btn-close-blogger">Закрыть</button>
+    <button type="button" class="btn btn-secondary" id="btn-change-role-from-blogger">Сменить роль</button>
+  </div>
+
+  <div id="screen-blogger-dashboard" class="screen">
+    <h1>Личный кабинет креатора</h1>
+    <p class="hint">Управление профилем и заказами.</p>
+    <div id="blogger-instagram-warning" class="instagram-unconfirmed-warning" style="display: none;">
+      ⚠️ Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.
+    </div>
+    <button type="button" class="btn" id="btn-blogger-confirm-instagram" style="display: none;">✅ Подтвердить Instagram</button>
+    <button type="button" class="btn" id="btn-blogger-orders">Мои заказы</button>
+    <div id="block-blogger-orders-list" style="display: none; margin-top: 16px;">
+      <h2 style="font-size: 1.1rem;">Мои заказы</h2>
+      <ul id="blogger-orders-list"></ul>
+      <button type="button" class="btn btn-secondary" id="hide-blogger-orders-list">Закрыть</button>
+    </div>
+    <button type="button" class="btn btn-secondary" id="btn-blogger-update-profile">Обновить профиль</button>
+    <button type="button" class="btn btn-secondary" id="btn-blogger-change-role">Сменить роль</button>
+  </div>
+
+  <div id="screen-instagram-verification" class="screen">
+    <h1>Подтверждение Instagram</h1>
+    <div id="instagram-verification-instruction" class="instagram-instruction"></div>
+    <p class="hint">Ваш код (действует 15 минут):</p>
+    <div id="instagram-verification-code" class="instagram-code" style="font-family: monospace; padding: 12px; background: var(--tg-theme-secondary-bg-color, #eee); border-radius: 8px; margin: 8px 0; word-break: break-all;"></div>
+    <button type="button" class="btn" id="btn-instagram-open">Открыть Instagram</button>
+    <button type="button" class="btn btn-secondary" id="btn-instagram-verification-back">В личный кабинет</button>
+  </div>
+
+  <script>
+    (function() {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+      }
+
+      var base = window.location.origin;
+      function getInitData() {
+        return (tg && tg.initData) ? tg.initData : '';
+      }
+
+      function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(function(el) { el.classList.remove('active'); });
+        var el = document.getElementById(id);
+        if (el) el.classList.add('active');
+      }
+
+      function openPaymentAndClose(url) {
+        if (!url || url === '#') return;
+        if (tg && typeof tg.openLink === 'function') tg.openLink(url);
+        else window.open(url, '_blank');
+        if (tg && typeof tg.close === 'function') tg.close();
+      }
+
+      function parseApiError(detail, fallback) {
+        if (typeof detail === 'string') return detail;
+        if (Array.isArray(detail) && detail.length > 0) {
+          var first = detail[0];
+          return (first && first.msg) ? first.msg : JSON.stringify(detail);
+        }
+        return fallback || 'Ошибка запроса';
+      }
+
+      function api(path, body) {
+        var initData = getInitData();
+        if (!initData) return Promise.reject(new Error('No initData'));
+        var payload = typeof body === 'object' ? Object.assign({ init_data: initData }, body) : { init_data: initData };
+        return fetch(base + '/miniapp/api' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(function(j) {
+              throw new Error(parseApiError(j.detail, r.statusText));
+            }).catch(function(e) {
+              if (e instanceof SyntaxError) throw new Error(r.statusText || 'Ошибка запроса');
+              throw e;
+            });
+          }
+          return r.json();
+        });
+      }
+
+      function loadMe() {
+        return api('/me').then(function(data) {
+          window._me = data;
+          return data;
+        });
+      }
+
+      function loadConfig() {
+        return api('/config').then(function(data) {
+          window._config = data;
+          return data;
+        });
+      }
+
+      function fillBirthDateSelects() {
+        var day = document.getElementById('blg-birth-day');
+        var month = document.getElementById('blg-birth-month');
+        var year = document.getElementById('blg-birth-year');
+        if (!day || !month || !year) return;
+        day.innerHTML = '';
+        month.innerHTML = '';
+        year.innerHTML = '';
+        for (var d = 1; d <= 31; d++) {
+          var o = document.createElement('option');
+          o.value = d;
+          o.textContent = d;
+          day.appendChild(o);
+        }
+        var months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        for (var m = 1; m <= 12; m++) {
+          var o = document.createElement('option');
+          o.value = m;
+          o.textContent = months[m - 1];
+          month.appendChild(o);
+        }
+        var now = new Date();
+        var yEnd = now.getFullYear() - 10;
+        var yStart = now.getFullYear() - 100;
+        for (var y = yEnd; y >= yStart; y--) {
+          var o = document.createElement('option');
+          o.value = y;
+          o.textContent = y;
+          year.appendChild(o);
+        }
+      }
+
+      function fillAdvertiserForm(profile) {
+        if (!profile) return;
+        var set = function(id, val) {
+          var el = document.getElementById(id);
+          if (el && val != null && val !== '') el.value = val;
+        };
+        set('adv-name', profile.display_name);
+        set('adv-phone', profile.phone);
+        set('adv-brand', profile.brand);
+        set('adv-site', profile.site_link);
+        set('adv-city', profile.city);
+        set('adv-activity', profile.company_activity);
+      }
+
+      function fillBloggerForm(profile) {
+        if (!profile) return;
+        var set = function(id, val) {
+          var el = document.getElementById(id);
+          if (el && val != null && val !== '') el.value = val;
+        };
+        set('blg-name', profile.display_name);
+        set('blg-instagram', profile.instagram_url);
+        set('blg-city', profile.city);
+        set('blg-audience-geo', profile.audience_geo);
+        set('blg-age-min', profile.audience_age_min);
+        set('blg-age-max', profile.audience_age_max);
+        set('blg-audience-gender', profile.audience_gender);
+        set('blg-price', profile.price);
+        set('blg-barter', profile.barter ? 'true' : 'false');
+        set('blg-work-format', profile.work_format);
+        set('blg-blogger-gender', profile.blogger_gender);
+        if (profile.topics && profile.topics.length) {
+          set('blg-topics', profile.topics.join(', '));
+        }
+        if (profile.birth_date) {
+          var parts = profile.birth_date.split('.');
+          if (parts.length === 3) {
+            set('blg-birth-day', String(parseInt(parts[0], 10)));
+            set('blg-birth-month', String(parseInt(parts[1], 10)));
+            set('blg-birth-year', String(parseInt(parts[2], 10)));
+          }
+        }
+      }
+
+      function fillAgreementsLinks(containerId, fallbackId) {
+        var container = document.getElementById(containerId);
+        var fallbackEl = fallbackId ? document.getElementById(fallbackId) : null;
+        if (!container) return;
+        var cfg = window._config || {};
+        var offer = (cfg.docs_offer_url || '').trim();
+        var privacy = (cfg.docs_privacy_url || '').trim();
+        var consent = (cfg.docs_consent_url || '').trim();
+        container.innerHTML = '';
+        if (offer) {
+          var a = document.createElement('a');
+          a.href = offer;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = '\uD83D\uDCC4 Оферта';
+          container.appendChild(a);
+        }
+        if (privacy) {
+          var b = document.createElement('a');
+          b.href = privacy;
+          b.target = '_blank';
+          b.rel = 'noopener';
+          b.textContent = '\uD83D\uDD12 Политика конфиденциальности';
+          container.appendChild(b);
+        }
+        if (consent) {
+          var c = document.createElement('a');
+          c.href = consent;
+          c.target = '_blank';
+          c.rel = 'noopener';
+          c.textContent = '\uD83D\uDCDE Согласие на обработку персональных данных';
+          container.appendChild(c);
+        }
+        if (fallbackEl) {
+          fallbackEl.style.display = (offer || privacy || consent) ? 'none' : 'block';
+        }
+      }
+
+      function fillOrderConfig(config) {
+        if (!config) return;
+        var bloggersEl = document.getElementById('ord-bloggers');
+        var contentEl = document.getElementById('ord-content-usage');
+        if (bloggersEl) {
+          bloggersEl.innerHTML = '';
+          (config.allowed_blogger_counts || []).forEach(function(c) {
+            var o = document.createElement('option');
+            o.value = c;
+            o.textContent = c;
+            bloggersEl.appendChild(o);
+          });
+        }
+        if (contentEl) {
+          var opts = config.content_usage_options || [];
+          contentEl.innerHTML = '<option value="">— не выбрано —</option>';
+          opts.forEach(function(opt) {
+            var o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            contentEl.appendChild(o);
+          });
+        }
+      }
+
+      function fillOrderDetailSelects(config) {
+        if (!config) return;
+        var bloggersEl = document.getElementById('ord-detail-bloggers');
+        var contentEl = document.getElementById('ord-detail-content-usage');
+        if (bloggersEl) {
+          bloggersEl.innerHTML = '';
+          (config.allowed_blogger_counts || []).forEach(function(c) {
+            var o = document.createElement('option');
+            o.value = c;
+            o.textContent = c;
+            bloggersEl.appendChild(o);
+          });
+        }
+        if (contentEl) {
+          var opts = config.content_usage_options || [];
+          contentEl.innerHTML = '<option value="">— не выбрано —</option>';
+          opts.forEach(function(opt) {
+            var o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            contentEl.appendChild(o);
+          });
+        }
+      }
+
+      function updateRegisterButtonLabels() {
+        var me = window._me;
+        var advBtn = document.getElementById('btn-submit-advertiser');
+        var blgBtn = document.getElementById('btn-submit-blogger');
+        if (advBtn) advBtn.textContent = (me && me.has_advertiser_profile) ? 'Обновить' : 'Зарегистрироваться';
+        if (blgBtn) blgBtn.textContent = (me && me.has_blogger_profile) ? 'Обновить' : 'Зарегистрироваться';
+      }
+
+      function updateBloggerDashboardState(me) {
+        var btn = document.getElementById('btn-blogger-confirm-instagram');
+        var warning = document.getElementById('blogger-instagram-warning');
+        if (!btn) return;
+        var show = me && me.has_blogger_profile && me.blogger_profile && !me.blogger_profile.confirmed;
+        btn.style.display = show ? 'block' : 'none';
+        if (warning) warning.style.display = show ? 'block' : 'none';
+      }
+
+      document.getElementById('screen-role-choice').querySelectorAll('[data-role]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var role = this.getAttribute('data-role');
+          var me = window._me;
+          if (role === 'advertiser') {
+            if (me && me.has_advertiser_profile) {
+              showScreen('screen-advertiser-dashboard');
+            } else {
+              fillAdvertiserForm(me && me.advertiser_profile);
+              updateRegisterButtonLabels();
+              showScreen('screen-register-advertiser');
+            }
+          } else if (role === 'blogger') {
+            if (me && me.has_blogger_profile) {
+              updateBloggerDashboardState(me);
+              showScreen('screen-blogger-dashboard');
+            } else {
+              fillBloggerForm(me && me.blogger_profile);
+              updateRegisterButtonLabels();
+              showScreen('screen-register-blogger');
+            }
+          }
+        });
+      });
+
+      function updateRoleChoiceHint() {
+        var me = window._me;
+        var hint = document.getElementById('role-choice-hint');
+        if (hint) {
+          if (me && (me.has_advertiser_profile || me.has_blogger_profile)) {
+            hint.textContent = 'Можете зарегистрироваться как вторая роль или вернуться в кабинет.';
+          } else {
+            hint.textContent = 'Зарегистрируйтесь как рекламодатель или креатор.';
+          }
+        }
+      }
+
+      document.getElementById('back-from-advertiser').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+      document.getElementById('back-from-blogger').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+
+      document.getElementById('btn-adv-update-profile').addEventListener('click', function() {
+        fillAdvertiserForm(window._me && window._me.advertiser_profile);
+        updateRegisterButtonLabels();
+        showScreen('screen-register-advertiser');
+      });
+      document.getElementById('btn-blogger-update-profile').addEventListener('click', function() {
+        fillBloggerForm(window._me && window._me.blogger_profile);
+        updateRegisterButtonLabels();
+        showScreen('screen-register-blogger');
+      });
+      document.getElementById('btn-blogger-orders').addEventListener('click', function() {
+        var block = document.getElementById('block-blogger-orders-list');
+        var ul = document.getElementById('blogger-orders-list');
+        if (!block || !ul) return;
+        block.style.display = 'block';
+        ul.innerHTML = '';
+        api('/orders/list/creator').then(function(data) {
+          (data.orders || []).forEach(function(o) {
+            var li = document.createElement('li');
+            li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
+              o.status + ' · ' + o.price + ' ₽';
+            ul.appendChild(li);
+          });
+          if (!data.orders || data.orders.length === 0) {
+            ul.innerHTML = '<li>Вы пока не откликались на заказы</li>';
+          }
+        }).catch(function() {
+          ul.innerHTML = '<li class="error">Не удалось загрузить заказы</li>';
+        });
+      });
+      document.getElementById('hide-blogger-orders-list').addEventListener('click', function() {
+        var block = document.getElementById('block-blogger-orders-list');
+        if (block) block.style.display = 'none';
+      });
+
+      var bloggerCityMapInited = false;
+      var bloggerCityMapInstance = null;
+      var bloggerCityMarker = null;
+      var hintElCityMap = document.getElementById('blg-city-map-hint');
+      function initBloggerCityMap() {
+        if (!window.L) return;
+        var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+        bloggerCityMapInstance = map;
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            function(pos) {
+              var lat = pos.coords.latitude;
+              var lon = pos.coords.longitude;
+              if (bloggerCityMapInstance) bloggerCityMapInstance.setView([lat, lon], 12);
+            },
+            function() { /* leave default center */ },
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+          );
+        }
+        map.on('click', function(e) {
+          var lat = e.latlng.lat;
+          var lon = e.latlng.lng;
+          if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
+          else bloggerCityMarker = L.marker(e.latlng).addTo(map);
+          api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
+            document.getElementById('blg-city').value = data.city || '';
+            document.getElementById('blg-region').value = data.region || '';
+            document.getElementById('blg-country').value = data.country || '';
+            document.getElementById('blg-lat').value = String(lat);
+            document.getElementById('blg-lon').value = String(lon);
+            if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
+          }).catch(function() {
+            if (hintElCityMap) hintElCityMap.textContent = 'Не удалось определить город для этой точки';
+          });
+        });
+      }
+      document.getElementById('btn-blogger-city-map').addEventListener('click', function() {
+        var block = document.getElementById('block-blogger-city-map');
+        var mapEl = document.getElementById('blogger-city-map');
+        if (!block || !mapEl) return;
+        block.style.display = block.style.display === 'none' ? 'block' : 'none';
+        if (block.style.display === 'block' && !bloggerCityMapInited) {
+          bloggerCityMapInited = true;
+          setTimeout(initBloggerCityMap, 100);
+        }
+      });
+      document.getElementById('btn-blogger-city-search').addEventListener('click', function() {
+        var block = document.getElementById('block-blogger-city-map');
+        var query = document.getElementById('blg-city-search').value.trim();
+        if (!query) {
+          if (hintElCityMap) hintElCityMap.textContent = 'Введите название города';
+          return;
+        }
+        if (block) block.style.display = 'block';
+        if (!bloggerCityMapInited) {
+          bloggerCityMapInited = true;
+          setTimeout(initBloggerCityMap, 100);
+        }
+        api('/geocode/forward', { city: query }).then(function(data) {
+          document.getElementById('blg-city').value = data.city || '';
+          document.getElementById('blg-region').value = data.region || '';
+          document.getElementById('blg-country').value = data.country || '';
+          document.getElementById('blg-lat').value = String(data.lat);
+          document.getElementById('blg-lon').value = String(data.lon);
+          if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
+          function applyOnMap() {
+            if (bloggerCityMapInstance) {
+              bloggerCityMapInstance.setView([data.lat, data.lon], 12);
+              if (bloggerCityMarker) bloggerCityMarker.setLatLng([data.lat, data.lon]);
+              else bloggerCityMarker = L.marker([data.lat, data.lon]).addTo(bloggerCityMapInstance);
+            }
+          }
+          if (bloggerCityMapInstance) applyOnMap();
+          else setTimeout(applyOnMap, 250);
+        }).catch(function() {
+          if (hintElCityMap) hintElCityMap.textContent = 'Город не найден';
+        });
+      });
+      document.getElementById('blg-city-search').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btn-blogger-city-search').click();
+        }
+      });
+
+      document.getElementById('btn-confirm-adv-agreement').addEventListener('click', function() {
+        var errEl = document.getElementById('adv-agreement-error');
+        var cb = document.getElementById('adv-agree-checkbox');
+        errEl.textContent = '';
+        if (!cb || !cb.checked) {
+          errEl.textContent = 'Подтвердите согласие с документами платформы';
+          return;
+        }
+        var btn = document.getElementById('btn-confirm-adv-agreement');
+        if (btn) btn.disabled = true;
+        api('/register/advertiser/confirm-agreement', {}).then(function() {
+          return loadMe();
+        }).then(function() {
+          showScreen('screen-advertiser-dashboard');
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка';
+        }).then(function() {
+          if (btn) btn.disabled = false;
+        });
+      });
+      document.getElementById('back-from-adv-agreements').addEventListener('click', function() {
+        showScreen('screen-register-advertiser');
+      });
+
+      document.getElementById('btn-confirm-blg-agreement').addEventListener('click', function() {
+        var errEl = document.getElementById('blg-agreement-error');
+        var cb = document.getElementById('blg-agree-checkbox');
+        errEl.textContent = '';
+        if (!cb || !cb.checked) {
+          errEl.textContent = 'Подтвердите согласие с документами платформы';
+          return;
+        }
+        var btn = document.getElementById('btn-confirm-blg-agreement');
+        if (btn) btn.disabled = true;
+        api('/register/blogger/confirm-agreement', {}).then(function() {
+          return loadMe();
+        }).then(function(me) {
+          updateBloggerDashboardState(me || window._me);
+          showScreen('screen-blogger-dashboard');
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка';
+        }).then(function() {
+          if (btn) btn.disabled = false;
+        });
+      });
+      document.getElementById('back-from-blg-agreements').addEventListener('click', function() {
+        showScreen('screen-register-blogger');
+      });
+
+      document.getElementById('btn-change-role-from-adv').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+      document.getElementById('btn-change-role-from-blogger').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+      document.getElementById('btn-blogger-change-role').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+
+      document.getElementById('form-advertiser').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var errEl = document.getElementById('adv-error');
+        errEl.textContent = '';
+        var payload = {
+          phone: document.getElementById('adv-phone').value.trim(),
+          brand: document.getElementById('adv-brand').value.trim(),
+          site_link: document.getElementById('adv-site').value.trim() || null,
+          city: document.getElementById('adv-city').value.trim() || null,
+          company_activity: document.getElementById('adv-activity').value.trim() || null,
+          display_name: document.getElementById('adv-name').value.trim() || null
+        };
+        var advSubmitBtn = document.getElementById('btn-submit-advertiser');
+        if (advSubmitBtn) advSubmitBtn.disabled = true;
+        api('/register/advertiser', payload).then(function(res) {
+          if (res.needs_agreement) {
+            return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
+              fillAgreementsLinks('agreements-adv-links', 'agreements-adv-fallback');
+              document.getElementById('adv-agree-checkbox').checked = false;
+              document.getElementById('adv-agreement-error').textContent = '';
+              showScreen('screen-agreements-advertiser');
+            });
+          }
+          return loadMe().then(function() { showScreen('screen-advertiser-dashboard'); });
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка регистрации';
+        }).then(function() {
+          if (advSubmitBtn) advSubmitBtn.disabled = false;
+        });
+      });
+
+      document.getElementById('form-blogger').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var errEl = document.getElementById('blg-error');
+        var blgSubmitBtn = document.getElementById('btn-submit-blogger');
+        errEl.textContent = '';
+        if (blgSubmitBtn) blgSubmitBtn.disabled = true;
+        var topicsRaw = document.getElementById('blg-topics').value.trim();
+        var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
+        var day = document.getElementById('blg-birth-day').value;
+        var month = document.getElementById('blg-birth-month').value;
+        var year = document.getElementById('blg-birth-year').value;
+        var birthDateStr = (day && month && year) ? (day.padStart(2,'0') + '.' + month.padStart(2,'0') + '.' + year) : null;
+        var regionEl = document.getElementById('blg-region');
+        var countryEl = document.getElementById('blg-country');
+        var payload = {
+          display_name: document.getElementById('blg-name').value.trim(),
+          instagram_url: document.getElementById('blg-instagram').value.trim(),
+          birth_date: birthDateStr,
+          topics: topicsList,
+          city: document.getElementById('blg-city').value.trim(),
+          audience_geo: document.getElementById('blg-audience-geo').value.trim(),
+          audience_age_min: parseInt(document.getElementById('blg-age-min').value, 10) || 18,
+          audience_age_max: parseInt(document.getElementById('blg-age-max').value, 10) || 35,
+          audience_gender: document.getElementById('blg-audience-gender').value,
+          price: parseFloat(document.getElementById('blg-price').value) || 0,
+          barter: document.getElementById('blg-barter').value === 'true',
+          work_format: document.getElementById('blg-work-format').value,
+          blogger_gender: document.getElementById('blg-blogger-gender').value
+        };
+        if (regionEl && regionEl.value.trim()) payload.region = regionEl.value.trim();
+        if (countryEl && countryEl.value.trim()) payload.country = countryEl.value.trim();
+        var latEl = document.getElementById('blg-lat');
+        var lonEl = document.getElementById('blg-lon');
+        if (latEl && lonEl && latEl.value.trim() && lonEl.value.trim()) {
+          payload.lat = parseFloat(latEl.value);
+          payload.lon = parseFloat(lonEl.value);
+        }
+        api('/register/blogger', payload).then(function(res) {
+          if (res.needs_agreement) {
+            return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
+              fillAgreementsLinks('agreements-blg-links', 'agreements-blg-fallback');
+              document.getElementById('blg-agree-checkbox').checked = false;
+              document.getElementById('blg-agreement-error').textContent = '';
+              showScreen('screen-agreements-blogger');
+            });
+          }
+          return loadMe().then(function(me) {
+            updateBloggerDashboardState(me || window._me);
+            showScreen('screen-blogger-dashboard');
+          });
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка регистрации';
+        }).then(function() {
+          if (blgSubmitBtn) blgSubmitBtn.disabled = false;
+        });
+      });
+
+      document.getElementById('btn-blogger-confirm-instagram').addEventListener('click', function() {
+        api('/blogger/instagram-verification/start', {}).then(function(res) {
+          if (res.already_confirmed) {
+            return loadMe().then(function(me) {
+              updateBloggerDashboardState(me || window._me);
+              showScreen('screen-blogger-dashboard');
+            });
+          }
+          window._instagramVerificationUrl = res.instagram_url || '';
+          var instrEl = document.getElementById('instagram-verification-instruction');
+          var codeEl = document.getElementById('instagram-verification-code');
+          if (instrEl) instrEl.innerHTML = (res.instruction || '').replace(/\n/g, '<br>');
+          if (codeEl) codeEl.textContent = res.code || '';
+          showScreen('screen-instagram-verification');
+        }).catch(function(err) {
+          var hint = document.querySelector('#screen-blogger-dashboard .hint');
+          if (hint) hint.textContent = (err && err.message) || 'Ошибка загрузки';
+        });
+      });
+
+      document.getElementById('btn-instagram-open').addEventListener('click', function() {
+        var url = window._instagramVerificationUrl;
+        if (url && tg && typeof tg.openLink === 'function') tg.openLink(url);
+        else if (url) window.open(url, '_blank');
+      });
+      document.getElementById('btn-instagram-verification-back').addEventListener('click', function() {
+        loadMe().then(function(me) {
+          updateBloggerDashboardState(me || window._me);
+          showScreen('screen-blogger-dashboard');
+        });
+      });
+
+      document.getElementById('btn-show-create-order').addEventListener('click', function() {
+        document.getElementById('block-create-order').style.display = 'block';
+        document.getElementById('block-orders-list').style.display = 'none';
+        if (!window._config) loadConfig().then(fillOrderConfig);
+        else fillOrderConfig(window._config);
+      });
+      document.getElementById('hide-create-order').addEventListener('click', function() {
+        document.getElementById('block-create-order').style.display = 'none';
+      });
+      document.getElementById('btn-show-orders-list').addEventListener('click', function() {
+        document.getElementById('block-orders-list').style.display = 'block';
+        document.getElementById('block-create-order').style.display = 'none';
+        var ensureConfig = window._config ? Promise.resolve(window._config) : loadConfig().then(function(c) { window._config = c; return c; });
+        ensureConfig.then(function() {
+          return api('/orders/list');
+        }).then(function(data) {
+          var ul = document.getElementById('orders-list');
+          ul.innerHTML = '';
+          var cfg = window._config;
+          (data.orders || []).forEach(function(o) {
+            var li = document.createElement('li');
+            li.setAttribute('data-order-id', o.order_id);
+            li.style.cursor = 'pointer';
+            li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
+              o.status + ' · ' + o.price + ' ₽';
+            var payLink = o.payment_link;
+            if (!payLink && cfg && cfg.bot_username) {
+              var u = (cfg.bot_username || '').replace(/^@/, '').trim();
+              if (u) payLink = 'https://t.me/' + u + '?start=pay_' + o.order_id;
+            }
+            if (payLink) {
+              var payBtn = document.createElement('a');
+              payBtn.href = payLink;
+              payBtn.target = '_blank';
+              payBtn.rel = 'noopener';
+              payBtn.className = 'btn btn-pay';
+              payBtn.textContent = 'Оплатить';
+              payBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openPaymentAndClose(payLink);
+              });
+              li.appendChild(payBtn);
+            }
+            li.addEventListener('click', function(ev) {
+              if (ev.target && (ev.target.tagName === 'A' || ev.target.closest('a'))) return;
+              openOrderDetail(o.order_id);
+            });
+            ul.appendChild(li);
+          });
+          if (!data.orders || data.orders.length === 0) {
+            ul.innerHTML = '<li>Заказов пока нет</li>';
+          }
+        }).catch(function() {
+          var ul = document.getElementById('orders-list');
+          if (ul) ul.innerHTML = '<li class="error">Не удалось загрузить заказы</li>';
+        });
+      });
+      document.getElementById('hide-orders-list').addEventListener('click', function() {
+        document.getElementById('block-orders-list').style.display = 'none';
+      });
+
+      function openOrderDetail(orderId) {
+        api('/orders/get', { order_id: orderId }).then(function(order) {
+          window._currentOrderId = orderId;
+          document.getElementById('order-detail-title').textContent = 'Заказ ' + (order.product_link || order.order_id);
+          document.getElementById('order-detail-status').textContent = 'Статус: ' + order.status;
+          document.getElementById('ord-detail-link').value = order.product_link || '';
+          document.getElementById('ord-detail-offer').value = order.offer_text || '';
+          document.getElementById('ord-detail-price').value = String(order.price || 0);
+          document.getElementById('ord-detail-type').value = order.order_type || 'ugc_only';
+          document.getElementById('ord-detail-barter').value = order.barter_description || '';
+          document.getElementById('ord-detail-geography').value = order.geography || '';
+          document.getElementById('ord-detail-deadlines').value = order.deadlines || '';
+          fillOrderDetailSelects(window._config);
+          var bloggersEl = document.getElementById('ord-detail-bloggers');
+          if (bloggersEl) {
+            bloggersEl.value = String(order.bloggers_needed || '');
+            if (!bloggersEl.value && bloggersEl.options.length) bloggersEl.value = bloggersEl.options[0].value;
+          }
+          var contentEl = document.getElementById('ord-detail-content-usage');
+          if (contentEl) contentEl.value = order.content_usage || '';
+          var payBtn = document.getElementById('btn-order-detail-pay');
+          if (order.payment_link && payBtn) {
+            payBtn.href = order.payment_link;
+            payBtn.style.display = 'block';
+          } else if (payBtn) payBtn.style.display = 'none';
+          document.getElementById('ord-detail-error').textContent = '';
+          document.getElementById('ord-detail-success').textContent = '';
+          showScreen('screen-order-detail');
+        }).catch(function(err) {
+          var ul = document.getElementById('orders-list');
+          if (ul) ul.innerHTML = '<li class="error">' + (err.message || 'Не удалось загрузить заказ') + '</li>';
+        });
+      }
+
+      document.getElementById('btn-order-detail-pay').addEventListener('click', function(e) {
+        e.preventDefault();
+        var href = this.getAttribute('href');
+        if (href && href !== '#') openPaymentAndClose(href);
+      });
+
+      document.getElementById('btn-order-detail-back').addEventListener('click', function() {
+        showScreen('screen-advertiser-dashboard');
+        document.getElementById('block-orders-list').style.display = 'block';
+      });
+
+      document.getElementById('form-order-detail').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var orderId = window._currentOrderId;
+        if (!orderId) return;
+        var errEl = document.getElementById('ord-detail-error');
+        var okEl = document.getElementById('ord-detail-success');
+        var submitBtn = document.getElementById('btn-order-detail-save');
+        errEl.textContent = '';
+        okEl.textContent = '';
+        var bloggersEl = document.getElementById('ord-detail-bloggers');
+        var bloggersVal = bloggersEl && bloggersEl.value ? parseInt(bloggersEl.value, 10) : NaN;
+        if (!bloggersEl || !bloggersEl.options.length || isNaN(bloggersVal)) {
+          errEl.textContent = 'Подождите, загрузка настроек…';
+          return;
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        var payload = {
+          order_id: orderId,
+          product_link: document.getElementById('ord-detail-link').value.trim(),
+          offer_text: document.getElementById('ord-detail-offer').value.trim(),
+          price: parseFloat(document.getElementById('ord-detail-price').value) || 0,
+          bloggers_needed: bloggersVal,
+          order_type: document.getElementById('ord-detail-type').value,
+          barter_description: document.getElementById('ord-detail-barter').value.trim() || null,
+          geography: document.getElementById('ord-detail-geography').value.trim() || null,
+          deadlines: document.getElementById('ord-detail-deadlines').value.trim() || null,
+          content_usage: document.getElementById('ord-detail-content-usage').value.trim() || null
+        };
+        api('/orders/update', payload).then(function(res) {
+          okEl.textContent = 'Заказ обновлён.';
+          if (res.payment_link) {
+            var payBtn = document.getElementById('btn-order-detail-pay');
+            if (payBtn) { payBtn.href = res.payment_link; payBtn.style.display = 'block'; }
+          }
+          if (submitBtn) submitBtn.disabled = false;
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка сохранения';
+          if (submitBtn) submitBtn.disabled = false;
+        });
+      });
+
+      document.getElementById('form-order').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var errEl = document.getElementById('ord-error');
+        var okEl = document.getElementById('ord-success');
+        var submitBtn = document.getElementById('btn-submit-order');
+        errEl.textContent = '';
+        okEl.textContent = '';
+        var bloggersEl = document.getElementById('ord-bloggers');
+        var bloggersVal = bloggersEl && bloggersEl.value ? parseInt(bloggersEl.value, 10) : NaN;
+        if (!bloggersEl || !bloggersEl.options.length || isNaN(bloggersVal)) {
+          errEl.textContent = 'Подождите, загрузка настроек…';
+          return;
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        var payload = {
+          product_link: document.getElementById('ord-link').value.trim(),
+          offer_text: document.getElementById('ord-offer').value.trim(),
+          price: parseFloat(document.getElementById('ord-price').value) || 0,
+          bloggers_needed: bloggersVal,
+          order_type: document.getElementById('ord-type').value,
+          barter_description: document.getElementById('ord-barter').value.trim() || null,
+          geography: document.getElementById('ord-geography').value.trim() || null,
+          deadlines: document.getElementById('ord-deadlines').value.trim() || null,
+          content_usage: document.getElementById('ord-content-usage').value.trim() || null
+        };
+        api('/orders', payload).then(function(res) {
+          var msg = 'Заказ создан. ID: ' + (res.order_id || '');
+          if (res.payment_link) {
+            msg += ' <span class="payment-link">Оплатить: <a href="' + res.payment_link + '" class="link-pay-close" target="_blank" rel="noopener">перейти к оплате</a></span>';
+          }
+          okEl.innerHTML = msg;
+          var payLinkEl = okEl.querySelector('a.link-pay-close');
+          if (payLinkEl && res.payment_link) {
+            payLinkEl.addEventListener('click', function(e) {
+              e.preventDefault();
+              openPaymentAndClose(res.payment_link);
+            });
+          }
+          document.getElementById('form-order').reset();
+          if (submitBtn) submitBtn.disabled = false;
+        }).catch(function(err) {
+          errEl.textContent = err.message || 'Ошибка создания заказа';
+          if (submitBtn) submitBtn.disabled = false;
+        });
+      });
+
+      document.getElementById('btn-close-blogger').addEventListener('click', function() {
+        if (tg && typeof tg.close === 'function') tg.close();
+      });
+
+      fillBirthDateSelects();
+      loadMe().then(function(me) {
+        if (!me || typeof me !== 'object') {
+          showScreen('screen-role-choice');
+          return;
+        }
+        updateRoleChoiceHint();
+        updateRegisterButtonLabels();
+        if (me.has_advertiser_profile && !me.has_blogger_profile) {
+          showScreen('screen-advertiser-dashboard');
+        } else if (me.has_blogger_profile && !me.has_advertiser_profile) {
+          updateBloggerDashboardState(me);
+          showScreen('screen-blogger-dashboard');
+        } else if (me.has_advertiser_profile && me.has_blogger_profile) {
+          showScreen('screen-advertiser-dashboard');
+        } else {
+          showScreen('screen-role-choice');
+        }
+      }).catch(function(err) {
+        var loadingScreen = document.getElementById('screen-loading');
+        var hintEl = loadingScreen && loadingScreen.querySelector('.hint');
+        if (hintEl) {
+          hintEl.textContent = 'Ошибка: ' + (err.message || 'нет данных').replace(/^Ошибка: Ошибка: /, 'Ошибка: ');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

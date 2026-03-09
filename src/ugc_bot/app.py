@@ -98,6 +98,9 @@ def build_dispatcher(
     for key, service in services.items():
         dispatcher[key] = service
     if include_routers:
+        dispatcher.include_router(
+            payments_router
+        )  # before start for /start pay_
         dispatcher.include_router(start_router)
         dispatcher.include_router(referral_router)
         dispatcher.include_router(admin_moderation_router)
@@ -110,6 +113,5 @@ def build_dispatcher(
         dispatcher.include_router(order_router)
         dispatcher.include_router(feedback_router)
         dispatcher.include_router(offer_response_router)
-        dispatcher.include_router(payments_router)
         dispatcher.include_router(complaints_router)
     return dispatcher

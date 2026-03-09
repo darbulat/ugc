@@ -32,6 +32,7 @@ from ugc_bot.bot.handlers.payments import (
     pay_order_callback,
     pre_checkout_query_handler,
     send_order_invoice,
+    start_pay_order_link,
     successful_payment_handler,
 )
 from ugc_bot.config import AppConfig
@@ -139,6 +140,392 @@ async def test_pay_order_success(
         bot_texts_service,
     )
     assert bot.invoices
+
+
+@pytest.mark.asyncio
+async def test_start_pay_order_link_sends_invoice(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    bot_texts_service,
+) -> None:
+    """start_pay_order_link sends invoice for valid order (deep link pay_ID)."""
+    from uuid import UUID
+
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000500"),
+        external_id="1",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000501"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+    )
+
+    bot = FakeBot()
+    message = FakeMessage(
+        text=f"/start pay_{order.order_id}",
+        user=FakeUser(1, "adv", "Adv"),
+        bot=bot,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await start_pay_order_link(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        bot_texts_service,
+    )
+    assert bot.invoices
+
+
+@pytest.mark.asyncio
+async def test_start_pay_order_link_invalid_uuid_no_invoice(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    bot_texts_service,
+) -> None:
+    """start_pay_order_link with invalid UUID in payload sends no invoice."""
+    from uuid import UUID
+
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000500"),
+        external_id="1",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+
+    bot = FakeBot()
+    message = FakeMessage(
+        text="/start pay_not-a-valid-uuid",
+        user=FakeUser(1, "adv", "Adv"),
+        bot=bot,
+    )
+
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+
+    await start_pay_order_link(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        bot_texts_service,
+    )
+    assert not bot.invoices
+
+
+@pytest.mark.asyncio
+async def test_start_pay_order_link_order_not_found(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    bot_texts_service,
+) -> None:
+    """start_pay_order_link when order does not exist sends no invoice."""
+    from uuid import UUID
+
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000500"),
+        external_id="1",
+        username="adv",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await user_service.set_user(
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+    )
+    # No order in repo; order_id refers to non-existent order
+    nonexistent_id = UUID("00000000-0000-0000-0000-000000000599")
+    bot = FakeBot()
+    message = FakeMessage(
+        text=f"/start pay_{nonexistent_id}",
+        user=FakeUser(1, "adv", "Adv"),
+        bot=bot,
+    )
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await start_pay_order_link(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        bot_texts_service,
+    )
+    assert not bot.invoices
+
+
+@pytest.mark.asyncio
+async def test_start_pay_order_link_wrong_owner(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    bot_texts_service,
+) -> None:
+    """start_pay_order_link for another user's order sends no invoice."""
+    from uuid import UUID
+
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user_a = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000500"),
+        external_id="1",
+        username="adv_a",
+    )
+    user_b = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000502"),
+        external_id="2",
+        username="adv_b",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user_a.user_id)
+    await user_service.set_user(
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv_a",
+    )
+    # Order belongs to user_b; current user is user_a (external_id 1)
+    order = await create_test_order(
+        order_repo,
+        user_b.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000501"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+    )
+    bot = FakeBot()
+    message = FakeMessage(
+        text=f"/start pay_{order.order_id}",
+        user=FakeUser(1, "adv_a", "Adv A"),
+        bot=bot,
+    )
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await start_pay_order_link(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        bot_texts_service,
+    )
+    assert not bot.invoices
+
+
+@pytest.mark.asyncio
+async def test_start_pay_order_link_no_advertiser_profile(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    outbox_repo,
+    pricing_repo,
+    bot_texts_service,
+) -> None:
+    """start_pay_order_link with no advertiser profile sends no invoice."""
+    from uuid import UUID
+
+    from ugc_bot.domain.enums import MessengerType
+
+    user_service = UserRoleService(user_repo=user_repo)
+    payment_service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    contact_pricing_service = await build_contact_pricing_service(
+        None, pricing_repo
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-000000000500"),
+        external_id="1",
+        username="u",
+    )
+    await user_service.set_user(
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+    )
+    # No advertiser profile; order exists and belongs to this user
+    order = await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=UUID("00000000-0000-0000-0000-000000000501"),
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
+    )
+    bot = FakeBot()
+    message = FakeMessage(
+        text=f"/start pay_{order.order_id}",
+        user=FakeUser(1, "u", "U"),
+        bot=bot,
+    )
+    config = FakeConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "postgresql://test",
+            "TELEGRAM_PROVIDER_TOKEN": "provider",
+        }
+    )
+    await start_pay_order_link(
+        message,
+        user_service,
+        profile_service,
+        payment_service,
+        contact_pricing_service,
+        config,
+        bot_texts_service,
+    )
+    assert not bot.invoices
 
 
 @pytest.mark.asyncio

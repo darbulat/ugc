@@ -37,6 +37,35 @@
       color: var(--tg-theme-hint-color, #999);
       flex-shrink: 0;
     }
+    .city-search-row {
+      display: flex;
+      gap: 8px;
+      margin: 0 12px 8px;
+      flex-shrink: 0;
+    }
+    .city-search-row input {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 16px;
+      border: 1px solid var(--tg-theme-hint-color, #ccc);
+      border-radius: 8px;
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #000);
+      margin: 0;
+    }
+    .city-search-row .btn-search {
+      flex-shrink: 0;
+      padding: 10px 16px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      background: var(--tg-theme-secondary-bg-color, #e0e0e0);
+      color: var(--tg-theme-text-color, #000);
+      cursor: pointer;
+      margin: 0;
+    }
+    #map-hint.error { color: #c00; }
     #send-btn {
       margin: 12px;
       padding: 14px 20px;
@@ -57,7 +86,11 @@
 </head>
 <body>
   <h1>Выберите точку на карте</h1>
-  <p class="hint">Нажмите на карту, чтобы отметить город или место</p>
+  <p class="hint" id="map-hint">Нажмите на карту или найдите город</p>
+  <div class="city-search-row">
+    <input type="text" id="city-search" placeholder="Поиск по городу" autocomplete="off" />
+    <button type="button" class="btn-search" id="btn-city-search">Найти</button>
+  </div>
   <div id="map"></div>
   <button type="button" id="send-btn" disabled>Отправить выбранную точку</button>
 
@@ -67,16 +100,139 @@
       var DEFAULT_LON = 37.6173;
       var DEFAULT_ZOOM = 5;
 
+      var base = window.location.origin;
+      var tg = window.Telegram && window.Telegram.WebApp;
       var mapEl = document.getElementById('map');
       var sendBtn = document.getElementById('send-btn');
+      var mapHint = document.getElementById('map-hint');
+      var citySearch = document.getElementById('city-search');
+      var btnCitySearch = document.getElementById('btn-city-search');
       var marker = null;
       var selectedLat = null;
       var selectedLon = null;
+
+      function getInitData() {
+        return (tg && tg.initData) ? tg.initData : '';
+      }
+
+      function parseApiError(detail, fallback) {
+        if (typeof detail === 'string') return detail;
+        if (Array.isArray(detail) && detail.length > 0) {
+          var first = detail[0];
+          return (first && first.msg) ? first.msg : JSON.stringify(detail);
+        }
+        return fallback || 'Ошибка запроса';
+      }
+
+      function api(path, body) {
+        var initData = getInitData();
+        if (!initData) return Promise.reject(new Error('No initData'));
+        var payload = typeof body === 'object' ? Object.assign({ init_data: initData }, body) : { init_data: initData };
+        return fetch(base + '/miniapp/api' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(function(j) {
+              throw new Error(parseApiError(j.detail, r.statusText));
+            }).catch(function(e) {
+              if (e instanceof SyntaxError) throw new Error(r.statusText || 'Ошибка запроса');
+              throw e;
+            });
+          }
+          return r.json();
+        });
+      }
+
+      function geocodeForward(query) {
+        var initData = getInitData();
+        if (initData) {
+          return api('/geocode/forward', { city: query });
+        }
+        return fetch(base + '/miniapp/api/geocode/forward/public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ city: query })
+        }).then(function(r) {
+          if (!r.ok) {
+            return r.json().then(function(j) {
+              throw new Error(parseApiError(j.detail, r.statusText));
+            }).catch(function(e) {
+              if (e instanceof SyntaxError) throw new Error(r.statusText || 'Ошибка запроса');
+              throw e;
+            });
+          }
+          return r.json();
+        });
+      }
+
+      function runSearch() {
+        var query = (citySearch && citySearch.value || '').trim();
+        if (!query) {
+          if (mapHint) {
+            mapHint.textContent = 'Введите название города';
+            mapHint.className = 'hint';
+          }
+          return;
+        }
+        if (mapHint) {
+          mapHint.textContent = 'Поиск…';
+          mapHint.className = 'hint';
+        }
+        geocodeForward(query)
+          .then(function(data) {
+            var lat = data && (typeof data.lat === 'number' ? data.lat : parseFloat(data.lat));
+            var lon = data && (typeof data.lon === 'number' ? data.lon : parseFloat(data.lon));
+            if (data && !isNaN(lat) && !isNaN(lon)) {
+              if (marker) {
+                marker.setLatLng([lat, lon]);
+              } else {
+                marker = L.marker([lat, lon]).addTo(map);
+              }
+              map.setView([lat, lon], 12);
+              selectedLat = lat;
+              selectedLon = lon;
+              sendBtn.disabled = false;
+              if (mapHint) {
+                mapHint.textContent = 'Выбрано: ' + (data.city || query);
+                mapHint.className = 'hint';
+              }
+            } else {
+              if (mapHint) {
+                mapHint.textContent = 'Город не найден';
+                mapHint.className = 'hint error';
+              }
+            }
+          })
+          .catch(function(err) {
+            if (mapHint) {
+              var msg = (err && err.message) ? err.message : 'Город не найден';
+              if (msg === 'City could not be found.' || msg.indexOf('could not be found') !== -1) {
+                msg = 'Город не найден';
+              }
+              mapHint.textContent = msg;
+              mapHint.className = 'hint error';
+            }
+          });
+      }
 
       var map = L.map('map').setView([DEFAULT_LAT, DEFAULT_LON], DEFAULT_ZOOM);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       }).addTo(map);
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            var lat = pos.coords.latitude;
+            var lon = pos.coords.longitude;
+            map.setView([lat, lon], 12);
+          },
+          function() { /* leave default center */ },
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+        );
+      }
 
       map.on('click', function(e) {
         var lat = e.latlng.lat;
@@ -89,21 +245,34 @@
         selectedLat = lat;
         selectedLon = lon;
         sendBtn.disabled = false;
+        if (mapHint) {
+          mapHint.textContent = 'Нажмите на карту или найдите город';
+          mapHint.className = 'hint';
+        }
       });
+
+      if (btnCitySearch) btnCitySearch.addEventListener('click', runSearch);
+      if (citySearch) {
+        citySearch.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            runSearch();
+          }
+        });
+      }
 
       sendBtn.addEventListener('click', function() {
         if (selectedLat == null || selectedLon == null) return;
         var payload = JSON.stringify({ lat: selectedLat, lon: selectedLon });
-        var tg = window.Telegram && window.Telegram.WebApp;
         if (tg && typeof tg.sendData === 'function') {
           tg.sendData(payload);
           if (typeof tg.close === 'function') tg.close();
         }
       });
 
-      if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
+      if (tg) {
+        tg.ready();
+        tg.expand();
       }
     })();
   </script>

@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 from uuid import UUID
 
 from aiogram import Router
@@ -80,6 +79,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
+    INSTAGRAM_URL_REGEX,
     VALIDATOR_ERR_KEYS,
     normalize_instagram_url,
     validate_audience_geo,
@@ -295,10 +295,6 @@ def _format_profile_text(
 
 
 logger = logging.getLogger(__name__)
-
-INSTAGRAM_URL_REGEX = re.compile(
-    r"^(https?://)?(www\.)?instagram\.com/[A-Za-z0-9._]+/?$"
-)
 
 _EDIT_FIELDS_BY_KEY = [
     ("lbl_edit_nickname", "nickname"),

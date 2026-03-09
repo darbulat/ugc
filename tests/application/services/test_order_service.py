@@ -1,14 +1,18 @@
 """Tests for order service."""
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
 from tests.helpers.factories import create_test_advertiser
 from tests.helpers.services import build_order_service
-from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.errors import (
+    OrderCreationError,
+    OrderNotFoundError,
+    UserNotFoundError,
+)
 from ugc_bot.application.services.order_service import OrderService
-from ugc_bot.domain.enums import OrderType, UserStatus
+from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
 
 
 @pytest.mark.asyncio
@@ -403,3 +407,132 @@ async def test_create_order_and_list_with_transaction_manager(
     orders = await service.list_by_advertiser(advertiser_id=user_id)
     assert len(orders) >= 1
     assert any(o.order_id == order.order_id for o in orders)
+
+
+@pytest.mark.asyncio
+async def test_update_order_success(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Update order when owner and status allow edit."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    updated = await service.update_order(
+        order_id=order.order_id,
+        advertiser_id=user_id,
+        product_link="https://example.com/v2",
+        offer_text="Updated offer",
+        barter_description=None,
+        price=500.0,
+        bloggers_needed=5,
+        order_type=OrderType.UGC_PLUS_PLACEMENT,
+    )
+    assert updated.product_link == "https://example.com/v2"
+    assert updated.offer_text == "Updated offer"
+    assert updated.price == 500.0
+    assert updated.bloggers_needed == 5
+    assert updated.order_type == OrderType.UGC_PLUS_PLACEMENT
+
+
+@pytest.mark.asyncio
+async def test_update_order_not_found(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """update_order raises OrderNotFoundError when order does not exist."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    with pytest.raises(OrderNotFoundError, match="not found"):
+        await service.update_order(
+            order_id=uuid4(),
+            advertiser_id=user_id,
+            product_link="https://x.com",
+            offer_text="Text",
+            barter_description=None,
+            price=100.0,
+            bloggers_needed=3,
+            order_type=OrderType.UGC_ONLY,
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_order_wrong_advertiser(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """update_order raises when order belongs to another user."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    other_id = await create_test_advertiser(
+        user_repo,
+        advertiser_repo,
+        status=UserStatus.ACTIVE,
+        external_id="other_adv",
+    )
+    with pytest.raises(OrderNotFoundError, match="not found"):
+        await service.update_order(
+            order_id=order.order_id,
+            advertiser_id=other_id,
+            product_link="https://x.com",
+            offer_text="Text",
+            barter_description=None,
+            price=100.0,
+            bloggers_needed=3,
+            order_type=OrderType.UGC_ONLY,
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_order_wrong_status_rejected(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """update_order raises OrderCreationError when status is not editable."""
+    from dataclasses import replace
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    closed = replace(order, status=OrderStatus.CLOSED)
+    await order_repo.save(closed)
+    with pytest.raises(OrderCreationError, match="cannot be edited"):
+        await service.update_order(
+            order_id=order.order_id,
+            advertiser_id=user_id,
+            product_link="https://x.com",
+            offer_text="Text",
+            barter_description=None,
+            price=100.0,
+            bloggers_needed=3,
+            order_type=OrderType.UGC_ONLY,
+        )

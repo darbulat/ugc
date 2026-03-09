@@ -7,7 +7,7 @@ from typing import cast
 from uuid import UUID
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message, PreCheckoutQuery
 
 from ugc_bot.application.errors import (  # noqa: F401 - used in except
@@ -169,6 +169,136 @@ async def send_order_invoice(
             chat_id=incoming_message.chat_id,
             text=msg_failed,
         )
+
+
+def _parse_pay_order_id_from_start(text: str) -> UUID | None:
+    """Parse order id from /start pay_<order_id>. Return None if invalid."""
+    if not text or " pay_" not in text:
+        return None
+    parts = text.split(" ", 1)
+    if len(parts) < 2:
+        return None
+    payload = parts[1].strip()
+    if not payload.startswith("pay_"):
+        return None
+    try:
+        return UUID(payload[4:])
+    except (ValueError, TypeError):
+        return None
+
+
+@router.message(
+    CommandStart(),
+    F.text.startswith("/start pay_"),
+)
+async def start_pay_order_link(
+    message: Message,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    payment_service: PaymentService,
+    contact_pricing_service: ContactPricingService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle t.me/bot?start=pay_ORDER_ID — send invoice for that order."""
+    order_id = _parse_pay_order_id_from_start(message.text or "")
+    if order_id is None:
+        return
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    locale = config.market.default_locale
+    allow_msgs = await bot_texts_service.get_many(
+        [
+            "msg_profile_not_found_role",
+            "msg_payment_blocked",
+            "msg_payment_pause",
+        ],
+        locale,
+    )
+    user = await get_user_and_ensure_allowed(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg=allow_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=allow_msgs.get("msg_payment_blocked", ""),
+        pause_msg=allow_msgs.get("msg_payment_pause", ""),
+    )
+    if user is None:
+        return
+    advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    if advertiser is None:
+        msg_fill = await bot_texts_service.get(
+            "msg_advertiser_profile_fill", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_fill,
+        )
+        return
+    order = await payment_service.get_order(order_id)
+    if order is None:
+        msg_not_found = await bot_texts_service.get(
+            "msg_order_not_found", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_not_found,
+        )
+        return
+    if order.advertiser_id != user.user_id:
+        msg_not_yours = await bot_texts_service.get(
+            "msg_order_not_yours", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_not_yours,
+        )
+        return
+    if order.status != OrderStatus.NEW:
+        msg_not_new = await bot_texts_service.get("msg_order_not_new", locale)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_not_new,
+        )
+        return
+    contact_price = await contact_pricing_service.get_price(
+        order.bloggers_needed
+    )
+    if contact_price is None:
+        msg_pricing = await bot_texts_service.get(
+            "msg_pricing_not_configured", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_pricing,
+        )
+        return
+    if not config.bot.telegram_provider_token:
+        msg_provider = await bot_texts_service.get(
+            "msg_payment_provider_not_configured", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_provider,
+        )
+        return
+    receipt_desc = (
+        await bot_texts_service.get("receipt_description", locale)
+    ).strip() or None
+    await send_order_invoice(
+        incoming_message=incoming,
+        messenger_client=messenger_client,
+        order_id=order.order_id,
+        offer_text=order.offer_text,
+        price_value=contact_price,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        receipt_description=receipt_desc,
+    )
 
 
 @router.message(Command("pay_order"))
