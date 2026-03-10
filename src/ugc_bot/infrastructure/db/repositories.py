@@ -308,6 +308,23 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         result = exec_result.scalar_one_or_none()
         return _to_blogger_profile_entity(result) if result else None
 
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, BloggerProfile]:
+        """Fetch blogger profiles by user IDs in one query."""
+        if not user_ids:
+            return {}
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(BloggerProfileModel).where(
+                BloggerProfileModel.user_id.in_(user_ids)
+            )
+        )
+        rows = exec_result.scalars().all()
+        return {row.user_id: _to_blogger_profile_entity(row) for row in rows}
+
     async def get_by_instagram_url(
         self, instagram_url: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
@@ -560,6 +577,23 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
         )
         result = exec_result.scalar_one_or_none()
         return _to_instagram_stats_entity(result) if result else None
+
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, InstagramStats]:
+        """Fetch Instagram stats by user IDs in one query."""
+        if not user_ids:
+            return {}
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(InstagramStatsModel).where(
+                InstagramStatsModel.user_id.in_(user_ids)
+            )
+        )
+        rows = exec_result.scalars().all()
+        return {row.user_id: _to_instagram_stats_entity(row) for row in rows}
 
     async def save(
         self, stats: InstagramStats, session: object | None = None
@@ -1552,11 +1586,15 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
             .with_for_update(skip_locked=True)
         )
         models = result.scalars().all()
-        for model in models:
+        if models:
+            event_ids = [m.event_id for m in models]
             await db_session.execute(
                 update(OutboxEventModel)
-                .where(OutboxEventModel.event_id == model.event_id)
-                .values(status=OutboxEventStatus.PROCESSING)
+                .where(OutboxEventModel.event_id.in_(event_ids))
+                .values(
+                    status=OutboxEventStatus.PROCESSING,
+                    claimed_at=datetime.now(timezone.utc),
+                )
             )
         return [_to_outbox_event_entity(model) for model in models]
 
@@ -1676,6 +1714,26 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
 
         result = await db_session.execute(
             delete(OutboxEventModel).where(OutboxEventModel.event_id.in_(subq))
+        )
+        return getattr(result, "rowcount", None) or 0
+
+    async def reset_stale_processing_events(
+        self,
+        stale_after_minutes: int = 15,
+        session: object | None = None,
+    ) -> int:
+        """Reset stale PROCESSING events back to PENDING."""
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            minutes=stale_after_minutes
+        )
+        db_session = _get_async_session(session)
+        result = await db_session.execute(
+            update(OutboxEventModel)
+            .where(
+                OutboxEventModel.status == OutboxEventStatus.PROCESSING,
+                OutboxEventModel.claimed_at < cutoff,
+            )
+            .values(status=OutboxEventStatus.PENDING)
         )
         return getattr(result, "rowcount", None) or 0
 

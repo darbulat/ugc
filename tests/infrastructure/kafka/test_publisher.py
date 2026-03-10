@@ -79,7 +79,7 @@ async def test_kafka_publisher_sends(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_kafka_publisher_handles_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Swallow Kafka errors."""
+    """Kafka errors are logged and re-raised so callers can handle them."""
 
     created: dict[str, object] = {}
 
@@ -110,7 +110,8 @@ async def test_kafka_publisher_handles_errors(
         bootstrap_servers="kafka:9092",
         topic="order_activated",
     )
-    await publisher.publish(_order())
+    with pytest.raises(RuntimeError, match="boom"):
+        await publisher.publish(_order())
 
     producer = created["producer"]
     assert isinstance(producer, FakeProducer)

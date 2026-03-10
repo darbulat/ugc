@@ -302,6 +302,16 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
 
         return self.profiles.get(user_id)
 
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, BloggerProfile]:
+        """Fetch blogger profiles by user IDs."""
+        return {
+            uid: self.profiles[uid] for uid in user_ids if uid in self.profiles
+        }
+
     async def get_by_instagram_url(
         self, instagram_url: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
@@ -446,6 +456,14 @@ class InMemoryInstagramStatsRepository(InstagramStatsRepository):
     ) -> Optional[InstagramStats]:
         """Fetch Instagram stats by user id."""
         return self.stats.get(user_id)
+
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, InstagramStats]:
+        """Fetch Instagram stats by user IDs."""
+        return {uid: self.stats[uid] for uid in user_ids if uid in self.stats}
 
     async def save(
         self, stats: InstagramStats, session: object | None = None
@@ -907,6 +925,7 @@ class InMemoryOutboxRepository(OutboxRepository):
     """In-memory outbox repository."""
 
     events: Dict[UUID, OutboxEvent] = field(default_factory=dict)
+    _claimed_at: Dict[UUID, datetime] = field(default_factory=dict)
 
     async def save(
         self, event: OutboxEvent, session: object | None = None
@@ -938,10 +957,12 @@ class InMemoryOutboxRepository(OutboxRepository):
             if event.status == OutboxEventStatus.PENDING
         ]
         to_claim = sorted(pending, key=lambda e: e.created_at)[:limit]
+        now = datetime.now(timezone.utc)
         for event in to_claim:
             self.events[event.event_id] = replace(
                 event, status=OutboxEventStatus.PROCESSING
             )
+            self._claimed_at[event.event_id] = now
         return to_claim
 
     async def mark_as_processing(
@@ -1045,8 +1066,31 @@ class InMemoryOutboxRepository(OutboxRepository):
 
         for event_id in to_delete:
             del self.events[event_id]
+            self._claimed_at.pop(event_id, None)
 
         return len(to_delete)
+
+    async def reset_stale_processing_events(
+        self,
+        stale_after_minutes: int = 15,
+        session: object | None = None,
+    ) -> int:
+        """Reset stale PROCESSING events back to PENDING."""
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            minutes=stale_after_minutes
+        )
+        reset_count = 0
+        for event_id, event in list(self.events.items()):
+            if event.status != OutboxEventStatus.PROCESSING:
+                continue
+            claimed = self._claimed_at.get(event_id)
+            if claimed is not None and claimed < cutoff:
+                self.events[event_id] = replace(
+                    event, status=OutboxEventStatus.PENDING
+                )
+                self._claimed_at.pop(event_id, None)
+                reset_count += 1
+        return reset_count
 
 
 @dataclass
