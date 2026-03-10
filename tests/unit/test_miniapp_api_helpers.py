@@ -183,3 +183,247 @@ class TestParseBirthDateOptionalHelper:
 
         result = _parse_birth_date_optional("15.05.1995", texts={})
         assert result == date(1995, 5, 15)
+
+
+class TestSetCountryEndpoint:
+    """Tests for the set_country endpoint handler (lines 1233-1253)."""
+
+    @pytest.mark.asyncio
+    async def test_set_country_no_country_repo_uses_default_currency(
+        self,
+    ) -> None:
+        """When country_repo is absent, fallback to RUB."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from ugc_bot.miniapp.api import SetCountryRequest, set_country
+
+        request = MagicMock()
+        dispatcher = MagicMock()
+        dispatcher.get.return_value = None  # no country_repo
+        user_role_service = MagicMock()
+        user_role_service.set_country = AsyncMock()
+        dispatcher.__getitem__ = lambda self, k: user_role_service
+        request.app.state.dispatcher = dispatcher
+
+        body = SetCountryRequest(init_data="x", country_code="ru")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=uuid4()),
+            ),
+            patch(
+                "ugc_bot.miniapp.api._get_telegram_user_id",
+                return_value="123",
+            ),
+        ):
+            result = await set_country(request, body)
+
+        assert result["ok"] is True
+        assert result["currency_code"] == "RUB"
+        assert result["currency_symbol"] == "₽"
+
+    @pytest.mark.asyncio
+    async def test_set_country_with_country_repo_returns_currency(
+        self,
+    ) -> None:
+        """When country_repo present, returns currency from country object."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from ugc_bot.domain.entities import Country
+        from ugc_bot.miniapp.api import SetCountryRequest, set_country
+
+        ru = Country(
+            code="ru",
+            name_native="Россия",
+            currency_code="RUB",
+            currency_symbol="₽",
+        )
+        country_repo = MagicMock()
+        country_repo.get_by_code = AsyncMock(return_value=ru)
+
+        user_role_service = MagicMock()
+        user_role_service.set_country = AsyncMock()
+
+        dispatcher = MagicMock()
+        dispatcher.get.return_value = country_repo
+        dispatcher.__getitem__ = lambda self, k: user_role_service
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = SetCountryRequest(init_data="x", country_code="ru")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=uuid4()),
+            ),
+            patch(
+                "ugc_bot.miniapp.api._get_telegram_user_id",
+                return_value="123",
+            ),
+        ):
+            result = await set_country(request, body)
+
+        assert result["ok"] is True
+        assert result["currency_code"] == "RUB"
+        assert result["currency_symbol"] == "₽"
+
+    @pytest.mark.asyncio
+    async def test_set_country_unknown_country_code_raises_400(self) -> None:
+        """Unknown country code raises HTTPException 400."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from ugc_bot.miniapp.api import SetCountryRequest, set_country
+
+        country_repo = MagicMock()
+        country_repo.get_by_code = AsyncMock(return_value=None)
+
+        dispatcher = MagicMock()
+        dispatcher.get.return_value = country_repo
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = SetCountryRequest(init_data="x", country_code="zz")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=uuid4()),
+            ),
+            patch(
+                "ugc_bot.miniapp.api._get_telegram_user_id",
+                return_value="123",
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await set_country(request, body)
+
+        assert exc_info.value.status_code == 400
+
+
+class TestMeEndpointCountryResolution:
+    """Tests for me endpoint country/currency resolution (lines 362-365)."""
+
+    @pytest.mark.asyncio
+    async def test_me_resolves_currency_from_country(self) -> None:
+        """me endpoint resolves currency_code and symbol via country_repo."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from ugc_bot.domain.entities import Country
+        from ugc_bot.miniapp.api import InitDataBody, me
+
+        ru = Country(
+            code="ru",
+            name_native="Россия",
+            currency_code="RUB",
+            currency_symbol="₽",
+        )
+        country_repo = MagicMock()
+        country_repo.get_by_code = AsyncMock(return_value=ru)
+
+        user = MagicMock()
+        user.external_id = "123"
+        user.country = "ru"
+
+        profile_service = MagicMock()
+        profile_service.get_advertiser_profile = AsyncMock(return_value=None)
+        profile_service.get_blogger_profile = AsyncMock(return_value=None)
+        profile_service.get_user_by_external = AsyncMock(return_value=user)
+
+        def dispatcher_get(key):
+            if key == "country_repo":
+                return country_repo
+            return None
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: profile_service
+        dispatcher.get = dispatcher_get
+
+        uid = uuid4()
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = InitDataBody(init_data="x")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=uid),
+            ),
+            patch(
+                "ugc_bot.miniapp.api._get_telegram_user_id",
+                return_value="123",
+            ),
+        ):
+            result = await me(request, body)
+
+        assert result.country == "ru"
+        assert result.currency_code == "RUB"
+        assert result.currency_symbol == "₽"
+
+
+class TestConfigEndpointCountries:
+    """Tests for config endpoint countries list (lines 404-405)."""
+
+    @pytest.mark.asyncio
+    async def test_config_includes_countries_when_repo_present(self) -> None:
+        """config endpoint includes countries from country_repo."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from ugc_bot.domain.entities import Country
+        from ugc_bot.miniapp.api import InitDataBody
+        from ugc_bot.miniapp.api import config as config_endpoint
+
+        ru = Country(
+            code="ru",
+            name_native="Россия",
+            currency_code="RUB",
+            currency_symbol="₽",
+        )
+        country_repo = MagicMock()
+        country_repo.list_enabled = AsyncMock(return_value=[ru])
+
+        def dispatcher_get(key):
+            if key == "country_repo":
+                return country_repo
+            return None
+
+        order_cfg = MagicMock()
+        order_cfg.get_allowed_blogger_counts_set.return_value = {1, 3, 5}
+
+        cfg = MagicMock()
+        cfg.order = order_cfg
+        cfg.bot.bot_username = "testbot"
+        docs = MagicMock()
+        docs.docs_offer_url = ""
+        docs.docs_privacy_url = ""
+        docs.docs_consent_url = ""
+        cfg.docs = docs
+        cfg.instagram.admin_instagram_username = ""
+
+        dispatcher = MagicMock()
+        dispatcher.get = dispatcher_get
+
+        request = MagicMock()
+        request.app.state.config = cfg
+        request.app.state.dispatcher = dispatcher
+
+        body = InitDataBody(init_data="x")
+
+        with patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=uuid4()),
+        ):
+            result = await config_endpoint(request, body)
+
+        assert len(result.countries) == 1
+        assert result.countries[0]["code"] == "ru"
+        assert result.countries[0]["currency_code"] == "RUB"

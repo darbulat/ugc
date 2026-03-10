@@ -410,3 +410,38 @@ async def test_set_user_raises_when_referral_code_collision() -> None:
             messenger_type=MessengerType.TELEGRAM,
             username="new",
         )
+
+
+@pytest.mark.asyncio
+async def test_set_country_updates_user() -> None:
+    """set_country stores country on the user."""
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+    user = await service.set_user(
+        external_id="c-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+    )
+    assert user.country is None
+    updated = await service.set_country(
+        external_id="c-1",
+        messenger_type=MessengerType.TELEGRAM,
+        country_code="ru",
+    )
+    assert updated.country == "ru"
+    stored = await repo.get_by_id(user.user_id)
+    assert stored is not None
+    assert stored.country == "ru"
+
+
+@pytest.mark.asyncio
+async def test_set_country_not_found() -> None:
+    """set_country raises UserNotFoundError when user does not exist."""
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo)
+    with pytest.raises(UserNotFoundError):
+        await service.set_country(
+            external_id="missing",
+            messenger_type=MessengerType.TELEGRAM,
+            country_code="ru",
+        )

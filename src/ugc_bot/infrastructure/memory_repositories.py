@@ -10,6 +10,7 @@ from ugc_bot.application.ports import (
     BloggerProfileRepository,
     ComplaintRepository,
     ContactPricingRepository,
+    CountryRepository,
     InstagramGraphApiClient,
     InstagramProfileInfo,
     InstagramRapidApiClient,
@@ -31,6 +32,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    Country,
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
@@ -1156,3 +1158,22 @@ class InMemoryComplaintRepository(ComplaintRepository):
             for complaint in self.complaints.values()
             if complaint.status == status
         ]
+
+
+@dataclass
+class InMemoryCountryRepository(CountryRepository):
+    """In-memory implementation of country repository."""
+
+    countries: Dict[str, Country] = field(default_factory=dict)
+
+    async def list_enabled(
+        self, session: object | None = None
+    ) -> list[Country]:
+        """List enabled countries."""
+        return [c for c in self.countries.values() if c.enabled]
+
+    async def get_by_code(
+        self, code: str, session: object | None = None
+    ) -> Optional[Country]:
+        """Fetch country by code."""
+        return self.countries.get(code)

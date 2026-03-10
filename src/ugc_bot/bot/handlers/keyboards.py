@@ -1,6 +1,11 @@
 """Keyboard helpers. All button labels come from texts (bot_texts)."""
 
+from typing import TYPE_CHECKING
+
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+
+if TYPE_CHECKING:
+    from ugc_bot.domain.entities import Country
 
 # Keys per keyboard in docstrings. Use bot_texts_service.get_many(keys, locale).
 
@@ -56,6 +61,7 @@ CALLBACK_PROFILE_WORK_UGC = "profile:work:ugc"
 CALLBACK_PROFILE_REGION_PREFIX = "profile:region:"
 CALLBACK_SUPPORT = "support"
 CALLBACK_CHANGE_ROLE = "change_role"
+CALLBACK_COUNTRY_PREFIX = "country:"
 
 MINIAPP_OPEN_BUTTON_TEXT = "Открыть приложение"
 
@@ -604,3 +610,21 @@ def edit_work_format_inline_keyboard(texts: dict[str, str]) -> Keyboard:
             ],
         ],
     )
+
+
+def country_inline_keyboard(countries: "list[Country]") -> Keyboard:
+    """Inline keyboard with country buttons (2 per row).
+
+    Button text: name_native (currency_symbol).
+    Callback: country:<code>
+    """
+    buttons = [
+        Button(
+            text=f"{c.name_native} ({c.currency_symbol})",
+            callback_data=f"{CALLBACK_COUNTRY_PREFIX}{c.code}",
+        )
+        for c in countries
+    ]
+    # 2 per row
+    rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    return Keyboard(kind=KeyboardKind.INLINE, rows=rows)

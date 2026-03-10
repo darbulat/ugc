@@ -19,6 +19,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    Country,
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
@@ -930,6 +931,22 @@ class GeocoderPort(Protocol):
     ) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
         """Return (city, region, country) for coordinates or None."""
         ...
+
+
+class CountryRepository(ABC):
+    """Port for country persistence."""
+
+    @abstractmethod
+    async def list_enabled(
+        self, session: object | None = None
+    ) -> list[Country]:
+        """List enabled countries."""
+
+    @abstractmethod
+    async def get_by_code(
+        self, code: str, session: object | None = None
+    ) -> Optional[Country]:
+        """Fetch country by code."""
 
 
 class TransactionManager(Protocol):

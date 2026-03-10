@@ -40,6 +40,7 @@ from ugc_bot.application.ports import (
     BotTextsRepository,
     ComplaintRepository,
     ContactPricingRepository,
+    CountryRepository,
     InstagramStatsRepository,
     InstagramVerificationRepository,
     InteractionRepository,
@@ -58,6 +59,7 @@ from ugc_bot.domain.entities import (
     BloggerProfile,
     Complaint,
     ContactPricing,
+    Country,
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
@@ -89,6 +91,7 @@ from ugc_bot.infrastructure.db.models import (
     BotTextModel,
     ComplaintModel,
     ContactPricingModel,
+    CountryModel,
     InstagramStatsModel,
     InstagramVerificationCodeModel,
     InteractionModel,
@@ -1169,6 +1172,7 @@ def _to_user_entity(model: UserModel) -> User:
         referral_payout_rate=getattr(model, "referral_payout_rate", None),
         agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
         updated_at=getattr(model, "updated_at", None),
+        country=getattr(model, "country", None),
     )
 
 
@@ -1192,6 +1196,7 @@ def _to_user_model(user: User) -> UserModel:
         agreement_confirmed_at=getattr(user, "agreement_confirmed_at", None),
         updated_at=getattr(user, "updated_at", None)
         or datetime.now(timezone.utc),
+        country=getattr(user, "country", None),
     )
 
 
@@ -1239,6 +1244,7 @@ def _to_blogger_profile_entity(
             getattr(model, "location_geometry", None)
         ),
         country=getattr(model, "country", ""),
+        currency=getattr(model, "currency", "RUB"),
     )
 
 
@@ -1272,6 +1278,7 @@ def _to_blogger_profile_model(
         region=profile.region,
         location_geometry=_wkt_to_geometry_element(profile.location_geometry),
         country=profile.country,
+        currency=getattr(profile, "currency", "RUB"),
     )
 
 
@@ -1446,6 +1453,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         location_geometry=_geometry_to_wkt(
             getattr(model, "location_geometry", None)
         ),
+        currency=getattr(model, "currency", "RUB"),
     )
 
 
@@ -1494,6 +1502,7 @@ def _to_order_model(order: Order) -> OrderModel:
         filter_by_placement=order.filter_by_placement,
         filter_by_barter=order.filter_by_barter,
         location_geometry=_wkt_to_geometry_element(order.location_geometry),
+        currency=getattr(order, "currency", "RUB"),
     )
 
 
@@ -2511,4 +2520,44 @@ def _to_payout_request_model(request: PayoutRequest) -> PayoutRequestModel:
         status=request.status,
         amount=request.amount,
         updated_at=request.updated_at or request.requested_at,
+    )
+
+
+@dataclass(slots=True)
+class SqlAlchemyCountryRepository(CountryRepository):
+    """SQLAlchemy-backed country repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def list_enabled(
+        self, session: object | None = None
+    ) -> list[Country]:
+        """List enabled countries."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(CountryModel).where(CountryModel.enabled.is_(True))
+        )
+        rows = exec_result.scalars().all()
+        return [_to_country_entity(row) for row in rows]
+
+    async def get_by_code(
+        self, code: str, session: object | None = None
+    ) -> Optional[Country]:
+        """Fetch country by code."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(CountryModel).where(CountryModel.code == code)
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_country_entity(result) if result else None
+
+
+def _to_country_entity(model: CountryModel) -> Country:
+    """Map country ORM model to domain entity."""
+    return Country(
+        code=model.code,
+        name_native=model.name_native,
+        currency_code=model.currency_code,
+        currency_symbol=model.currency_symbol,
+        enabled=model.enabled,
     )

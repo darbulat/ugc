@@ -15,6 +15,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.messenger.state import StateStore
+from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_service import ReferralService
@@ -22,9 +23,11 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_CHANGE_ROLE,
+    CALLBACK_COUNTRY_PREFIX,
     CALLBACK_SUPPORT,
     advertiser_menu_inline_keyboard,
     build_support_telegram_url,
+    country_inline_keyboard,
     main_menu_inline_keyboard,
     miniapp_open_inline_keyboard,
     role_inline_keyboard,
@@ -77,6 +80,7 @@ async def start_command(
     referral_service: ReferralService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    country_repo: CountryRepository | None = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -99,6 +103,10 @@ async def start_command(
     texts = await bot_texts_service.get_many(
         ["btn_creator", "btn_advertiser", "btn_support"], locale
     )
+    country_prompt = (
+        await bot_texts_service.get("country_prompt", locale)
+    ).strip() or "Выберите вашу страну:"
+    countries = await country_repo.list_enabled() if country_repo else []
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
@@ -107,6 +115,54 @@ async def start_command(
         referral_service=referral_service,
         start_text=start_text,
         role_kb=role_inline_keyboard(texts),
+        country_prompt=country_prompt,
+        country_kb=country_inline_keyboard(countries),
+    )
+
+
+@router.callback_query(lambda c: c.data.startswith(CALLBACK_COUNTRY_PREFIX))
+async def country_selected(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle country selection callback — save country, show role keyboard."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    country_code = (callback.data or "").removeprefix(CALLBACK_COUNTRY_PREFIX)
+    if not country_code:
+        return
+    await user_role_service.set_country(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+        country_code=country_code,
+    )
+    locale = config.market.default_locale
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
+    await AiogramStateStore(state).clear()
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=start_text,
+        keyboard=role_inline_keyboard(texts),
     )
 
 
@@ -311,6 +367,8 @@ async def _start_command(
     referral_service: ReferralService,
     start_text: str,
     role_kb: Keyboard,
+    country_prompt: str = "Выберите вашу страну:",
+    country_kb: Keyboard | None = None,
 ) -> None:
     """Handle the /start command. Clears FSM so /start always shows role."""
     if not incoming.user.external_id:
@@ -334,6 +392,13 @@ async def _start_command(
         await referral_service.save_pending_referral(
             user.user_id, referral_code
         )
+    if user.country is None and country_kb is not None and country_kb.rows:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=country_prompt,
+            keyboard=country_kb,
+        )
+        return
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=start_text,

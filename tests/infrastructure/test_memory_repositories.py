@@ -556,3 +556,55 @@ async def test_payment_repo_get_by_external_id_returns_none_when_not_found() -> 
     repo = InMemoryPaymentRepository()
     found = await repo.get_by_external_id("nonexistent")
     assert found is None
+
+
+@pytest.mark.asyncio
+async def test_in_memory_country_repository_list_enabled() -> None:
+    """list_enabled returns only enabled countries."""
+    from ugc_bot.domain.entities import Country
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryCountryRepository,
+    )
+
+    repo = InMemoryCountryRepository(
+        countries={
+            "ru": Country(
+                code="ru",
+                name_native="Россия",
+                currency_code="RUB",
+                currency_symbol="₽",
+                enabled=True,
+            ),
+            "xx": Country(
+                code="xx",
+                name_native="Disabled",
+                currency_code="XXX",
+                currency_symbol="X",
+                enabled=False,
+            ),
+        }
+    )
+    enabled = await repo.list_enabled()
+    assert len(enabled) == 1
+    assert enabled[0].code == "ru"
+
+
+@pytest.mark.asyncio
+async def test_in_memory_country_repository_get_by_code() -> None:
+    """get_by_code returns country when found, None otherwise."""
+    from ugc_bot.domain.entities import Country
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryCountryRepository,
+    )
+
+    ru = Country(
+        code="ru",
+        name_native="Россия",
+        currency_code="RUB",
+        currency_symbol="₽",
+    )
+    repo = InMemoryCountryRepository(countries={"ru": ru})
+    found = await repo.get_by_code("ru")
+    assert found is not None
+    assert found.code == "ru"
+    assert await repo.get_by_code("zz") is None
