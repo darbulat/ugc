@@ -96,6 +96,7 @@ class TestOutboxPublisher:
         outbox_repo.claim_pending_events = AsyncMock()
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_published = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher = Mock()
         kafka_publisher.publish = AsyncMock()
 
@@ -166,6 +167,7 @@ class TestOutboxPublisher:
         outbox_repo.claim_pending_events = AsyncMock()
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_published = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher = Mock()
         kafka_publisher.publish = AsyncMock()
 
@@ -260,6 +262,7 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_published = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher.publish = AsyncMock(
             side_effect=Exception("Kafka error")
         )
@@ -332,6 +335,7 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_published = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
         outbox_repo.mark_for_retry = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher.publish = AsyncMock(
             side_effect=Exception("Kafka temporarily unavailable")
         )
@@ -407,6 +411,7 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_published = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
         outbox_repo.mark_for_retry = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher.publish = AsyncMock(
             side_effect=Exception("Final attempt failed")
         )
@@ -435,6 +440,7 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_published = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher.publish = AsyncMock()
 
         order_repo = Mock()
@@ -474,6 +480,7 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
         outbox_repo.mark_for_retry = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
 
         order_repo = Mock()
         publisher = OutboxPublisher(
@@ -525,6 +532,7 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
         outbox_repo.mark_for_retry = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher.publish = AsyncMock()
 
         publisher = OutboxPublisher(
@@ -632,6 +640,7 @@ class TestOutboxPublisher:
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_failed = AsyncMock()
         outbox_repo.mark_for_retry = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
 
         publisher = OutboxPublisher(
             outbox_repo=outbox_repo, order_repo=order_repo
@@ -659,6 +668,7 @@ class TestOutboxPublisher:
         outbox_repo.claim_pending_events = AsyncMock()
         outbox_repo.mark_as_processing = AsyncMock()
         outbox_repo.mark_as_published = AsyncMock()
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=0)
         kafka_publisher = Mock()
         kafka_publisher.publish = AsyncMock()
 

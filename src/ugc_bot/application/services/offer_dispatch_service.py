@@ -17,7 +17,7 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
-from ugc_bot.domain.entities import BloggerProfile, Order, User
+from ugc_bot.domain.entities import BloggerProfile, InstagramStats, Order, User
 from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
@@ -235,6 +235,22 @@ def _passes_profile_based_filters(
     return _passes_order_filters(profile, order, criteria)
 
 
+def _extract_followers_and_media(
+    stats: InstagramStats | None,
+    profile: BloggerProfile | None,
+    criteria: _DispatchCriteria,
+) -> tuple[int | None, int | None]:
+    """Resolve followers/media counts from pre-loaded stats and profile."""
+    followers_count: int | None = None
+    media_count: int | None = None
+    if criteria.need_instagram_stats and stats is not None:
+        followers_count = stats.followers_count
+        media_count = stats.media_count
+    if profile is not None and followers_count is None:
+        followers_count = profile.instagram_followers_count
+    return followers_count, media_count
+
+
 @dataclass(slots=True)
 class OfferDispatchService:
     """Select eligible bloggers for offers."""
@@ -289,25 +305,14 @@ class OfferDispatchService:
             )
             if _order is None or not confirmed_ids:
                 return 0
-            has_stats_repo = self.instagram_stats_repo is not None
-            criteria = _build_dispatch_criteria(
-                _order, has_instagram_stats_repo=has_stats_repo
+            users = await self._collect_eligible_users(
+                _order,
+                confirmed_ids,
+                already_sent_set,
+                bloggers_with_unfulfilled,
+                sess,
             )
-            count = 0
-            seen: set[UUID] = set()
-            for uid in confirmed_ids:
-                user = await self._check_user_eligible(
-                    uid,
-                    _order,
-                    criteria,
-                    already_sent_set,
-                    bloggers_with_unfulfilled,
-                    sess,
-                )
-                if user is not None and user.user_id not in seen:
-                    seen.add(user.user_id)
-                    count += 1
-            return count
+            return len(users)
 
         if session is not None:
             return await _run(session)
@@ -368,6 +373,93 @@ class OfferDispatchService:
             frozenset(unfulfilled_ids),
         )
 
+    async def _collect_eligible_users(
+        self,
+        order: Order,
+        confirmed_ids: list[UUID],
+        already_sent_set: frozenset[UUID],
+        bloggers_with_unfulfilled: frozenset[UUID],
+        session: object | None,
+    ) -> list[User]:
+        """Batch-load and filter eligible users for an order.
+
+        Replaces the N+1 loop in _dispatch/count_eligible_bloggers with
+        3 batched queries: users, profiles, instagram stats.
+        """
+        criteria = _build_dispatch_criteria(
+            order,
+            has_instagram_stats_repo=self.instagram_stats_repo is not None,
+        )
+
+        # Pre-filter in memory — no DB calls
+        candidate_ids = [
+            uid
+            for uid in confirmed_ids
+            if uid != order.advertiser_id
+            and uid not in already_sent_set
+            and uid not in bloggers_with_unfulfilled
+        ]
+        if not candidate_ids:
+            return []
+
+        # Batch load users (1 query)
+        users_map = await self.user_repo.get_by_ids(
+            candidate_ids, session=session
+        )
+        active_ids = [
+            uid
+            for uid in candidate_ids
+            if uid in users_map and users_map[uid].status == UserStatus.ACTIVE
+        ]
+        if not active_ids:
+            return []
+
+        # Batch load profiles if any profile-based filter is active (1 query)
+        profiles_map: dict[UUID, BloggerProfile] = {}
+        if criteria.need_profile:
+            profiles_map = await self.blogger_repo.get_by_user_ids(
+                active_ids, session=session
+            )
+            active_ids = [
+                uid
+                for uid in active_ids
+                if uid in profiles_map
+                and _passes_profile_based_filters(
+                    profiles_map[uid], order, criteria
+                )
+            ]
+        if not active_ids:
+            return []
+
+        # Batch load Instagram stats if needed (1 query)
+        stats_map: dict[UUID, InstagramStats] = {}
+        if (
+            criteria.need_instagram_stats
+            and self.instagram_stats_repo is not None
+        ):
+            stats_map = await self.instagram_stats_repo.get_by_user_ids(
+                active_ids, session=session
+            )
+
+        # Final follower/publication filter in memory
+        seen_ids: set[UUID] = set()
+        users: list[User] = []
+        for uid in active_ids:
+            profile = profiles_map.get(uid)
+            stats = stats_map.get(uid)
+            followers_count, media_count = _extract_followers_and_media(
+                stats, profile, criteria
+            )
+            if not _passes_follower_filters(followers_count, criteria):
+                continue
+            if not _passes_publication_filters(media_count, order, criteria):
+                continue
+            if uid not in seen_ids:
+                seen_ids.add(uid)
+                users.append(users_map[uid])
+
+        return users
+
     async def _get_followers_and_media(
         self,
         user_id: UUID,
@@ -385,11 +477,7 @@ class OfferDispatchService:
             if stats is not None:
                 followers_count = stats.followers_count
                 media_count = stats.media_count
-        if (
-            profile is not None
-            and (followers_count is None or media_count is None)
-            and followers_count is None
-        ):
+        if profile is not None and followers_count is None:
             followers_count = profile.instagram_followers_count
         return followers_count, media_count
 
@@ -442,25 +530,13 @@ class OfferDispatchService:
         ) = await self._validate_and_get_initial_data(order_id, session)
         if not confirmed_ids:
             return []
-        has_stats_repo = self.instagram_stats_repo is not None
-        criteria = _build_dispatch_criteria(
-            order, has_instagram_stats_repo=has_stats_repo
+        return await self._collect_eligible_users(
+            order,
+            confirmed_ids,
+            already_sent_set,
+            bloggers_with_unfulfilled,
+            session,
         )
-        seen_ids: set[UUID] = set()
-        users: list[User] = []
-        for user_id in confirmed_ids:
-            user = await self._check_user_eligible(
-                user_id,
-                order,
-                criteria,
-                already_sent_set,
-                bloggers_with_unfulfilled,
-                session,
-            )
-            if user is not None and user.user_id not in seen_ids:
-                seen_ids.add(user.user_id)
-                users.append(user)
-        return users
 
     async def record_offer_sent(
         self,

@@ -115,6 +115,19 @@ class BloggerProfileRepository(ABC):
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by user id."""
 
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, BloggerProfile]:
+        """Fetch blogger profiles by user IDs. Override for batch impl."""
+        result: Dict[UUID, BloggerProfile] = {}
+        for uid in user_ids:
+            p = await self.get_by_user_id(uid, session=session)
+            if p is not None:
+                result[uid] = p
+        return result
+
     @abstractmethod
     async def get_by_instagram_url(
         self, instagram_url: str, session: object | None = None
@@ -456,6 +469,19 @@ class InstagramStatsRepository(ABC):
     ) -> Optional[InstagramStats]:
         """Fetch Instagram stats by user id."""
 
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, InstagramStats]:
+        """Fetch Instagram stats by user IDs. Override for batch impl."""
+        result: Dict[UUID, InstagramStats] = {}
+        for uid in user_ids:
+            s = await self.get_by_user_id(uid, session=session)
+            if s is not None:
+                result[uid] = s
+        return result
+
     @abstractmethod
     async def save(
         self, stats: InstagramStats, session: object | None = None
@@ -625,6 +651,19 @@ class OutboxRepository(ABC):
         """Delete PUBLISHED/FAILED events older than retention_days.
 
         Returns deleted count.
+        """
+
+    @abstractmethod
+    async def reset_stale_processing_events(
+        self,
+        stale_after_minutes: int = 15,
+        session: object | None = None,
+    ) -> int:
+        """Reset stale PROCESSING events back to PENDING.
+
+        Events that have been in PROCESSING state longer than
+        stale_after_minutes are reset so they can be retried.
+        Returns count of reset events.
         """
 
 

@@ -52,6 +52,7 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
             await self._producer.send_and_wait(self._topic, payload)
         except Exception:
             logger.exception("Failed to publish order activation to Kafka")
+            raise
 
     async def stop(self) -> None:
         """Stop producer (best-effort)."""

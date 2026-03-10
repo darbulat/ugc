@@ -1,5 +1,6 @@
 """Outbox publisher service for reliable event publishing."""
 
+import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Optional
@@ -14,6 +15,8 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import Order, OutboxEvent
 from ugc_bot.domain.enums import OrderStatus, OutboxEventStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -83,6 +86,20 @@ class OutboxPublisher:
             last_error=None,
         )
 
+    async def _reset_stale_events(self, stale_after_minutes: int = 15) -> None:
+        """Reset stale PROCESSING events back to PENDING."""
+
+        async def _run(session: object | None) -> None:
+            count = await self.outbox_repo.reset_stale_processing_events(
+                stale_after_minutes=stale_after_minutes, session=session
+            )
+            if count > 0:
+                logger.warning(
+                    "Reset %d stale PROCESSING outbox events to PENDING", count
+                )
+
+        await with_optional_tx(self.transaction_manager, _run)
+
     async def process_pending_events(
         self,
         kafka_publisher: OrderActivationPublisher,
@@ -90,6 +107,8 @@ class OutboxPublisher:
         batch_limit: int = 100,
     ) -> None:
         """Process pending events (claim atomically, retry on failure)."""
+
+        await self._reset_stale_events()
 
         async def _claim(session: object | None):
             return await self.outbox_repo.claim_pending_events(
