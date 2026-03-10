@@ -1,5 +1,6 @@
 """ScrapeCreators API client for Instagram profile by handle."""
 
+import asyncio
 import logging
 from typing import Optional, Tuple
 
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://api.scrapecreators.com"
 DEFAULT_PROFILE_PATH = "/v1/instagram/profile"
 SCRAPECREATORS_TIMEOUT = 15.0
+SCRAPECREATORS_RETRY_ATTEMPTS = 3
+SCRAPECREATORS_RETRY_BACKOFF_SECONDS = (1.0, 2.0)
 
 
 class ScrapeCreatorsProfileClient(
@@ -52,8 +55,8 @@ class ScrapeCreatorsProfileClient(
     ) -> Optional[dict]:
         """Fetch Instagram profile for handle.
 
-        Returns full response dict (success, data.user, status) or None on
-        error.
+        Retries on 5xx with exponential backoff. Returns full response dict
+        (success, data.user, status) or None on error.
         """
         if not self._is_configured():
             logger.warning(
@@ -70,49 +73,69 @@ class ScrapeCreatorsProfileClient(
         if trim:
             params["trim"] = "true"
 
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.get(
-                    request_url, headers=headers, params=params
-                )
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            response_snippet = (exc.response.text or "")[:200]
-            logger.error(
-                "ScrapeCreators request failed",
-                extra={
-                    "handle": clean_handle,
-                    "status_code": status_code,
-                    "response": response_snippet,
-                },
-            )
-            raise ScrapeCreatorsAPIError(
-                f"ScrapeCreators API error: {status_code}",
-                status_code=status_code,
-                response_text=exc.response.text or "",
-            ) from exc
-        except (httpx.RequestError, ValueError) as exc:
-            logger.warning(
-                "ScrapeCreators request error",
-                extra={"handle": clean_handle, "error": str(exc)},
-            )
-            return None
+        last_exc: Optional[ScrapeCreatorsAPIError] = None
+        backoff = (0.0,) + SCRAPECREATORS_RETRY_BACKOFF_SECONDS
 
+        for attempt in range(SCRAPECREATORS_RETRY_ATTEMPTS):
+            if attempt > 0:
+                await asyncio.sleep(backoff[attempt])
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    response = await client.get(
+                        request_url, headers=headers, params=params
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                break
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                response_snippet = (exc.response.text or "")[:200]
+                logger.error(
+                    "ScrapeCreators request failed",
+                    extra={
+                        "handle": clean_handle,
+                        "status_code": status_code,
+                        "response": response_snippet,
+                        "attempt": attempt + 1,
+                        "max_attempts": SCRAPECREATORS_RETRY_ATTEMPTS,
+                    },
+                )
+                last_exc = ScrapeCreatorsAPIError(
+                    f"ScrapeCreators API error: {status_code}",
+                    status_code=status_code,
+                    response_text=exc.response.text or "",
+                )
+                if (
+                    status_code >= 500
+                    and attempt < SCRAPECREATORS_RETRY_ATTEMPTS - 1
+                ):
+                    continue
+                raise last_exc from exc
+            except (httpx.RequestError, ValueError) as exc:
+                logger.warning(
+                    "ScrapeCreators request error",
+                    extra={"handle": clean_handle, "error": str(exc)},
+                )
+                return None
+
+        return self._validate_profile_response(data, clean_handle)
+
+    def _validate_profile_response(
+        self, data: object, handle: str
+    ) -> Optional[dict]:
+        """Return response dict if valid, else None."""
         if not isinstance(data, dict):
             logger.debug(
                 "ScrapeCreators response is not a dict",
-                extra={"handle": clean_handle},
+                extra={"handle": handle},
             )
             return None
         if not data.get("success") or "data" not in data:
             logger.debug(
                 "ScrapeCreators response missing success or data",
-                extra={"handle": clean_handle},
+                extra={"handle": handle},
             )
             return None
-
         return data
 
     async def get_profile_stats_by_username(

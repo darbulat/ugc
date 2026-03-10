@@ -122,6 +122,49 @@ async def test_get_profile_http_error_raises_scrapecreators_api_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_profile_5xx_retries_then_succeeds() -> None:
+    """On 5xx, client retries with backoff; success on second attempt."""
+    client = ScrapeCreatorsProfileClient(api_key="key")
+    response_data = {
+        "success": True,
+        "data": {"user": {"username": "jane"}},
+        "status": "ok",
+    }
+    mock_500 = MagicMock()
+    mock_500.status_code = 500
+    mock_500.text = "Server Error"
+    mock_500.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "500", request=MagicMock(), response=mock_500
+        )
+    )
+    mock_200 = MagicMock()
+    mock_200.status_code = 200
+    mock_200.json.return_value = response_data
+    mock_200.raise_for_status = MagicMock()
+
+    with (
+        patch(
+            "ugc_bot.infrastructure.instagram.scrapecreators_client.asyncio.sleep",
+            AsyncMock(),
+        ),
+        patch(
+            "ugc_bot.infrastructure.instagram.scrapecreators_client.httpx.AsyncClient"
+        ) as mock_client_cls,
+    ):
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[mock_500, mock_200])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        result = await client.get_profile("jane")
+
+    assert result == response_data
+    assert mock_client.get.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_get_profile_402_out_of_credits_raises() -> None:
     """Raises ScrapeCreatorsAPIError on 402 (out of credits) for alerting."""
     client = ScrapeCreatorsProfileClient(api_key="key")
@@ -234,6 +277,33 @@ async def test_get_profile_missing_success_or_data_returns_none() -> None:
         mock_client_cls.return_value = mock_client
         result2 = await client.get_profile("jane")
     assert result2 is None
+
+
+@pytest.mark.asyncio
+async def test_get_profile_stats_by_username_returns_profile() -> None:
+    """get_profile_stats_by_username returns profile dict on success."""
+    client = ScrapeCreatorsProfileClient(api_key="key")
+    response_data = {
+        "success": True,
+        "data": {"user": {"username": "jane"}},
+        "status": "ok",
+    }
+    with patch(
+        "ugc_bot.infrastructure.instagram.scrapecreators_client.httpx.AsyncClient"
+    ) as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = response_data
+        mock_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        result = await client.get_profile_stats_by_username("jane")
+
+    assert result == response_data
 
 
 @pytest.mark.asyncio

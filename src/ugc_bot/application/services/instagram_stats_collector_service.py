@@ -295,6 +295,7 @@ class InstagramStatsCollectorService:
         error_reason is set for failed_users.
         """
         provider = "scrapecreators"
+        error_reason: Optional[str] = None
         client = cast(
             InstagramStatsProviderClient,
             self.stats_provider_client,
@@ -303,8 +304,20 @@ class InstagramStatsCollectorService:
             raw, provider = await client.get_profile_stats_with_provider(
                 username
             )
-        except ScrapeCreatorsAPIError:
-            raise
+        except ScrapeCreatorsAPIError as exc:
+            if exc.status_code >= 500:
+                logger.warning(
+                    "ScrapeCreators 5xx (transient), will try fallback",
+                    extra={
+                        "user_id": user_id_str,
+                        "username": username,
+                        "status_code": exc.status_code,
+                    },
+                )
+                error_reason = f"ScrapeCreators API error: {exc.status_code}"
+                raw, provider = None, ""
+            else:
+                raise
         except Exception as exc:
             logger.warning(
                 "Failed to fetch Instagram stats",
@@ -342,7 +355,7 @@ class InstagramStatsCollectorService:
                 )
                 return None, "", str(exc)
 
-        return None, "", "no_stats_data"
+        return None, "", error_reason or "no_stats_data"
 
     async def _process_one_profile(
         self, profile: BloggerProfile, now: datetime

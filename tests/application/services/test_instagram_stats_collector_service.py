@@ -934,3 +934,51 @@ async def test_run_once_scrapecreators_api_error_propagates() -> None:
     with pytest.raises(ScrapeCreatorsAPIError) as exc_info:
         await service.run_once()
     assert exc_info.value.status_code == 402
+
+
+@pytest.mark.asyncio
+async def test_run_once_scrapecreators_5xx_treated_as_transient() -> None:
+    """ScrapeCreators 5xx is not re-raised; user goes to failed_users."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=0.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_1",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    class ScrapeCreators500Client(InMemoryInstagramRapidApiClient):
+        async def get_profile_stats_by_username(self, username: str):
+            raise ScrapeCreatorsAPIError(
+                "ScrapeCreators API error: 500",
+                status_code=500,
+                response_text='{"message":"Internal Server Error"}',
+            )
+
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=SingleProviderWrapper(
+            ScrapeCreators500Client(), "scrapecreators"
+        ),
+        delay_seconds=0.0,
+    )
+    result = await service.run_once()
+    assert result.updated == 0
+    assert result.errors == 1
+    assert len(result.failed_users) == 1
+    assert "500" in (result.failed_users[0].get("reason") or "")
