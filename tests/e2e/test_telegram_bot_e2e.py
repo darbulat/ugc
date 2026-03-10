@@ -26,6 +26,29 @@ def _has_any(text: str | None, *keywords: str) -> bool:
     return any(kw.lower() in lower for kw in keywords)
 
 
+def _is_country_prompt(text: str | None) -> bool:
+    """Return True if text looks like the country selection prompt."""
+    return _has_any(
+        text, "страну", "country", "Россия", "Беларусь", "Казахстан"
+    )  # noqa: E501
+
+
+async def _maybe_select_country(
+    client, entity, text: str | None, timeout: float = 15.0
+) -> str | None:
+    """If text is a country prompt, click country:ru and return the new reply.
+
+    New users see a country selection screen before the role keyboard.
+    Existing users (country already saved) skip straight to the role keyboard.
+    Returns the role-keyboard message text in both cases.
+    """
+    if not _is_country_prompt(text):
+        return text
+    return await click_inline_and_get_reply(
+        client, entity, "country:ru", timeout=timeout
+    )
+
+
 @pytest.mark.e2e_telegram
 @pytest.mark.asyncio
 @pytest.mark.skipif(
@@ -42,7 +65,7 @@ async def test_start_command(telegram_user_client, telegram_e2e_config) -> None:
     )
 
     assert text is not None, "Bot did not reply to /start"
-    # New user: welcome (UMC). Existing user: profile or menu.
+    # New user: welcome (UMC) or country prompt. Existing user: profile or menu.
     assert _has_any(
         text,
         "UMC",
@@ -53,6 +76,9 @@ async def test_start_command(telegram_user_client, telegram_e2e_config) -> None:
         "Choose",
         "действие",
         "action",
+        "страну",
+        "country",
+        "Россия",
     )
 
 
@@ -69,8 +95,11 @@ async def test_role_selection_creator(
     bot_username = telegram_e2e_config["bot_username"]
     entity = await telegram_user_client.get_entity(bot_username)
 
-    await send_and_get_reply(
+    text = await send_and_get_reply(
         telegram_user_client, entity, bot_username, "/start", timeout=20
+    )
+    text = await _maybe_select_country(
+        telegram_user_client, entity, text, timeout=15
     )
 
     text = await click_inline_and_get_reply(
@@ -108,8 +137,11 @@ async def test_role_selection_advertiser(
     bot_username = telegram_e2e_config["bot_username"]
     entity = await telegram_user_client.get_entity(bot_username)
 
-    await send_and_get_reply(
+    text = await send_and_get_reply(
         telegram_user_client, entity, bot_username, "/start", timeout=20
+    )
+    text = await _maybe_select_country(
+        telegram_user_client, entity, text, timeout=15
     )
 
     text = await click_inline_and_get_reply(
@@ -160,6 +192,7 @@ async def test_blogger_registration_full_flow(
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=20
     )
+    text = await _maybe_select_country(client, entity, text, timeout=15)
     assert text and _has_any(
         text, "UGC", "профиль", "profile", "Выберите", "Choose"
     )
@@ -293,7 +326,10 @@ async def test_advertiser_registration_full_flow(
     entity = await telegram_user_client.get_entity(bot_username)
     client = telegram_user_client
 
-    await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=15
+    )
+    text = await _maybe_select_country(client, entity, text, timeout=15)
 
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
@@ -377,6 +413,7 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=20
     )
+    text = await _maybe_select_country(client, entity, text, timeout=15)
     assert text and _has_any(
         text, "UGC", "профиль", "profile", "Выберите", "Choose"
     )
@@ -552,7 +589,10 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
     entity = await telegram_user_client.get_entity(bot_username)
     client = telegram_user_client
 
-    await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=15
+    )
+    text = await _maybe_select_country(client, entity, text, timeout=15)
 
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
@@ -674,7 +714,10 @@ async def test_order_creation_full_flow(
     entity = await telegram_user_client.get_entity(bot_username)
     client = telegram_user_client
 
-    await send_and_get_reply(client, entity, bot_username, "/start", timeout=20)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=20
+    )
+    text = await _maybe_select_country(client, entity, text, timeout=15)
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
     )
@@ -829,6 +872,7 @@ async def _ensure_blogger_profile(client, entity, bot_username: str) -> None:
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=20
     )
+    text = await _maybe_select_country(client, entity, text, timeout=15)
     assert text and _has_any(
         text, "UGC", "профиль", "profile", "Выберите", "Choose"
     )
@@ -851,7 +895,10 @@ async def _ensure_blogger_profile(client, entity, bot_username: str) -> None:
 
 async def _ensure_advertiser_profile(client, entity, bot_username: str) -> None:
     """Advertiser context (has profile/menu) or skip."""
-    await send_and_get_reply(client, entity, bot_username, "/start", timeout=15)
+    text = await send_and_get_reply(
+        client, entity, bot_username, "/start", timeout=15
+    )
+    text = await _maybe_select_country(client, entity, text, timeout=15)
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
     )
