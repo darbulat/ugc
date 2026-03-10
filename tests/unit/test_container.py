@@ -300,3 +300,62 @@ def test_container_build_bot_services_requires_database_url() -> None:
         ValueError, match="DATABASE_URL is required for bot services\\."
     ):
         container.build_bot_services()
+
+
+def test_container_build_instagram_stats_scheduler_deps() -> None:
+    """build_instagram_stats_scheduler_deps returns service and interval."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "INSTAGRAM_ACCESS_TOKEN": "test_access_token",
+            "INSTAGRAM_API_BASE_URL": "https://api.instagram.com",
+        }
+    )
+    container = Container(config)
+    deps = container.build_instagram_stats_scheduler_deps()
+    assert "instagram_stats_update_service" in deps
+    assert "interval_seconds" in deps
+
+
+def test_container_build_geocoder_returns_geocoder_port() -> None:
+    """build_geocoder returns an object with geocode method (GeocoderPort)."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    geocoder = container.build_geocoder()
+    assert geocoder is not None
+    assert hasattr(geocoder, "geocode")
+
+
+def test_build_aiograpi_fetcher_returns_none_on_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_build_aiograpi_fetcher returns None when aiograpi is not importable."""
+    import builtins
+
+    from ugc_bot.config import AppConfig
+    from ugc_bot.container import service_factory
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "INSTAGRAM_STATS_AIOGRAPI_USERNAME": "user",
+            "INSTAGRAM_STATS_AIOGRAPI_PASSWORD": "pass",
+        }
+    )
+    original_import = builtins.__import__
+
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if "aiograpi" in name:
+            raise ImportError(f"No module named '{name}'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+    result = service_factory._build_aiograpi_fetcher(config)
+    assert result is None

@@ -565,6 +565,61 @@ async def test_get_profile_by_id_no_username_in_response() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_profile_username_only_no_access_token_returns_none() -> None:
+    """_get_profile_username_only returns None when access_token empty."""
+    client = HttpInstagramGraphApiClient(access_token="")
+    result = await client._get_profile_username_only("123456")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_profile_via_business_discovery_http_error_returns_none() -> (
+    None
+):
+    """_get_profile_via_business_discovery returns None on HTTPStatusError."""
+    client = HttpInstagramGraphApiClient(
+        access_token="tok",
+        business_account_id="biz_id",
+        business_access_token="biz_tok",
+    )
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        error_response = MagicMock()
+        error_response.status_code = 400
+        mock_client.get.side_effect = httpx.HTTPStatusError(
+            "Bad Request", request=MagicMock(), response=error_response
+        )
+        mock_client_class.return_value = mock_client
+        result = await client._get_profile_via_business_discovery("test_user")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_profile_via_business_discovery_no_discovery_key_returns_none() -> (  # noqa: E501
+    None
+):
+    """_get_profile_via_business_discovery returns None when key missing."""
+    client = HttpInstagramGraphApiClient(
+        access_token="tok",
+        business_account_id="biz_id",
+        business_access_token="biz_tok",
+    )
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"some_key": "value"}
+        mock_response.raise_for_status.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+        result = await client._get_profile_via_business_discovery("test_user")
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_in_memory_client_get_profile_by_id() -> None:
     """In-memory client get_profile_by_id uses profile_map or username_map."""
     full_profile = InstagramProfileInfo(

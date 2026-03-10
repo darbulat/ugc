@@ -209,3 +209,127 @@ class TestGetTelegramUserIdAndUsername:
         )
         assert user_id == "321654"
         assert username is None
+
+
+def _make_valid_init_data_with_user_json(bot_token: str, user_json: str) -> str:
+    """Build init_data where user field holds arbitrary raw JSON string."""
+    data_dict = {"auth_date": "1609459200", "user": user_json}
+    data_check_parts = sorted(
+        (k + "=" + v for k, v in data_dict.items()),
+        key=lambda x: x.split("=", 1)[0],
+    )
+    data_check_string = "\n".join(data_check_parts)
+    secret_key = hmac.new(
+        b"WebAppData",
+        bot_token.encode(),
+        hashlib.sha256,
+    ).digest()
+    computed_hash = hmac.new(
+        secret_key,
+        data_check_string.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    data_dict["hash"] = computed_hash
+    return "&".join(k + "=" + v for k, v in sorted(data_dict.items()))
+
+
+class TestValidateInitDataUserNotDict:
+    """User JSON valid but not a dict branch (line 76)."""
+
+    def test_user_is_list_raises_value_error(self) -> None:
+        """User JSON as list raises ValueError 'user must be an object'."""
+        bot_token = "token_list_test"
+        user_json = json.dumps([1, 2, 3])
+        init_data = _make_valid_init_data_with_user_json(bot_token, user_json)
+        with pytest.raises(ValueError, match="user must be an object"):
+            validate_init_data_and_get_telegram_user_id(init_data, bot_token)
+
+    def test_user_is_number_raises_value_error(self) -> None:
+        """User JSON as number raises ValueError 'user must be an object'."""
+        bot_token = "token_num_test"
+        user_json = "42"
+        init_data = _make_valid_init_data_with_user_json(bot_token, user_json)
+        with pytest.raises(ValueError, match="user must be an object"):
+            validate_init_data_and_get_telegram_user_id(init_data, bot_token)
+
+
+class TestGetTelegramUserIdAndUsernameGuardBranches:
+    """Tests for defensive branches in get_telegram_user_id_and_username."""
+
+    def test_no_user_json_in_parse_returns_external_id_and_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When parse_qsl returns no user key, returns (id, None) (line 99)."""
+        from ugc_bot.miniapp import auth as auth_module
+
+        # Patch validate_init_data_and_get_telegram_user_id to return directly
+        monkeypatch.setattr(
+            auth_module,
+            "validate_init_data_and_get_telegram_user_id",
+            lambda init_data, token: "12345",
+        )
+        # Patch parse_qsl to return data without 'user' key
+        monkeypatch.setattr(
+            auth_module,
+            "parse_qsl",
+            lambda s, **kwargs: [("auth_date", "1609459200"), ("hash", "abc")],
+        )
+
+        user_id, username = auth_module.get_telegram_user_id_and_username(
+            "any_init_data", "any_token"
+        )
+        assert user_id == "12345"
+        assert username is None
+
+    def test_user_json_invalid_in_parse_returns_none_username(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When user JSON is invalid, returns (id, None) (lines 102-103)."""
+        from ugc_bot.miniapp import auth as auth_module
+
+        monkeypatch.setattr(
+            auth_module,
+            "validate_init_data_and_get_telegram_user_id",
+            lambda init_data, token: "99999",
+        )
+        monkeypatch.setattr(
+            auth_module,
+            "parse_qsl",
+            lambda s, **kwargs: [
+                ("user", "not-valid-json"),
+                ("auth_date", "1609459200"),
+            ],
+        )
+
+        user_id, username = auth_module.get_telegram_user_id_and_username(
+            "any_init_data", "any_token"
+        )
+        assert user_id == "99999"
+        assert username is None
+
+    def test_user_is_not_dict_in_parse_returns_none_username(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When user JSON is not a dict, returns (id, None) (line 105)."""
+        from ugc_bot.miniapp import auth as auth_module
+
+        monkeypatch.setattr(
+            auth_module,
+            "validate_init_data_and_get_telegram_user_id",
+            lambda init_data, token: "77777",
+        )
+        # user is a list — valid JSON but not a dict
+        monkeypatch.setattr(
+            auth_module,
+            "parse_qsl",
+            lambda s, **kwargs: [
+                ("user", "[1,2,3]"),
+                ("auth_date", "1609459200"),
+            ],
+        )
+
+        user_id, username = auth_module.get_telegram_user_id_and_username(
+            "any_init_data", "any_token"
+        )
+        assert user_id == "77777"
+        assert username is None

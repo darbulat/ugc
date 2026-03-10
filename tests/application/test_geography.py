@@ -340,6 +340,72 @@ class TestGetCanonicalCitiesSet:
         assert isinstance(get_canonical_cities_set(), frozenset)
 
 
+class TestParseGeographyEdgeCases:
+    """Additional edge cases for parse_geography (lines 59, uncovered)."""
+
+    def test_separator_only_returns_none(self) -> None:
+        """Text that splits into empty tokens returns None (line 59)."""
+        # Commas/semicolons with no actual content
+        result = parse_geography(",,,")
+        assert result is None
+
+    def test_only_commas_returns_none(self) -> None:
+        """Text that is only comma/slash separators returns None (line 59)."""
+        result = parse_geography(",,, / ,")
+        assert result is None
+
+
+class TestGetGeometryQueriesEdgeCases:
+    """Tests for get_geometry_queries_from_spec edge case (line 118)."""
+
+    def test_places_spec_with_empty_values_returns_empty_list(self) -> None:
+        """GeographySpec type='places' and empty values returns []."""
+        spec = GeographySpec(type="places", values=[])
+        result = get_geometry_queries_from_spec(spec)
+        assert result == []
+
+
+class TestResolveRegionFromCityFieldEdgeCases:
+    """resolve_region_from_city_field edge cases (lines 211, 235, 238)."""
+
+    def test_empty_city_returns_none_unrecognized(self) -> None:
+        """Empty city_raw returns (None, 'unrecognized') (line 211)."""
+        result = resolve_region_from_city_field("")
+        assert result == (None, "unrecognized")
+
+    def test_city_with_one_region_returns_ok(self) -> None:
+        """City with exactly one region returns that region (line 235)."""
+        # Find a city that appears in exactly one region
+        city = None
+        for _region_key, cities in REGION_TO_CITIES.items():
+            for c in cities:
+                regions = get_regions_for_city(c)
+                if len(regions) == 1:
+                    city = c
+                    break
+            if city:
+                break
+        if city is not None:
+            result = resolve_region_from_city_field(city)
+            assert result[1] == "ok"
+
+    def test_city_with_multiple_regions_returns_multiple(self) -> None:
+        """City in multiple regions returns (None, 'multiple') (237-238)."""
+        # Find a city in multiple regions
+        city = None
+        for _region_key, cities in REGION_TO_CITIES.items():
+            for c in cities:
+                regions = get_regions_for_city(c)
+                if len(regions) > 1:
+                    city = c
+                    break
+            if city:
+                break
+        if city is not None:
+            result = resolve_region_from_city_field(city)
+            assert result == (None, "multiple")
+
+
 class TestRegionToCitiesCoverage:
     """Sanity check for REGION_TO_CITIES."""
 

@@ -79,6 +79,14 @@ Test types and markers:
 
 Pytest timeout is 5 seconds per test. Coverage threshold is 98%.
 
+## Workflow
+
+After making any code changes, always run `make all` to execute linters and tests before considering the task done:
+
+```bash
+make all  # format-check + lint + typecheck + coverage
+```
+
 ## Key Patterns
 
 - **Repository pattern:** 20+ abstract repos in `application/ports.py`, SQLAlchemy implementations in `infrastructure/db/repositories.py`, in-memory implementations for tests

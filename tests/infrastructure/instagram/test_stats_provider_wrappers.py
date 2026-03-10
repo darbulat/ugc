@@ -70,7 +70,7 @@ async def test_multi_provider_sleeps_after_429_before_next() -> None:
         ),
     ]
     with patch(
-        "ugc_bot.infrastructure.instagram.stats_provider_wrappers.asyncio.sleep",
+        "ugc_bot.infrastructure.instagram.stats_provider_wrappers.asyncio.sleep",  # noqa: E501
         new_callable=AsyncMock,
     ) as mock_sleep:
         multi = MultiProviderInstagramStatsClient(
@@ -82,4 +82,22 @@ async def test_multi_provider_sleeps_after_429_before_next() -> None:
     # random_delay_seconds(3.0) is in [3*0.6, 3*1.6] = [1.8, 4.8], min 0.1
     assert 1.8 <= delay <= 4.8
     assert data == ok_data
+    assert provider == "second"
+
+
+@pytest.mark.asyncio
+async def test_multi_provider_all_rate_limited_returns_none() -> None:
+    """When all providers are rate limited, returns (None, last_provider_id)."""
+
+    class RateLimitClient(InMemoryInstagramRapidApiClient):
+        async def get_profile_stats_by_username(self, username: str):
+            raise RapidApiRateLimitError("429")
+
+    clients: list = [
+        (RateLimitClient(), "first"),
+        (RateLimitClient(), "second"),
+    ]
+    multi = MultiProviderInstagramStatsClient(clients, fallback_delay_seconds=0)
+    data, provider = await multi.get_profile_stats_with_provider("jane")
+    assert data is None
     assert provider == "second"

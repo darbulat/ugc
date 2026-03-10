@@ -1003,3 +1003,96 @@ async def test_webhook_verification_mismatch_calls_notify_mismatch(
     call_args = mock_notify_mismatch.call_args
     assert call_args[0][0] == user_id
     mock_notify_success.assert_not_called()
+
+
+@patch("ugc_bot.instagram_webhook_app.load_config")
+@patch("ugc_bot.instagram_webhook_app.Container")
+@pytest.mark.asyncio
+async def test_webhook_empty_entries_list_returns_ok(
+    mock_container_cls: MagicMock,
+    mock_load_config: MagicMock,
+    client: TestClient,
+    test_config: AppConfig,
+) -> None:
+    """Webhook with empty entries list returns 200 (line 407-408)."""
+    mock_load_config.return_value = test_config
+    mock_build = (
+        mock_container_cls.return_value.build_instagram_verification_service
+    )
+    mock_build.return_value = InstagramVerificationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    payload = {"object": "instagram", "entry": []}
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = _create_signature(
+        payload_bytes, test_config.instagram.instagram_app_secret
+    )
+    response = client.post(
+        "/webhook/instagram",
+        content=payload_bytes,
+        headers={"X-Hub-Signature-256": signature},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_mismatch_exception_is_logged(
+    test_config: AppConfig,
+) -> None:
+    """Exception during mismatch notification is caught and logged (308-309)."""
+    user_repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        external_id="12345",
+        messenger_type=MessengerType.TELEGRAM,
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+    )
+    await user_repo.save(user)
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user.user_id,
+            instagram_url="https://instagram.com/test_user",
+            confirmed=False,
+            city="Moscow",
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=None,
+        )
+    )
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+
+    class BrokenSession:
+        async def close(self) -> None:
+            return None
+
+    class BrokenBot:
+        def __init__(self, token: str) -> None:
+            self.session = BrokenSession()
+
+        async def send_message(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            raise RuntimeError("Telegram is down")
+
+    with patch("aiogram.Bot", BrokenBot):
+        # Should not raise — exception is caught and logged
+        await _notify_user_verification_mismatch(
+            user.user_id, service, test_config
+        )

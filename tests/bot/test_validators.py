@@ -13,6 +13,7 @@ from ugc_bot.bot.validators import (
     validate_city,
     validate_company_activity,
     validate_geography,
+    validate_instagram_url,
     validate_name,
     validate_nickname,
     validate_not_bot_command,
@@ -447,6 +448,81 @@ class TestNormalizeUrl:
 
     def test_empty_returns_empty(self) -> None:
         assert normalize_url("") == ""
+
+
+class TestValidateInstagramUrl:
+    """Tests for validate_instagram_url (covers lines 246, 252)."""
+
+    def test_empty_string_returns_error(self) -> None:
+        """Empty string returns err_instagram_empty (line 246)."""
+        err = validate_instagram_url("")
+        assert err is not None
+        err_lower = (err or "").lower()
+        assert "empty" in err_lower or "instagram" in err_lower
+
+    def test_url_without_instagram_domain_returns_format_error(self) -> None:
+        """URL without instagram.com returns err_instagram_format (line 252)."""
+        err = validate_instagram_url("https://facebook.com/user")
+        assert err is not None
+        err_lower = (err or "").lower()
+        assert "format" in err_lower or "instagram" in err_lower
+
+    def test_valid_instagram_url_returns_none(self) -> None:
+        """Valid Instagram URL returns None."""
+        assert validate_instagram_url("https://instagram.com/username") is None
+
+    def test_invalid_instagram_url_pattern_returns_error(self) -> None:
+        """URL with instagram.com but not regex returns err_instagram_example."""  # noqa: E501
+        err = validate_instagram_url("https://instagram.com/")
+        assert err is not None
+
+
+class TestValidateUrlUncoveredBranches:
+    """Tests for uncovered branches in validate_url (lines 276, 291, 300)."""
+
+    def test_url_over_max_length_returns_error(self) -> None:
+        """URL longer than max_len returns err_url_max (line 276)."""
+        err = validate_url("a" * 600, max_len=500)
+        assert err is not None
+        assert "500" in (err or "") or "long" in (err or "").lower()
+
+    def test_http_url_with_no_netloc_returns_error(self) -> None:
+        """https:// with no netloc returns err_url_invalid (line 291)."""
+        err = validate_url("https://")
+        assert err is not None
+        err_lower = (err or "").lower()
+        assert "valid" in err_lower or "link" in err_lower
+
+    def test_url_with_space_returns_error(self) -> None:
+        """URL with space in path returns err_url_invalid (line 300)."""
+        err = validate_url("example .com")
+        assert err is not None
+        err_lower = (err or "").lower()
+        assert "valid" in err_lower or "link" in err_lower
+
+
+class TestValidatePhoneInvalidBranch:
+    """Tests for the invalid phone number branch (line 417)."""
+
+    def test_11_digits_starting_with_6_returns_error(self) -> None:
+        """11-digit number starting with 6 is invalid (line 417)."""
+        err = validate_phone("69001110777")
+        assert err is not None
+        err_lower = (err or "").lower()
+        assert (
+            "valid" in err_lower
+            or "89001" in err_lower
+            or "пример" in err_lower
+        )
+
+
+class TestNormalizeUrlOtherScheme:
+    """Tests for normalize_url with non-http/https scheme (line 223)."""
+
+    def test_other_scheme_returned_unchanged(self) -> None:
+        """URL with ftp:// scheme (not http/https) is returned as-is."""
+        result = normalize_url("ftp://example.com")
+        assert result == "ftp://example.com"
 
 
 class TestNormalizeInstagramUrl:

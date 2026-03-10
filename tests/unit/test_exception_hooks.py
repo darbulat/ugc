@@ -65,3 +65,36 @@ async def test_asyncio_handler_logs_on_unretrieved_task_exception(
     asyncio.create_task(_failing_task())
     await asyncio.sleep(0.15)
     assert "test-service" in caplog.text or "task failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_asyncio_handler_else_branch_when_no_exception_in_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Handler logs via logger.error when context has no BaseException."""
+    from ugc_bot.exception_hooks import _make_asyncio_exception_handler
+
+    caplog.set_level("ERROR")
+    handler = _make_asyncio_exception_handler("svc-test")
+    loop = asyncio.get_running_loop()
+    context = {"message": "Something went wrong", "future": "some-future"}
+    handler(loop, context)
+    assert "Something went wrong" in caplog.text
+    assert any(
+        getattr(r, "service", None) == "svc-test" for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_asyncio_handler_else_branch_when_exception_is_not_base_exception(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Handler else branch when 'exception' key holds non-BaseException."""
+    from ugc_bot.exception_hooks import _make_asyncio_exception_handler
+
+    caplog.set_level("ERROR")
+    handler = _make_asyncio_exception_handler("svc-other")
+    loop = asyncio.get_running_loop()
+    context = {"message": "Not an exception", "exception": "just a string"}
+    handler(loop, context)
+    assert "Not an exception" in caplog.text

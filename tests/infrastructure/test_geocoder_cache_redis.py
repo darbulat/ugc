@@ -110,3 +110,62 @@ async def test_redis_cache_set_handles_redis_error() -> None:
     ):
         cache = GeocoderCacheRedis(redis_url="redis://localhost:6379/0")
         await cache.set("k", "v", ttl_seconds=60)
+
+
+def test_get_redis_returns_none_on_import_error() -> None:
+    """_get_redis returns None and logs when the redis package is not installed.
+
+    This covers the ImportError branch inside _get_redis (lines 38-43 of
+    geocoder_cache_redis.py) where ``from redis.asyncio import Redis`` raises.
+    """
+    cache = GeocoderCacheRedis(redis_url="redis://localhost:6379/0")
+    # Simulate redis package being absent by making the import raise
+    with patch(
+        "ugc_bot.infrastructure.geocoder_cache_redis.GeocoderCacheRedis._get_redis",  # noqa: E501
+        wraps=None,
+    ):
+        pass  # just confirming the method exists; test via builtins below
+
+    # Patch builtins.__import__ to raise ImportError for redis.asyncio
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _import_that_fails_for_redis(name, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "redis.asyncio":
+            raise ImportError("No module named 'redis'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=_import_that_fails_for_redis):
+        result = cache._get_redis()
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_redis_cache_set_is_noop_when_get_redis_returns_none_directly() -> (  # noqa: E501
+    None
+):
+    """set() is a no-op when _get_redis() returns None (ImportError path).
+
+    Exercises lines 38-43 of geocoder_cache_redis.py: the set() early-return
+    branch when redis is unavailable, reached via the ImportError fallback.
+    """
+    cache = GeocoderCacheRedis(redis_url="redis://localhost:6379/0")
+    # Force _get_redis to return None via ImportError simulation
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _import_that_fails_for_redis(name, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "redis.asyncio":
+            raise ImportError("No module named 'redis'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=_import_that_fails_for_redis):
+        # Should not raise; set() must return early when redis is None
+        await cache.set("k", "v", ttl_seconds=60)
+        # get() also returns None
+        result = await cache.get("k")
+
+    assert result is None

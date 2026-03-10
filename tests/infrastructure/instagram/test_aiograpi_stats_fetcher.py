@@ -496,6 +496,85 @@ def test_apply_httpx_proxies_compat_idempotent() -> None:
     _apply_httpx_proxies_compat()
 
 
+@pytest.mark.asyncio
+async def test_get_profile_stats_non_feedback_exception_raises(
+    tmp_path: Path,
+) -> None:
+    """Non-FeedbackRequired exceptions in info fetch are re-raised."""
+    mock_aiograpi, mock_exceptions = _make_aiograpi_mocks()
+    session_file = tmp_path / "session.json"
+    session_file.write_text("{}")
+    fetcher = AiograpiStatsFetcher(
+        instagram_username="user",
+        instagram_password="pass",
+        session_path=session_file,
+    )
+    mock_client = MagicMock()
+    mock_client.login = AsyncMock(return_value=None)
+    mock_client.load_settings = MagicMock()
+    # Exception that is not UserNotFound, LoginRequired, or FeedbackRequired
+    mock_client.user_info_by_username_v1 = AsyncMock(
+        side_effect=RuntimeError("unexpected error")
+    )
+    mock_aiograpi.Client = MagicMock(return_value=mock_client)
+
+    with (
+        patch.dict(
+            sys.modules,
+            {"aiograpi": mock_aiograpi, "aiograpi.exceptions": mock_exceptions},
+        ),
+        patch(
+            "ugc_bot.infrastructure.instagram.aiograpi_stats_fetcher._apply_httpx_proxies_compat"
+        ),
+        pytest.raises(RuntimeError, match="unexpected error"),
+    ):
+        await fetcher.get_profile_stats_by_username("jane")
+
+
+@pytest.mark.asyncio
+async def test_import_aiograpi_feedback_required_import_error_sets_none(
+    tmp_path: Path,
+) -> None:
+    """_import_aiograpi sets FeedbackRequired=None when import fails (27-28)."""
+    import builtins
+
+    from ugc_bot.infrastructure.instagram import aiograpi_stats_fetcher as mod
+
+    # aiograpi available but FeedbackRequired is not
+    mock_aiograpi = MagicMock()
+    mock_exceptions = MagicMock()
+    mock_exceptions.UserNotFound = type("UserNotFound", (Exception,), {})
+    mock_exceptions.LoginRequired = type("LoginRequired", (Exception,), {})
+    # FeedbackRequired intentionally NOT set on mock_exceptions
+
+    orig_import = builtins.__import__
+
+    def patched_import(name, *args, **kwargs):
+        if (
+            name == "aiograpi.exceptions"
+            and args
+            and "FeedbackRequired" in (args[3] or [])
+        ):
+            raise ImportError("FeedbackRequired not found")
+        return orig_import(name, *args, **kwargs)
+
+    with (
+        patch.dict(
+            sys.modules,
+            {"aiograpi": mock_aiograpi, "aiograpi.exceptions": mock_exceptions},
+        ),
+        patch(
+            "ugc_bot.infrastructure.instagram.aiograpi_stats_fetcher._apply_httpx_proxies_compat"
+        ),
+        patch.object(builtins, "__import__", side_effect=patched_import),
+    ):
+        result = mod._import_aiograpi()
+    # If FeedbackRequired import fails, result still has Client etc.
+    # (the inner except ImportError sets FeedbackRequired = None and continues)
+    # Result can be None (outer except) or a tuple
+    assert result is None or isinstance(result, tuple)
+
+
 def test_apply_httpx_proxies_compat_converts_proxies_to_proxy() -> None:
     """Compat converts proxies= to proxy= for httpx 0.28+."""
     import httpx

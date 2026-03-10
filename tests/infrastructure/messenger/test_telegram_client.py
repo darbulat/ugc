@@ -268,7 +268,7 @@ def test_build_keyboard_markup_reply_web_app_button() -> None:
             [
                 Button(
                     text="Pick on map",
-                    web_app_url="https://bot.example/miniapp/location_picker.html",
+                    web_app_url="https://bot.example/miniapp/location_picker.html",  # noqa: E501
                 )
             ]
         ],
@@ -491,3 +491,61 @@ def test_is_user_blocked_bot_telegram_bad_request_other() -> None:
 def test_is_user_blocked_bot_other_exception() -> None:
     """is_user_blocked_bot returns False for other exceptions."""
     assert is_user_blocked_bot(RuntimeError("fail")) is False
+
+
+@pytest.mark.asyncio
+async def test_edit_reply_markup_raises_non_modified_error(
+    fake_bot: MagicMock,
+) -> None:
+    """edit_reply_markup re-raises TelegramBadRequest (not 'not modified')."""
+    fake_bot.edit_message_reply_markup.side_effect = TelegramBadRequest(
+        message="Bad Request: message to edit not found",
+        method=EditMessageReplyMarkup(chat_id=0, message_id=0),
+    )
+    client = TelegramMessengerClient(bot=fake_bot)
+    with pytest.raises(TelegramBadRequest, match="not found"):
+        await client.edit_reply_markup(chat_id="123", message_id="42")
+
+
+@pytest.mark.asyncio
+async def test_answer_callback_raises_non_expired_error(
+    fake_bot: MagicMock,
+) -> None:
+    """answer_callback re-raises TelegramBadRequest not related to expiry."""
+    from aiogram.methods import AnswerCallbackQuery
+
+    fake_bot.answer_callback_query.side_effect = TelegramBadRequest(
+        method=AnswerCallbackQuery(callback_query_id="cb-bad"),
+        message="Bad Request: some other error",
+    )
+    client = TelegramMessengerClient(bot=fake_bot)
+    with pytest.raises(TelegramBadRequest, match="some other error"):
+        await client.answer_callback(callback_id="cb-bad")
+
+
+@pytest.mark.asyncio
+async def test_send_invoice_with_provider_data_and_email_flags(
+    fake_bot: MagicMock,
+) -> None:
+    """send_invoice includes provider_data, need_email, send_email_to_provider."""  # noqa: E501
+    from ugc_bot.application.messenger.dto import Invoice, InvoiceItem
+
+    client = TelegramMessengerClient(bot=fake_bot)
+    invoice = Invoice(
+        title="Full Invoice",
+        description="With all optional fields",
+        payload="order-full",
+        provider_token="tok",
+        currency="RUB",
+        items=[InvoiceItem(label="Item", amount_minor=10000)],
+        provider_data='{"key": "value"}',
+        need_email=True,
+        send_email_to_provider=True,
+    )
+    await client.send_invoice(chat_id="42", invoice=invoice)
+
+    fake_bot.send_invoice.assert_called_once()
+    call_kwargs = fake_bot.send_invoice.call_args[1]
+    assert call_kwargs["provider_data"] == '{"key": "value"}'
+    assert call_kwargs["need_email"] is True
+    assert call_kwargs["send_email_to_provider"] is True

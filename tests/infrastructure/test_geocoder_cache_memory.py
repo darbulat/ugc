@@ -1,6 +1,7 @@
 """Tests for in-memory geocoder cache backend."""
 
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -52,3 +53,27 @@ async def test_memory_cache_evicts_when_over_max_entries() -> None:
     assert await cache.get("c") == "3"
     assert await cache.get("a") is None
     assert await cache.get("b") == "2"
+
+
+@pytest.mark.asyncio
+async def test_memory_cache_get_hits_expiry_check_after_evict() -> None:
+    """get returns None when per-entry expiry check fires (lines 37-39).
+
+    The branch ``if expiry <= now: ...`` inside get() is a safety-net that
+    can only trigger when _evict_expired does NOT clean up the specific key
+    (e.g. because it was inserted concurrently after _evict_expired ran, or
+    the evict is bypassed).  We simulate this by patching _evict_expired to
+    be a no-op while storing an already-expired entry directly in the store.
+    """
+    cache = GeocoderCacheMemory(max_entries=100)
+    now = time.monotonic()
+    # Store an already-expired entry directly — expiry is in the past
+    cache._store["race_key"] = ("race_value", now - 10.0)
+
+    # Bypass _evict_expired so the key survives to the per-entry check
+    with patch.object(cache, "_evict_expired"):
+        result = await cache.get("race_key")
+
+    assert result is None
+    # Confirm the per-entry branch removed the key from the store
+    assert "race_key" not in cache._store

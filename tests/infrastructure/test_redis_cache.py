@@ -61,6 +61,14 @@ def test_serialize_nested() -> None:
     assert "2025-01-01" in back["items"][0]["at"]
 
 
+def test_serialize_raises_for_unsupported_type() -> None:
+    """serialize_admin_payload raises TypeError for unsupported types."""
+    import pytest
+
+    with pytest.raises(TypeError, match="is not JSON serializable"):
+        serialize_admin_payload({"key": object()})
+
+
 @pytest.mark.asyncio
 async def test_admin_cache_disabled_when_redis_url_none() -> None:
     """When redis_url is None, get returns None and set is no-op."""

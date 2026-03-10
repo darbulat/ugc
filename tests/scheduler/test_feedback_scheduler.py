@@ -1064,3 +1064,101 @@ def test_main_feedback_disabled_returns_early(
     )
     main()
     container_mock.assert_not_called()
+
+
+def test_main_no_database_url_returns_early(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Main returns early when feedback enabled but DATABASE_URL is empty."""
+
+    monkeypatch.setenv("FEEDBACK_ENABLED", "true")
+    monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF1234567890abcdef1234567890")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    container_mock = Mock()
+    monkeypatch.setattr(
+        "ugc_bot.feedback_scheduler.Container",
+        container_mock,
+    )
+    main()
+    container_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_once_skips_when_both_users_not_found(fake_tm) -> None:
+    """Skip interaction when both blogger and advertiser are missing."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    interaction_repo = InMemoryInteractionRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    # Neither blogger nor advertiser is saved to user_repo
+    blogger_id = UUID("00000000-0000-0000-0000-0000000099a0")
+    advertiser_id = UUID("00000000-0000-0000-0000-0000000099a1")
+
+    await interaction_repo.save(
+        Interaction(
+            interaction_id=UUID("00000000-0000-0000-0000-0000000099a2"),
+            order_id=UUID("00000000-0000-0000-0000-0000000099a3"),
+            blogger_id=blogger_id,
+            advertiser_id=advertiser_id,
+            status=InteractionStatus.PENDING,
+            from_advertiser=None,
+            from_blogger=None,
+            postpone_count=0,
+            next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    feedback_config = FeedbackConfig()
+    bot = FakeBot()
+    await run_once(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        cutoff=datetime.now(timezone.utc),
+        transaction_manager=fake_tm,
+    )
+    assert not bot.messages
+
+
+@pytest.mark.asyncio
+async def test_run_loop_uses_close_method_when_available() -> None:
+    """run_loop calls bot.close() when it exists as a callable."""
+
+    class BotWithClose(FakeBot):
+        def __init__(self) -> None:
+            super().__init__()
+            self.closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    bot = BotWithClose()
+    interaction_repo = InMemoryInteractionRepository()
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    feedback_config = FeedbackConfig()
+    await run_loop(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        interval_seconds=0,
+        transaction_manager=None,
+        max_iterations=1,
+    )
+    assert bot.closed is True

@@ -215,6 +215,60 @@ class TestOutboxProcessor:
 
         outbox_publisher.cleanup_processed_events.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_cleanup_skipped_when_iteration_not_at_interval(
+        self,
+    ) -> None:
+        """Cleanup skipped when iteration count not a multiple of interval."""
+        outbox_publisher = Mock()
+        outbox_publisher.cleanup_processed_events = AsyncMock(return_value=0)
+        kafka_publisher = Mock()
+
+        outbox_config = Mock()
+        outbox_config.outbox_retention_days = 7
+        outbox_config.outbox_cleanup_batch_size = 1000
+        outbox_config.outbox_cleanup_interval_iterations = 5
+
+        processor = OutboxProcessor(
+            outbox_publisher=outbox_publisher,
+            kafka_publisher=kafka_publisher,
+            poll_interval=0.1,
+            max_retries=3,
+            outbox_config=outbox_config,
+        )
+
+        # iteration_count=3, interval=5: 3 % 5 != 0 → return early (line 90)
+        processor._iteration_count = 3
+        await processor._maybe_run_cleanup()
+        outbox_publisher.cleanup_processed_events.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_exception_is_logged(self) -> None:
+        """Cleanup exception is caught and logged (lines 101-102)."""
+        outbox_publisher = Mock()
+        outbox_publisher.cleanup_processed_events = AsyncMock(
+            side_effect=RuntimeError("DB error")
+        )
+        kafka_publisher = Mock()
+
+        outbox_config = Mock()
+        outbox_config.outbox_retention_days = 7
+        outbox_config.outbox_cleanup_batch_size = 1000
+        outbox_config.outbox_cleanup_interval_iterations = 1
+
+        processor = OutboxProcessor(
+            outbox_publisher=outbox_publisher,
+            kafka_publisher=kafka_publisher,
+            poll_interval=0.1,
+            max_retries=3,
+            outbox_config=outbox_config,
+        )
+
+        processor._iteration_count = 1
+        # Should not raise — exception is caught internally
+        await processor._maybe_run_cleanup()
+        outbox_publisher.cleanup_processed_events.assert_called_once()
+
 
 class TestRunProcessor:
     """Test run_processor function."""
