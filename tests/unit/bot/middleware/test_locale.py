@@ -47,8 +47,8 @@ class TestLocaleMiddlewareResolve:
     """Tests for LocaleMiddleware._resolve static method."""
 
     @pytest.mark.asyncio
-    async def test_no_user_repo_returns_default(self) -> None:
-        """When user_repo is absent, _resolve returns the default locale."""
+    async def test_no_user_role_service_returns_default(self) -> None:
+        """When user_role_service is absent, returns the default locale."""
         data: dict = {
             "country_repo": MagicMock(),
             "event_from_user": _make_tg_user(),
@@ -58,26 +58,26 @@ class TestLocaleMiddlewareResolve:
 
     @pytest.mark.asyncio
     async def test_no_country_repo_returns_default(self) -> None:
-        """When country_repo is absent, _resolve returns the default locale."""
+        """When country_repo is absent, returns the default locale."""
         data: dict = {
-            "user_repo": MagicMock(),
+            "user_role_service": MagicMock(),
             "event_from_user": _make_tg_user(),
         }
         result = await LocaleMiddleware._resolve(data)
         assert result == "ru"
 
     @pytest.mark.asyncio
-    async def test_neither_repo_returns_default(self) -> None:
-        """When both repos are absent, _resolve returns the default locale."""
+    async def test_neither_service_nor_repo_returns_default(self) -> None:
+        """When both service and repo are absent, returns the default locale."""
         data: dict = {"event_from_user": _make_tg_user()}
         result = await LocaleMiddleware._resolve(data)
         assert result == "ru"
 
     @pytest.mark.asyncio
     async def test_no_event_from_user_returns_default(self) -> None:
-        """When event_from_user is None, _resolve returns the default locale."""
+        """When event_from_user is None, returns the default locale."""
         data: dict = {
-            "user_repo": MagicMock(),
+            "user_role_service": MagicMock(),
             "country_repo": MagicMock(),
             "event_from_user": None,
         }
@@ -86,9 +86,9 @@ class TestLocaleMiddlewareResolve:
 
     @pytest.mark.asyncio
     async def test_event_from_user_missing_returns_default(self) -> None:
-        """When event_from_user key is absent, _resolve returns the default."""
+        """When event_from_user key is absent, returns the default."""
         data: dict = {
-            "user_repo": MagicMock(),
+            "user_role_service": MagicMock(),
             "country_repo": MagicMock(),
         }
         result = await LocaleMiddleware._resolve(data)
@@ -96,39 +96,38 @@ class TestLocaleMiddlewareResolve:
 
     @pytest.mark.asyncio
     async def test_user_not_found_in_db_returns_default(self) -> None:
-        """When user_repo.get_by_external returns None, returns default."""
-        user_repo = MagicMock()
-        user_repo.get_by_external = AsyncMock(return_value=None)
+        """When user_role_service.get_user returns None, returns default."""
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(return_value=None)
         country_repo = MagicMock()
 
         data: dict = {
-            "user_repo": user_repo,
+            "user_role_service": user_role_service,
             "country_repo": country_repo,
             "event_from_user": _make_tg_user(),
         }
         result = await LocaleMiddleware._resolve(data)
         assert result == "ru"
-        user_repo.get_by_external.assert_awaited_once_with(
+        user_role_service.get_user.assert_awaited_once_with(
             "123", MessengerType.TELEGRAM
         )
 
     @pytest.mark.asyncio
     async def test_user_found_but_no_country_returns_default(self) -> None:
-        """When user.country is None, _resolve returns the default locale."""
+        """When user.country is None, returns the default locale."""
         user = _make_user(country=None)
-        user_repo = MagicMock()
-        user_repo.get_by_external = AsyncMock(return_value=user)
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(return_value=user)
         country_repo = MagicMock()
         country_repo.get_by_code = AsyncMock()
 
         data: dict = {
-            "user_repo": user_repo,
+            "user_role_service": user_role_service,
             "country_repo": country_repo,
             "event_from_user": _make_tg_user(),
         }
         result = await LocaleMiddleware._resolve(data)
         assert result == "ru"
-        # country_repo should NOT be called if user.country is falsy
         country_repo.get_by_code.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -142,13 +141,13 @@ class TestLocaleMiddlewareResolve:
             currency_symbol="₸",
             locale="kk",
         )
-        user_repo = MagicMock()
-        user_repo.get_by_external = AsyncMock(return_value=user)
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(return_value=user)
         country_repo = MagicMock()
         country_repo.get_by_code = AsyncMock(return_value=country)
 
         data: dict = {
-            "user_repo": user_repo,
+            "user_role_service": user_role_service,
             "country_repo": country_repo,
             "event_from_user": _make_tg_user(),
         }
@@ -158,15 +157,15 @@ class TestLocaleMiddlewareResolve:
 
     @pytest.mark.asyncio
     async def test_user_found_country_not_found_returns_default(self) -> None:
-        """When get_by_code returns None, _resolve falls back to default."""
+        """When get_by_code returns None, falls back to default."""
         user = _make_user(country="xx")
-        user_repo = MagicMock()
-        user_repo.get_by_external = AsyncMock(return_value=user)
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(return_value=user)
         country_repo = MagicMock()
         country_repo.get_by_code = AsyncMock(return_value=None)
 
         data: dict = {
-            "user_repo": user_repo,
+            "user_role_service": user_role_service,
             "country_repo": country_repo,
             "event_from_user": _make_tg_user(),
         }
@@ -175,7 +174,7 @@ class TestLocaleMiddlewareResolve:
 
     @pytest.mark.asyncio
     async def test_custom_default_locale_is_respected(self) -> None:
-        """When data has default_locale set, it is used instead of "ru"."""
+        """When data has default_locale set, it is used instead of 'ru'."""
         data: dict = {
             "default_locale": "en",
             "event_from_user": None,
@@ -185,7 +184,7 @@ class TestLocaleMiddlewareResolve:
 
     @pytest.mark.asyncio
     async def test_falsy_default_locale_falls_back_to_ru(self) -> None:
-        """When default_locale is an empty string, falls back to "ru"."""
+        """When default_locale is an empty string, falls back to 'ru'."""
         data: dict = {
             "default_locale": "",
             "event_from_user": None,
@@ -196,13 +195,13 @@ class TestLocaleMiddlewareResolve:
     @pytest.mark.asyncio
     async def test_custom_default_locale_used_when_user_not_found(self) -> None:
         """Custom default_locale is returned when the user lookup fails."""
-        user_repo = MagicMock()
-        user_repo.get_by_external = AsyncMock(return_value=None)
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(return_value=None)
         country_repo = MagicMock()
 
         data: dict = {
             "default_locale": "en",
-            "user_repo": user_repo,
+            "user_role_service": user_role_service,
             "country_repo": country_repo,
             "event_from_user": _make_tg_user(),
         }
@@ -219,7 +218,7 @@ class TestLocaleMiddlewareCall:
         middleware = LocaleMiddleware()
         handler = AsyncMock(return_value="handler_result")
         event = MagicMock()
-        data: dict = {}  # no repos → locale will be "ru"
+        data: dict = {}  # no services → locale will be "ru"
 
         result = await middleware(handler, event, data)
 
@@ -238,8 +237,8 @@ class TestLocaleMiddlewareCall:
             currency_symbol="₸",
             locale="kk",
         )
-        user_repo = MagicMock()
-        user_repo.get_by_external = AsyncMock(return_value=user)
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(return_value=user)
         country_repo = MagicMock()
         country_repo.get_by_code = AsyncMock(return_value=country)
 
@@ -247,7 +246,7 @@ class TestLocaleMiddlewareCall:
         handler = AsyncMock(return_value=None)
         event = MagicMock()
         data: dict = {
-            "user_repo": user_repo,
+            "user_role_service": user_role_service,
             "country_repo": country_repo,
             "event_from_user": _make_tg_user(),
         }

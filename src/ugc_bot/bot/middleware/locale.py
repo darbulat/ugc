@@ -29,15 +29,15 @@ class LocaleMiddleware(BaseMiddleware):
     @staticmethod
     async def _resolve(data: dict[str, Any]) -> str:
         default: str = data.get("default_locale") or "ru"
-        user_repo = data.get("user_repo")
+        user_role_service = data.get("user_role_service")
         country_repo = data.get("country_repo")
-        if not user_repo or not country_repo:
+        if not user_role_service or not country_repo:
             return default
         tg_user = data.get("event_from_user")
         if tg_user is None:
             return default
         external_id = str(tg_user.id)
-        user = await user_repo.get_by_external(
+        user = await user_role_service.get_user(
             external_id, MessengerType.TELEGRAM
         )
         if not user or not user.country:
