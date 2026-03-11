@@ -2533,23 +2533,37 @@ class SqlAlchemyCountryRepository(CountryRepository):
         self, session: object | None = None
     ) -> list[Country]:
         """List enabled countries."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(CountryModel).where(CountryModel.enabled.is_(True))
-        )
-        rows = exec_result.scalars().all()
-        return [_to_country_entity(row) for row in rows]
+        if session is not None:
+            db_session = _get_async_session(session)
+            exec_result = await db_session.execute(
+                select(CountryModel).where(CountryModel.enabled.is_(True))
+            )
+            rows = exec_result.scalars().all()
+            return [_to_country_entity(row) for row in rows]
+        async with self.session_factory() as db_session:
+            exec_result = await db_session.execute(
+                select(CountryModel).where(CountryModel.enabled.is_(True))
+            )
+            rows = exec_result.scalars().all()
+            return [_to_country_entity(row) for row in rows]
 
     async def get_by_code(
         self, code: str, session: object | None = None
     ) -> Optional[Country]:
         """Fetch country by code."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(CountryModel).where(CountryModel.code == code)
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_country_entity(result) if result else None
+        if session is not None:
+            db_session = _get_async_session(session)
+            exec_result = await db_session.execute(
+                select(CountryModel).where(CountryModel.code == code)
+            )
+            result = exec_result.scalar_one_or_none()
+            return _to_country_entity(result) if result else None
+        async with self.session_factory() as db_session:
+            exec_result = await db_session.execute(
+                select(CountryModel).where(CountryModel.code == code)
+            )
+            result = exec_result.scalar_one_or_none()
+            return _to_country_entity(result) if result else None
 
 
 def _to_country_entity(model: CountryModel) -> Country:
