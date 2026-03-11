@@ -171,9 +171,9 @@ def test_health_metrics_filter_blocks_instagram_webhook_access_logs() -> None:
             args=(),
             exc_info=None,
         )
-        assert (
-            flt.filter(record) is False
-        ), f"{method} /webhook/instagram should be filtered"
+        assert flt.filter(record) is False, (
+            f"{method} /webhook/instagram should be filtered"
+        )
 
 
 def test_health_metrics_filter_allows_other_access_logs() -> None:
