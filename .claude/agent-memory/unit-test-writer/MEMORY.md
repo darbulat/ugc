@@ -23,6 +23,14 @@
 - **Patching `_evict_expired`**: Use `patch.object(cache, "_evict_expired")` to isolate per-entry expiry checks in `GeocoderCacheMemory`
 - **ImportError path in _get_redis**: Patch `builtins.__import__` to raise ImportError for `"redis.asyncio"` to cover the fallback branch in `GeocoderCacheRedis._get_redis()`
 
+### Middleware & API Helper Test Patterns
+- **Bot middleware tests**: Place in `tests/unit/bot/middleware/` (no `__init__.py` needed)
+- **Miniapp helper tests**: Place in `tests/unit/miniapp/` (no `__init__.py` needed)
+- **Mocking FastAPI Request**: Use `MagicMock()` with `request.app.state.config.market.default_locale = "ru"` and `request.app.state.dispatcher = dispatcher_mock`
+- **Mocking aiogram middleware data**: Pass plain `dict` with keys like `user_repo`, `country_repo`, `event_from_user` (MagicMock with `.id` attribute)
+- **Dispatcher mock pattern**: `dispatcher.get = lambda key: user_repo if key == "user_repo" else country_repo` for conditional returns
+- **Pre-existing flaky tests**: `tests/admin/test_dashboard.py` has 3 timeout-flaky tests that fail only under full suite load (not a coverage concern)
+
 ### Important Files
 - `src/ugc_bot/infrastructure/db/models.py` — `_GeometryOrText` TypeDecorator (tests in `tests/infrastructure/test_db_models.py`)
 - `src/ugc_bot/infrastructure/memory_repositories.py` — All in-memory repo implementations

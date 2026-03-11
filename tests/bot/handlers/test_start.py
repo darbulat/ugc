@@ -664,3 +664,48 @@ async def test_country_selected_saves_country_and_shows_role_keyboard(
     assert saved is not None
     assert saved.country == "kz"
     assert len(client.sent_text) == 1
+    # keyboard must be removed from the country selection message
+    assert len(client.edited_reply_markups) == 1
+    assert client.edited_reply_markups[0]["keyboard"] is None
+
+
+@pytest.mark.asyncio
+async def test_country_selected_ignores_if_country_already_set(
+    user_repo, config, bot_texts_service
+) -> None:
+    """country_selected is a no-op when user already has a country."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryUserRepository,
+    )
+
+    user_repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=user_repo)
+    await service.set_user(
+        external_id="99", messenger_type=MessengerType.TELEGRAM, username="u99"
+    )
+    await service.set_country(
+        external_id="99",
+        messenger_type=MessengerType.TELEGRAM,
+        country_code="ru",
+    )
+    message = FakeMessage(user=FakeUser(99, "u99", "User"))
+    callback = FakeCallback(
+        data="country:kz", user=FakeUser(99, "u99", "User"), message=message
+    )
+    client = FakeMessengerClient()
+    state = FakeFSMContext(state=None)
+
+    await country_selected(
+        callback,
+        state=state,
+        user_role_service=service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+    )
+
+    saved = await user_repo.get_by_external("99", MessengerType.TELEGRAM)
+    assert saved is not None
+    assert saved.country == "ru"  # country unchanged
+    assert len(client.sent_text) == 0
+    assert len(client.edited_reply_markups) == 0

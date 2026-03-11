@@ -139,6 +139,12 @@ async def country_selected(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    existing_user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    if existing_user and existing_user.country is not None:
+        return
     country_code = (callback.data or "").removeprefix(CALLBACK_COUNTRY_PREFIX)
     if not country_code:
         return
@@ -151,6 +157,12 @@ async def country_selected(
         messenger_type=incoming.user.messenger_type,
         country_code=country_code,
     )
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
     locale = user_locale
     start_text = (
         (await bot_texts_service.get("start_message", locale)).strip()
