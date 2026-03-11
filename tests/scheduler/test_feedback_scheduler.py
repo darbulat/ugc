@@ -1073,6 +1073,8 @@ def test_main_no_database_url_returns_early(
 
     monkeypatch.setenv("FEEDBACK_ENABLED", "true")
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF1234567890abcdef1234567890")
+    # Some environments may provide DATABASE_URL from other sources (e.g. local
+    # .env or OS-level variables). Ensure it's explicitly empty for this test.
     monkeypatch.setenv("DATABASE_URL", "")
     container_mock = Mock()
     monkeypatch.setattr(

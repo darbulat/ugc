@@ -266,7 +266,10 @@ class OfferDispatchRepository(ABC):
 
     @abstractmethod
     async def list_responses_by_blogger(
-        self, blogger_id: UUID, session: object | None = None
+        self,
+        blogger_id: UUID,
+        session: object | None = None,
+        in_offer_only: bool = False,
     ) -> Iterable[OfferDispatch]:
         """List dispatches where blogger responded (accepted is not null)."""
 

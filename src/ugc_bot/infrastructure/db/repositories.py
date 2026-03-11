@@ -864,16 +864,26 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         return [_to_offer_dispatch_entity(m) for m in results]
 
     async def list_responses_by_blogger(
-        self, blogger_id: UUID, session: object | None = None
+        self,
+        blogger_id: UUID,
+        session: object | None = None,
+        in_offer_only: bool = False,
     ) -> List[OfferDispatch]:
-        """List dispatches where blogger responded (accepted is not null)."""
+        """List dispatches where blogger responded (accepted is not null).
+
+        When in_offer_only is True, return only dispatches that ended up in the
+        offer (in_offer=true).
+        """
         db_session = _get_async_session(session)
+        where = [
+            OfferDispatchModel.blogger_id == blogger_id,
+            OfferDispatchModel.accepted.isnot(None),
+        ]
+        if in_offer_only:
+            where.append(OfferDispatchModel.in_offer.is_(True))
         exec_result = await db_session.execute(
             select(OfferDispatchModel)
-            .where(
-                OfferDispatchModel.blogger_id == blogger_id,
-                OfferDispatchModel.accepted.isnot(None),
-            )
+            .where(*where)
             .order_by(
                 OfferDispatchModel.updated_at.desc().nullslast(),
                 OfferDispatchModel.created_at.desc(),

@@ -1084,7 +1084,7 @@ async def test_offer_response_handler_unconfirmed_profile(
 
 
 @pytest.mark.asyncio
-async def test_offer_response_handler_shows_agreement_when_not_confirmed(
+async def test_offer_response_handler_allows_response_without_agreement(
     fake_tm: object,
     user_repo,
     blogger_repo,
@@ -1097,7 +1097,7 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
     config,
     bot_texts_service,
 ) -> None:
-    """Blogger with confirmed profile but no agreement sees agreement screen."""
+    """Blogger without agreement_confirmed_at can still respond to offer."""
 
     user_service = UserRoleService(user_repo=user_repo)
     response_service = OfferResponseService(
@@ -1131,8 +1131,10 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
         bloggers_needed=1,
         status=OrderStatus.ACTIVE,
     )
+    await offer_dispatch_repo.record_sent(order.order_id, user.user_id)
 
     message = FakeMessage(user=FakeUser(88))
+    message.reply_markup = object()
     callback = FakeCallback(
         data=f"offer:{order.order_id}", user=FakeUser(88), message=message
     )
@@ -1151,12 +1153,10 @@ async def test_offer_response_handler_shows_agreement_when_not_confirmed(
         event_adapter=event_adapter,
     )
 
-    assert callback.answers
-    assert "согласи" in callback.answers[0].lower()
     responses = await offer_dispatch_repo.list_responses_by_order(
         order.order_id
     )
-    assert not list(responses)
+    assert list(responses), "Response should be recorded without agreement"
 
 
 @pytest.mark.asyncio

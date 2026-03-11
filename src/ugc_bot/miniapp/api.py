@@ -1088,7 +1088,9 @@ async def list_creator_orders(
     dispatcher = request.app.state.dispatcher
     order_service = dispatcher["order_service"]
     offer_response_service = dispatcher["offer_response_service"]
-    responses = await offer_response_service.list_by_blogger(user_id)
+    responses = await offer_response_service.list_by_blogger(
+        user_id, in_offer_only=True
+    )
     items: list[OrderListItem] = []
     seen_order_ids: set[UUID] = set()
     for resp in sorted(
