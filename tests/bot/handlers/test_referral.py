@@ -1051,9 +1051,9 @@ async def test_payout_callback_rejects_when_pending_or_no_balance(
             messenger_client=client,
             event_adapter=adapter,
         )
-        assert (
-            not mock_payout_repo.save.called
-        ), f"save should not be called for {label}"
+        assert not mock_payout_repo.save.called, (
+            f"save should not be called for {label}"
+        )
         assert any(
             "Выплата недоступна" in a.get("text", "")
             for a in client.answered_callbacks

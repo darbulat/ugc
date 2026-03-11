@@ -722,6 +722,78 @@ async def test_my_orders_blogger_no_responses(
 
 
 @pytest.mark.asyncio
+async def test_my_orders_blogger_skips_not_in_offer_responses(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Blogger order list shows only responses with in_offer=True."""
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+
+    adv_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="adv_overflow",
+        username="advertiser",
+    )
+    await create_test_advertiser_profile(advertiser_repo, adv_user.user_id)
+    order = await create_test_order(
+        order_repo,
+        adv_user.user_id,
+        order_id=uuid4(),
+        price=500.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+    )
+
+    blogger_user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="blogger_overflow",
+        username="creator",
+    )
+    await create_test_blogger_profile(blogger_repo, blogger_user.user_id)
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    await offer_dispatch_repo.record_response(
+        order.order_id, blogger_user.user_id, accepted=True, in_offer=False
+    )
+
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser("blogger_overflow")
+    )
+    await show_my_orders(
+        message,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service=bot_texts_service,
+    )
+
+    assert message.answers
+    assert "не откликались" in message.answers[0]
+
+
+@pytest.mark.asyncio
 async def test_my_orders_blogger_with_responses(
     fake_tm: object,
     user_repo,

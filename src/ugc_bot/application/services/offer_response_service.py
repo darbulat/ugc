@@ -59,13 +59,20 @@ class OfferResponseService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def list_by_blogger(self, blogger_id: UUID) -> list[OfferDispatch]:
-        """List dispatches where blogger responded (accepted is not null)."""
+    async def list_by_blogger(
+        self, blogger_id: UUID, in_offer_only: bool = False
+    ) -> list[OfferDispatch]:
+        """List dispatches where blogger responded (accepted is not null).
+
+        Args:
+            blogger_id: Blogger user id.
+            in_offer_only: When True, return only dispatches with in_offer=True.
+        """
 
         async def _run(session: object | None):
             return list(
                 await self.dispatch_repo.list_responses_by_blogger(
-                    blogger_id, session=session
+                    blogger_id, session=session, in_offer_only=in_offer_only
                 )
             )
 
