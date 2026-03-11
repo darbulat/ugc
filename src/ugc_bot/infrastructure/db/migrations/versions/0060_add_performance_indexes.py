@@ -45,18 +45,16 @@ def upgrade() -> None:
         ["confirmed"],
         unique=False,
     )
-    # payout_requests.user_id — FK column used in list_by_user() without index
-    op.create_index(
-        "ix_payout_requests_user_id",
-        "payout_requests",
-        ["user_id"],
-        unique=False,
+    # payout_requests.user_id — already created by 0032; use IF NOT EXISTS
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_payout_requests_user_id"
+        " ON payout_requests (user_id)"
     )
 
 
 def downgrade() -> None:
     """Remove performance indexes."""
-    op.drop_index("ix_payout_requests_user_id", table_name="payout_requests")
+    # ix_payout_requests_user_id was created by 0032; 0032 downgrade drops it.
     op.drop_index(
         "ix_blogger_profiles_confirmed", table_name="blogger_profiles"
     )

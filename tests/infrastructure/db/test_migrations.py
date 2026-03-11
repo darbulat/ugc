@@ -13,7 +13,7 @@ from sqlalchemy.engine import make_url
 def _alembic_config() -> Config:
     """Build Alembic config from ini file."""
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     return Config(str(root / "alembic.ini"))
 
 
@@ -43,6 +43,7 @@ def _build_urls(database_url: str, schema: str) -> tuple[str, str]:
 
 
 @pytest.mark.integration
+@pytest.mark.timeout(300)
 def test_migrations_upgrade_downgrade_upgrade() -> None:
     """Ensure upgrade/downgrade/upgrade completes without errors."""
 
@@ -60,16 +61,19 @@ def test_migrations_upgrade_downgrade_upgrade() -> None:
 
     try:
         with psycopg.connect(conninfo, autocommit=True) as connection:
-            connection.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
+            connection.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
+            connection.execute(f'CREATE SCHEMA "{schema_name}"')
 
         config = _alembic_config()
         os.environ["DATABASE_URL"] = database_url
+        os.environ["MIGRATION_SCHEMA"] = schema_name
 
         try:
             command.upgrade(config, "head")
             command.downgrade(config, "base")
             command.upgrade(config, "head")
         finally:
+            os.environ.pop("MIGRATION_SCHEMA", None)
             with psycopg.connect(conninfo, autocommit=True) as connection:
                 connection.execute(
                     f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'
