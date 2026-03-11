@@ -430,4 +430,5 @@ def build_bot_services(
             default_locale=config.market.default_locale,
             transaction_manager=transaction_manager,
         ),
+        "country_repo": repos["country_repo"],
     }
