@@ -232,12 +232,26 @@ def _payment_link_for_order(order_id: str, bot_username: str) -> str:
     return f"https://t.me/{username}?start=pay_{order_id}"
 
 
-async def _get_validator_texts(request: Request) -> dict[str, str]:
+async def _get_user_locale(request: Request, external_id: str) -> str:
+    """Resolve locale for user by external_id via user.country."""
+    config = request.app.state.config
+    default: str = config.market.default_locale
+    dispatcher = request.app.state.dispatcher
+    user_repo = dispatcher.get("user_repo")
+    country_repo = dispatcher.get("country_repo")
+    if not user_repo or not country_repo:
+        return default
+    user = await user_repo.get_by_external(external_id, MessengerType.TELEGRAM)
+    if not user or not user.country:
+        return default
+    country = await country_repo.get_by_code(user.country)
+    return country.locale if country else default
+
+
+async def _get_validator_texts(request: Request, locale: str) -> dict[str, str]:
     """Load validator error messages from bot_texts_service (same as bot)."""
     dispatcher = request.app.state.dispatcher
     bot_texts = dispatcher["bot_texts_service"]
-    config = request.app.state.config
-    locale = config.market.default_locale
     return await bot_texts.get_many(list(VALIDATOR_ERR_KEYS), locale)
 
 
@@ -466,7 +480,9 @@ async def register_advertiser(
     telegram_username = _get_telegram_username_from_init_data(
         request, body.init_data
     )
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     err = _validate_advertiser_body(body, texts)
     if err:
         raise HTTPException(status_code=400, detail=err)
@@ -661,7 +677,9 @@ async def register_blogger(
             status_code=400,
             detail="audience_age_max must be >= audience_age_min",
         )
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_blogger_body(
         body,
@@ -779,7 +797,8 @@ async def start_instagram_verification(
     bot_texts = dispatcher["bot_texts_service"]
     config = request.app.state.config
     verification = await verification_service.generate_code(user_id)
-    locale = getattr(config.market, "default_locale", "ru")
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
     instruction_tpl = await bot_texts.get(
         "msg_instagram_verify_instruction", locale
     )
@@ -868,7 +887,9 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             status_code=403,
             detail="Advertiser profile required. Register as advertiser first.",
         )
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_order_body(
         body,
@@ -1175,7 +1196,9 @@ async def update_order(request: Request, body: UpdateOrderRequest) -> dict:
         raise HTTPException(
             status_code=400, detail="Invalid order_id"
         ) from None
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_order_body(
         body,

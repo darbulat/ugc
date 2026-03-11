@@ -128,6 +128,7 @@ async def choose_advertiser_role_inline(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -138,7 +139,7 @@ async def choose_advertiser_role_inline(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    locale = config.market.default_locale
+    locale = user_locale
     await _choose_advertiser_role_impl(
         incoming,
         state,
@@ -159,6 +160,7 @@ async def choose_advertiser_role(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -167,7 +169,7 @@ async def choose_advertiser_role(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     await _choose_advertiser_role_impl(
         incoming,
         state,
@@ -252,6 +254,7 @@ async def handle_advertiser_start(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -261,7 +264,7 @@ async def handle_advertiser_start(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found_start",
@@ -312,6 +315,7 @@ async def handle_advertiser_start_callback(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -322,7 +326,7 @@ async def handle_advertiser_start_callback(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found_start",
@@ -372,6 +376,7 @@ async def handle_name(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -381,7 +386,7 @@ async def handle_name(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -414,6 +419,7 @@ async def handle_phone(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -423,7 +429,7 @@ async def handle_phone(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -453,6 +459,7 @@ async def handle_city(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -462,7 +469,7 @@ async def handle_city(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -491,6 +498,7 @@ async def handle_brand(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -500,7 +508,7 @@ async def handle_brand(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -532,6 +540,7 @@ async def handle_company_activity(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -541,7 +550,7 @@ async def handle_company_activity(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -571,6 +580,7 @@ async def handle_site_link(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -580,7 +590,7 @@ async def handle_site_link(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -600,8 +610,9 @@ async def handle_site_link(
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
-        locale = config.market.default_locale
-        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
+        msg_expired = await bot_texts_service.get(
+            "msg_session_expired", user_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_expired,
@@ -630,9 +641,7 @@ async def handle_site_link(
         "msg_label_consent",
         "msg_confirm_docs_fallback",
     ]
-    texts = await bot_texts_service.get_many(
-        agreement_keys, config.market.default_locale
-    )
+    texts = await bot_texts_service.get_many(agreement_keys, user_locale)
     text = format_agreements_message(config, texts=texts)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -650,6 +659,7 @@ async def handle_agreements_confirm(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -659,7 +669,7 @@ async def handle_agreements_confirm(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     confirm_text = (
         await bot_texts_service.get("btn_confirm_agreement", locale)
     ).strip()
@@ -713,6 +723,7 @@ async def handle_advertiser_agreements_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -733,8 +744,9 @@ async def handle_advertiser_agreements_callback(
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-        locale = config.market.default_locale
-        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
+        msg_expired = await bot_texts_service.get(
+            "msg_session_expired", user_locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_expired,
@@ -749,7 +761,7 @@ async def handle_advertiser_agreements_callback(
     )
 
     await state_store.clear()
-    locale = config.market.default_locale
+    locale = user_locale
     texts = await bot_texts_service.get_many(
         [
             "btn_create_order",

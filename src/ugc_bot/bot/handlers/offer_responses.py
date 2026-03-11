@@ -176,6 +176,7 @@ async def handle_offer_skip(
     offer_dispatch_service: OfferDispatchService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -188,7 +189,7 @@ async def handle_offer_skip(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
     order_id = _parse_offer_skip_order_id(callback.data or "")
     user = await get_user_and_ensure_allowed_callback(
@@ -226,6 +227,7 @@ async def handle_offer_response(
     offer_response_rate_limiter: Any,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -235,7 +237,7 @@ async def handle_offer_response(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
-    locale = config.market.default_locale
+    locale = user_locale
     offer_msgs = await bot_texts_service.get_many(
         list(OFFER_RESPONSE_TEXTS_KEYS), locale
     )

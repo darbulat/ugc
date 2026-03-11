@@ -92,9 +92,10 @@ async def send_order_invoice(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     receipt_description: str | None = None,
+    user_locale: str = "ru",
 ) -> None:
     """Send invoice for order with 54-FZ receipt (email via Telegram form)."""
-    locale = config.market.default_locale
+    locale = user_locale
 
     if not incoming_message.chat_id:
         return
@@ -199,6 +200,7 @@ async def start_pay_order_link(
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -210,7 +212,7 @@ async def start_pay_order_link(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -298,6 +300,7 @@ async def start_pay_order_link(
         config=config,
         bot_texts_service=bot_texts_service,
         receipt_description=receipt_desc,
+        user_locale=user_locale,
     )
 
 
@@ -310,6 +313,7 @@ async def pay_order(
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -318,7 +322,7 @@ async def pay_order(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -432,6 +436,7 @@ async def pay_order(
         config=config,
         bot_texts_service=bot_texts_service,
         receipt_description=receipt_desc,
+        user_locale=user_locale,
     )
 
 
@@ -448,6 +453,7 @@ async def pay_order_callback(
     contact_pricing_service: ContactPricingService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -458,7 +464,7 @@ async def pay_order_callback(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -564,6 +570,7 @@ async def pay_order_callback(
         config=config,
         bot_texts_service=bot_texts_service,
         receipt_description=receipt_desc,
+        user_locale=user_locale,
     )
 
 
@@ -590,6 +597,7 @@ async def successful_payment_handler(
     content_moderation_service: ContentModerationService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -601,7 +609,7 @@ async def successful_payment_handler(
     if incoming.successful_payment is None:
         return
 
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",

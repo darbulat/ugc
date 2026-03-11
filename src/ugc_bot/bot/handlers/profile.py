@@ -492,9 +492,10 @@ async def _update_advertiser_field(
     user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
 ) -> bool:
     """Validate and update advertiser field. Returns True on success."""
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -824,10 +825,11 @@ async def _blog_update_work_format(
     blogger_registration_service: BloggerRegistrationService,
     bot_texts_service: BotTextsService,
     config: AppConfig,
+    user_locale: str = "ru",
     edit_msgs: dict[str, str] | None = None,
 ) -> BloggerProfile | None:
     """Update work_format. Returns profile or None."""
-    locale = config.market.default_locale
+    locale = user_locale
     btn_ads = (
         await bot_texts_service.get("btn_work_format_ads", locale)
     ).strip()
@@ -857,12 +859,13 @@ async def _update_blogger_field_city(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
 ) -> bool | None:
     """
     Handle city field update: validate, maybe region picker, or save.
     Returns True/False on done; None if not handled (call updater).
     """
-    locale = config.market.default_locale
+    locale = user_locale
     edit_msgs = await bot_texts_service.get_many(
         list(PROFILE_EDIT_MSG_KEYS), locale
     )
@@ -950,11 +953,12 @@ async def _update_blogger_field(
     max_order_price: float,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     user: User | None = None,
     country_repo: CountryRepository | None = None,
 ) -> bool:
     """Validate and update blogger field. Returns True on success."""
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -1119,6 +1123,7 @@ async def show_profile(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
@@ -1141,7 +1146,7 @@ async def show_profile(
         external_id=str(message_ctx.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
-    locale = config.market.default_locale
+    locale = user_locale
     if user is None:
         msg_not_found = await bot_texts_service.get(
             "msg_profile_not_found_role", locale
@@ -1233,6 +1238,7 @@ async def handle_profile_agree_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     currency_symbol: str,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1251,7 +1257,7 @@ async def handle_profile_agree_callback(
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-        locale = config.market.default_locale
+        locale = user_locale
         msg_expired = await bot_texts_service.get(
             "msg_session_expired_profile", locale
         )
@@ -1275,7 +1281,7 @@ async def handle_profile_agree_callback(
         )
     await state.clear()
     user = await user_role_service.get_user_by_id(user_id)
-    locale = config.market.default_locale
+    locale = user_locale
     if user is None:
         msg_not_found = await bot_texts_service.get(
             "msg_profile_not_found", locale
@@ -1331,6 +1337,7 @@ async def handle_profile_edit_callback(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1343,7 +1350,7 @@ async def handle_profile_edit_callback(
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     if incoming.user is None or not incoming.user.external_id:
         return
-    locale = config.market.default_locale
+    locale = user_locale
     user = await profile_service.get_user_by_external(
         external_id=incoming.user.external_id,
         messenger_type=MessengerType.TELEGRAM,
@@ -1431,6 +1438,7 @@ async def handle_profile_my_profile_callback(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
@@ -1443,7 +1451,7 @@ async def handle_profile_my_profile_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state.clear()
-    locale = config.market.default_locale
+    locale = user_locale
     if incoming.user is None or not incoming.user.external_id:
         return
     external_id = incoming.user.external_id
@@ -1469,7 +1477,7 @@ async def handle_profile_my_profile_callback(
     if (
         blogger is not None or advertiser is not None
     ) and agreement_confirmed_at is None:
-        locale = config.market.default_locale
+        locale = user_locale
         agree_keys = [
             "btn_confirm_agreement",
             "msg_confirm_agreement",
@@ -1499,7 +1507,7 @@ async def handle_profile_my_profile_callback(
         else:
             await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
-    locale = config.market.default_locale
+    locale = user_locale
     profile_texts = await bot_texts_service.get_many(
         list(PROFILE_DISPLAY_KEYS), locale
     )
@@ -1552,6 +1560,7 @@ async def handle_profile_edit_type_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     profile_service: ProfileService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1562,7 +1571,7 @@ async def handle_profile_edit_type_callback(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    locale = config.market.default_locale
+    locale = user_locale
     if incoming.data == CALLBACK_PROFILE_EDIT_TYPE_BLOGGER:
         await state.update_data(edit_profile_type="blogger")
         field_texts = await bot_texts_service.get_many(
@@ -1642,6 +1651,7 @@ async def handle_profile_edit_field_callback(
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     max_order_price: float,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1674,7 +1684,7 @@ async def handle_profile_edit_field_callback(
         message_id=incoming.message_id,
     )
     message_ctx = MessageContext(fake_message, messenger_client)
-    locale = config.market.default_locale
+    locale = user_locale
     prompt_key = "prompt_edit_" + field_key
     prompt_keys = list(
         set(PROMPT_EDIT_KEYS_BLOGGER + PROMPT_EDIT_KEYS_ADVERTISER)
@@ -1756,6 +1766,7 @@ async def handle_profile_edit_choice_callback(
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     max_order_price: float,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1765,7 +1776,7 @@ async def handle_profile_edit_choice_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    locale = config.market.default_locale
+    locale = user_locale
     choice_keys = list(_CALLBACK_TO_CHOICE_KEY.values()) + [
         "btn_work_format_ads",
         "btn_work_format_ugc_only",
@@ -1854,6 +1865,7 @@ async def edit_profile_start(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1871,7 +1883,7 @@ async def edit_profile_start(
         external_id=str(message_ctx.from_user.id),
         messenger_type=MessengerType.TELEGRAM,
     )
-    locale = config.market.default_locale
+    locale = user_locale
     if user is None:
         msg_not_found = await bot_texts_service.get(
             "msg_profile_not_found_role", locale
@@ -1948,6 +1960,7 @@ async def edit_profile_choose_type(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1958,7 +1971,7 @@ async def edit_profile_choose_type(
     incoming = event_adapter.from_message(message)
     message_ctx = MessageContext(incoming, messenger_client)
     text = (message_ctx.text or "").strip()
-    locale = config.market.default_locale
+    locale = user_locale
     my_profile_btn = (
         await bot_texts_service.get("btn_my_profile", locale)
     ).strip()
@@ -2037,6 +2050,7 @@ async def edit_profile_choose_field(
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -2048,9 +2062,7 @@ async def edit_profile_choose_field(
     message_ctx = MessageContext(incoming, messenger_client)
     text = (message_ctx.text or "").strip()
     my_profile_btn = (
-        await bot_texts_service.get(
-            "btn_my_profile", config.market.default_locale
-        )
+        await bot_texts_service.get("btn_my_profile", user_locale)
     ).strip()
     if text == my_profile_btn:
         await state.clear()
@@ -2067,7 +2079,7 @@ async def edit_profile_choose_field(
 
     data = await state.get_data()
     profile_type = data.get("edit_profile_type", "blogger")
-    locale = config.market.default_locale
+    locale = user_locale
     field_label_keys = (
         _EDIT_FIELDS_ADVERTISER_BY_KEY
         if profile_type == "advertiser"
@@ -2142,6 +2154,7 @@ async def handle_profile_region_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -2173,7 +2186,7 @@ async def handle_profile_region_callback(
         region=region,
         country="Russia",
     )
-    locale = config.market.default_locale
+    locale = user_locale
     if result.profile is None and not result.location_geometry_resolved:
         edit_msgs = await bot_texts_service.get_many(
             list(PROFILE_EDIT_MSG_KEYS), locale
@@ -2307,6 +2320,7 @@ async def edit_profile_enter_value(
     advertiser_registration_service: AdvertiserRegistrationService,
     user_role_service: UserRoleService,
     max_order_price: float,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
@@ -2324,7 +2338,7 @@ async def edit_profile_enter_value(
     profile_type = data.get("edit_profile_type", "blogger")
     if not field_key or user_id is None or not external_id_raw:
         await state.clear()
-        locale = config.market.default_locale
+        locale = user_locale
         msg_expired = await bot_texts_service.get(
             "msg_session_expired_profile", locale
         )
@@ -2342,7 +2356,7 @@ async def edit_profile_enter_value(
         if advertiser is None:
             await state.clear()
             msg_adv = await bot_texts_service.get(
-                "msg_advertiser_profile_not_found", config.market.default_locale
+                "msg_advertiser_profile_not_found", user_locale
             )
             await message_ctx.answer(msg_adv)
             return
@@ -2366,7 +2380,7 @@ async def edit_profile_enter_value(
     if blogger is None:
         await state.clear()
         msg_not_found = await bot_texts_service.get(
-            "msg_profile_not_found", config.market.default_locale
+            "msg_profile_not_found", user_locale
         )
         await message_ctx.answer(msg_not_found)
         return
@@ -2375,7 +2389,7 @@ async def edit_profile_enter_value(
         external_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
     )
-    locale = config.market.default_locale
+    locale = user_locale
     if field_key == "city":
         handled = await _try_handle_blogger_city_by_location(
             message_ctx,

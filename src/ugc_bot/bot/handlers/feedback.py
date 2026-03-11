@@ -557,6 +557,7 @@ async def handle_feedback_reason(
     order_service: OrderService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -569,7 +570,7 @@ async def handle_feedback_reason(
     if not callback_ctx.data:
         return
 
-    locale = config.market.default_locale
+    locale = user_locale
     allow_keys = [
         "msg_user_not_found",
         "msg_feedback_blocked",
@@ -695,6 +696,7 @@ async def handle_no_deal_other_text(
     order_service: OrderService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -708,7 +710,7 @@ async def handle_no_deal_other_text(
     if message_ctx.from_user is None:
         return
     text = (message_ctx.text or "").strip()
-    locale = config.market.default_locale
+    locale = user_locale
     texts = await bot_texts_service.get_many(FEEDBACK_TEXTS_KEYS, locale)
     if not text:
         await message_ctx.answer(
@@ -904,6 +906,7 @@ async def handle_issue_description(
     order_service: OrderService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -917,7 +920,7 @@ async def handle_issue_description(
     if message_ctx.from_user is None:
         return
 
-    locale = config.market.default_locale
+    locale = user_locale
     texts = await bot_texts_service.get_many(FEEDBACK_TEXTS_KEYS, locale)
     send_btn_text = texts.get(
         "msg_fb_issue_send_btn", DEFAULT_ISSUE_SEND_BUTTON_TEXT
@@ -1073,6 +1076,7 @@ async def handle_nps(
     nps_service: NpsService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1085,7 +1089,7 @@ async def handle_nps(
     if not callback_ctx.data:
         return
 
-    locale = config.market.default_locale
+    locale = user_locale
     allow_keys = [
         "msg_user_not_found",
         "msg_feedback_rate_blocked",
@@ -1164,6 +1168,7 @@ async def handle_nps_comment(
     nps_service: NpsService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1176,7 +1181,7 @@ async def handle_nps_comment(
     if message_ctx.from_user is None:
         return
 
-    locale = config.market.default_locale
+    locale = user_locale
     texts = await bot_texts_service.get_many(FEEDBACK_TEXTS_KEYS, locale)
     done_btn = texts.get("msg_fb_nps_done_btn", "Готово")
 
@@ -1339,6 +1344,7 @@ async def handle_feedback(
     order_service: OrderService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1351,7 +1357,7 @@ async def handle_feedback(
     if not callback_ctx.data:
         return
 
-    locale = config.market.default_locale
+    locale = user_locale
     allow_keys = [
         "msg_user_not_found",
         "msg_feedback_blocked",

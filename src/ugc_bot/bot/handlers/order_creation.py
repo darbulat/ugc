@@ -118,6 +118,7 @@ async def start_order_creation(
     order_service: OrderService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -127,7 +128,7 @@ async def start_order_creation(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -208,6 +209,7 @@ async def start_order_creation_from_profile_callback(
     order_service: OrderService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -219,7 +221,7 @@ async def start_order_creation_from_profile_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -296,6 +298,7 @@ async def handle_order_agree_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -319,7 +322,7 @@ async def handle_order_agree_callback(
     if user_id is None:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-        locale = config.market.default_locale
+        locale = user_locale
         msg_expired = await bot_texts_service.get(
             "msg_session_expired_orders", locale
         )
@@ -335,7 +338,7 @@ async def handle_order_agree_callback(
         user_id=user_id,
     )
     await state_store.update_data(flow_type=None)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_what = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -353,6 +356,7 @@ async def handle_order_type_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -379,7 +383,7 @@ async def handle_order_type_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(order_type=order_type.value)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_task = await bot_texts_service.get("msg_order_task_description", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -395,6 +399,7 @@ async def handle_order_type(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -410,7 +415,7 @@ async def handle_order_type(
     elif text == ORDER_TYPE_UGC_PLUS_PLACEMENT:
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
-        locale = config.market.default_locale
+        locale = user_locale
         msg_choose = await bot_texts_service.get(
             "msg_choose_from_keyboard", locale
         )
@@ -422,7 +427,7 @@ async def handle_order_type(
         return
 
     await state_store.update_data(order_type=order_type.value)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_task = await bot_texts_service.get("msg_order_task_description", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -438,6 +443,7 @@ async def handle_offer_text(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -447,7 +453,7 @@ async def handle_offer_text(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -486,6 +492,7 @@ async def handle_cooperation_format_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -514,7 +521,7 @@ async def handle_cooperation_format_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(cooperation_format=text)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_budget = await bot_texts_service.get("msg_order_budget", locale)
     msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     if text == COOP_PAYMENT:
@@ -550,6 +557,7 @@ async def handle_cooperation_format(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -561,7 +569,7 @@ async def handle_cooperation_format(
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
     if text not in (COOP_BARTER, COOP_PAYMENT, COOP_BOTH):
-        locale = config.market.default_locale
+        locale = user_locale
         msg_choose = await bot_texts_service.get(
             "msg_choose_from_keyboard", locale
         )
@@ -572,7 +580,7 @@ async def handle_cooperation_format(
         )
         return
     await state_store.update_data(cooperation_format=text)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_budget = await bot_texts_service.get("msg_order_budget", locale)
     msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     if text == COOP_PAYMENT:
@@ -610,6 +618,7 @@ async def handle_price(
     max_order_price: float,
     currency_symbol: str,
     allowed_blogger_counts: frozenset[int],
+    user_locale: str = "ru",
     user_role_service: UserRoleService | None = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -633,14 +642,14 @@ async def handle_price(
     try:
         price = float(raw)
     except ValueError:
-        locale = config.market.default_locale
+        locale = user_locale
         msg_enter = await bot_texts_service.get("msg_enter_number", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id, text=msg_enter
         )
         return
 
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -686,6 +695,7 @@ async def handle_barter_description(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     allowed_blogger_counts: frozenset[int],
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -695,7 +705,7 @@ async def handle_barter_description(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -743,6 +753,7 @@ async def handle_bloggers_needed_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     allowed_blogger_counts: frozenset[int],
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -765,7 +776,7 @@ async def handle_bloggers_needed_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(bloggers_needed=bloggers_needed)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_product = await bot_texts_service.get("msg_product_link", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -782,6 +793,7 @@ async def handle_bloggers_needed(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     allowed_blogger_counts: frozenset[int],
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -794,7 +806,7 @@ async def handle_bloggers_needed(
     raw = (incoming.text or "").strip()
     valid_strs = {str(c) for c in allowed_blogger_counts}
     if raw not in valid_strs:
-        locale = config.market.default_locale
+        locale = user_locale
         counts_str = ", ".join(str(c) for c in sorted(allowed_blogger_counts))
         msg_choose = await bot_texts_service.get("msg_choose_count", locale)
         text = msg_choose.format(counts=counts_str)
@@ -809,7 +821,7 @@ async def handle_bloggers_needed(
 
     bloggers_needed = int(raw)
     await state_store.update_data(bloggers_needed=bloggers_needed)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_product = await bot_texts_service.get("msg_product_link", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -825,6 +837,7 @@ async def handle_product_link(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -834,7 +847,7 @@ async def handle_product_link(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -868,6 +881,7 @@ async def handle_order_photo_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -885,7 +899,7 @@ async def handle_order_photo_callback(
     data = incoming.data or ""
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_where = await bot_texts_service.get("msg_where_use_ugc", locale)
     msg_send_photo = await bot_texts_service.get("msg_send_photo", locale)
     if data == CALLBACK_ORDER_PHOTO_SKIP:
@@ -911,6 +925,7 @@ async def handle_order_photo(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -921,7 +936,7 @@ async def handle_order_photo(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
-    locale = config.market.default_locale
+    locale = user_locale
     msg_where = await bot_texts_service.get("msg_where_use_ugc", locale)
     msg_send_photo = await bot_texts_service.get("msg_send_photo", locale)
     msg_photo_choose = await bot_texts_service.get(
@@ -968,6 +983,7 @@ async def handle_content_usage(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -978,7 +994,7 @@ async def handle_content_usage(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
-    locale = config.market.default_locale
+    locale = user_locale
     if text not in (
         CONTENT_USAGE_SOCIAL,
         CONTENT_USAGE_ADS,
@@ -1032,6 +1048,7 @@ async def handle_content_usage_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1054,7 +1071,7 @@ async def handle_content_usage_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(content_usage=content_usage_offer)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_deadline = await bot_texts_service.get("msg_order_deadline", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1082,6 +1099,7 @@ async def handle_deadlines_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1104,7 +1122,7 @@ async def handle_deadlines_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(deadlines=deadlines_offer)
-    locale = config.market.default_locale
+    locale = user_locale
     msg_geo = await bot_texts_service.get("msg_order_geo", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1120,6 +1138,7 @@ async def handle_deadlines(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1130,7 +1149,7 @@ async def handle_deadlines(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
-    locale = config.market.default_locale
+    locale = user_locale
     if text not in (DEADLINES_3, DEADLINES_7, DEADLINES_14):
         msg_choose = await bot_texts_service.get(
             "msg_choose_from_keyboard", locale
@@ -1161,6 +1180,7 @@ async def handle_geography(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     contact_pricing_service: ContactPricingService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1170,7 +1190,7 @@ async def handle_geography(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -1187,7 +1207,7 @@ async def handle_geography(
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
-        locale = config.market.default_locale
+        locale = user_locale
         msg_expired = await bot_texts_service.get(
             "msg_session_expired_orders", locale
         )
@@ -1240,7 +1260,7 @@ async def handle_geography(
     contact_price = await contact_pricing_service.get_price(bloggers_needed)
     if contact_price is None or contact_price <= 0:
         msg_pricing = await bot_texts_service.get(
-            "msg_pricing_not_configured", config.market.default_locale
+            "msg_pricing_not_configured", user_locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

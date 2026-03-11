@@ -30,6 +30,7 @@ class Country:
     name_native: str
     currency_code: str
     currency_symbol: str
+    locale: str = "ru"
     enabled: bool = True
 
 

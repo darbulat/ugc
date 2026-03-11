@@ -62,6 +62,7 @@ async def select_complaint_target(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -71,7 +72,7 @@ async def select_complaint_target(
     )
     incoming = event_adapter.from_callback(callback)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     if not incoming.data:
         return
 
@@ -216,6 +217,7 @@ async def start_complaint(
     offer_response_service: OfferResponseService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -225,7 +227,7 @@ async def start_complaint(
     )
     incoming = event_adapter.from_callback(callback)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     if not incoming.data:
         return
 
@@ -347,6 +349,7 @@ async def handle_complaint_reason(
     user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -356,7 +359,7 @@ async def handle_complaint_reason(
     )
     incoming = event_adapter.from_callback(callback)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     if not incoming.data:
         return
 
@@ -445,6 +448,7 @@ async def handle_complaint_reason_text(
     user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -454,7 +458,7 @@ async def handle_complaint_reason_text(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     if not incoming.text:
         return
 

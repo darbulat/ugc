@@ -80,6 +80,7 @@ async def start_command(
     referral_service: ReferralService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     country_repo: CountryRepository | None = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -89,7 +90,7 @@ async def start_command(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     start_text = (
         (await bot_texts_service.get("start_message", locale)).strip()
         or (config.market.start_text or "").strip()
@@ -127,6 +128,7 @@ async def country_selected(
     user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -144,7 +146,7 @@ async def country_selected(
         messenger_type=incoming.user.messenger_type,
         country_code=country_code,
     )
-    locale = config.market.default_locale
+    locale = user_locale
     start_text = (
         (await bot_texts_service.get("start_message", locale)).strip()
         or (config.market.start_text or "").strip()
@@ -172,6 +174,7 @@ async def change_role_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -181,7 +184,7 @@ async def change_role_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    locale = config.market.default_locale
+    locale = user_locale
     start_text = (
         (await bot_texts_service.get("start_message", locale)).strip()
         or (config.market.start_text or "").strip()
@@ -211,6 +214,7 @@ async def change_role_button(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -219,7 +223,7 @@ async def change_role_button(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     start_text = (
         (await bot_texts_service.get("start_message", locale)).strip()
         or (config.market.start_text or "").strip()
@@ -250,6 +254,7 @@ async def support_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -259,7 +264,7 @@ async def support_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    locale = config.market.default_locale
+    locale = user_locale
     support_text = (
         await bot_texts_service.get("support_response", locale)
     ).strip()
@@ -309,6 +314,7 @@ async def support_button(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -317,7 +323,7 @@ async def support_button(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     support_text = (
         await bot_texts_service.get("support_response", locale)
     ).strip()

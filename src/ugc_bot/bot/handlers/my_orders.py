@@ -263,6 +263,7 @@ async def show_my_orders(
     offer_response_service: OfferResponseService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
@@ -272,7 +273,7 @@ async def show_my_orders(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     order_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -320,6 +321,7 @@ async def show_my_orders_from_profile_callback(
     offer_response_service: OfferResponseService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
@@ -330,7 +332,7 @@ async def show_my_orders_from_profile_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    locale = config.market.default_locale
+    locale = user_locale
     order_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -385,6 +387,7 @@ async def paginate_orders(
     currency_symbol: str,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
@@ -394,7 +397,7 @@ async def paginate_orders(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
-    locale = config.market.default_locale
+    locale = user_locale
     order_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",

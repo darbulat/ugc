@@ -62,6 +62,7 @@ async def start_verification(
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -71,7 +72,7 @@ async def start_verification(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found_start",
@@ -144,6 +145,7 @@ async def start_verification_from_profile_callback(
     instagram_verification_service: InstagramVerificationService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -153,7 +155,7 @@ async def start_verification_from_profile_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found_start",
