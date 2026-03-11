@@ -648,14 +648,22 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         )
 
     async def list_responses_by_blogger(
-        self, blogger_id: UUID, session: object | None = None
+        self,
+        blogger_id: UUID,
+        session: object | None = None,
+        in_offer_only: bool = False,
     ) -> List[OfferDispatch]:
-        """List dispatches where blogger responded (accepted is not null)."""
+        """List dispatches where blogger responded (accepted is not null).
+
+        When in_offer_only is True, return only dispatches in offer.
+        """
         return sorted(
             [
                 d
                 for (_, bid), d in self._dispatches.items()
-                if bid == blogger_id and d.accepted is not None
+                if bid == blogger_id
+                and d.accepted is not None
+                and (d.in_offer if in_offer_only else True)
             ],
             key=lambda x: (x.updated_at or x.created_at, x.created_at),
             reverse=True,

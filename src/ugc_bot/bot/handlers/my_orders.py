@@ -214,7 +214,9 @@ async def _send_my_orders_content(
             )
 
     if blogger is not None:
-        responses = await offer_response_service.list_by_blogger(user.user_id)
+        responses = await offer_response_service.list_by_blogger(
+            user.user_id, in_offer_only=True
+        )
         order_responses = []
         for resp in sorted(
             responses,
@@ -421,7 +423,9 @@ async def paginate_orders(
             page = int(raw)
         except ValueError:
             page = 1
-        responses = await offer_response_service.list_by_blogger(user.user_id)
+        responses = await offer_response_service.list_by_blogger(
+            user.user_id, in_offer_only=True
+        )
         order_responses = []
         for resp in sorted(
             responses,
