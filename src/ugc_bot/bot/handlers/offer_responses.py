@@ -31,13 +31,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import (
-    CALLBACK_PROFILE_AGREE,
-    confirm_agreement_inline_keyboard,
-)
-from ugc_bot.bot.handlers.profile import _BLOGGER_AGREEMENTS_STATE
 from ugc_bot.bot.handlers.utils import (
-    format_agreements_message,
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
     send_with_retry,
@@ -273,41 +267,6 @@ async def handle_offer_response(
             callback_id=incoming.callback_id,
             text=msg_instagram_first,
         )
-        return
-
-    if getattr(user, "agreement_confirmed_at", None) is None:
-        msg_confirm_first = await bot_texts_service.get(
-            "msg_confirm_agreement_first", locale
-        )
-        await messenger_client.answer_callback(
-            callback_id=incoming.callback_id,
-            text=msg_confirm_first,
-        )
-        agree_keys = [
-            "btn_confirm_agreement",
-            "msg_confirm_agreement",
-            "msg_agreements_intro_default",
-            "msg_label_offer",
-            "msg_label_privacy",
-            "msg_label_consent",
-            "msg_confirm_docs_fallback",
-        ]
-        agree_texts = await bot_texts_service.get_many(agree_keys, locale)
-        agreements_text = format_agreements_message(
-            config,
-            intro=agree_texts.get("msg_confirm_agreement"),
-            texts=agree_texts,
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=agreements_text,
-            keyboard=confirm_agreement_inline_keyboard(
-                CALLBACK_PROFILE_AGREE, agree_texts
-            ),
-            parse_mode="HTML",
-        )
-        await state.update_data(user_id=user.user_id)
-        await state.set_state(_BLOGGER_AGREEMENTS_STATE)
         return
 
     if not await offer_response_rate_limiter.allow_async(user.external_id):
