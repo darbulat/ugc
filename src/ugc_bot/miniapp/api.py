@@ -237,11 +237,11 @@ async def _get_user_locale(request: Request, external_id: str) -> str:
     config = request.app.state.config
     default: str = config.market.default_locale
     dispatcher = request.app.state.dispatcher
-    user_repo = dispatcher.get("user_repo")
+    user_role_service = dispatcher.get("user_role_service")
     country_repo = dispatcher.get("country_repo")
-    if not user_repo or not country_repo:
+    if not user_role_service or not country_repo:
         return default
-    user = await user_repo.get_by_external(external_id, MessengerType.TELEGRAM)
+    user = await user_role_service.get_user(external_id, MessengerType.TELEGRAM)
     if not user or not user.country:
         return default
     country = await country_repo.get_by_code(user.country)
