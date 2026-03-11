@@ -660,8 +660,10 @@
         api('/orders/list/creator').then(function(data) {
           (data.orders || []).forEach(function(o) {
             var li = document.createElement('li');
-            li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
-              o.status + ' · ' + fmtPrice(o.price);
+            var strong = document.createElement('strong');
+            strong.textContent = o.product_link || o.order_id;
+            li.appendChild(strong);
+            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
             ul.appendChild(li);
           });
           if (!data.orders || data.orders.length === 0) {
@@ -925,7 +927,13 @@
           window._instagramVerificationUrl = res.instagram_url || '';
           var instrEl = document.getElementById('instagram-verification-instruction');
           var codeEl = document.getElementById('instagram-verification-code');
-          if (instrEl) instrEl.innerHTML = (res.instruction || '').replace(/\n/g, '<br>');
+          if (instrEl) {
+            instrEl.textContent = '';
+            (res.instruction || '').split('\n').forEach(function(line, i) {
+              if (i > 0) instrEl.appendChild(document.createElement('br'));
+              instrEl.appendChild(document.createTextNode(line));
+            });
+          }
           if (codeEl) codeEl.textContent = res.code || '';
           showScreen('screen-instagram-verification');
         }).catch(function(err) {
@@ -969,8 +977,10 @@
             var li = document.createElement('li');
             li.setAttribute('data-order-id', o.order_id);
             li.style.cursor = 'pointer';
-            li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
-              o.status + ' · ' + fmtPrice(o.price);
+            var strong = document.createElement('strong');
+            strong.textContent = o.product_link || o.order_id;
+            li.appendChild(strong);
+            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
             var payLink = o.payment_link;
             if (!payLink && cfg && cfg.bot_username) {
               var u = (cfg.bot_username || '').replace(/^@/, '').trim();
@@ -1120,17 +1130,24 @@
           content_usage: document.getElementById('ord-content-usage').value.trim() || null
         };
         api('/orders', payload).then(function(res) {
-          var msg = 'Заказ создан. ID: ' + (res.order_id || '');
+          okEl.textContent = '';
+          okEl.appendChild(document.createTextNode('Заказ создан. ID: ' + (res.order_id || '')));
           if (res.payment_link) {
-            msg += ' <span class="payment-link">Оплатить: <a href="' + res.payment_link + '" class="link-pay-close" target="_blank" rel="noopener">перейти к оплате</a></span>';
-          }
-          okEl.innerHTML = msg;
-          var payLinkEl = okEl.querySelector('a.link-pay-close');
-          if (payLinkEl && res.payment_link) {
-            payLinkEl.addEventListener('click', function(e) {
+            var paySpan = document.createElement('span');
+            paySpan.className = 'payment-link';
+            paySpan.appendChild(document.createTextNode(' Оплатить: '));
+            var payA = document.createElement('a');
+            payA.href = res.payment_link;
+            payA.className = 'link-pay-close';
+            payA.target = '_blank';
+            payA.rel = 'noopener';
+            payA.textContent = 'перейти к оплате';
+            payA.addEventListener('click', function(e) {
               e.preventDefault();
               openPaymentAndClose(res.payment_link);
             });
+            paySpan.appendChild(payA);
+            okEl.appendChild(paySpan);
           }
           document.getElementById('form-order').reset();
           if (submitBtn) submitBtn.disabled = false;

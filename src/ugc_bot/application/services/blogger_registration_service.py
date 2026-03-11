@@ -366,6 +366,14 @@ class BloggerRegistrationService:
                     region_nom if region_nom is not None else region
                 )
                 profile_country = country_nom if country_nom is not None else ""
+            profile_currency = "RUB"
+            user_country_code = getattr(user, "country", None) or ""
+            if user_country_code and self.country_repo:
+                country_obj = await self.country_repo.get_by_code(
+                    user_country_code, session=session
+                )
+                if country_obj:
+                    profile_currency = country_obj.currency_code
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -385,6 +393,7 @@ class BloggerRegistrationService:
                 region=profile_region,
                 location_geometry=geom_wkt,
                 country=profile_country,
+                currency=profile_currency,
             )
             await self.blogger_repo.save(profile, session=session)
 

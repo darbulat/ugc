@@ -92,20 +92,17 @@ def upgrade() -> None:
     )
 
     # 4. Populate users.country from blogger_profiles.country
-    cases = " ".join(
-        f"WHEN lower(bp.country) = '{k}' THEN '{v}'"
-        for k, v in _NORMALIZE.items()
-    )
-    conn.execute(
-        sa.text(
-            f"UPDATE users u"
-            f" SET country = CASE {cases} ELSE NULL END"
-            f" FROM blogger_profiles bp"
-            f" WHERE bp.user_id = u.user_id"
-            f"   AND bp.country IS NOT NULL"
-            f"   AND bp.country <> ''"
+    for raw, code in _NORMALIZE.items():
+        conn.execute(
+            sa.text(
+                "UPDATE users u"
+                " SET country = :code"
+                " FROM blogger_profiles bp"
+                " WHERE bp.user_id = u.user_id"
+                "   AND lower(bp.country) = :raw"
+            ),
+            {"code": code, "raw": raw},
         )
-    )
 
     # 5. Add currency to blogger_profiles
     op.add_column(

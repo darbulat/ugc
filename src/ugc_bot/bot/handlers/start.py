@@ -128,6 +128,7 @@ async def country_selected(
     user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    country_repo: CountryRepository | None = None,
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -141,6 +142,10 @@ async def country_selected(
     country_code = (callback.data or "").removeprefix(CALLBACK_COUNTRY_PREFIX)
     if not country_code:
         return
+    if country_repo:
+        country = await country_repo.get_by_code(country_code)
+        if country is None:
+            return
     await user_role_service.set_country(
         external_id=incoming.user.external_id,
         messenger_type=incoming.user.messenger_type,

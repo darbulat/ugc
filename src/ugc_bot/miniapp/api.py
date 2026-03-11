@@ -244,7 +244,11 @@ async def _get_user_locale(request: Request, external_id: str) -> str:
     user = await user_role_service.get_user(external_id, MessengerType.TELEGRAM)
     if not user or not user.country:
         return default
-    country = await country_repo.get_by_code(user.country)
+    try:
+        country = await country_repo.get_by_code(user.country)
+    except Exception:
+        logger.warning("Failed to resolve locale for user %s", external_id)
+        return default
     return country.locale if country else default
 
 
