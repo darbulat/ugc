@@ -1720,3 +1720,203 @@ async def test_confirm_blogger_agreement_calls_referral_and_metrics() -> None:
 
     mock_referral.create_binding_from_pending.assert_called_once()
     metrics.record_blogger_registration.assert_called_once_with(str(user_id))
+
+
+# ---------------------------------------------------------------------------
+# Bug-fix regression tests: user.country not nullified, currency set from country  # noqa: E501
+# ---------------------------------------------------------------------------
+
+
+def _make_country_kz():
+    """Return Kazakhstan Country entity."""
+    from ugc_bot.domain.entities import Country
+
+    return Country(
+        code="kz",
+        name_native="Қазақстан",
+        currency_code="KZT",
+        currency_symbol="₸",
+        enabled=True,
+    )
+
+
+async def _seed_user_with_country(
+    repo: InMemoryUserRepository, country: str
+) -> UUID:
+    """Seed a user with the given country code."""
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000010"),
+        external_id="777",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        country=country,
+    )
+    await repo.save(user)
+    return user.user_id
+
+
+@pytest.mark.asyncio
+async def test_confirm_blogger_agreement_preserves_user_country() -> None:
+    """confirm_blogger_agreement must not overwrite user.country with None.
+
+    Regression: the method previously constructed User(...) manually without
+    the country field, which caused user.country to be reset to None in the DB.
+    """
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+    )
+
+    # first save the profile (two-step flow)
+    await service.save_blogger_before_agreement(
+        user_id=user_id,
+        instagram_url="https://instagram.com/alice",
+        city="Almaty",
+        topics={"selected": ["travel"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Kazakhstan",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.FEMALE,
+        birth_date=date(1998, 3, 10),
+    )
+
+    await service.confirm_blogger_agreement(user_id)
+
+    saved_user = await user_repo.get_by_id(user_id)
+    assert saved_user is not None
+    assert (
+        saved_user.country == "kz"
+    ), "user.country must be preserved after confirm_blogger_agreement"
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_sets_currency_from_user_country() -> None:
+    """register_blogger sets blogger_profiles.currency from user.country.
+
+    Regression: the service previously left currency at the default 'RUB'
+    regardless of the user's selected country.
+    """
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryCountryRepository,
+    )
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    country_repo = InMemoryCountryRepository()
+    country_repo.countries["kz"] = _make_country_kz()
+
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        country_repo=country_repo,
+    )
+
+    profile = await service.register_blogger(
+        user_id=user_id,
+        instagram_url="https://instagram.com/alice",
+        city="Almaty",
+        topics={"selected": ["travel"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Kazakhstan",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.FEMALE,
+        birth_date=date(1998, 3, 10),
+    )
+
+    assert (
+        profile.currency == "KZT"
+    ), "blogger_profiles.currency must match the currency of user.country"
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_currency_defaults_to_rub_without_country_repo() -> (  # noqa: E501
+    None
+):
+    """register_blogger defaults currency to RUB when country_repo is absent."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        # no country_repo
+    )
+
+    profile = await service.register_blogger(
+        user_id=user_id,
+        instagram_url="https://instagram.com/alice2",
+        city="Almaty",
+        topics={"selected": ["travel"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Kazakhstan",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.FEMALE,
+        birth_date=date(1998, 3, 10),
+    )
+
+    assert profile.currency == "RUB"
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_currency_defaults_to_rub_when_no_user_country() -> (  # noqa: E501
+    None
+):
+    """register_blogger defaults currency to RUB when user has no country set."""  # noqa: E501
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryCountryRepository,
+    )
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    country_repo = InMemoryCountryRepository()
+    country_repo.countries["kz"] = _make_country_kz()
+
+    # user has no country
+    user_id = await _seed_user(user_repo)
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        country_repo=country_repo,
+    )
+
+    profile = await service.register_blogger(
+        user_id=user_id,
+        instagram_url="https://instagram.com/bob2",
+        city="Moscow",
+        topics={"selected": ["fitness"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Russia",
+        price=1500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 5, 15),
+    )
+
+    assert profile.currency == "RUB"

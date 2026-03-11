@@ -25,6 +25,7 @@ from ugc_bot.bot.handlers.keyboards import (
 from ugc_bot.bot.handlers.start import (
     change_role_button,
     change_role_callback,
+    country_selected,
     start_command,
     support_button,
     support_callback,
@@ -627,3 +628,39 @@ async def test_change_role_callback_sends_start_screen(
         client.sent_text[0]["keyboard"].rows
         == role_inline_keyboard(role_texts).rows
     )
+
+
+@pytest.mark.asyncio
+async def test_country_selected_saves_country_and_shows_role_keyboard(
+    user_repo, config, bot_texts_service
+) -> None:
+    """country_selected saves country and shows role selection screen."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryUserRepository,
+    )
+
+    user_repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=user_repo)
+    await service.set_user(
+        external_id="99", messenger_type=MessengerType.TELEGRAM, username="u99"
+    )
+    message = FakeMessage(user=FakeUser(99, "u99", "User"))
+    callback = FakeCallback(
+        data="country:kz", user=FakeUser(99, "u99", "User"), message=message
+    )
+    client = FakeMessengerClient()
+    state = FakeFSMContext(state=None)
+
+    await country_selected(
+        callback,
+        state=state,
+        user_role_service=service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+    )
+
+    saved = await user_repo.get_by_external("99", MessengerType.TELEGRAM)
+    assert saved is not None
+    assert saved.country == "kz"
+    assert len(client.sent_text) == 1

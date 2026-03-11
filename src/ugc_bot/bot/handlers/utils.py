@@ -637,4 +637,3 @@ async def resolve_currency_symbol(
         return default
     country = await country_repo.get_by_code(country_code)
     return country.currency_symbol if country else default
-

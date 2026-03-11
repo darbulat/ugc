@@ -610,7 +610,7 @@ async def handle_price(
     max_order_price: float,
     currency_symbol: str,
     allowed_blogger_counts: frozenset[int],
-    user_role_service: UserRoleService,
+    user_role_service: UserRoleService | None = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
@@ -621,7 +621,7 @@ async def handle_price(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    if incoming.user:
+    if incoming.user and user_role_service:
         user_obj = await user_role_service.get_user(
             external_id=incoming.user.external_id,
             messenger_type=MessengerType.TELEGRAM,

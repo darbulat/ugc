@@ -1073,7 +1073,7 @@ def test_main_no_database_url_returns_early(
 
     monkeypatch.setenv("FEEDBACK_ENABLED", "true")
     monkeypatch.setenv("BOT_TOKEN", "123456:ABCDEF1234567890abcdef1234567890")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "")
     container_mock = Mock()
     monkeypatch.setattr(
         "ugc_bot.feedback_scheduler.Container",
