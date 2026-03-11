@@ -22,6 +22,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -64,6 +65,7 @@ from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     handle_role_choice,
     parse_user_id_from_state,
+    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
@@ -81,6 +83,7 @@ from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import (
     AudienceGender,
     BloggerGender,
+    MessengerType,
     WorkFormat,
 )
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
@@ -1357,8 +1360,10 @@ async def handle_price(
     bot_texts_service: BotTextsService,
     max_order_price: float,
     currency_symbol: str,
+    user_role_service: UserRoleService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Store price."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -1367,6 +1372,14 @@ async def handle_price(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     locale = config.market.default_locale
+    if incoming.user:
+        user_obj = await user_role_service.get_user(
+            external_id=incoming.user.external_id,
+            messenger_type=MessengerType.TELEGRAM,
+        )
+        currency_symbol = await resolve_currency_symbol(
+            user_obj, country_repo, currency_symbol
+        )
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )

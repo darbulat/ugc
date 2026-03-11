@@ -18,6 +18,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.ports import (
+    CountryRepository,
     PayoutRequestRepository,
     TransactionManager,
     UserReferralBindingRepository,
@@ -32,6 +33,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
+    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
@@ -158,6 +160,7 @@ async def referral_command(
     bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Handle /referral — stats; admin may pass @username to view another."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -200,6 +203,9 @@ async def referral_command(
     if target is None:
         return
 
+    currency_sym = await resolve_currency_symbol(
+        target, country_repo, config.market.currency_symbol
+    )
     stats = await referral_income_service.get_user_referral_stats(
         target.user_id, stats_limit=config.referral.referral_stats_limit
     )
@@ -215,7 +221,7 @@ async def referral_command(
         income_total=stats.income_total,
         paid_total=stats.paid_total,
         balance=balance,
-        currency_symbol=config.market.currency_symbol,
+        currency_symbol=currency_sym,
         texts=stats_texts,
     )
     is_own_view = target.user_id == user.user_id
@@ -253,6 +259,7 @@ async def payout_button_callback(
     bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Handle 'Выплатить' button — create payout request and notify support."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -279,6 +286,9 @@ async def payout_button_callback(
     if user is None:
         return
 
+    currency_sym = await resolve_currency_symbol(
+        user, country_repo, config.market.currency_symbol
+    )
     stats = await referral_income_service.get_user_referral_stats(
         user.user_id, stats_limit=config.referral.referral_stats_limit
     )
@@ -334,7 +344,7 @@ async def payout_button_callback(
             f"Пользователь: {user.username or '—'}\n"
             f"telegram: @{user.telegram or '—'}\n"
             f"Request ID: {request.request_id}\n"
-            f"Сумма: {request_amount:.2f} {config.market.currency_symbol}\n"
+            f"Сумма: {request_amount:.2f} {currency_sym}\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
         )
         admin_base = (config.admin.admin_base_url or "").strip()

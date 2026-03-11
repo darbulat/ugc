@@ -25,6 +25,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -76,6 +77,7 @@ from ugc_bot.bot.handlers.keyboards import (
 from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     parse_user_id_from_state,
+    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
@@ -948,6 +950,8 @@ async def _update_blogger_field(
     max_order_price: float,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user: User | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> bool:
     """Validate and update blogger field. Returns True on success."""
     locale = config.market.default_locale
@@ -1000,6 +1004,9 @@ async def _update_blogger_field(
         if result is not None:
             return result
 
+    currency_sym = await resolve_currency_symbol(
+        user, country_repo, config.market.currency_symbol
+    )
     updaters = {
         "instagram_url": lambda t, u, m, s: _blog_update_instagram(
             t, u, m, s, edit_msgs=edit_msgs
@@ -1043,7 +1050,7 @@ async def _update_blogger_field(
             m,
             s,
             max_order_price,
-            config.market.currency_symbol,
+            currency_sym,
             validator_texts=validator_texts,
             edit_msgs=edit_msgs,
         ),
@@ -1114,6 +1121,7 @@ async def show_profile(
     bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Show current user's profile or ask to confirm agreement if not yet."""
     if isinstance(message, MessageContext):
@@ -1141,6 +1149,9 @@ async def show_profile(
         await message_ctx.answer(msg_not_found)
         return
 
+    currency_symbol = await resolve_currency_symbol(
+        user, country_repo, config.market.currency_symbol
+    )
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
@@ -1183,7 +1194,7 @@ async def show_profile(
         user,
         blogger,
         advertiser,
-        config.market.currency_symbol,
+        currency_symbol,
         texts=profile_texts,
     )
 
@@ -1422,6 +1433,7 @@ async def handle_profile_my_profile_callback(
     bot_texts_service: BotTextsService,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Show profile from inline button."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -1448,6 +1460,9 @@ async def handle_profile_my_profile_callback(
             text=msg_not_found,
         )
         return
+    currency_symbol = await resolve_currency_symbol(
+        user, country_repo, config.market.currency_symbol
+    )
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
@@ -1492,7 +1507,7 @@ async def handle_profile_my_profile_callback(
         user,
         blogger,
         advertiser,
-        config.market.currency_symbol,
+        currency_symbol,
         texts=profile_texts,
     )
     reply_markup = None
@@ -2294,6 +2309,7 @@ async def edit_profile_enter_value(
     max_order_price: float,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Validate and save new field value, then show profile."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -2355,6 +2371,10 @@ async def edit_profile_enter_value(
         await message_ctx.answer(msg_not_found)
         return
 
+    user_obj = await profile_service.get_user_by_external(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
     locale = config.market.default_locale
     if field_key == "city":
         handled = await _try_handle_blogger_city_by_location(
@@ -2386,4 +2406,6 @@ async def edit_profile_enter_value(
         max_order_price,
         config,
         bot_texts_service,
+        user=user_obj,
+        country_repo=country_repo,
     )
