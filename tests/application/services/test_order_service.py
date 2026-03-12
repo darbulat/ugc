@@ -12,7 +12,9 @@ from ugc_bot.application.errors import (
     UserNotFoundError,
 )
 from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.domain.entities import Country
 from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
+from ugc_bot.infrastructure.memory_repositories import InMemoryCountryRepository
 
 
 @pytest.mark.asyncio
@@ -536,3 +538,83 @@ async def test_update_order_wrong_status_rejected(
             bloggers_needed=3,
             order_type=OrderType.UGC_ONLY,
         )
+
+
+@pytest.mark.asyncio
+async def test_create_order_currency_from_user_country(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Order currency is set based on user's country."""
+    country_repo = InMemoryCountryRepository()
+    country_repo.countries["kz"] = Country(
+        code="kz",
+        name_native="Қазақстан",
+        currency_code="KZT",
+        currency_symbol="₸",
+    )
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE, country="kz"
+    )
+
+    service = build_order_service(
+        user_repo, advertiser_repo, order_repo, country_repo=country_repo
+    )
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    assert order.currency == "KZT"
+
+
+@pytest.mark.asyncio
+async def test_create_order_currency_defaults_to_rub_without_country_repo(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Order currency defaults to RUB when country_repo is absent."""
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE, country="kz"
+    )
+
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    assert order.currency == "RUB"
+
+
+@pytest.mark.asyncio
+async def test_create_order_currency_defaults_to_rub_without_user_country(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    """Order currency defaults to RUB when user has no country set."""
+    country_repo = InMemoryCountryRepository()
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+
+    service = build_order_service(
+        user_repo, advertiser_repo, order_repo, country_repo=country_repo
+    )
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    assert order.currency == "RUB"

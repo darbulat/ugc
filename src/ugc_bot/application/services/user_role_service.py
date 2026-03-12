@@ -255,6 +255,26 @@ class UserRoleService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def set_country(
+        self,
+        external_id: str,
+        messenger_type: MessengerType,
+        country_code: str,
+    ) -> User:
+        """Set country for a user identified by external_id."""
+
+        async def _run(session: object | None) -> User:
+            user = await self.user_repo.get_by_external(
+                external_id, messenger_type, session=session
+            )
+            if user is None:
+                raise UserNotFoundError("User not found.")
+            updated = replace(user, country=country_code)
+            await self.user_repo.save(updated, session=session)
+            return updated
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def update_last_role_reminder_at(self, user_id: UUID) -> None:
         """Set last_role_reminder_at to now for the user."""
 

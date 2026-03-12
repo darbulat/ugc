@@ -75,6 +75,9 @@ class MeResponse(BaseModel):
     has_blogger_profile: bool
     advertiser_profile: dict | None = None  # pre-fill form
     blogger_profile: dict | None = None  # pre-fill form
+    country: str | None = None
+    currency_code: str | None = None
+    currency_symbol: str | None = None
 
 
 # Content usage options for order form (same as bot order_creation_states).
@@ -97,6 +100,7 @@ class ConfigResponse(BaseModel):
     docs_privacy_url: str = ""
     docs_consent_url: str = ""
     admin_instagram_username: str = ""
+    countries: list[dict[str, str]] = []
 
 
 class RegisterAdvertiserRequest(BaseModel):
@@ -228,12 +232,30 @@ def _payment_link_for_order(order_id: str, bot_username: str) -> str:
     return f"https://t.me/{username}?start=pay_{order_id}"
 
 
-async def _get_validator_texts(request: Request) -> dict[str, str]:
+async def _get_user_locale(request: Request, external_id: str) -> str:
+    """Resolve locale for user by external_id via user.country."""
+    config = request.app.state.config
+    default: str = config.market.default_locale
+    dispatcher = request.app.state.dispatcher
+    user_role_service = dispatcher.get("user_role_service")
+    country_repo = dispatcher.get("country_repo")
+    if not user_role_service or not country_repo:
+        return default
+    user = await user_role_service.get_user(external_id, MessengerType.TELEGRAM)
+    if not user or not user.country:
+        return default
+    try:
+        country = await country_repo.get_by_code(user.country)
+    except Exception:
+        logger.warning("Failed to resolve locale for user %s", external_id)
+        return default
+    return country.locale if country else default
+
+
+async def _get_validator_texts(request: Request, locale: str) -> dict[str, str]:
     """Load validator error messages from bot_texts_service (same as bot)."""
     dispatcher = request.app.state.dispatcher
     bot_texts = dispatcher["bot_texts_service"]
-    config = request.app.state.config
-    locale = config.market.default_locale
     return await bot_texts.get_many(list(VALIDATOR_ERR_KEYS), locale)
 
 
@@ -349,6 +371,16 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
             "display_name": getattr(user, "username", None) or "",
         }
     blg_profile = _blogger_profile_to_dict(blogger, user)
+    # Resolve currency from country
+    user_country = getattr(user, "country", None)
+    currency_code: str | None = None
+    currency_symbol: str | None = None
+    country_repo = dispatcher.get("country_repo")
+    if user_country and country_repo:
+        country_obj = await country_repo.get_by_code(user_country)
+        if country_obj:
+            currency_code = country_obj.currency_code
+            currency_symbol = country_obj.currency_symbol
     return MeResponse(
         user_id=str(user_id),
         external_id=user.external_id,
@@ -357,6 +389,9 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         has_blogger_profile=blogger is not None,
         advertiser_profile=adv_profile,
         blogger_profile=blg_profile,
+        country=user_country,
+        currency_code=currency_code,
+        currency_symbol=currency_symbol,
     )
 
 
@@ -380,6 +415,20 @@ async def config(request: Request, body: InitDataBody) -> ConfigResponse:
         if instagram_cfg
         else ""
     )
+    dispatcher = request.app.state.dispatcher
+    country_repo = dispatcher.get("country_repo")
+    countries_list: list[dict[str, str]] = []
+    if country_repo:
+        enabled = await country_repo.list_enabled()
+        countries_list = [
+            {
+                "code": c.code,
+                "name_native": c.name_native,
+                "currency_code": c.currency_code,
+                "currency_symbol": c.currency_symbol,
+            }
+            for c in enabled
+        ]
     return ConfigResponse(
         allowed_blogger_counts=counts,
         content_usage_options=options,
@@ -388,6 +437,7 @@ async def config(request: Request, body: InitDataBody) -> ConfigResponse:
         docs_privacy_url=docs_privacy_url,
         docs_consent_url=docs_consent_url,
         admin_instagram_username=admin_instagram_username,
+        countries=countries_list,
     )
 
 
@@ -434,7 +484,9 @@ async def register_advertiser(
     telegram_username = _get_telegram_username_from_init_data(
         request, body.init_data
     )
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     err = _validate_advertiser_body(body, texts)
     if err:
         raise HTTPException(status_code=400, detail=err)
@@ -629,7 +681,9 @@ async def register_blogger(
             status_code=400,
             detail="audience_age_max must be >= audience_age_min",
         )
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_blogger_body(
         body,
@@ -747,7 +801,8 @@ async def start_instagram_verification(
     bot_texts = dispatcher["bot_texts_service"]
     config = request.app.state.config
     verification = await verification_service.generate_code(user_id)
-    locale = getattr(config.market, "default_locale", "ru")
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
     instruction_tpl = await bot_texts.get(
         "msg_instagram_verify_instruction", locale
     )
@@ -836,7 +891,9 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             status_code=403,
             detail="Advertiser profile required. Register as advertiser first.",
         )
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_order_body(
         body,
@@ -1143,7 +1200,9 @@ async def update_order(request: Request, body: UpdateOrderRequest) -> dict:
         raise HTTPException(
             status_code=400, detail="Invalid order_id"
         ) from None
-    texts = await _get_validator_texts(request)
+    external_id = _get_telegram_user_id(request, body.init_data)
+    locale = await _get_user_locale(request, external_id)
+    texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_order_body(
         body,
@@ -1187,4 +1246,41 @@ async def update_order(request: Request, body: UpdateOrderRequest) -> dict:
         "order_id": str(order.order_id),
         "status": order.status.value,
         "payment_link": payment_link,
+    }
+
+
+class SetCountryRequest(BaseModel):
+    """Request to set country for the current user."""
+
+    init_data: str
+    country_code: str
+
+
+@router.post("/set-country")
+async def set_country(request: Request, body: SetCountryRequest) -> dict:
+    """Save user's country; return ok with currency info."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    country_repo = dispatcher.get("country_repo")
+    if country_repo:
+        country_obj = await country_repo.get_by_code(body.country_code)
+        if country_obj is None:
+            raise HTTPException(status_code=400, detail="Unknown country code.")
+        currency_code = country_obj.currency_code
+        currency_symbol = country_obj.currency_symbol
+    else:
+        currency_code = "RUB"
+        currency_symbol = "₽"
+    external_id = _get_telegram_user_id(request, body.init_data)
+    user_role_service = dispatcher["user_role_service"]
+    await user_role_service.set_country(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+        country_code=body.country_code,
+    )
+    _ = user_id  # already used to ensure user exists
+    return {
+        "ok": True,
+        "currency_code": currency_code,
+        "currency_symbol": currency_symbol,
     }

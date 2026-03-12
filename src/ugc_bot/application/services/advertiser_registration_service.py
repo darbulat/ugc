@@ -15,7 +15,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.application.services.referral_service import ReferralService
-from ugc_bot.domain.entities import AdvertiserProfile, User
+from ugc_bot.domain.entities import AdvertiserProfile
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -73,31 +73,17 @@ class AdvertiserRegistrationService:
             await self.advertiser_repo.save(profile, session=session)
 
             now = datetime.now(timezone.utc)
-            role_chosen_at = (
-                now if user.role_chosen_at is None else user.role_chosen_at
-            )
-            username = (
-                display_name.strip()
-                if display_name and display_name.strip()
-                else user.username
-            )
-            updated_user = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
-                username=username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
-                role_chosen_at=role_chosen_at,
-                last_role_reminder_at=user.last_role_reminder_at,
-                telegram=user.telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-                referral_payout_rate=getattr(
-                    user, "referral_payout_rate", None
+            updated_user = replace(
+                user,
+                username=(
+                    display_name.strip()
+                    if display_name and display_name.strip()
+                    else user.username
                 ),
-                agreement_confirmed_at=datetime.now(timezone.utc),
+                role_chosen_at=(
+                    now if user.role_chosen_at is None else user.role_chosen_at
+                ),
+                agreement_confirmed_at=now,
             )
             await self.user_repo.save(updated_user, session=session)
 
@@ -160,34 +146,20 @@ class AdvertiserRegistrationService:
             await self.advertiser_repo.save(profile, session=session)
 
             now = datetime.now(timezone.utc)
-            role_chosen_at = (
-                now if user.role_chosen_at is None else user.role_chosen_at
-            )
-            username = (
-                display_name.strip()
-                if display_name and display_name.strip()
-                else user.username
-            )
-            telegram = (
-                telegram_username
-                if telegram_username is not None
-                else user.telegram
-            )
-            updated_user = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
-                username=username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
-                role_chosen_at=role_chosen_at,
-                last_role_reminder_at=user.last_role_reminder_at,
-                telegram=telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-                referral_payout_rate=getattr(
-                    user, "referral_payout_rate", None
+            updated_user = replace(
+                user,
+                username=(
+                    display_name.strip()
+                    if display_name and display_name.strip()
+                    else user.username
+                ),
+                role_chosen_at=(
+                    now if user.role_chosen_at is None else user.role_chosen_at
+                ),
+                telegram=(
+                    telegram_username
+                    if telegram_username is not None
+                    else user.telegram
                 ),
                 agreement_confirmed_at=None,
             )

@@ -18,6 +18,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
@@ -40,6 +41,7 @@ from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
+    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
@@ -142,6 +144,7 @@ async def _send_my_orders_content(
     bot_texts_service: BotTextsService,
     messenger_client: MessengerClient,
     locale: str,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Send fill profile, agreement, or order lists depending on user state."""
     if advertiser is None and blogger is None:
@@ -186,6 +189,9 @@ async def _send_my_orders_content(
             await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
 
+    currency_symbol = await resolve_currency_symbol(
+        user, country_repo, config.market.currency_symbol
+    )
     order_texts = await bot_texts_service.get_many(
         list(MY_ORDERS_TEXTS_KEYS), locale
     )
@@ -200,7 +206,7 @@ async def _send_my_orders_content(
                 orders,
                 page=1,
                 offer_response_service=offer_response_service,
-                currency_symbol=config.market.currency_symbol,
+                currency_symbol=currency_symbol,
                 texts=order_texts,
             )
             await messenger_client.send_text(
@@ -230,7 +236,7 @@ async def _send_my_orders_content(
             text, keyboard = _render_blogger_orders_page(
                 order_responses,
                 page=1,
-                currency_symbol=config.market.currency_symbol,
+                currency_symbol=currency_symbol,
                 texts=order_texts,
             )
             await messenger_client.send_text(
@@ -257,15 +263,17 @@ async def show_my_orders(
     offer_response_service: OfferResponseService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Show advertiser and blogger orders in two separate messages."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     order_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -299,6 +307,7 @@ async def show_my_orders(
         bot_texts_service,
         messenger_client,
         locale,
+        country_repo=country_repo,
     )
 
 
@@ -312,8 +321,10 @@ async def show_my_orders_from_profile_callback(
     offer_response_service: OfferResponseService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Show my orders from profile inline menu."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -321,7 +332,7 @@ async def show_my_orders_from_profile_callback(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    locale = config.market.default_locale
+    locale = user_locale
     order_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -354,6 +365,7 @@ async def show_my_orders_from_profile_callback(
         bot_texts_service,
         messenger_client,
         locale,
+        country_repo=country_repo,
     )
 
 
@@ -375,15 +387,17 @@ async def paginate_orders(
     currency_symbol: str,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Handle pagination for advertiser and blogger orders."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
-    locale = config.market.default_locale
+    locale = user_locale
     order_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -403,6 +417,9 @@ async def paginate_orders(
     if user is None:
         return
 
+    currency_symbol = await resolve_currency_symbol(
+        user, country_repo, currency_symbol
+    )
     order_texts = await bot_texts_service.get_many(
         list(MY_ORDERS_TEXTS_KEYS), locale
     )

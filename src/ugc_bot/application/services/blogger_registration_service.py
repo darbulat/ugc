@@ -12,13 +12,14 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.geography import is_canonical_city_only
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
+    CountryRepository,
     GeocoderPort,
     TransactionManager,
     UserRepository,
 )
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.referral_service import ReferralService
-from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import AudienceGender, BloggerGender, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
@@ -101,6 +102,7 @@ class BloggerRegistrationService:
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
     geocoder: Optional[GeocoderPort] = None
+    country_repo: Optional[CountryRepository] = None
 
     async def get_profile_by_instagram_url(
         self, instagram_url: str
@@ -223,6 +225,14 @@ class BloggerRegistrationService:
             )
             profile_region = region_nom if region_nom is not None else region
             profile_country = country_nom if country_nom is not None else ""
+            profile_currency = "RUB"
+            user_country_code = getattr(user, "country", None) or ""
+            if user_country_code and self.country_repo:
+                country_obj = await self.country_repo.get_by_code(
+                    user_country_code, session=session
+                )
+                if country_obj:
+                    profile_currency = country_obj.currency_code
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -242,6 +252,7 @@ class BloggerRegistrationService:
                 region=profile_region,
                 location_geometry=location_geometry,
                 country=profile_country,
+                currency=profile_currency,
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -355,6 +366,14 @@ class BloggerRegistrationService:
                     region_nom if region_nom is not None else region
                 )
                 profile_country = country_nom if country_nom is not None else ""
+            profile_currency = "RUB"
+            user_country_code = getattr(user, "country", None) or ""
+            if user_country_code and self.country_repo:
+                country_obj = await self.country_repo.get_by_code(
+                    user_country_code, session=session
+                )
+                if country_obj:
+                    profile_currency = country_obj.currency_code
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -374,6 +393,7 @@ class BloggerRegistrationService:
                 region=profile_region,
                 location_geometry=geom_wkt,
                 country=profile_country,
+                currency=profile_currency,
             )
             await self.blogger_repo.save(profile, session=session)
 
@@ -422,22 +442,9 @@ class BloggerRegistrationService:
                 if telegram_username is not None
                 else user.telegram
             )
-            updated_user = User(
-                user_id=user.user_id,
-                external_id=user.external_id,
-                messenger_type=user.messenger_type,
-                username=user.username,
-                status=user.status,
-                issue_count=user.issue_count,
-                created_at=user.created_at,
-                role_chosen_at=user.role_chosen_at,
-                last_role_reminder_at=user.last_role_reminder_at,
+            updated_user = replace(
+                user,
                 telegram=telegram,
-                admin=user.admin,
-                referral_code=user.referral_code,
-                referral_payout_rate=getattr(
-                    user, "referral_payout_rate", None
-                ),
                 agreement_confirmed_at=now,
             )
             await self.user_repo.save(updated_user, session=session)

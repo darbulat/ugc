@@ -18,6 +18,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.ports import (
+    CountryRepository,
     PayoutRequestRepository,
     TransactionManager,
     UserReferralBindingRepository,
@@ -32,6 +33,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
+    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
@@ -156,15 +158,17 @@ async def referral_command(
     referral_income_service: ReferralIncomeService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Handle /referral — stats; admin may pass @username to view another."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -200,6 +204,9 @@ async def referral_command(
     if target is None:
         return
 
+    currency_sym = await resolve_currency_symbol(
+        target, country_repo, config.market.currency_symbol
+    )
     stats = await referral_income_service.get_user_referral_stats(
         target.user_id, stats_limit=config.referral.referral_stats_limit
     )
@@ -215,7 +222,7 @@ async def referral_command(
         income_total=stats.income_total,
         paid_total=stats.paid_total,
         balance=balance,
-        currency_symbol=config.market.currency_symbol,
+        currency_symbol=currency_sym,
         texts=stats_texts,
     )
     is_own_view = target.user_id == user.user_id
@@ -251,15 +258,17 @@ async def payout_button_callback(
     transaction_manager: TransactionManager,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Handle 'Выплатить' button — create payout request and notify support."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
-    locale = config.market.default_locale
+    locale = user_locale
     payout_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found",
@@ -279,6 +288,9 @@ async def payout_button_callback(
     if user is None:
         return
 
+    currency_sym = await resolve_currency_symbol(
+        user, country_repo, config.market.currency_symbol
+    )
     stats = await referral_income_service.get_user_referral_stats(
         user.user_id, stats_limit=config.referral.referral_stats_limit
     )
@@ -334,7 +346,7 @@ async def payout_button_callback(
             f"Пользователь: {user.username or '—'}\n"
             f"telegram: @{user.telegram or '—'}\n"
             f"Request ID: {request.request_id}\n"
-            f"Сумма: {request_amount:.2f} {config.market.currency_symbol}\n"
+            f"Сумма: {request_amount:.2f} {currency_sym}\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
         )
         admin_base = (config.admin.admin_base_url or "").strip()
@@ -498,6 +510,7 @@ async def referral_list_command(
     transaction_manager: TransactionManager,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -506,7 +519,7 @@ async def referral_list_command(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_profile_not_found_role",
@@ -593,6 +606,7 @@ async def referral_list_pagination_callback(
     transaction_manager: TransactionManager,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -601,7 +615,7 @@ async def referral_list_pagination_callback(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
-    locale = config.market.default_locale
+    locale = user_locale
     list_allow_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found",
@@ -642,7 +656,6 @@ async def referral_list_pagination_callback(
             referrer_user_id = user.user_id
         else:
             if not user.admin:
-                locale = config.market.default_locale
                 msg = await bot_texts_service.get(
                     "msg_referral_access_denied", locale
                 )

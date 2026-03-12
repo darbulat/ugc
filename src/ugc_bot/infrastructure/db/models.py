@@ -156,6 +156,7 @@ class UserModel(Base):
         nullable=False,
         server_default=text("now()"),
     )
+    country: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class BloggerProfileModel(Base):
@@ -225,6 +226,9 @@ class BloggerProfileModel(Base):
     )
     country: Mapped[str] = mapped_column(
         String, nullable=False, server_default=text("'russia'")
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, server_default=text("'RUB'")
     )
 
 
@@ -366,6 +370,26 @@ class OrderModel(Base):
     location_geometry: Mapped[Optional[object]] = mapped_column(
         _GeometryOrText(geometry_type="MULTIPOLYGON", srid=4326),
         nullable=True,
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, server_default=text("'RUB'")
+    )
+
+
+class CountryModel(Base):
+    """Country ORM model."""
+
+    __tablename__ = "countries"
+
+    code: Mapped[str] = mapped_column(String(8), primary_key=True)
+    name_native: Mapped[str] = mapped_column(String, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    currency_symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    locale: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default=text("'ru'")
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
     )
 
 

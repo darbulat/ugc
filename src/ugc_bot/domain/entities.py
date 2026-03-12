@@ -23,6 +23,18 @@ from ugc_bot.domain.enums import (
 
 
 @dataclass(frozen=True)
+class Country:
+    """Country entity for multi-country support."""
+
+    code: str
+    name_native: str
+    currency_code: str
+    currency_symbol: str
+    locale: str = "ru"
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
 class User:
     """Core user entity.
 
@@ -52,6 +64,7 @@ class User:
     referral_payout_rate: Optional[Decimal] = None
     agreement_confirmed_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    country: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +109,7 @@ class BloggerProfile:
     # WKT MultiPoint (SRID 4326), e.g. "MULTIPOINT((37.6 55.75))" (lon lat)
     location_geometry: Optional[str] = None
     country: str = ""
+    currency: str = "RUB"
 
 
 @dataclass(frozen=True)
@@ -186,6 +200,7 @@ class Order:
     filter_by_barter: bool = False
     # WKT MULTIPOLYGON (SRID 4326) for countries/regions/cities from geography.
     location_geometry: Optional[str] = None
+    currency: str = "RUB"
 
 
 @dataclass(frozen=True)

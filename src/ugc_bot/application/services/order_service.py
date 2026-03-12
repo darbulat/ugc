@@ -17,6 +17,7 @@ from ugc_bot.application.geography import (
 )
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
+    CountryRepository,
     GeocoderPort,
     OrderRepository,
     TransactionManager,
@@ -75,6 +76,19 @@ class OrderService:
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
     geocoder: Optional[GeocoderPort] = None
+    country_repo: Optional[CountryRepository] = None
+
+    async def _resolve_currency(
+        self, country_code: Optional[str], session: object | None
+    ) -> str:
+        """Resolve currency code from user country, default to RUB."""
+        if country_code and self.country_repo:
+            country_obj = await self.country_repo.get_by_code(
+                country_code, session=session
+            )
+            if country_obj:
+                return country_obj.currency_code
+        return "RUB"
 
     async def is_new_advertiser(self, advertiser_id: UUID) -> bool:
         """Return True when advertiser has no previous orders."""
@@ -155,6 +169,8 @@ class OrderService:
                 )
             )
 
+            order_currency = await self._resolve_currency(user.country, session)
+
             geography_clean = (geography or "").strip() or None
             order_location_geometry = None
             if geography_clean and self.geocoder:
@@ -198,6 +214,7 @@ class OrderService:
                 filter_by_placement=False,
                 filter_by_barter=False,
                 location_geometry=order_location_geometry,
+                currency=order_currency,
             )
             await self.order_repo.save(order, session=session)
 

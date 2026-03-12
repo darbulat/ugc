@@ -22,6 +22,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -64,6 +65,7 @@ from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     handle_role_choice,
     parse_user_id_from_state,
+    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.bot.validators import (
@@ -81,6 +83,7 @@ from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import (
     AudienceGender,
     BloggerGender,
+    MessengerType,
     WorkFormat,
 )
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
@@ -180,6 +183,7 @@ async def choose_creator_role_inline(
     profile_service: ProfileService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -190,7 +194,7 @@ async def choose_creator_role_inline(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    locale = config.market.default_locale
+    locale = user_locale
     support_url = build_support_telegram_url(
         config.market.support_contact or ""
     )
@@ -215,6 +219,7 @@ async def choose_creator_role(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -223,7 +228,7 @@ async def choose_creator_role(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    locale = config.market.default_locale
+    locale = user_locale
     support_url = build_support_telegram_url(
         config.market.support_contact or ""
     )
@@ -246,9 +251,10 @@ async def _start_registration_flow_impl(
     messenger_client: MessengerClient,
     bot_texts_service: BotTextsService,
     config: AppConfig,
+    user_locale: str = "ru",
 ) -> None:
     """Start blogger registration: first step (name or instagram)."""
-    locale = config.market.default_locale
+    locale = user_locale
     step_instagram_first = await bot_texts_service.get(
         "msg_step_ask_instagram_first", locale
     )
@@ -280,6 +286,7 @@ async def _start_registration_flow(
     user_role_service: UserRoleService,
     bot_texts_service: BotTextsService,
     config: AppConfig,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -289,7 +296,7 @@ async def _start_registration_flow(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found_start",
@@ -325,6 +332,7 @@ async def start_registration_button(
     user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -335,8 +343,9 @@ async def start_registration_button(
         user_role_service,
         bot_texts_service,
         config,
-        messenger_client,
-        event_adapter,
+        user_locale=user_locale,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
     )
 
 
@@ -347,6 +356,7 @@ async def start_registration_inline(
     user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -357,7 +367,7 @@ async def start_registration_inline(
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    locale = config.market.default_locale
+    locale = user_locale
     allow_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found_start",
@@ -393,6 +403,7 @@ async def handle_name(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -402,7 +413,7 @@ async def handle_name(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -435,6 +446,7 @@ async def handle_instagram(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -444,7 +456,7 @@ async def handle_instagram(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     err_empty = await bot_texts_service.get("err_instagram_empty", locale)
     err_format = await bot_texts_service.get("err_instagram_format", locale)
     err_example = await bot_texts_service.get("err_instagram_example", locale)
@@ -714,6 +726,7 @@ async def handle_city(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -723,7 +736,7 @@ async def handle_city(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -763,6 +776,7 @@ async def handle_city_region_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -781,7 +795,7 @@ async def handle_city_region_callback(
     if region not in get_regions_for_city(city):
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         return
-    locale = config.market.default_locale
+    locale = user_locale
     step_birth_date = await bot_texts_service.get(
         "msg_step_ask_birth_date", locale
     )
@@ -802,6 +816,7 @@ async def handle_birth_date(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -811,7 +826,7 @@ async def handle_birth_date(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -868,6 +883,7 @@ async def handle_blogger_gender_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -887,7 +903,7 @@ async def handle_blogger_gender_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
-    locale = config.market.default_locale
+    locale = user_locale
     step_topics = await bot_texts_service.get("msg_step_ask_topics", locale)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
@@ -906,6 +922,7 @@ async def handle_blogger_gender(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -915,7 +932,7 @@ async def handle_blogger_gender(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     btn_m = (await bot_texts_service.get("btn_gender_m", locale)).strip()
     btn_f = (await bot_texts_service.get("btn_gender_f", locale)).strip()
     err_choose = await bot_texts_service.get("err_gender_choose", locale)
@@ -947,6 +964,7 @@ async def handle_topics(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -956,7 +974,7 @@ async def handle_topics(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -1034,6 +1052,7 @@ async def handle_audience_gender_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1053,7 +1072,7 @@ async def handle_audience_gender_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
-    locale = config.market.default_locale
+    locale = user_locale
     step_age = await bot_texts_service.get("msg_step_ask_audience_age", locale)
     age_texts = await bot_texts_service.get_many(
         [
@@ -1115,6 +1134,7 @@ async def handle_gender(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1124,7 +1144,7 @@ async def handle_gender(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     aud_texts = await bot_texts_service.get_many(
         ["btn_audience_f", "btn_audience_m", "btn_audience_a"], locale
     )
@@ -1209,6 +1229,7 @@ async def handle_age(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1218,7 +1239,7 @@ async def handle_age(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     age_texts = await bot_texts_service.get_many(
         [
             "btn_age_0_17",
@@ -1265,6 +1286,7 @@ async def handle_audience_age_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1285,7 +1307,7 @@ async def handle_audience_age_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     min_age, max_age = _AGE_CALLBACK_TO_RANGE[data]
-    locale = config.market.default_locale
+    locale = user_locale
     step_geo = await bot_texts_service.get("msg_step_ask_audience_geo", locale)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
@@ -1306,6 +1328,7 @@ async def handle_geo(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1315,7 +1338,7 @@ async def handle_geo(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -1357,8 +1380,11 @@ async def handle_price(
     bot_texts_service: BotTextsService,
     max_order_price: float,
     currency_symbol: str,
+    user_locale: str = "ru",
+    user_role_service: UserRoleService | None = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Store price."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -1366,7 +1392,15 @@ async def handle_price(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
+    if incoming.user and user_role_service:
+        user_obj = await user_role_service.get_user(
+            external_id=incoming.user.external_id,
+            messenger_type=MessengerType.TELEGRAM,
+        )
+        currency_symbol = await resolve_currency_symbol(
+            user_obj, country_repo, currency_symbol
+        )
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -1428,6 +1462,7 @@ async def handle_barter_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1446,7 +1481,7 @@ async def handle_barter_callback(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(barter=barter)
-    locale = config.market.default_locale
+    locale = user_locale
     step_work = await bot_texts_service.get("msg_step_ask_work_format", locale)
     texts = await bot_texts_service.get_many(
         ["btn_work_format_ads", "btn_work_format_ugc_only"],
@@ -1481,6 +1516,7 @@ async def handle_barter(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1490,7 +1526,7 @@ async def handle_barter(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     btn_yes = (await bot_texts_service.get("btn_barter_yes", locale)).strip()
     btn_no = (await bot_texts_service.get("btn_barter_no", locale)).strip()
     text = (incoming.text or "").strip()
@@ -1506,7 +1542,7 @@ async def handle_barter(
         )
         return
     await state_store.update_data(barter=barter)
-    locale = config.market.default_locale
+    locale = user_locale
     step_work = await bot_texts_service.get("msg_step_ask_work_format", locale)
     texts = await bot_texts_service.get_many(
         ["btn_work_format_ads", "btn_work_format_ugc_only"],
@@ -1553,6 +1589,7 @@ async def handle_work_format_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1579,7 +1616,7 @@ async def handle_work_format_callback(
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
         msg_expired = await bot_texts_service.get(
-            "msg_session_expired", config.market.default_locale
+            "msg_session_expired", user_locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -1629,7 +1666,7 @@ async def handle_work_format_callback(
             )
             msg_already = await bot_texts_service.get(
                 "msg_instagram_already_registered",
-                config.market.default_locale,
+                user_locale,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
@@ -1647,9 +1684,7 @@ async def handle_work_format_callback(
         "msg_label_consent",
         "msg_confirm_docs_fallback",
     ]
-    agree_texts = await bot_texts_service.get_many(
-        agree_keys, config.market.default_locale
-    )
+    agree_texts = await bot_texts_service.get_many(agree_keys, user_locale)
     agreements_intro = agree_texts.get("msg_agreements_intro_creator", "")
     agreements_text = format_agreements_message(
         config, intro=agreements_intro, texts=agree_texts
@@ -1672,6 +1707,7 @@ async def handle_work_format(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1681,7 +1717,7 @@ async def handle_work_format(
     )
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
-    locale = config.market.default_locale
+    locale = user_locale
     btn_ads = (
         await bot_texts_service.get("btn_work_format_ads", locale)
     ).strip()
@@ -1795,6 +1831,7 @@ async def handle_agreements_callback(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1813,7 +1850,7 @@ async def handle_agreements_callback(
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
     if user_id is None:
-        locale = config.market.default_locale
+        locale = user_locale
         msg_expired = await bot_texts_service.get("msg_session_expired", locale)
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
@@ -1835,7 +1872,7 @@ async def handle_agreements_callback(
         raise
 
     await state_store.clear()
-    locale = config.market.default_locale
+    locale = user_locale
     msg_profile_created = await bot_texts_service.get(
         "msg_profile_created", locale
     )
@@ -1857,6 +1894,7 @@ async def handle_agreements(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     blogger_registration_service: BloggerRegistrationService,
+    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -1867,11 +1905,9 @@ async def handle_agreements(
     incoming = event_adapter.from_message(message)
     state_store = AiogramStateStore(state)
     confirm_btn = (
-        await bot_texts_service.get(
-            "btn_confirm_agreement", config.market.default_locale
-        )
+        await bot_texts_service.get("btn_confirm_agreement", user_locale)
     ).strip()
-    locale = config.market.default_locale
+    locale = user_locale
     if (incoming.text or "").strip() != confirm_btn:
         msg_aborted = await bot_texts_service.get(
             "msg_registration_aborted", locale

@@ -85,11 +85,24 @@
       color: var(--tg-theme-text-color, #1a1a1a);
       font-weight: 600; font-size: 0.95rem; line-height: 1.4;
     }
+    .country-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .country-grid .btn { margin-top: 0; }
   </style>
 </head>
 <body>
   <div id="screen-loading" class="screen active">
     <p class="hint">Загрузка…</p>
+  </div>
+
+  <div id="screen-country-select" class="screen">
+    <h1>Выберите вашу страну</h1>
+    <div id="country-grid" class="country-grid"></div>
+    <div id="country-error" class="error"></div>
   </div>
 
   <div id="screen-role-choice" class="screen">
@@ -164,7 +177,7 @@
         <option value="m">Мужская</option>
         <option value="f">Женская</option>
       </select>
-      <label for="blg-price">Цена за интеграцию (₽) *</label>
+      <label id="lbl-blg-price" for="blg-price">Цена за интеграцию (₽) *</label>
       <input type="number" id="blg-price" name="price" required min="1" step="1">
       <label for="blg-barter">Готов к бартеру</label>
       <select id="blg-barter" name="barter">
@@ -230,7 +243,7 @@
         <input type="url" id="ord-link" name="product_link" required>
         <label for="ord-offer">Текст оффера *</label>
         <textarea id="ord-offer" name="offer_text" required></textarea>
-        <label for="ord-price">Бюджет (₽) *</label>
+        <label id="lbl-ord-price" for="ord-price">Бюджет (₽) *</label>
         <input type="number" id="ord-price" name="price" required min="0" step="1">
         <label for="ord-bloggers">Количество креаторов</label>
         <select id="ord-bloggers" name="bloggers_needed"></select>
@@ -271,7 +284,7 @@
       <input type="url" id="ord-detail-link" name="product_link" required>
       <label for="ord-detail-offer">Текст оффера *</label>
       <textarea id="ord-detail-offer" name="offer_text" required></textarea>
-      <label for="ord-detail-price">Бюджет (₽) *</label>
+      <label id="lbl-ord-detail-price" for="ord-detail-price">Бюджет (₽) *</label>
       <input type="number" id="ord-detail-price" name="price" required min="0" step="1">
       <label for="ord-detail-bloggers">Количество креаторов</label>
       <select id="ord-detail-bloggers" name="bloggers_needed"></select>
@@ -647,8 +660,10 @@
         api('/orders/list/creator').then(function(data) {
           (data.orders || []).forEach(function(o) {
             var li = document.createElement('li');
-            li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
-              o.status + ' · ' + o.price + ' ₽';
+            var strong = document.createElement('strong');
+            strong.textContent = o.product_link || o.order_id;
+            li.appendChild(strong);
+            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
             ul.appendChild(li);
           });
           if (!data.orders || data.orders.length === 0) {
@@ -912,7 +927,13 @@
           window._instagramVerificationUrl = res.instagram_url || '';
           var instrEl = document.getElementById('instagram-verification-instruction');
           var codeEl = document.getElementById('instagram-verification-code');
-          if (instrEl) instrEl.innerHTML = (res.instruction || '').replace(/\n/g, '<br>');
+          if (instrEl) {
+            instrEl.textContent = '';
+            (res.instruction || '').split('\n').forEach(function(line, i) {
+              if (i > 0) instrEl.appendChild(document.createElement('br'));
+              instrEl.appendChild(document.createTextNode(line));
+            });
+          }
           if (codeEl) codeEl.textContent = res.code || '';
           showScreen('screen-instagram-verification');
         }).catch(function(err) {
@@ -956,8 +977,10 @@
             var li = document.createElement('li');
             li.setAttribute('data-order-id', o.order_id);
             li.style.cursor = 'pointer';
-            li.innerHTML = '<strong>' + (o.product_link || o.order_id) + '</strong> ' +
-              o.status + ' · ' + o.price + ' ₽';
+            var strong = document.createElement('strong');
+            strong.textContent = o.product_link || o.order_id;
+            li.appendChild(strong);
+            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
             var payLink = o.payment_link;
             if (!payLink && cfg && cfg.bot_username) {
               var u = (cfg.bot_username || '').replace(/^@/, '').trim();
@@ -1107,17 +1130,24 @@
           content_usage: document.getElementById('ord-content-usage').value.trim() || null
         };
         api('/orders', payload).then(function(res) {
-          var msg = 'Заказ создан. ID: ' + (res.order_id || '');
+          okEl.textContent = '';
+          okEl.appendChild(document.createTextNode('Заказ создан. ID: ' + (res.order_id || '')));
           if (res.payment_link) {
-            msg += ' <span class="payment-link">Оплатить: <a href="' + res.payment_link + '" class="link-pay-close" target="_blank" rel="noopener">перейти к оплате</a></span>';
-          }
-          okEl.innerHTML = msg;
-          var payLinkEl = okEl.querySelector('a.link-pay-close');
-          if (payLinkEl && res.payment_link) {
-            payLinkEl.addEventListener('click', function(e) {
+            var paySpan = document.createElement('span');
+            paySpan.className = 'payment-link';
+            paySpan.appendChild(document.createTextNode(' Оплатить: '));
+            var payA = document.createElement('a');
+            payA.href = res.payment_link;
+            payA.className = 'link-pay-close';
+            payA.target = '_blank';
+            payA.rel = 'noopener';
+            payA.textContent = 'перейти к оплате';
+            payA.addEventListener('click', function(e) {
               e.preventDefault();
               openPaymentAndClose(res.payment_link);
             });
+            paySpan.appendChild(payA);
+            okEl.appendChild(paySpan);
           }
           document.getElementById('form-order').reset();
           if (submitBtn) submitBtn.disabled = false;
@@ -1131,12 +1161,25 @@
         if (tg && typeof tg.close === 'function') tg.close();
       });
 
-      fillBirthDateSelects();
-      loadMe().then(function(me) {
-        if (!me || typeof me !== 'object') {
-          showScreen('screen-role-choice');
-          return;
-        }
+      function updateCurrencyLabels(sym) {
+        var s = sym || '₽';
+        var labels = [
+          { id: 'lbl-blg-price', text: 'Цена за интеграцию (' + s + ') *' },
+          { id: 'lbl-ord-price', text: 'Бюджет (' + s + ') *' },
+          { id: 'lbl-ord-detail-price', text: 'Бюджет (' + s + ') *' },
+        ];
+        labels.forEach(function(l) {
+          var el = document.getElementById(l.id);
+          if (el) el.textContent = l.text;
+        });
+        window._currencySymbol = s;
+      }
+
+      function fmtPrice(price) {
+        return price + ' ' + (window._currencySymbol || '₽');
+      }
+
+      function showRoleOrDashboard(me) {
         updateRoleChoiceHint();
         updateRegisterButtonLabels();
         if (me.has_advertiser_profile && !me.has_blogger_profile) {
@@ -1149,6 +1192,55 @@
         } else {
           showScreen('screen-role-choice');
         }
+      }
+
+      function showCountrySelector(countries, onSelected) {
+        var grid = document.getElementById('country-grid');
+        var errEl = document.getElementById('country-error');
+        grid.innerHTML = '';
+        if (errEl) errEl.textContent = '';
+        (countries || []).forEach(function(c) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn';
+          btn.textContent = c.name_native;
+          btn.addEventListener('click', function() {
+            if (errEl) errEl.textContent = '';
+            Array.from(grid.querySelectorAll('.btn')).forEach(function(b) { b.disabled = true; });
+            api('/set-country', { country_code: c.code }).then(function() {
+              onSelected();
+            }).catch(function(err) {
+              if (errEl) errEl.textContent = err.message || 'Ошибка';
+              Array.from(grid.querySelectorAll('.btn')).forEach(function(b) { b.disabled = false; });
+            });
+          });
+          grid.appendChild(btn);
+        });
+        showScreen('screen-country-select');
+      }
+
+      fillBirthDateSelects();
+      Promise.all([loadMe(), loadConfig()]).then(function(results) {
+        var me = results[0];
+        var cfg = results[1];
+        if (!me || typeof me !== 'object') {
+          showScreen('screen-role-choice');
+          return;
+        }
+        updateCurrencyLabels(me.currency_symbol);
+        if (!me.country) {
+          var countries = (cfg && cfg.countries) || [];
+          if (countries.length > 0) {
+            showCountrySelector(countries, function() {
+              loadMe().then(function(me2) {
+                updateCurrencyLabels(me2.currency_symbol);
+                showRoleOrDashboard(me2);
+              });
+            });
+            return;
+          }
+        }
+        showRoleOrDashboard(me);
       }).catch(function(err) {
         var loadingScreen = document.getElementById('screen-loading');
         var hintEl = loadingScreen && loadingScreen.querySelector('.hint');

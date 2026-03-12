@@ -315,6 +315,7 @@ def build_bot_services(
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
             geocoder=geocoder,
+            country_repo=repos.get("country_repo"),
         ),
         "advertiser_registration_service": AdvertiserRegistrationService(
             user_repo=repos["user_repo"],
@@ -339,6 +340,7 @@ def build_bot_services(
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
             geocoder=geocoder,
+            country_repo=repos.get("country_repo"),
         ),
         "offer_dispatch_service": OfferDispatchService(
             user_repo=repos["user_repo"],
@@ -430,4 +432,5 @@ def build_bot_services(
             default_locale=config.market.default_locale,
             transaction_manager=transaction_manager,
         ),
+        "country_repo": repos["country_repo"],
     }

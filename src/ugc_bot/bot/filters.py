@@ -17,8 +17,10 @@ class TextEqualsKey(BaseFilter):
         data = (args[1] if len(args) > 1 else kwargs.get("data")) or {}
         service = data.get("bot_texts_service")
         config = data.get("config")
-        locale = data.get("default_locale") or (
-            config.market.default_locale if config else "ru"
+        locale = (
+            data.get("user_locale")
+            or data.get("default_locale")
+            or (config.market.default_locale if config else "ru")
         )
         if not service:
             return False

@@ -19,6 +19,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.messenger.state import StateStore
+from ugc_bot.application.ports import CountryRepository
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -621,3 +622,18 @@ async def get_user_and_ensure_allowed_callback(
         )
         return None
     return user
+
+
+async def resolve_currency_symbol(
+    user: User | None,
+    country_repo: "CountryRepository | None",
+    default: str = "₽",
+) -> str:
+    """Return currency symbol for the user's country, falling back to default."""  # noqa: E501
+    if user is None or country_repo is None:
+        return default
+    country_code = getattr(user, "country", None)
+    if not country_code:
+        return default
+    country = await country_repo.get_by_code(country_code)
+    return country.currency_symbol if country else default

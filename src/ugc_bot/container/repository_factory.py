@@ -8,6 +8,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyBotTextsRepository,
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
+    SqlAlchemyCountryRepository,
     SqlAlchemyInstagramStatsRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
@@ -86,4 +87,7 @@ def build_repos(
             session_factory=session_factory
         ),
         "referral_order_income_loader": SqlReferralOrderIncomeLoader(),
+        "country_repo": SqlAlchemyCountryRepository(
+            session_factory=session_factory
+        ),
     }

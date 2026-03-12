@@ -2691,3 +2691,62 @@ async def test_sql_referral_order_income_loader_combined_batch_empty() -> None:
         [], limit=None, session=FakeSession(None)
     )
     assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_country_repo_list_enabled() -> None:
+    """list_enabled returns enabled countries from the session."""
+    from ugc_bot.infrastructure.db.models import CountryModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyCountryRepository,
+    )
+
+    model = CountryModel()
+    model.code = "ru"
+    model.name_native = "Россия"
+    model.currency_code = "RUB"
+    model.currency_symbol = "₽"
+    model.enabled = True
+
+    session = FakeSession([model])
+    repo = SqlAlchemyCountryRepository(session_factory=_session_factory(None))
+    result = await repo.list_enabled(session=session)
+    assert len(result) == 1
+    assert result[0].code == "ru"
+    assert result[0].currency_code == "RUB"
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_country_repo_get_by_code_found() -> None:
+    """get_by_code returns country when found."""
+    from ugc_bot.infrastructure.db.models import CountryModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyCountryRepository,
+    )
+
+    model = CountryModel()
+    model.code = "ge"
+    model.name_native = "საქართველო"
+    model.currency_code = "GEL"
+    model.currency_symbol = "₾"
+    model.enabled = True
+
+    session = FakeSession(model)
+    repo = SqlAlchemyCountryRepository(session_factory=_session_factory(None))
+    result = await repo.get_by_code("ge", session=session)
+    assert result is not None
+    assert result.code == "ge"
+    assert result.currency_symbol == "₾"
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_country_repo_get_by_code_not_found() -> None:
+    """get_by_code returns None when country not found."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyCountryRepository,
+    )
+
+    session = FakeSession(None)
+    repo = SqlAlchemyCountryRepository(session_factory=_session_factory(None))
+    result = await repo.get_by_code("zz", session=session)
+    assert result is None
