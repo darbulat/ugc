@@ -34,15 +34,15 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Hardcoded exchange rates: 1 RUB → X <target_currency>
-# Update these before running in production.
+# Update these before running in production. (Rates as of March 2025.)
 # ---------------------------------------------------------------------------
 _RATES: dict[str, float] = {
-    "BYN": 0.033,  # 1 BYN ≈ 30 RUB
-    "KZT": 5.7,  # 1 KZT ≈ 0.175 RUB
-    "KGS": 1.2,  # 1 KGS ≈ 0.83 RUB
-    "AMD": 4.0,  # 1 AMD ≈ 0.25 RUB
-    "UZS": 135.0,  # 1 UZS ≈ 0.0074 RUB
-    "GEL": 0.037,  # 1 GEL ≈ 27 RUB
+    "BYN": 0.042,  # 1 BYN ≈ 24 RUB
+    "KZT": 6.1,  # 1 KZT ≈ 0.164 RUB
+    "KGS": 1.13,  # 1 KGS ≈ 0.88 RUB
+    "AMD": 4.8,  # 1 AMD ≈ 0.21 RUB
+    "UZS": 158.0,  # 1 UZS ≈ 0.0063 RUB
+    "GEL": 0.035,  # 1 GEL ≈ 29 RUB
 }
 
 # Rounding step per currency (prices are rounded to a "nice" multiple).
