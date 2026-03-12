@@ -43,10 +43,14 @@ def create_base_backup(
 
     cmd = [
         "pg_basebackup",
-        "-h", host,
-        "-p", str(port),
-        "-U", user,
-        "-D", "-",
+        "-h",
+        host,
+        "-p",
+        str(port),
+        "-U",
+        user,
+        "-D",
+        "-",
         "--format=tar",
         "--gzip",
         "--progress",
@@ -70,9 +74,7 @@ def create_base_backup(
     except subprocess.CalledProcessError as e:
         stderr = e.stderr
         error_msg = (
-            stderr.decode()
-            if isinstance(stderr, bytes)
-            else (stderr or str(e))
+            stderr.decode() if isinstance(stderr, bytes) else (stderr or str(e))
         )
         print(
             f"Error creating base backup: {error_msg}",
@@ -154,14 +156,12 @@ def upload_base_backup_to_s3(
     try:
         client = _create_s3_client(s3_config)
         key = f"base_backups/{backup_path.name}"
-        with open(backup_path, "rb") as f:
-            body = f.read()
-        client.put_object(
-            Bucket=s3_config["bucket"],
-            Key=key,
-            Body=body,
-        )
         bucket = s3_config["bucket"]
+        client.upload_file(
+            Filename=str(backup_path),
+            Bucket=bucket,
+            Key=key,
+        )
         print(f"Uploaded base backup to S3: s3://{bucket}/{key}")
         return True
     except Exception as e:
@@ -186,7 +186,8 @@ def cleanup_old_base_backups_s3(
         to_delete: list[dict[str, str]] = []
         bucket = s3_config["bucket"]
         for page in paginator.paginate(
-            Bucket=bucket, Prefix=prefix,
+            Bucket=bucket,
+            Prefix=prefix,
         ):
             for obj in page.get("Contents") or []:
                 last_mod = obj.get("LastModified")
@@ -253,7 +254,8 @@ def main() -> None:
 
         if args.cleanup_days > 0:
             cleanup_old_base_backups(
-                args.output_dir, args.cleanup_days,
+                args.output_dir,
+                args.cleanup_days,
             )
 
         s3_config = _get_s3_config()
@@ -261,7 +263,8 @@ def main() -> None:
             upload_base_backup_to_s3(backup_path, s3_config)
             if args.cleanup_days > 0:
                 cleanup_old_base_backups_s3(
-                    s3_config, keep_days=args.cleanup_days,
+                    s3_config,
+                    keep_days=args.cleanup_days,
                 )
 
     except subprocess.CalledProcessError:

@@ -91,11 +91,11 @@ def test_upload_base_backup_to_s3_uploads_file(tmp_path: Path) -> None:
         result = upload_base_backup_to_s3(backup, s3_config)
 
     assert result is True
-    mock_client.put_object.assert_called_once()
-    put_kw = mock_client.put_object.call_args[1]
-    assert put_kw["Bucket"] == "bkt"
-    assert put_kw["Key"] == "base_backups/ugc_basebackup_20240206_120000.tar.gz"
-    assert put_kw["Body"] == b"basedata"
+    mock_client.upload_file.assert_called_once_with(
+        Filename=str(backup),
+        Bucket="bkt",
+        Key="base_backups/ugc_basebackup_20240206_120000.tar.gz",
+    )
 
 
 def test_upload_base_backup_to_s3_returns_false_on_error(
@@ -112,7 +112,7 @@ def test_upload_base_backup_to_s3_returns_false_on_error(
         "secret_key": "sk",
     }
     mock_client = MagicMock()
-    mock_client.put_object.side_effect = OSError("network error")
+    mock_client.upload_file.side_effect = OSError("network error")
 
     with patch(
         "scripts.base_backup._create_s3_client", return_value=mock_client
