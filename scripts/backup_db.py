@@ -141,7 +141,9 @@ def create_backup(
 
     except subprocess.CalledProcessError as e:
         error_msg = (
-            e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or str(e))
+            e.stderr.decode()
+            if isinstance(e.stderr, bytes)
+            else (e.stderr or str(e))
         )
         print(f"Error creating backup: {error_msg}", file=sys.stderr)
         if backup_path.exists():
@@ -182,12 +184,16 @@ def _get_s3_config() -> dict | None:
     """
     if os.getenv("S3_BACKUP_ENABLED", "").lower() not in ("1", "true", "yes"):
         return None
-    endpoint = os.getenv("S3_ENDPOINT_URL", "https://s3.ru1.storage.beget.cloud")
+    endpoint = os.getenv(
+        "S3_ENDPOINT_URL", "https://s3.ru1.storage.beget.cloud"
+    )
     bucket = os.getenv("S3_BUCKET", "97596cccd207-ugc-s3")
     access_key = os.getenv("S3_ACCESS_KEY_ID", "").strip()
     secret_key = os.getenv("S3_SECRET_ACCESS_KEY", "").strip()
     if not access_key or not secret_key:
-        logger.warning("S3 backup enabled but S3_ACCESS_KEY_ID or S3_SECRET_ACCESS_KEY missing")
+        logger.warning(
+            "S3 backup enabled but S3_ACCESS_KEY_ID or S3_SECRET_ACCESS_KEY missing"
+        )
         return None
     return {
         "endpoint_url": endpoint,
@@ -230,9 +236,11 @@ def upload_backup_to_s3(backup_path: Path, s3_config: dict) -> bool:
             config=config,
         )
         key = f"backups/{backup_path.name}"
-        with open(backup_path, "rb") as f:
-            body = f.read()
-        client.put_object(Bucket=s3_config["bucket"], Key=key, Body=body)
+        client.upload_file(
+            Filename=str(backup_path),
+            Bucket=s3_config["bucket"],
+            Key=key,
+        )
         print(f"Uploaded to S3: s3://{s3_config['bucket']}/{key}")
         return True
     except Exception as e:
@@ -277,7 +285,9 @@ def cleanup_old_s3_backups(
         cutoff = datetime.now().timestamp() - (keep_days * 24 * 60 * 60)
         paginator = client.get_paginator("list_objects_v2")
         to_delete = []
-        for page in paginator.paginate(Bucket=s3_config["bucket"], Prefix=prefix):
+        for page in paginator.paginate(
+            Bucket=s3_config["bucket"], Prefix=prefix
+        ):
             for obj in page.get("Contents") or []:
                 if obj.get("LastModified"):
                     if obj["LastModified"].timestamp() < cutoff:
@@ -333,7 +343,9 @@ def main() -> None:
     if postgres_password:
         defaults["password"] = postgres_password
 
-    parser = argparse.ArgumentParser(description="Create PostgreSQL database backup")
+    parser = argparse.ArgumentParser(
+        description="Create PostgreSQL database backup"
+    )
     parser.add_argument(
         "--host",
         default=defaults["host"],
