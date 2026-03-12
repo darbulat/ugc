@@ -65,6 +65,34 @@
     }
     #orders-list li strong, #blogger-orders-list li strong { display: block; margin-bottom: 4px; }
     #orders-list .btn-pay, #blogger-orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
+    .instagram-input-group {
+      display: flex;
+      align-items: stretch;
+      border-radius: 8px;
+      border: 1px solid var(--tg-theme-hint-color, #ccc);
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .instagram-input-group .instagram-prefix {
+      padding: 10px 0 10px 12px;
+      font-size: 16px;
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+      color: var(--tg-theme-hint-color, #999);
+      white-space: nowrap;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      border: none;
+    }
+    .instagram-input-group input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      border-radius: 0;
+      padding: 10px 12px 10px 0;
+      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    }
+    .instagram-input-group input:focus { outline: none; }
     .date-row { display: flex; gap: 8px; margin-top: 4px; }
     .date-row select { flex: 1; min-width: 0; }
     .payment-link { display: block; margin-top: 8px; word-break: break-all; font-size: 0.9rem; }
@@ -141,7 +169,10 @@
       <label for="blg-name">Имя / ник (как к вам обращаться) *</label>
       <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Не ссылка на Instagram">
       <label for="blg-instagram">Ссылка на Instagram *</label>
-      <input type="url" id="blg-instagram" name="instagram_url" required placeholder="https://instagram.com/username">
+      <div class="instagram-input-group">
+        <span class="instagram-prefix">https://instagram.com/</span>
+        <input type="text" id="blg-instagram" name="instagram_username" required placeholder="username" pattern="[A-Za-z0-9._]+" title="Только буквы, цифры, точки и подчёркивания">
+      </div>
       <label>Дата рождения *</label>
       <div class="date-row">
         <select id="blg-birth-day" name="birth_day" required aria-label="День"></select>
@@ -467,7 +498,10 @@
           if (el && val != null && val !== '') el.value = val;
         };
         set('blg-name', profile.display_name);
-        set('blg-instagram', profile.instagram_url);
+        if (profile.instagram_url) {
+          var igUser = profile.instagram_url.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/+$/, '');
+          set('blg-instagram', igUser);
+        }
         set('blg-city', profile.city);
         set('blg-audience-geo', profile.audience_geo);
         set('blg-age-min', profile.audience_age_min);
@@ -875,7 +909,7 @@
         var countryEl = document.getElementById('blg-country');
         var payload = {
           display_name: document.getElementById('blg-name').value.trim(),
-          instagram_url: document.getElementById('blg-instagram').value.trim(),
+          instagram_url: 'https://instagram.com/' + document.getElementById('blg-instagram').value.trim(),
           birth_date: birthDateStr,
           topics: topicsList,
           city: document.getElementById('blg-city').value.trim(),
