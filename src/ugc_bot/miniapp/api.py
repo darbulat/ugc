@@ -43,6 +43,7 @@ from ugc_bot.domain.enums import (
     AudienceGender,
     BloggerGender,
     MessengerType,
+    OrderStatus,
     OrderType,
     WorkFormat,
 )
@@ -1097,7 +1098,9 @@ async def list_orders(
             price=float(o.price),
             order_type=o.order_type.value,
             created_at=o.created_at.isoformat(),
-            payment_link=_payment_link_for_order(str(o.order_id), bot_username),
+            payment_link=_payment_link_for_order(str(o.order_id), bot_username)
+            if o.status == OrderStatus.NEW
+            else "",
         )
         for o in orders
     ]
@@ -1163,8 +1166,10 @@ async def get_order(
     if order.advertiser_id != user_id:
         raise HTTPException(status_code=404, detail="Order not found")
     cfg = request.app.state.config
-    payment_link = _payment_link_for_order(
-        str(order.order_id), cfg.bot.bot_username
+    payment_link = (
+        _payment_link_for_order(str(order.order_id), cfg.bot.bot_username)
+        if order.status == OrderStatus.NEW
+        else ""
     )
     return OrderDetailResponse(
         order_id=str(order.order_id),
