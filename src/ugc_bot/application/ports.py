@@ -958,7 +958,6 @@ class CountryRepository(ABC):
         """Fetch any enabled country with the given currency code."""
 
 
-
 class TransactionManager(Protocol):
     """Protocol for transaction handling used by application services.
 

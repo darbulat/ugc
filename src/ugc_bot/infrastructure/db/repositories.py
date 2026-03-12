@@ -2572,7 +2572,6 @@ class SqlAlchemyCountryRepository(CountryRepository):
         result = exec_result.scalar_one_or_none()
         return _to_country_entity(result) if result else None
 
-
     async def get_by_currency_code(
         self, currency_code: str, session: object | None = None
     ) -> Optional[Country]:
@@ -2588,7 +2587,6 @@ class SqlAlchemyCountryRepository(CountryRepository):
         )
         result = exec_result.scalar_one_or_none()
         return _to_country_entity(result) if result else None
-
 
 
 def _to_country_entity(model: CountryModel) -> Country:
