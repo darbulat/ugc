@@ -13,7 +13,7 @@ E2E_TIMEOUT ?= 90
 # DB-changing targets must not run in parallel with make -j
 .NOTPARALLEL: migrate restore-db restore-db-s3
 
-.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down deploy-apps-zero-downtime dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 all
+.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down deploy-apps-zero-downtime dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 base-backup list-base-backups-s3 upload-wal pitr-restore all
 
 help:
 	@echo "Usage: make [target]"
@@ -21,6 +21,7 @@ help:
 	@echo "Development:  install-dev, format, format-check, lint, typecheck, test, coverage"
 	@echo "E2E:          e2e, e2e-dev (Playwright vs dev), e2e-telegram-dev (Telegram vs dev; E2E_DATABASE_URL, E2E_CLEAN_TELEGRAM=darbulat), e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
 	@echo "Infra:        docker-up, docker-down, deploy-apps-zero-downtime, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
+	@echo "PITR:         base-backup, list-base-backups-s3, upload-wal, pitr-restore TARGET_TIME=\"...\""
 	@echo "Run:          admin, instagram-stats"
 	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
 	@echo "Tests (Docker): test-docker, e2e-docker, test-all-docker (unit + integration + e2e in one run)"
@@ -180,6 +181,30 @@ list-backups-s3:
 
 list-backups:
 	docker compose run --rm db_backup ls -lh /backups/
+
+# PITR: create base backup (pg_basebackup) for point-in-time recovery
+base-backup:
+	docker compose run --rm db_backup python scripts/base_backup.py --output-dir /backups/base
+
+# PITR: list base backups in S3
+list-base-backups-s3:
+	docker compose run --rm db_backup python scripts/pitr_restore.py --list
+
+# PITR: upload pending WAL files to S3
+upload-wal:
+	docker compose run --rm db_backup python scripts/wal_uploader.py
+
+# PITR: restore from base backup + WAL to a target time.
+# Usage: make pitr-restore TARGET_TIME="2025-06-01 12:00:00"
+# NOTE: PostgreSQL must be stopped before running this.
+pitr-restore:
+	@if [ -z "$(TARGET_TIME)" ]; then \
+		echo "Error: TARGET_TIME is required. Usage: make pitr-restore TARGET_TIME=\"2025-06-01 12:00:00\""; \
+		exit 1; \
+	fi
+	docker compose run --rm db_backup python scripts/pitr_restore.py \
+		--target-time "$(TARGET_TIME)" \
+		--confirm
 
 # Full pre-commit/CI check: format first, then lint/typecheck/coverage. Do not reorder (lint expects formatted code).
 all: format format-check lint typecheck coverage

@@ -168,95 +168,111 @@ docker compose run --rm db_backup python scripts/restore_db.py \
        --confirm /backups/ugc_backup_20240206_020000.sql.gz
    ```
 
-## Point-in-Time Recovery (PITR) и репликация
+## Point-in-Time Recovery (PITR)
 
-Для восстановления на произвольный момент времени (например, за минуты до сбоя) и снижения потерь данных нужна отдельная схема: **архивирование WAL** и при необходимости **репликация**.
+PITR позволяет восстановить базу данных на произвольный момент времени с точностью до транзакции. Полезно для отката после ошибочного DELETE/UPDATE или восстановления после сбоя с минимальной потерей данных.
 
-### Что это даёт
+### Архитектура
+
+```
+[PostgreSQL db] --(archive_command: cp)--> [wal_archive volume] <--(читает)--> [db_backup сервис]
+                                                                                     |
+                                                                              [uploads to S3]
+                                                                                     |
+                                                    S3: wal_archive/ + base_backups/ + backups/
+```
 
 | Компонент | Назначение |
 |-----------|------------|
-| **WAL-архив** | PostgreSQL пишет WAL-сегменты; их копируют в надёжное хранилище (S3). При восстановлении можно «докрутить» базу до нужного момента (PITR). |
-| **Базовый бэкап (pg_basebackup)** | Полная копия кластера на момент снимка. Восстановление = восстановить этот снимок + применить WAL из архива до нужного времени. |
-| **Репликация (replica)** | Вторая нода в режиме standby получает WAL по стриму. Даёт быстрый failover и меньший RPO, но не заменяет бэкапы (защита от удаления/порчи данных). |
+| **archive_command** | PostgreSQL копирует завершённые WAL-сегменты в Docker volume `wal_archive` |
+| **archive_timeout** | Принудительная смена WAL-сегмента каждые 60 секунд (минимизирует потерю при низкой нагрузке) |
+| **wal_uploader.py** | Сайдкар в `db_backup` каждые 5 минут загружает WAL из volume в S3 (`wal_archive/`) |
+| **base_backup.py** | Периодический `pg_basebackup` (при каждом цикле бэкапа), результат в S3 (`base_backups/`) |
+| **pitr_restore.py** | Скачивает base backup + WAL из S3, настраивает recovery и готовит к запуску |
 
-### Общая схема
+### Включение PITR
 
+PITR включён по умолчанию (`PITR_ENABLED=true`). Для работы WAL-загрузки в S3 также должен быть включён S3:
+
+```env
+PITR_ENABLED=true
+S3_BACKUP_ENABLED=true
+S3_ACCESS_KEY_ID=<ваш_ключ>
+S3_SECRET_ACCESS_KEY=<ваш_секрет>
 ```
-[PostgreSQL primary] --(WAL)--> [archive_command] --> S3 (wal_archive/)
-       |                              |
-       |                      [периодически pg_basebackup в S3]
-       |
-       +--(streaming)--> [PostgreSQL replica]  (опционально)
-```
 
-### Шаг 1: Включить WAL-архивирование в PostgreSQL
+WAL-архивирование на уровне PostgreSQL (`archive_mode=on`) работает всегда — даже без S3 WAL копируются в Docker volume `wal_archive`.
 
-На основной ноде (`db`) нужно задать параметры в `postgresql.conf` (в Docker — через кастомный конфиг или переменные):
+### Что делает backup_loop.sh
 
-- `wal_level = replica` (минимум для архивирования и репликации)
-- `archive_mode = on`
-- `archive_command = '...'` — команда, которая копирует каждый готовый WAL-сегмент в хранилище (например, в S3).
+При каждом цикле (по умолчанию каждые 12 часов):
 
-Пример `archive_command` с выгрузкой в S3 (в контейнере должен быть клиент, способный положить файл в S3, например скрипт на Python или `aws s3 cp`):
+1. **pg_dump** — логический бэкап (как раньше), загрузка в S3
+2. **pg_basebackup** — физический снимок кластера, загрузка в S3 (`base_backups/`)
+3. **wal_uploader.py** — загрузка накопившихся WAL-сегментов в S3 (`wal_archive/`)
+
+Дополнительно WAL загружается каждые 5 минут в фоновом режиме.
+
+### Ручные операции
 
 ```bash
-# Пример: копирование в S3 через скрипт (путь внутри контейнера)
-archive_command = 'python /path/to/archive_wal.py %p %f'
-# или, если установлен aws cli и настроен endpoint для Beget:
-# archive_command = 'aws --endpoint-url https://s3.ru1.storage.beget.cloud s3 cp %p s3://97596cccd207-ugc-s3/wal_archive/%f'
+# Создать base backup вручную
+make base-backup
+
+# Загрузить WAL в S3 вручную
+make upload-wal
+
+# Список base backup'ов в S3
+make list-base-backups-s3
 ```
 
-Здесь `%p` — полный путь к WAL-файлу, `%f` — только имя файла. Сегменты должны попадать в S3 в префикс, например `wal_archive/`.
+### Восстановление на момент времени
 
-В текущем `docker-compose` у сервиса `db` нет кастомного `postgresql.conf`. Чтобы добавить PITR:
-
-1. Создать каталог с конфигом (например `config/postgres/`) и файл `postgresql.conf` с нужными параметрами.
-2. Подмонтировать его в контейнер `db` (или использовать образ с своим конфигом).
-3. Реализовать скрипт/команду, которая по `archive_command` загружает переданный файл в S3 (тот же бакет Beget или отдельный префикс).
-
-### Шаг 2: Базовый бэкап (pg_basebackup)
-
-Текущий бэкап через `pg_dump` даёт логический дамп. Для PITR нужен **физический** снимок кластера — `pg_basebackup`:
-
-- Запускается периодически (например, раз в сутки или раз в 6–12 часов).
-- Результат (каталог или tar) кладётся в S3 (отдельный префикс, например `base_backup/`).
-- При восстановлении разворачивают этот снимок и настраивают `restore_command`, чтобы подтягивать WAL из S3.
-
-Текущий скрипт `backup_db.py` делает логический дамп; для PITR добавьте отдельный процесс/скрипт под `pg_basebackup` и выгрузку в S3.
-
-### Шаг 3: Восстановление на момент времени (PITR)
-
-1. Остановить PostgreSQL.
-2. Восстановить данные из последнего `pg_basebackup` в каталог данных.
-3. В каталоге данных создать файл `standby.signal` не использовать (для recovery используется `recovery.spec` или параметры в `postgresql.conf`). Вместо этого задать в конфиге (или в `recovery.conf` в старых версиях):
-   - `restore_command = '...'` — команда, которая по имени WAL-файла скачивает его из S3 и кладёт в нужное место (PostgreSQL сам подставит имя файла).
-   - `recovery_target_time = '2025-02-11 12:00:00'` (опционально) — до какого момента восстанавливаться.
-4. Запустить PostgreSQL — он подтянет WAL из архива и остановится на заданном времени (или на последнем доступном сегменте).
-
-Пример `restore_command` (скачать из S3 в каталог WAL):
+**ВАЖНО:** PostgreSQL должен быть остановлен перед восстановлением!
 
 ```bash
-restore_command = 'aws --endpoint-url https://s3.ru1.storage.beget.cloud s3 cp s3://97596cccd207-ugc-s3/wal_archive/%f %p'
+# 1. Остановить PostgreSQL
+docker compose stop db
+
+# 2. Запустить PITR-восстановление
+make pitr-restore TARGET_TIME="2025-06-01 12:00:00"
+
+# 3. Запустить PostgreSQL — он войдёт в режим recovery
+docker compose start db
+
+# 4. Проверить статус (должен вернуть false после завершения recovery)
+docker compose exec db psql -U ugc -c "SELECT pg_is_in_recovery();"
 ```
 
-(Путь и способ доступа к S3 должны совпадать с тем, как вы кладёте WAL в `archive_command`.)
+Или напрямую:
 
-### Шаг 4: Репликация (опционально)
+```bash
+docker compose run --rm db_backup python scripts/pitr_restore.py \
+    --target-time "2025-06-01 12:00:00" \
+    --confirm
+```
 
-- Отдельный сервис в Docker (например, `db_replica`) с тем же образом PostgreSQL.
-- На primary: `wal_level = replica`, при необходимости `max_wal_senders`, `pg_hba.conf` разрешает подключение с реплики.
-- Реплика поднимается с `primary_conninfo` и при первом запуске может сделать `pg_basebackup` с primary, далее получает WAL по стриму.
-- Реплика даёт быстрый failover (переключение приложения на реплику) и уменьшает потери при падении primary (RPO), но для защиты от логических ошибок и удаления данных по-прежнему нужны бэкапы и PITR.
+Для восстановления на последний доступный момент (без `--target-time`):
 
-### Итог по внедрению в данном проекте
+```bash
+docker compose run --rm db_backup python scripts/pitr_restore.py --confirm
+```
 
-1. **WAL-архив**: настроить `archive_mode` и `archive_command` на сервисе `db`, выгрузка сегментов в S3 (тот же Beget), префикс например `wal_archive/`.
-2. **Базовый бэкап**: добавить периодический запуск `pg_basebackup` и выгрузку результата в S3 (например, `base_backup/`), сохраняя текущий `pg_dump`-бэкап как дополнительный.
-3. **Восстановление**: регламент — восстановить из `pg_basebackup`, задать `restore_command` на S3, при необходимости `recovery_target_time`, запустить инстанс и проверить.
-4. **Репликация**: при необходимости добавить второй контейнер `db_replica` и настроить streaming replication; failover вручную или через оркестратор.
+### Структура S3
 
-Реализация скриптов `archive_command` (загрузка WAL в S3) и расписания для `pg_basebackup` выходит за рамки текущего скрипта `backup_db.py`; их делают отдельно (например, в `scripts/` и cron или отдельный сервис).
+```
+s3://bucket/
+├── backups/              # Логические pg_dump бэкапы
+│   └── ugc_backup_YYYYMMDD_HHMMSS.sql.gz
+├── base_backups/         # Физические pg_basebackup снимки
+│   └── ugc_basebackup_YYYYMMDD_HHMMSS.tar.gz
+└── wal_archive/          # WAL-сегменты
+    └── 000000010000000000000001
+```
+
+### Ротация
+
+Все артефакты (логические бэкапы, base backup'ы, WAL-файлы) ротируются по `BACKUP_KEEP_DAYS` (по умолчанию 7 дней) — как локально, так и в S3.
 
 ## Рекомендации для production
 
