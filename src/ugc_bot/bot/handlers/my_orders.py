@@ -157,7 +157,9 @@ async def _send_my_orders_content(
         )
         return
 
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    agreement_confirmed_at = (
+        blogger.agreement_confirmed_at if blogger is not None else None
+    ) or (advertiser.agreement_confirmed_at if advertiser is not None else None)
     if agreement_confirmed_at is None:
         agree_keys = [
             "btn_confirm_agreement",

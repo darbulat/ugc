@@ -182,4 +182,4 @@ list-backups:
 	docker compose run --rm db_backup ls -lh /backups/
 
 # Full pre-commit/CI check: format first, then lint/typecheck/coverage. Do not reorder (lint expects formatted code).
-all: format lint typecheck coverage
+all: format format-check lint typecheck coverage

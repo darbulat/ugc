@@ -69,9 +69,6 @@ async def create_test_user(
         telegram=kwargs.get("telegram"),
         admin=kwargs.get("admin", False),
         referral_payout_rate=kwargs.get("referral_payout_rate"),
-        agreement_confirmed_at=kwargs.get(
-            "agreement_confirmed_at", datetime.now(timezone.utc)
-        ),
         country=kwargs.get("country"),
     )
     await user_repo.save(user)
@@ -117,6 +114,7 @@ async def create_test_advertiser(
             phone=phone,
             brand=brand,
             site_link=None,
+            agreement_confirmed_at=datetime.now(timezone.utc),
         )
     )
     return user.user_id
@@ -172,9 +170,15 @@ async def create_test_blogger_profile(
         updated_at=kwargs.get("updated_at", datetime.now(timezone.utc)),
         blogger_gender=kwargs.get("blogger_gender"),
         country=kwargs.get("country", "russia"),
+        agreement_confirmed_at=kwargs.get(
+            "agreement_confirmed_at", datetime.now(timezone.utc)
+        ),
     )
     await blogger_repo.save(profile)
     return profile
+
+
+_SENTINEL = object()
 
 
 async def create_test_advertiser_profile(
@@ -183,6 +187,7 @@ async def create_test_advertiser_profile(
     phone: str = "+79001234567",
     brand: str = "Test Brand",
     site_link: str | None = None,
+    agreement_confirmed_at: datetime | None | object = _SENTINEL,
 ) -> AdvertiserProfile:
     """Create and save advertiser profile.
 
@@ -192,15 +197,22 @@ async def create_test_advertiser_profile(
         phone: Phone for contact
         brand: Brand / company name
         site_link: Optional site link
+        agreement_confirmed_at: Agreement confirmation timestamp
 
     Returns:
         Created advertiser profile
     """
+    resolved_agreement = (
+        datetime.now(timezone.utc)
+        if agreement_confirmed_at is _SENTINEL
+        else agreement_confirmed_at
+    )
     profile = AdvertiserProfile(
         user_id=user_id,
         phone=phone,
         brand=brand,
         site_link=site_link,
+        agreement_confirmed_at=resolved_agreement,
     )
     await advertiser_repo.save(profile)
     return profile

@@ -113,6 +113,7 @@ class FakeProfileService:
         advertiser_city: str | None = None,
         advertiser_company_activity: str | None = None,
         advertiser_site_link: str | None = None,
+        agreement_confirmed: bool = True,
     ) -> None:
         self._user = user
         self._has_blogger = has_blogger
@@ -122,6 +123,7 @@ class FakeProfileService:
         self._advertiser_city = advertiser_city
         self._advertiser_company_activity = advertiser_company_activity
         self._advertiser_site_link = advertiser_site_link
+        self._agreement_confirmed = agreement_confirmed
 
     async def get_user_by_external(self, external_id, messenger_type):  # type: ignore[no-untyped-def]
         return self._user
@@ -144,6 +146,11 @@ class FakeProfileService:
             work_format=WorkFormat.UGC_ONLY,
             updated_at=datetime.now(timezone.utc),
             blogger_gender=self._blogger_gender,
+            agreement_confirmed_at=(
+                datetime.now(timezone.utc)
+                if self._agreement_confirmed
+                else None
+            ),
         )
 
     async def get_advertiser_profile(self, user_id):  # type: ignore[no-untyped-def]
@@ -156,6 +163,11 @@ class FakeProfileService:
             city=self._advertiser_city,
             company_activity=self._advertiser_company_activity,
             site_link=self._advertiser_site_link,
+            agreement_confirmed_at=(
+                datetime.now(timezone.utc)
+                if self._agreement_confirmed
+                else None
+            ),
         )
 
 
@@ -291,7 +303,6 @@ async def test_show_profile_both_roles(
         user_id=UUID("00000000-0000-0000-0000-000000000810"),
         external_id="1",
         username="user",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(1))
     service = FakeProfileService(
@@ -348,11 +359,13 @@ async def test_show_profile_shows_agreement_when_not_confirmed(
         user_id=UUID("00000000-0000-0000-0000-000000000809"),
         external_id="9",
         username="u",
-        agreement_confirmed_at=None,
     )
     message = FakeMessage(user=FakeUser(9))
     service = FakeProfileService(
-        user=user, has_blogger=True, has_advertiser=False
+        user=user,
+        has_blogger=True,
+        has_advertiser=False,
+        agreement_confirmed=False,
     )
     state = FakeFSMContext()
     await show_profile(
@@ -420,7 +433,6 @@ async def test_show_profile_blogger_keyboard_not_confirmed(
         user_id=UUID("00000000-0000-0000-0000-000000000812"),
         external_id="3",
         username="blogger",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(3))
     service = FakeProfileService(
@@ -463,7 +475,6 @@ async def test_show_profile_blogger_keyboard_confirmed(
         user_id=UUID("00000000-0000-0000-0000-000000000813"),
         external_id="4",
         username="blogger",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(4))
     service = FakeProfileService(
@@ -505,11 +516,13 @@ async def test_show_profile_advertiser_only_agreement_not_confirmed(
         user_id=UUID("00000000-0000-0000-0000-000000000816"),
         external_id="1",
         username="adv",
-        agreement_confirmed_at=None,
     )
     message = FakeMessage(user=FakeUser(1))
     service = FakeProfileService(
-        user=user, has_blogger=False, has_advertiser=True
+        user=user,
+        has_blogger=False,
+        has_advertiser=True,
+        agreement_confirmed=False,
     )
     state = FakeFSMContext()
     await show_profile(
@@ -534,7 +547,6 @@ async def test_show_profile_advertiser_keyboard(
         user_id=UUID("00000000-0000-0000-0000-000000000814"),
         external_id="5",
         username="advertiser",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(5))
     service = FakeProfileService(
@@ -571,7 +583,6 @@ async def test_profile_agree_callback_blogger_confirms_and_shows_profile(
         user_repo,
         external_id="60",
         username="blogger_cb",
-        agreement_confirmed_at=None,
     )
     await create_test_blogger_profile(
         blogger_repo, user.user_id, confirmed=False
@@ -715,7 +726,6 @@ async def test_profile_agree_callback_advertiser_confirms_and_shows_profile(
         user_repo,
         external_id="63",
         username="adv_cb",
-        agreement_confirmed_at=None,
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = build_profile_service(
@@ -893,9 +903,10 @@ async def test_handle_profile_my_profile_callback_shows_agreement(
         user_repo,
         external_id="73",
         username="mp",
-        agreement_confirmed_at=None,
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, agreement_confirmed_at=None
+    )
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
     )
@@ -929,7 +940,6 @@ async def test_handle_profile_my_profile_callback_advertiser_only_confirmed(
         user_repo,
         external_id="75",
         username="adv_only",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     profile_service = build_profile_service(
@@ -1434,7 +1444,6 @@ async def test_edit_profile_choose_field_my_profile(
         user_id=UUID("00000000-0000-0000-0000-000000000817"),
         external_id="8",
         username="user",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(text=_TEXTS_RU["btn_my_profile"], user=FakeUser(8))
     state = FakeFSMContext()
@@ -3293,7 +3302,6 @@ async def test_show_profile_advertiser_with_optional_fields(
         user_id=UUID("00000000-0000-0000-0000-000000000836"),
         external_id="38",
         username="adv",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(38))
     service = FakeProfileService(
@@ -3507,7 +3515,6 @@ async def test_edit_profile_choose_type_my_profile_returns(
         user_id=UUID("00000000-0000-0000-0000-00000000083d"),
         external_id="45",
         username="u",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(text=_TEXTS_RU["btn_my_profile"], user=FakeUser(45))
     state = FakeFSMContext()
@@ -4234,7 +4241,6 @@ async def test_show_profile_blogger_with_gender_display(
         user_id=UUID("00000000-0000-0000-0000-00000000084c"),
         external_id="62",
         username="blogger",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(62))
     service = FakeProfileService(
@@ -4983,7 +4989,6 @@ async def test_show_profile_blogger_confirmed_shows_inline_keyboard(
         user_id=UUID("00000000-0000-0000-0000-00000000085c"),
         external_id="77",
         username="u",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     message = FakeMessage(user=FakeUser(77))
     service = FakeProfileService(
@@ -5656,7 +5661,6 @@ async def test_handle_profile_my_profile_callback_blogger_confirmed(
         user_repo,
         external_id="76",
         username="blogger_mp",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await create_test_blogger_profile(blogger_repo, user.user_id)
     profile_service = build_profile_service(

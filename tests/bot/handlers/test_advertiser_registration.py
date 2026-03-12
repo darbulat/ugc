@@ -248,7 +248,6 @@ async def test_advertiser_agreements_callback_confirms_and_clears(
         user_repo,
         external_id="13",
         username="adv_agree_cb",
-        agreement_confirmed_at=None,
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     adv_service = AdvertiserRegistrationService(

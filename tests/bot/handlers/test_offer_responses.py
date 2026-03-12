@@ -515,7 +515,6 @@ async def test_offer_response_handler_order_not_active(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(
@@ -613,7 +612,6 @@ async def test_offer_response_handler_order_not_found(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -673,7 +671,6 @@ async def test_offer_response_handler_already_responded(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(
@@ -754,7 +751,6 @@ async def test_offer_response_handler_overflow_saved_no_contact(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(
@@ -998,7 +994,6 @@ async def test_offer_response_handler_no_blogger_profile(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -1054,7 +1049,6 @@ async def test_offer_response_handler_unconfirmed_profile(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -1113,7 +1107,6 @@ async def test_offer_response_handler_allows_response_without_agreement(
         user_id=UUID("00000000-0000-0000-0000-000000000888"),
         external_id="88",
         username="blogger",
-        agreement_confirmed_at=None,
     )
     await user_service.set_user(
         external_id="88",
@@ -1186,7 +1179,6 @@ async def test_offer_response_handler_invalid_uuid(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     user_service = UserRoleService(user_repo=user_repo)
@@ -1246,7 +1238,6 @@ async def test_offer_response_handler_exception(
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await user_repo.save(user)
     await user_service.set_user(

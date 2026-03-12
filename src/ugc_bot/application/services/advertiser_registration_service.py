@@ -62,6 +62,7 @@ class AdvertiserRegistrationService:
                     "User not found for advertiser registration."
                 )
 
+            now = datetime.now(timezone.utc)
             profile = AdvertiserProfile(
                 user_id=user.user_id,
                 phone=phone,
@@ -69,10 +70,10 @@ class AdvertiserRegistrationService:
                 site_link=site_link,
                 city=city,
                 company_activity=company_activity,
+                agreement_confirmed_at=now,
             )
             await self.advertiser_repo.save(profile, session=session)
 
-            now = datetime.now(timezone.utc)
             updated_user = replace(
                 user,
                 username=(
@@ -83,7 +84,6 @@ class AdvertiserRegistrationService:
                 role_chosen_at=(
                     now if user.role_chosen_at is None else user.role_chosen_at
                 ),
-                agreement_confirmed_at=now,
             )
             await self.user_repo.save(updated_user, session=session)
 
@@ -161,7 +161,6 @@ class AdvertiserRegistrationService:
                     if telegram_username is not None
                     else user.telegram
                 ),
-                agreement_confirmed_at=None,
             )
             await self.user_repo.save(updated_user, session=session)
             return profile
@@ -169,7 +168,7 @@ class AdvertiserRegistrationService:
         return await with_optional_tx(self.transaction_manager, _run)
 
     async def confirm_advertiser_agreement(self, user_id: UUID) -> None:
-        """Set agreement_confirmed_at and run referral/metrics."""
+        """Confirm agreement: set agreement_confirmed_at on the profile."""
 
         async def _run(session: object | None) -> None:
             user = await self.user_repo.get_by_id(user_id, session=session)
@@ -177,9 +176,15 @@ class AdvertiserRegistrationService:
                 raise UserNotFoundError(
                     "User not found for agreement confirmation."
                 )
+            profile = await self.advertiser_repo.get_by_user_id(
+                user_id, session=session
+            )
             now = datetime.now(timezone.utc)
-            updated_user = replace(user, agreement_confirmed_at=now)
-            await self.user_repo.save(updated_user, session=session)
+            if profile is not None:
+                updated_profile = replace(profile, agreement_confirmed_at=now)
+                await self.advertiser_repo.save(
+                    updated_profile, session=session
+                )
 
             if self.referral_service:
                 await self.referral_service.create_binding_from_pending(

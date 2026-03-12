@@ -233,6 +233,7 @@ class BloggerRegistrationService:
                 )
                 if country_obj:
                     profile_currency = country_obj.currency_code
+            now = datetime.now(timezone.utc)
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -246,17 +247,17 @@ class BloggerRegistrationService:
                 price=price,
                 barter=barter,
                 work_format=work_format,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=now,
                 blogger_gender=blogger_gender,
                 birth_date=birth_date,
                 region=profile_region,
                 location_geometry=location_geometry,
                 country=profile_country,
                 currency=profile_currency,
+                agreement_confirmed_at=now,
             )
             await self.blogger_repo.save(profile, session=session)
 
-            now = datetime.now(timezone.utc)
             role_chosen_at = (
                 now if user.role_chosen_at is None else user.role_chosen_at
             )
@@ -275,7 +276,6 @@ class BloggerRegistrationService:
                 username=username,
                 role_chosen_at=role_chosen_at,
                 telegram=telegram,
-                agreement_confirmed_at=now,
             )
             await self.user_repo.save(updated_user, session=session)
 
@@ -416,7 +416,6 @@ class BloggerRegistrationService:
                 username=username,
                 role_chosen_at=role_chosen_at,
                 telegram=telegram,
-                agreement_confirmed_at=None,
             )
             await self.user_repo.save(updated_user, session=session)
             return profile
@@ -428,7 +427,7 @@ class BloggerRegistrationService:
         user_id: UUID,
         telegram_username: Optional[str] = None,
     ) -> None:
-        """Set agreement_confirmed_at and run referral/metrics for blogger."""
+        """Confirm agreement: set agreement_confirmed_at on the profile."""
 
         async def _run(session: object | None) -> None:
             user = await self.user_repo.get_by_id(user_id, session=session)
@@ -437,17 +436,21 @@ class BloggerRegistrationService:
                     "User not found for agreement confirmation."
                 )
             now = datetime.now(timezone.utc)
+            profile = await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
+            if profile is not None:
+                updated_profile = replace(profile, agreement_confirmed_at=now)
+                await self.blogger_repo.save(updated_profile, session=session)
+
             telegram = (
                 telegram_username
                 if telegram_username is not None
                 else user.telegram
             )
-            updated_user = replace(
-                user,
-                telegram=telegram,
-                agreement_confirmed_at=now,
-            )
-            await self.user_repo.save(updated_user, session=session)
+            if telegram != user.telegram:
+                updated_user = replace(user, telegram=telegram)
+                await self.user_repo.save(updated_user, session=session)
 
             if self.referral_service:
                 await self.referral_service.create_binding_from_pending(

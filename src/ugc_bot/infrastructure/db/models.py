@@ -148,9 +148,6 @@ class UserModel(Base):
     referral_payout_rate: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(5, 4), nullable=True
     )
-    agreement_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -230,6 +227,9 @@ class BloggerProfileModel(Base):
     currency: Mapped[str] = mapped_column(
         String(3), nullable=False, server_default=text("'RUB'")
     )
+    agreement_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class InstagramStatsModel(Base):
@@ -289,6 +289,9 @@ class AdvertiserProfileModel(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("now()"),
+    )
+    agreement_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

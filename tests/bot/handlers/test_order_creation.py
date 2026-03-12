@@ -216,9 +216,10 @@ async def test_start_order_creation_from_profile_callback_agreement_required(
         user_repo,
         external_id="82",
         username="adv_agree",
-        agreement_confirmed_at=None,
     )
-    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(
+        advertiser_repo, user.user_id, agreement_confirmed_at=None
+    )
     user_service = UserRoleService(user_repo=user_repo)
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
     profile_service = build_profile_service(
@@ -258,13 +259,10 @@ async def test_start_order_creation_from_profile_callback_success(
     bot_texts_service,
 ) -> None:
     """Profile 'Create order' with agreed advertiser shows order type."""
-    from datetime import datetime, timezone
-
     user = await create_test_user(
         user_repo,
         external_id="83",
         username="adv_ok",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     user_service = UserRoleService(user_repo=user_repo)
@@ -596,9 +594,10 @@ async def test_start_order_creation_shows_agreement_when_not_confirmed(
         user_repo,
         external_id="9",
         username="adv_no_agreement",
-        agreement_confirmed_at=None,
     )
-    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(
+        advertiser_repo, user.user_id, agreement_confirmed_at=None
+    )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
@@ -1774,7 +1773,6 @@ async def test_order_agree_callback_confirms_and_shows_order_type(
         user_repo,
         external_id="99",
         username="adv_agree",
-        agreement_confirmed_at=None,
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     adv_service = AdvertiserRegistrationService(
