@@ -19,6 +19,7 @@ from ugc_bot.application.services.offer_dispatch_service import (
 )
 from ugc_bot.domain.entities import (
     BloggerProfile,
+    Country,
     InstagramStats,
     Interaction,
     Order,
@@ -36,6 +37,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
+    InMemoryCountryRepository,
     InMemoryInstagramStatsRepository,
     InMemoryInteractionRepository,
     InMemoryOfferDispatchRepository,
@@ -326,7 +328,8 @@ async def test_get_order_and_advertiser_returns_none_when_order_missing_with_tm(
     assert got_advertiser is None
 
 
-def test_format_offer_ugc_only() -> None:
+@pytest.mark.asyncio
+async def test_format_offer_ugc_only() -> None:
     """format_offer uses UGC-видео for ugc_only order."""
     service = OfferDispatchService(
         user_repo=InMemoryUserRepository(),
@@ -348,13 +351,14 @@ def test_format_offer_ugc_only() -> None:
         created_at=datetime.now(timezone.utc),
         completed_at=None,
     )
-    text = service.format_offer(order, "Advertiser")
+    text = await service.format_offer(order, "Advertiser")
     assert "UGC-видео для бренда" in text
     assert "Task" in text
     assert "500" in text
 
 
-def test_format_offer_with_barter_and_optional_fields() -> None:
+@pytest.mark.asyncio
+async def test_format_offer_with_barter_and_optional_fields() -> None:
     """format_offer includes barter, content_usage, deadlines, geography."""
     service = OfferDispatchService(
         user_repo=InMemoryUserRepository(),
@@ -379,14 +383,15 @@ def test_format_offer_with_barter_and_optional_fields() -> None:
         deadlines="2 weeks",
         geography="Russia",
     )
-    text = service.format_offer(order, "Advertiser")
+    text = await service.format_offer(order, "Advertiser")
     assert "Бартер: Product sample" in text
     assert "Использование: Stories and reels" in text
     assert "Сроки: 2 weeks" in text
     assert "География: Russia" in text
 
 
-def test_format_offer_ugc_plus_placement() -> None:
+@pytest.mark.asyncio
+async def test_format_offer_ugc_plus_placement() -> None:
     """format_offer uses UGC+размещение for ugc_plus_placement order."""
 
     service = OfferDispatchService(
@@ -409,10 +414,50 @@ def test_format_offer_ugc_plus_placement() -> None:
         created_at=datetime.now(timezone.utc),
         completed_at=None,
     )
-    text = service.format_offer(order, "Advertiser")
+    text = await service.format_offer(order, "Advertiser")
     assert "UGC + размещение" in text
     assert "Task" in text
     assert "500" in text
+
+
+@pytest.mark.asyncio
+async def test_format_offer_currency_symbol_from_country() -> None:
+    """format_offer uses currency_symbol from country when country_repo set."""
+    country_repo = InMemoryCountryRepository(
+        countries={
+            "kz": Country(
+                code="kz",
+                name_native="Қазақстан",
+                currency_code="KZT",
+                currency_symbol="₸",
+            ),
+        }
+    )
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        country_repo=country_repo,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000614"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000615"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Task",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        currency="KZT",
+    )
+    text = await service.format_offer(order, "Advertiser")
+    assert "1000" in text
+    assert "₸" in text
 
 
 @pytest.mark.asyncio

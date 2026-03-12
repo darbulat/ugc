@@ -10,6 +10,7 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
+    CountryRepository,
     InstagramStatsRepository,
     InteractionRepository,
     OfferDispatchRepository,
@@ -261,6 +262,7 @@ class OfferDispatchService:
     offer_dispatch_repo: OfferDispatchRepository
     interaction_repo: InteractionRepository
     instagram_stats_repo: InstagramStatsRepository | None = None
+    country_repo: CountryRepository | None = None
     transaction_manager: TransactionManager | None = None
     currency_symbol: str = "₽"
 
@@ -572,9 +574,20 @@ class OfferDispatchService:
 
         await with_optional_tx(self.transaction_manager, _run)
 
-    def format_offer(self, order: Order, advertiser_status: str) -> str:
+    async def format_offer(
+        self,
+        order: Order,
+        advertiser_status: str,
+        session: object | None = None,
+    ) -> str:
         """Format offer text for a blogger (without product_link per TZ)."""
-
+        currency_symbol = self.currency_symbol
+        if self.country_repo is not None:
+            country = await self.country_repo.get_by_currency_code(
+                order.currency, session=session
+            )
+            if country is not None:
+                currency_symbol = country.currency_symbol
         format_label = (
             "UGC + размещение"
             if order.order_type.value == "ugc_plus_placement"
@@ -589,8 +602,7 @@ class OfferDispatchService:
         ]
         if order.price > 0:
             parts.append(
-                f"💰 Бюджет: {order.price} {self.currency_symbol} "
-                "за 1 UGC-видео"
+                f"💰 Бюджет: {order.price} {currency_symbol} за 1 UGC-видео"
             )
         if order.barter_description:
             parts.append(f"🎁 Бартер: {order.barter_description}")

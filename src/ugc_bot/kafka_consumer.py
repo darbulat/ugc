@@ -131,7 +131,7 @@ async def _send_offer_to_blogger(
 
     for attempt in range(1, retries + 1):
         try:
-            offer_text = offer_dispatch_service.format_offer(
+            offer_text = await offer_dispatch_service.format_offer(
                 order, advertisers_status
             )
             reply_markup = Keyboard(
