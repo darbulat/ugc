@@ -14,6 +14,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryContactPricingRepository,
+    InMemoryCountryRepository,
     InMemoryOrderRepository,
     InMemoryPaymentRepository,
     InMemoryUserRepository,
@@ -54,6 +55,7 @@ def build_order_service(
     transaction_manager: object | None = None,
     allowed_blogger_counts: frozenset[int] | None = None,
     max_order_price: float = 10_000.0,
+    country_repo: InMemoryCountryRepository | None = None,
 ) -> OrderService:
     """Build order service for tests.
 
@@ -64,6 +66,7 @@ def build_order_service(
         transaction_manager: Optional transaction manager
         allowed_blogger_counts: Optional set of allowed blogger counts
         max_order_price: Maximum order price (default 10000)
+        country_repo: Optional country repository
 
     Returns:
         Order service instance
@@ -77,6 +80,7 @@ def build_order_service(
         allowed_blogger_counts=allowed_blogger_counts,
         max_order_price=max_order_price,
         transaction_manager=transaction_manager,
+        country_repo=country_repo,
     )
 
 

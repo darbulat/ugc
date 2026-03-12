@@ -340,6 +340,7 @@ def build_bot_services(
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
             geocoder=geocoder,
+            country_repo=repos.get("country_repo"),
         ),
         "offer_dispatch_service": OfferDispatchService(
             user_repo=repos["user_repo"],

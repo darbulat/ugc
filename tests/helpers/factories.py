@@ -72,6 +72,7 @@ async def create_test_user(
         agreement_confirmed_at=kwargs.get(
             "agreement_confirmed_at", datetime.now(timezone.utc)
         ),
+        country=kwargs.get("country"),
     )
     await user_repo.save(user)
     return user
@@ -85,6 +86,7 @@ async def create_test_advertiser(
     status: UserStatus = UserStatus.ACTIVE,
     phone: str = "+79001234567",
     brand: str = "Test Brand",
+    country: str | None = None,
 ) -> UUID:
     """Create and save advertiser user with profile.
 
@@ -96,6 +98,7 @@ async def create_test_advertiser(
         status: User status
         phone: Phone for contact
         brand: Brand / company name
+        country: Optional country code
 
     Returns:
         User ID
@@ -106,6 +109,7 @@ async def create_test_advertiser(
         external_id=external_id,
         username="adv",
         status=status,
+        country=country,
     )
     await advertiser_repo.save(
         AdvertiserProfile(
