@@ -13,7 +13,7 @@ E2E_TIMEOUT ?= 90
 # DB-changing targets must not run in parallel with make -j
 .NOTPARALLEL: migrate restore-db restore-db-s3
 
-.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down deploy-apps-zero-downtime dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 base-backup list-base-backups-s3 upload-wal pitr-restore all
+.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down deploy-apps-zero-downtime dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 base-backup list-base-backups-s3 upload-wal pitr-restore deploy-dev-e2e deploy-dev-e2e-watch all
 
 help:
 	@echo "Usage: make [target]"
@@ -26,6 +26,7 @@ help:
 	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
 	@echo "Tests (Docker): test-docker, e2e-docker, test-all-docker (unit + integration + e2e in one run)"
 	@echo "Tests (dev, in container, same network): test-all-docker-dev (DEV_NETWORK=ugc_default, E2E_* in .env)"
+	@echo "Deploy+E2E:   deploy-dev-e2e BRANCH=<branch> (trigger GH workflow), deploy-dev-e2e-watch (watch latest run)"
 	@echo "Export:       export-requirements"
 
 export-requirements:
@@ -205,6 +206,24 @@ pitr-restore:
 	docker compose run --rm db_backup python scripts/pitr_restore.py \
 		--target-time "$(TARGET_TIME)" \
 		--confirm
+
+# Deploy branch to dev and run E2E via GitHub Actions workflow.
+# Usage: make deploy-dev-e2e BRANCH=my-feature  (or omit BRANCH to use current branch)
+deploy-dev-e2e:
+	$(eval BRANCH ?= $(shell git branch --show-current))
+	gh workflow run deploy-dev-e2e.yml --ref $(BRANCH) -f branch=$(BRANCH)
+	@echo "Workflow triggered for branch: $(BRANCH)"
+	@echo "Watch with: make deploy-dev-e2e-watch"
+
+# Watch the latest deploy-dev-e2e workflow run
+deploy-dev-e2e-watch:
+	@RUN_ID=$$(gh run list --workflow=deploy-dev-e2e.yml --limit=1 --json databaseId -q '.[0].databaseId'); \
+	if [ -z "$$RUN_ID" ]; then \
+		echo "No runs found for deploy-dev-e2e.yml"; \
+		exit 1; \
+	fi; \
+	echo "Watching run $$RUN_ID..."; \
+	gh run watch "$$RUN_ID"
 
 # Full pre-commit/CI check: format first, then lint/typecheck/coverage. Do not reorder (lint expects formatted code).
 all: format format-check lint typecheck coverage

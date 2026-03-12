@@ -1,0 +1,135 @@
+name: Deploy to Dev & Run E2E Tests
+
+on:
+  # Manual trigger — from GitHub UI or via `gh workflow run`
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy (default: current branch)"
+        required: false
+        type: string
+      skip_e2e:
+        description: "Skip E2E tests after deploy"
+        required: false
+        type: boolean
+        default: false
+      e2e_timeout:
+        description: "E2E test timeout in seconds"
+        required: false
+        type: number
+        default: 90
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  DEV_HOST: ${{ secrets.DEV_HOST }}
+  DEV_USER: ${{ secrets.DEV_USER }}
+  DEV_PROJECT_DIR: ${{ secrets.DEV_PROJECT_DIR || '/opt/ugc' }}
+
+jobs:
+  deploy-dev:
+    name: Deploy branch to dev
+    runs-on: ubuntu-latest
+    outputs:
+      deployed_branch: ${{ steps.resolve.outputs.branch }}
+      deploy_success: ${{ steps.deploy.outcome == 'success' }}
+    steps:
+      - name: Resolve branch
+        id: resolve
+        run: |
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Deploying branch: $BRANCH"
+
+      - name: Deploy via SSH
+        id: deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ${{ env.DEV_PROJECT_DIR }}
+
+            echo "==> Fetching branch ${{ steps.resolve.outputs.branch }}..."
+            git fetch origin "${{ steps.resolve.outputs.branch }}"
+            git checkout "${{ steps.resolve.outputs.branch }}"
+            git pull origin "${{ steps.resolve.outputs.branch }}"
+
+            echo "==> Deploying with zero-downtime..."
+            ./scripts/deploy_apps_zero_downtime.sh -f docker-compose.yml -f docker-compose.dev.yml
+
+            echo "==> Running migrations..."
+            docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T app alembic upgrade head || \
+              echo "Warning: migrations skipped (app may handle them at startup)"
+
+            echo "==> Deploy complete."
+
+  e2e-tests:
+    name: Run E2E tests against dev
+    needs: deploy-dev
+    if: ${{ !inputs.skip_e2e && needs.deploy-dev.outputs.deploy_success == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.deploy-dev.outputs.deployed_branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv and dependencies
+        run: |
+          pip install uv
+          uv sync --all-extras
+
+      - name: Install Playwright
+        run: uv run python -m playwright install --with-deps chromium
+
+      - name: Run E2E tests (Playwright)
+        env:
+          E2E_BASE_URL: ${{ secrets.DEV_E2E_BASE_URL }}
+          E2E_ADMIN_USERNAME: ${{ secrets.DEV_E2E_ADMIN_USERNAME }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.DEV_E2E_ADMIN_PASSWORD }}
+        run: |
+          uv run pytest tests/e2e -v -m e2e \
+            --timeout=${{ inputs.e2e_timeout || 90 }} \
+            --tb=short
+
+      - name: Run Telegram E2E tests (optional)
+        if: ${{ secrets.TELEGRAM_E2E_BOT_TOKEN != '' }}
+        env:
+          TELEGRAM_E2E_BOT_TOKEN: ${{ secrets.TELEGRAM_E2E_BOT_TOKEN }}
+          TELEGRAM_E2E_BOT_USERNAME: ${{ secrets.TELEGRAM_E2E_BOT_USERNAME }}
+          TELEGRAM_E2E_API_ID: ${{ secrets.TELEGRAM_E2E_API_ID }}
+          TELEGRAM_E2E_API_HASH: ${{ secrets.TELEGRAM_E2E_API_HASH }}
+          TELEGRAM_E2E_PHONE: ${{ secrets.TELEGRAM_E2E_PHONE }}
+          E2E_DATABASE_URL: ${{ secrets.DEV_E2E_DATABASE_URL }}
+          E2E_CLEAN_TELEGRAM: ${{ secrets.E2E_CLEAN_TELEGRAM }}
+        run: |
+          uv sync --extra dev --extra telegram-e2e
+          uv run pytest tests/e2e -v -m e2e_telegram \
+            --timeout=${{ inputs.e2e_timeout || 90 }} \
+            --tb=short
+
+  report:
+    name: Report results
+    needs: [deploy-dev, e2e-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Deploy & E2E Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Step | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | \`${{ needs.deploy-dev.outputs.deployed_branch }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Deploy | ${{ needs.deploy-dev.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| E2E Tests | ${{ needs.e2e-tests.result }} |" >> "$GITHUB_STEP_SUMMARY"
