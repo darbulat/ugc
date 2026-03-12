@@ -9,12 +9,13 @@ from tests.helpers.fakes import FakeMessengerClient
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
     notify_admins_about_new_order,
+    notify_support_chat_about_new_order,
 )
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.entities import Complaint, Order, User
+from ugc_bot.domain.entities import AdvertiserProfile, Complaint, Order, User
 from ugc_bot.domain.enums import (
     ComplaintStatus,
     MessengerType,
@@ -668,3 +669,151 @@ async def test_send_admin_photo_uses_raw_bot_send_photo() -> None:
     assert sent[0]["chat_id"] == 777
     assert sent[0]["photo"] == "raw_photo_id"
     assert sent[0]["caption"] is not None
+
+
+# --- Tests for notify_support_chat_about_new_order ---
+
+
+def _make_advertiser_user(
+    user_id: UUID | None = None,
+    telegram: str | None = "advertiser_tg",
+) -> User:
+    return User(
+        user_id=user_id or uuid4(),
+        external_id="999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        telegram=telegram,
+    )
+
+
+def _make_advertiser_profile(user_id: UUID) -> AdvertiserProfile:
+    return AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001234567",
+        brand="TestBrand",
+    )
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_skips_empty_chat_id() -> None:
+    """When support_chat_id is empty, return without sending."""
+    messenger_client = FakeMessengerClient()
+    user = _make_advertiser_user()
+    order = _make_order(advertiser_id=user.user_id)
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=None,
+        messenger_client=messenger_client,
+        support_chat_id="",
+    )
+
+    assert len(messenger_client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_sends_order_details() -> None:
+    """When support_chat_id set, send order details with phone and telegram."""
+    messenger_client = FakeMessengerClient()
+    user = _make_advertiser_user()
+    profile = _make_advertiser_profile(user.user_id)
+    order = _make_order(
+        advertiser_id=user.user_id,
+        offer_text="Make a review video",
+    )
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=profile,
+        messenger_client=messenger_client,
+        support_chat_id="-1001234567890",
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    msg = messenger_client.sent_text[0]
+    assert msg["chat_id"] == "-1001234567890"
+    text = msg["text"]
+    assert "Новый заказ" in text
+    assert "+79001234567" in text
+    assert "@advertiser_tg" in text
+    assert "Make a review video" in text
+    assert msg["parse_mode"] == "HTML"
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_includes_admin_link() -> None:
+    """When admin_base_url set, message includes admin link button."""
+    messenger_client = FakeMessengerClient()
+    user = _make_advertiser_user()
+    profile = _make_advertiser_profile(user.user_id)
+    order = _make_order(advertiser_id=user.user_id)
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=profile,
+        messenger_client=messenger_client,
+        support_chat_id="-100123",
+        admin_base_url="https://bot.usemycontent.ru/admin",
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    msg = messenger_client.sent_text[0]
+    keyboard = msg["keyboard"]
+    assert keyboard is not None
+    rows = keyboard.rows
+    assert len(rows) == 1
+    btn = rows[0][0]
+    assert btn.text == "Открыть в админке"
+    assert (
+        btn.url == f"https://bot.usemycontent.ru/admin/orders/{order.order_id}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_no_profile_shows_dash() -> None:
+    """When advertiser_profile is None, phone shows dash."""
+    messenger_client = FakeMessengerClient()
+    user = _make_advertiser_user(telegram=None)
+    order = _make_order(advertiser_id=user.user_id)
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=None,
+        messenger_client=messenger_client,
+        support_chat_id="-100123",
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    text = messenger_client.sent_text[0]["text"]
+    assert "<b>Телефон:</b> —" in text
+    assert "<b>Telegram:</b> —" in text
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_handles_send_failure() -> None:
+    """When send fails, log warning but do not raise."""
+
+    class FailingClient:
+        async def send_text(self, **kwargs: object) -> None:
+            raise RuntimeError("Network error")
+
+    client = FailingClient()
+    user = _make_advertiser_user()
+    order = _make_order(advertiser_id=user.user_id)
+
+    # Should not raise
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=None,
+        messenger_client=client,
+        support_chat_id="-100123",
+    )

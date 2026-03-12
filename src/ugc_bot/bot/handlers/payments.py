@@ -22,6 +22,7 @@ from ugc_bot.application.messenger.ports import (
 )
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_new_order,
+    notify_support_chat_about_new_order,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.contact_pricing_service import (
@@ -594,6 +595,7 @@ async def successful_payment_handler(
     message: Message,
     user_role_service: UserRoleService,
     payment_service: PaymentService,
+    profile_service: ProfileService,
     content_moderation_service: ContentModerationService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
@@ -675,6 +677,21 @@ async def successful_payment_handler(
             admin_base_url=config.admin.admin_base_url,
             currency_symbol=config.market.currency_symbol,
         )
+
+        support_chat_id = config.referral.referral_support_chat_id
+        if support_chat_id.strip():
+            advertiser_profile = await profile_service.get_advertiser_profile(
+                user.user_id
+            )
+            await notify_support_chat_about_new_order(
+                order=order,
+                advertiser_user=user,
+                advertiser_profile=advertiser_profile,
+                messenger_client=messenger_client,
+                support_chat_id=support_chat_id,
+                admin_base_url=config.admin.admin_base_url,
+                currency_symbol=config.market.currency_symbol,
+            )
 
     msg_success = await bot_texts_service.get(
         "msg_advertiser_after_payment_success", locale

@@ -10,7 +10,7 @@ from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.entities import Complaint, Order
+from ugc_bot.domain.entities import AdvertiserProfile, Complaint, Order, User
 from ugc_bot.domain.enums import MessengerType, OrderType
 
 logger = logging.getLogger(__name__)
@@ -272,3 +272,77 @@ async def notify_admins_about_new_order(
                     "error": str(exc),
                 },
             )
+
+
+async def notify_support_chat_about_new_order(
+    order: Order,
+    advertiser_user: User,
+    advertiser_profile: AdvertiserProfile | None,
+    messenger_client: MessengerClient,
+    support_chat_id: str,
+    admin_base_url: str = "",
+    currency_symbol: str = "₽",
+) -> None:
+    """Send order notification to support chat (REFERRAL_SUPPORT_CHAT_ID).
+
+    Includes advertiser phone, telegram username, order details, and admin link.
+    """
+    if not support_chat_id.strip():
+        return
+
+    phone = advertiser_profile.phone if advertiser_profile else "—"
+    telegram = (
+        f"@{advertiser_user.telegram}" if advertiser_user.telegram else "—"
+    )
+    order_type_label = _format_order_type_for_moderation(order)
+
+    offer_esc = html.escape(order.offer_text or "")
+    product_link_esc = html.escape(order.product_link)
+    barter_esc = html.escape(_format_optional_field(order.barter_description))
+    content_usage_esc = html.escape(_format_optional_field(order.content_usage))
+    deadlines_esc = html.escape(_format_optional_field(order.deadlines))
+    geography_esc = html.escape(_format_optional_field(order.geography))
+
+    text = (
+        "🆕 <b>Новый заказ</b>\n\n"
+        f"<b>Телефон:</b> {html.escape(phone)}\n"
+        f"<b>Telegram:</b> {html.escape(telegram)}\n"
+        f"<b>Заказчик:</b> {html.escape(advertiser_user.username)}\n\n"
+        f"<b>ID заказа:</b> <code>{html.escape(str(order.order_id))}</code>\n"
+        f"<b>Тип заказа:</b> {html.escape(order_type_label)}\n"
+        f"<b>Задача:</b> {offer_esc}\n"
+        f"<b>Ссылка на продукт:</b> {product_link_esc}\n"
+        f"<b>Бартер:</b> {barter_esc}\n"
+        f"<b>Бюджет:</b> {order.price} {currency_symbol}\n"
+        f"<b>Нужно креаторов:</b> {order.bloggers_needed}\n"
+        f"<b>Использование контента:</b> {content_usage_esc}\n"
+        f"<b>Сроки:</b> {deadlines_esc}\n"
+        f"<b>География:</b> {geography_esc}"
+    )
+
+    buttons: list[list[Button]] = []
+    admin_base = (admin_base_url or "").strip().rstrip("/")
+    if admin_base:
+        link_url = f"{admin_base}/orders/{order.order_id}"
+        buttons.append([Button(text="Открыть в админке", url=link_url)])
+    reply_markup = (
+        Keyboard(kind=KeyboardKind.INLINE, rows=buttons) if buttons else None
+    )
+
+    try:
+        await _send_admin_text(
+            messenger_client,
+            chat_id=support_chat_id.strip(),
+            text=text,
+            keyboard=reply_markup,
+            parse_mode="HTML",
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to notify support chat about new order",
+            extra={
+                "support_chat_id": support_chat_id,
+                "order_id": str(order.order_id),
+                "error": str(exc),
+            },
+        )
