@@ -1181,7 +1181,6 @@ def _to_user_entity(model: UserModel) -> User:
         admin=getattr(model, "admin", False),
         referral_code=getattr(model, "referral_code", None),
         referral_payout_rate=getattr(model, "referral_payout_rate", None),
-        agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
         updated_at=getattr(model, "updated_at", None),
         country=getattr(model, "country", None),
     )
@@ -1204,7 +1203,6 @@ def _to_user_model(user: User) -> UserModel:
         admin=getattr(user, "admin", False),
         referral_code=getattr(user, "referral_code", None),
         referral_payout_rate=getattr(user, "referral_payout_rate", None),
-        agreement_confirmed_at=getattr(user, "agreement_confirmed_at", None),
         updated_at=getattr(user, "updated_at", None)
         or datetime.now(timezone.utc),
         country=getattr(user, "country", None),
@@ -1256,6 +1254,7 @@ def _to_blogger_profile_entity(
         ),
         country=getattr(model, "country", ""),
         currency=getattr(model, "currency", "RUB"),
+        agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
     )
 
 
@@ -1290,6 +1289,7 @@ def _to_blogger_profile_model(
         location_geometry=_wkt_to_geometry_element(profile.location_geometry),
         country=profile.country,
         currency=getattr(profile, "currency", "RUB"),
+        agreement_confirmed_at=getattr(profile, "agreement_confirmed_at", None),
     )
 
 
@@ -1344,6 +1344,7 @@ def _to_advertiser_profile_entity(
         created_at=getattr(model, "created_at", None)
         or getattr(model, "updated_at", None),
         updated_at=getattr(model, "updated_at", None),
+        agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
     )
 
 
@@ -1361,6 +1362,7 @@ def _to_advertiser_profile_model(
         company_activity=profile.company_activity,
         created_at=profile.created_at or datetime.now(timezone.utc),
         updated_at=profile.updated_at or datetime.now(timezone.utc),
+        agreement_confirmed_at=getattr(profile, "agreement_confirmed_at", None),
     )
 
 

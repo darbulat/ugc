@@ -127,7 +127,6 @@ async def test_show_my_orders_from_profile_callback_advertiser_no_orders(
         user_id=UUID("00000000-0000-0000-0000-000000000801"),
         external_id="801",
         username="adv",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     msg = FakeMessage(user=FakeUser(801, "adv"))
@@ -173,9 +172,10 @@ async def test_show_my_orders_from_profile_callback_agreement_required(
         user_id=UUID("00000000-0000-0000-0000-000000000802"),
         external_id="802",
         username="adv_agree",
-        agreement_confirmed_at=None,
     )
-    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(
+        advertiser_repo, user.user_id, agreement_confirmed_at=None
+    )
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo, advertiser_repo
@@ -590,9 +590,10 @@ async def test_show_my_orders_shows_agreement_when_not_confirmed(
         user_id=uuid4(),
         external_id="99",
         username="user",
-        agreement_confirmed_at=None,
     )
-    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_advertiser_profile(
+        advertiser_repo, user.user_id, agreement_confirmed_at=None
+    )
 
     message = FakeMessage(
         text=_TEXTS_RU["btn_my_orders"], user=FakeUser(99, "user")
@@ -648,9 +649,10 @@ async def test_show_my_orders_shows_agreement_when_blogger_not_confirmed(
         user_id=uuid4(),
         external_id="98",
         username="blogger_user",
-        agreement_confirmed_at=None,
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, agreement_confirmed_at=None
+    )
 
     message = FakeMessage(
         text=_TEXTS_RU["btn_my_orders"], user=FakeUser(98, "blogger_user")
@@ -2362,7 +2364,6 @@ async def test_show_my_orders_from_profile_callback_no_profiles_sends_fill(
         user_id=UUID("00000000-0000-0000-0000-0000000008f1"),
         external_id=str(0x8F1),
         username="noprofile",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
@@ -2419,9 +2420,10 @@ async def test_show_my_orders_from_profile_callback_blogger_agreement_state(
         user_id=UUID("00000000-0000-0000-0000-0000000008f2"),
         external_id=str(0x8F2),
         username="blogger_agree",
-        agreement_confirmed_at=None,
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, agreement_confirmed_at=None
+    )
     user_service = UserRoleService(user_repo=user_repo)
     profile_service = build_profile_service(
         user_repo, blogger_repo, advertiser_repo
@@ -2474,7 +2476,6 @@ async def test_show_my_orders_from_profile_callback_blogger_no_orders_msg(
         user_id=UUID("00000000-0000-0000-0000-0000000008f3"),
         external_id=str(0x8F3),
         username="blogger_no_ord",
-        agreement_confirmed_at=datetime.now(timezone.utc),
     )
     await create_test_blogger_profile(blogger_repo, user.user_id)
     user_service = UserRoleService(user_repo=user_repo)

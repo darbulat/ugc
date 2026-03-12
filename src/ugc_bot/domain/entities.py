@@ -62,7 +62,6 @@ class User:
     admin: bool = False
     referral_code: Optional[str] = None
     referral_payout_rate: Optional[Decimal] = None
-    agreement_confirmed_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     country: Optional[str] = None
 
@@ -110,6 +109,7 @@ class BloggerProfile:
     location_geometry: Optional[str] = None
     country: str = ""
     currency: str = "RUB"
+    agreement_confirmed_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +152,7 @@ class AdvertiserProfile:
     company_activity: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    agreement_confirmed_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

@@ -158,7 +158,7 @@ async def start_order_creation(
         )
         return
 
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    agreement_confirmed_at = getattr(advertiser, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
         agree_keys = [
             "btn_confirm_agreement",
@@ -250,7 +250,7 @@ async def start_order_creation_from_profile_callback(
             text=msg_fill,
         )
         return
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
+    agreement_confirmed_at = getattr(advertiser, "agreement_confirmed_at", None)
     if agreement_confirmed_at is None:
         agree_keys = [
             "btn_confirm_agreement",

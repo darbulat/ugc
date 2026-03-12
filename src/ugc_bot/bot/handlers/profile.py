@@ -1159,10 +1159,10 @@ async def show_profile(
     )
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
-    if (
-        blogger is not None or advertiser is not None
-    ) and agreement_confirmed_at is None:
+    needs_agreement = (
+        blogger is not None and blogger.agreement_confirmed_at is None
+    ) or (advertiser is not None and advertiser.agreement_confirmed_at is None)
+    if needs_agreement:
         agree_keys = [
             "btn_confirm_agreement",
             "msg_confirm_agreement",
@@ -1473,10 +1473,10 @@ async def handle_profile_my_profile_callback(
     )
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
-    agreement_confirmed_at = getattr(user, "agreement_confirmed_at", None)
-    if (
-        blogger is not None or advertiser is not None
-    ) and agreement_confirmed_at is None:
+    needs_agreement = (
+        blogger is not None and blogger.agreement_confirmed_at is None
+    ) or (advertiser is not None and advertiser.agreement_confirmed_at is None)
+    if needs_agreement:
         locale = user_locale
         agree_keys = [
             "btn_confirm_agreement",
