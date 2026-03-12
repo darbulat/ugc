@@ -13,6 +13,9 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.ports import CountryRepository
+from ugc_bot.application.services.admin_notification_service import (
+    notify_support_chat_about_new_order,
+)
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -1177,6 +1180,8 @@ async def handle_geography(
     message: Message,
     state: FSMContext,
     order_service: OrderService,
+    profile_service: ProfileService,
+    user_role_service: UserRoleService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
     contact_pricing_service: ContactPricingService,
@@ -1250,6 +1255,23 @@ async def handle_geography(
         geography=geography,
         product_photo_file_id=product_photo_file_id,
     )
+
+    support_chat_id = config.referral.referral_support_chat_id
+    if support_chat_id.strip():
+        advertiser_user = await user_role_service.get_user_by_id(user_id)
+        advertiser_profile = await profile_service.get_advertiser_profile(
+            user_id
+        )
+        if advertiser_user:
+            await notify_support_chat_about_new_order(
+                order=order,
+                advertiser_user=advertiser_user,
+                advertiser_profile=advertiser_profile,
+                messenger_client=messenger_client,
+                support_chat_id=support_chat_id,
+                admin_base_url=config.admin.admin_base_url,
+                currency_symbol=config.market.currency_symbol,
+            )
 
     await state_store.clear()
     await messenger_client.send_text(
