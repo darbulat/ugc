@@ -951,6 +951,12 @@ class CountryRepository(ABC):
     ) -> Optional[Country]:
         """Fetch country by code."""
 
+    @abstractmethod
+    async def get_by_currency_code(
+        self, currency_code: str, session: object | None = None
+    ) -> Optional[Country]:
+        """Fetch any enabled country with the given currency code."""
+
 
 class TransactionManager(Protocol):
     """Protocol for transaction handling used by application services.

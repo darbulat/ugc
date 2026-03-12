@@ -1185,3 +1185,12 @@ class InMemoryCountryRepository(CountryRepository):
     ) -> Optional[Country]:
         """Fetch country by code."""
         return self.countries.get(code)
+
+    async def get_by_currency_code(
+        self, currency_code: str, session: object | None = None
+    ) -> Optional[Country]:
+        """Fetch any enabled country with the given currency code."""
+        for country in self.countries.values():
+            if country.enabled and country.currency_code == currency_code:
+                return country
+        return None

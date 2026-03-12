@@ -2570,6 +2570,22 @@ class SqlAlchemyCountryRepository(CountryRepository):
         result = exec_result.scalar_one_or_none()
         return _to_country_entity(result) if result else None
 
+    async def get_by_currency_code(
+        self, currency_code: str, session: object | None = None
+    ) -> Optional[Country]:
+        """Fetch any enabled country with the given currency code."""
+        exec_result = await self._execute_in_session(
+            select(CountryModel)
+            .where(
+                CountryModel.currency_code == currency_code,
+                CountryModel.enabled.is_(True),
+            )
+            .limit(1),
+            session,
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_country_entity(result) if result else None
+
 
 def _to_country_entity(model: CountryModel) -> Country:
     """Map country ORM model to domain entity."""

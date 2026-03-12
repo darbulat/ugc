@@ -348,6 +348,7 @@ def build_bot_services(
             order_repo=repos["order_repo"],
             offer_dispatch_repo=repos["offer_dispatch_repo"],
             interaction_repo=repos["interaction_repo"],
+            country_repo=repos.get("country_repo"),
             transaction_manager=transaction_manager,
             currency_symbol=config.market.currency_symbol,
         ),
