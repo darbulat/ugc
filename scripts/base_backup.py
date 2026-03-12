@@ -49,8 +49,10 @@ def create_base_backup(
         "-D", "-",
         "--format=tar",
         "--gzip",
+        "--progress",
+        "--verbose",
         "--checkpoint=fast",
-        "--wal-method=none",
+        "--wal-method=stream",
     ]
 
     try:

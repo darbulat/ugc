@@ -298,7 +298,7 @@ services:
       - -c
       - archive_mode=on
       - -c
-      - archive_command=test ! -f /wal_archive/%f && cp %p /wal_archive/%f
+      - archive_command=test -f /wal_archive/%f || cp %p /wal_archive/%f
       - -c
       - archive_timeout=60
     healthcheck:
