@@ -441,7 +441,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "prompt_edit_audience_gender": "Кто в основном смотрит ваш контент?",
         "prompt_edit_audience_age": "Основной возраст вашей аудитории?",
         "prompt_edit_audience_geo": "Укажите до 3 городов через запятую:",
-        "prompt_edit_price": "Укажите цену за 1 UGC‑видео в рублях:",
+        "prompt_edit_price": "Укажите цену за 1 UGC‑видео ({currency}):",
         "prompt_edit_barter": "Готовы работать по бартеру?",
         "prompt_edit_work_format": "Как готовы работать с брендами?",
         "prompt_edit_name": "Введите имя:",
@@ -514,7 +514,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "msg_step_ask_price": (
             "Заказчики отбирают креаторов по бюджету — указанная цена ускоряет сделку. "
-            "Сколько стоит одно UGC‑видео? Цена в рублях, например: 500, 1000, 2000\n\nШаг 10 из 12"
+            "Сколько стоит одно UGC‑видео? Цена ({currency}), например: 500, 1000, 2000\n\nШаг 10 из 12"
         ),
         "msg_step_ask_barter": (
             "Много заказов с бартером — ответ «Да» увеличит число офферов. "
@@ -640,7 +640,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Что снять и в каком формате. Пример: Видео с распаковкой."
         ),
         "msg_order_budget": (
-            "Бюджет за 1 UGC-видео? Укажите цену в рублях: 500, 1000, 2000"
+            "Бюджет за 1 UGC-видео? Укажите цену ({currency}): 500, 1000, 2000"
         ),
         "msg_order_barter_ask": (
             "Что вы предлагаете по бартеру?\n"
@@ -825,6 +825,40 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_cancelled": "Отменено.",
         "msg_invalid_uuid": "Неверный идентификатор пользователя.",
         "msg_user_not_telegram": "Пользователь не в Telegram.",
+        # Language selection
+        "language_prompt": "Выберите язык / Choose language:",
+        "btn_change_language": "🌐 Изменить язык",
+        "language_changed": "Язык изменён.",
+        # Offer texts
+        "offer_header": "Новый заказ",
+        "offer_details_header": "📋 Детали заказа:",
+        "offer_format": "🎥 Формат: {format_label}",
+        "offer_task": "📝 Задача: {task}",
+        "offer_budget": "💰 Бюджет: {price} {currency} за 1 UGC-видео",
+        "offer_barter": "🎁 Бартер: {description}",
+        "offer_content_usage": "📢 Использование: {usage}",
+        "offer_deadlines": "⏱ Сроки: {deadlines}",
+        "offer_geography": "📍 География: {geography}",
+        "offer_bloggers_needed": "👥 Нужно креаторов: {count}",
+        "offer_warning": (
+            "⚠️ Важно\n"
+            "🧷 Откликайтесь только если готовы работать на указанных условиях\n"
+            "❗ Отказ после отклика без изменения условий со стороны заказчика"
+            "   может привести к жалобе и ограничению аккаунта"
+        ),
+        "offer_how_it_works": (
+            "⏳ Как это работает\n"
+            "● Вы откликаетесь на оффер\n"
+            "● Получаете ссылку на продукт\n"
+            "● Заказчик получает ваш профиль и пишет вам первым\n"
+            "● Платформа не участвует в переговорах и оплате"
+        ),
+        "offer_format_label_ugc_placement": "UGC + размещение",
+        "offer_format_label_ugc_only": "UGC-видео для бренда",
+        "btn_offer_accept": "Готов снять UGC",
+        "btn_offer_skip": "Пропустить",
+        # Complaint button
+        "btn_complaint": "Пожаловаться на {name}",
     },
     "en": {
         "start_message": (
@@ -1555,5 +1589,39 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_cancelled": "Cancelled.",
         "msg_invalid_uuid": "Invalid user identifier.",
         "msg_user_not_telegram": "User not on Telegram.",
+        # Language selection
+        "language_prompt": "Choose language:",
+        "btn_change_language": "🌐 Change language",
+        "language_changed": "Language changed.",
+        # Offer texts
+        "offer_header": "New order",
+        "offer_details_header": "📋 Order details:",
+        "offer_format": "🎥 Format: {format_label}",
+        "offer_task": "📝 Task: {task}",
+        "offer_budget": "💰 Budget: {price} {currency} per UGC video",
+        "offer_barter": "🎁 Barter: {description}",
+        "offer_content_usage": "📢 Usage: {usage}",
+        "offer_deadlines": "⏱ Deadlines: {deadlines}",
+        "offer_geography": "📍 Geography: {geography}",
+        "offer_bloggers_needed": "👥 Creators needed: {count}",
+        "offer_warning": (
+            "⚠️ Important\n"
+            "🧷 Respond only if you are ready to work under the stated conditions\n"
+            "❗ Refusing after responding without changed conditions from the advertiser"
+            "   may lead to a complaint and account restriction"
+        ),
+        "offer_how_it_works": (
+            "⏳ How it works\n"
+            "● You respond to the offer\n"
+            "● You receive a product link\n"
+            "● The advertiser gets your profile and contacts you first\n"
+            "● The platform is not involved in negotiations or payment"
+        ),
+        "offer_format_label_ugc_placement": "UGC + placement",
+        "offer_format_label_ugc_only": "UGC video for brand",
+        "btn_offer_accept": "Ready to shoot UGC",
+        "btn_offer_skip": "Skip",
+        # Complaint button
+        "btn_complaint": "Report {name}",
     },
 }
