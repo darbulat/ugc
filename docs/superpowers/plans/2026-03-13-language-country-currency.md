@@ -563,14 +563,19 @@ git commit -m "feat: add UserRoleService.set_language()"
 
 - [ ] **Step 1: Remove old locale tests that test `country.locale` resolution**
 
-The existing `tests/unit/bot/middleware/test_locale.py` contains tests for the old `country.locale` path (e.g., `test_user_and_country_found_returns_country_locale`, `test_no_country_repo_returns_default`). These will fail after the middleware change. Delete them before writing the new tests.
+Two test files contain tests for the old `country.locale` path that must be cleaned up:
 
-Run:
+**`tests/unit/bot/middleware/test_locale.py`** — contains tests like `test_user_and_country_found_returns_country_locale`, `test_no_country_repo_returns_default`. Run:
 ```bash
 grep -n "def test_" tests/unit/bot/middleware/test_locale.py
 ```
-
 Remove any test that passes `country_repo` or asserts on `country.locale`.
+
+**`tests/unit/miniapp/test_get_user_locale.py`** — contains `_make_country()` helper that calls `Country(..., locale=...)` (broken after Task 1), and `test_user_and_country_found_returns_country_locale` (tests removed behavior). Run:
+```bash
+grep -n "def test_\|_make_country\|locale" tests/unit/miniapp/test_get_user_locale.py
+```
+Remove `_make_country()`, remove any test that passes `country_repo` to dispatcher or asserts on `country.locale` resolution. Write replacement tests for the `user.language`-based behavior in both files.
 
 - [ ] **Step 2: Write failing tests for updated middleware**
 
