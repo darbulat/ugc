@@ -499,6 +499,7 @@ async def handle_cooperation_format_callback(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    currency_symbol: str = "",
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -529,7 +530,9 @@ async def handle_cooperation_format_callback(
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
     await state_store.update_data(cooperation_format=text)
     locale = user_locale
-    msg_budget = await bot_texts_service.get("msg_order_budget", locale)
+    msg_budget = (
+        await bot_texts_service.get("msg_order_budget", locale)
+    ).format(currency=currency_symbol)
     msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     if text == COOP_PAYMENT:
         await messenger_client.send_text(
@@ -564,6 +567,7 @@ async def handle_cooperation_format(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    currency_symbol: str = "",
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -588,7 +592,9 @@ async def handle_cooperation_format(
         return
     await state_store.update_data(cooperation_format=text)
     locale = user_locale
-    msg_budget = await bot_texts_service.get("msg_order_budget", locale)
+    msg_budget = (
+        await bot_texts_service.get("msg_order_budget", locale)
+    ).format(currency=currency_symbol)
     msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     if text == COOP_PAYMENT:
         await messenger_client.send_text(

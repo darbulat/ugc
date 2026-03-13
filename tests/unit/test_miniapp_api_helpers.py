@@ -331,6 +331,7 @@ class TestMeEndpointCountryResolution:
         user = MagicMock()
         user.external_id = "123"
         user.country = "ru"
+        user.language = None
 
         profile_service = MagicMock()
         profile_service.get_advertiser_profile = AsyncMock(return_value=None)
@@ -349,6 +350,7 @@ class TestMeEndpointCountryResolution:
         uid = uuid4()
         request = MagicMock()
         request.app.state.dispatcher = dispatcher
+        request.app.state.config.market.default_locale = "ru"
 
         body = InitDataBody(init_data="x")
 

@@ -1651,6 +1651,7 @@ async def handle_profile_edit_field_callback(
     blogger_registration_service: BloggerRegistrationService,
     user_role_service: UserRoleService,
     max_order_price: float,
+    currency_symbol: str = "",
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -1691,9 +1692,10 @@ async def handle_profile_edit_field_callback(
         | {PROMPT_EDIT_GENERIC, prompt_key}
     )
     prompt_texts = await bot_texts_service.get_many(prompt_keys, locale)
-    prompt = prompt_texts.get(prompt_key) or prompt_texts.get(
-        PROMPT_EDIT_GENERIC, ""
-    )
+    prompt = (
+        prompt_texts.get(prompt_key)
+        or prompt_texts.get(PROMPT_EDIT_GENERIC, "")
+    ).format(currency=currency_symbol)
     edit_keys = [
         "btn_audience_f",
         "btn_audience_m",

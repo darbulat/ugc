@@ -28,7 +28,9 @@ def _has_any(text: str | None, *keywords: str) -> bool:
 
 def _is_language_prompt(text: str | None) -> bool:
     """Return True if text looks like the language selection prompt."""
-    return _has_any(text, "язык", "language", "Choose language", "Выберите язык")
+    return _has_any(
+        text, "язык", "language", "Choose language", "Выберите язык"
+    )
 
 
 def _is_country_prompt(text: str | None) -> bool:
@@ -80,8 +82,7 @@ async def _maybe_select_language_and_country(
     what they already have saved.
     """
     text = await _maybe_select_language(client, entity, text, timeout=timeout)
-    text = await _maybe_select_country(client, entity, text, timeout=timeout)
-    return text
+    return await _maybe_select_country(client, entity, text, timeout=timeout)
 
 
 @pytest.mark.e2e_telegram
@@ -229,7 +230,9 @@ async def test_blogger_registration_full_flow(
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=20
     )
-    text = await _maybe_select_language_and_country(client, entity, text, timeout=15)
+    text = await _maybe_select_language_and_country(
+        client, entity, text, timeout=15
+    )
     assert text and _has_any(
         text, "UGC", "профиль", "profile", "Выберите", "Choose"
     )
@@ -366,7 +369,9 @@ async def test_advertiser_registration_full_flow(
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=15
     )
-    text = await _maybe_select_language_and_country(client, entity, text, timeout=15)
+    text = await _maybe_select_language_and_country(
+        client, entity, text, timeout=15
+    )
 
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
@@ -450,7 +455,9 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=20
     )
-    text = await _maybe_select_language_and_country(client, entity, text, timeout=15)
+    text = await _maybe_select_language_and_country(
+        client, entity, text, timeout=15
+    )
     assert text and _has_any(
         text, "UGC", "профиль", "profile", "Выберите", "Choose"
     )
@@ -629,7 +636,9 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=15
     )
-    text = await _maybe_select_language_and_country(client, entity, text, timeout=15)
+    text = await _maybe_select_language_and_country(
+        client, entity, text, timeout=15
+    )
 
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
@@ -754,7 +763,9 @@ async def test_order_creation_full_flow(
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=20
     )
-    text = await _maybe_select_language_and_country(client, entity, text, timeout=15)
+    text = await _maybe_select_language_and_country(
+        client, entity, text, timeout=15
+    )
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
     )
@@ -909,7 +920,9 @@ async def _ensure_blogger_profile(client, entity, bot_username: str) -> None:
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=20
     )
-    text = await _maybe_select_language_and_country(client, entity, text, timeout=15)
+    text = await _maybe_select_language_and_country(
+        client, entity, text, timeout=15
+    )
     assert text and _has_any(
         text, "UGC", "профиль", "profile", "Выберите", "Choose"
     )
@@ -935,7 +948,9 @@ async def _ensure_advertiser_profile(client, entity, bot_username: str) -> None:
     text = await send_and_get_reply(
         client, entity, bot_username, "/start", timeout=15
     )
-    text = await _maybe_select_language_and_country(client, entity, text, timeout=15)
+    text = await _maybe_select_language_and_country(
+        client, entity, text, timeout=15
+    )
     text = await click_inline_and_get_reply(
         client, entity, "role:advertiser", timeout=25
     )

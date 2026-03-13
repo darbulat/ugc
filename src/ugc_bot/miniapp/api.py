@@ -83,6 +83,7 @@ class MeResponse(BaseModel):
     country: str | None = None
     currency_code: str | None = None
     currency_symbol: str | None = None
+    locale: str = "ru"
 
 
 # Content usage options for order form (same as bot order_creation_states).
@@ -386,6 +387,10 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         if country_obj:
             currency_code = country_obj.currency_code
             currency_symbol = country_obj.currency_symbol
+    config = request.app.state.config
+    user_locale: str = (
+        getattr(user, "language", None) or config.market.default_locale
+    )
     return MeResponse(
         user_id=str(user_id),
         external_id=user.external_id,
@@ -397,6 +402,7 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         country=user_country,
         currency_code=currency_code,
         currency_symbol=currency_symbol,
+        locale=user_locale,
     )
 
 

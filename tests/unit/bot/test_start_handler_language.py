@@ -26,13 +26,13 @@ from ugc_bot.infrastructure.memory_repositories import (
 
 
 @pytest.mark.asyncio
-async def test_start_auto_detects_language_when_tg_code_matches(
+async def test_start_always_shows_language_keyboard_when_language_not_set(
     messenger_client, event_adapter, config, bot_texts_service
 ) -> None:
-    """Auto-detect language when tg code is in available set.
+    """Always show language keyboard when user.language is None.
 
-    user.language=None, tg_language_code='ru', available={'ru','en'}
-    -> calls set_language('ru'), no language keyboard shown.
+    user.language=None, tg_language_code='ru' (matches available)
+    -> shows language keyboard regardless of tg code (no auto-detect).
     """
     user_repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=user_repo)
@@ -43,7 +43,7 @@ async def test_start_auto_detects_language_when_tg_code_matches(
         Language(code="en", name_native="English", enabled=True),
     )
 
-    # User with tg language_code="ru"
+    # User whose tg language_code matches an available language
     message = FakeMessage(
         text="/start",
         user=FakeUser(1, "alice", "Alice", language_code="ru"),
@@ -63,16 +63,21 @@ async def test_start_auto_detects_language_when_tg_code_matches(
         event_adapter=event_adapter,
     )
 
-    # Language should be auto-detected and set
+    # Language is NOT auto-detected — user must choose manually
     saved = await user_repo.get_by_external("1", MessengerType.TELEGRAM)
-    assert saved is not None
-    assert saved.language == "ru"
+    assert saved is None or saved.language is None
 
-    # Should NOT show language keyboard — should proceed to role keyboard
+    # Should show language keyboard
     assert len(client.sent_text) == 1
     sent = client.sent_text[0]
     assert sent["keyboard"] is not None
-    assert sent["keyboard"].rows  # role keyboard has rows
+    all_callback_data = [
+        btn.callback_data
+        for row in sent["keyboard"].rows
+        for btn in row
+        if btn.callback_data
+    ]
+    assert any(cd.startswith("lang:") for cd in all_callback_data)
 
 
 @pytest.mark.asyncio

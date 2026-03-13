@@ -322,6 +322,7 @@ async def _start_registration_flow(
         messenger_client,
         bot_texts_service,
         config,
+        user_locale=locale,
     )
 
 
@@ -394,6 +395,7 @@ async def start_registration_inline(
         messenger_client,
         bot_texts_service,
         config,
+        user_locale=locale,
     )
 
 
@@ -1328,6 +1330,7 @@ async def handle_geo(
     state: FSMContext,
     config: AppConfig,
     bot_texts_service: BotTextsService,
+    currency_symbol: str = "",
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -1343,7 +1346,9 @@ async def handle_geo(
         list(VALIDATOR_ERR_KEYS), locale
     )
     err_geo = await bot_texts_service.get("err_geo_max_cities", locale)
-    step_price = await bot_texts_service.get("msg_step_ask_price", locale)
+    step_price = (
+        await bot_texts_service.get("msg_step_ask_price", locale)
+    ).format(currency=currency_symbol)
     geo = (incoming.text or "").strip()
     err = validate_audience_geo(geo, texts=validator_texts)
     if err is not None:

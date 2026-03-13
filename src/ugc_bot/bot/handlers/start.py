@@ -517,14 +517,13 @@ async def _start_command(
             user.user_id, referral_code
         )
     # Step 1: Language
-    if user.language is None:
-        if language_kb is not None and language_kb.rows:
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text=language_prompt,
-                keyboard=language_kb,
-            )
-            return
+    if user.language is None and language_kb is not None and language_kb.rows:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=language_prompt,
+            keyboard=language_kb,
+        )
+        return
     # Step 2: Country
     if user.country is None and country_kb is not None and country_kb.rows:
         await messenger_client.send_text(

@@ -459,7 +459,7 @@
           o.textContent = d;
           day.appendChild(o);
         }
-        var months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        var months = tx('months');
         for (var m = 1; m <= 12; m++) {
           var o = document.createElement('option');
           o.value = m;
@@ -612,12 +612,212 @@
         }
       }
 
+      var I18N = {
+        ru: {
+          loading: 'Загрузка…',
+          select_country_h1: 'Выберите вашу страну',
+          select_role_h1: 'Выберите роль',
+          role_hint_new: 'Зарегистрируйтесь как рекламодатель или креатор.',
+          role_hint_has_profile: 'Можете зарегистрироваться как вторая роль или вернуться в кабинет.',
+          btn_advertiser: 'Рекламодатель',
+          btn_blogger: 'Креатор',
+          adv_reg_h1: 'Регистрация рекламодателя',
+          blg_reg_h1: 'Регистрация креатора',
+          btn_register: 'Зарегистрироваться',
+          btn_update: 'Обновить',
+          btn_back: 'Назад',
+          btn_save: 'Сохранить',
+          btn_close: 'Закрыть',
+          agreements_intro: 'Ознакомьтесь с документами платформы и подтвердите согласие.',
+          agreements_fallback: 'Подтвердите согласие с документами платформы.',
+          btn_confirm_agreement: '✅ Подтвердить согласие',
+          adv_dashboard_h1: 'Личный кабинет рекламодателя',
+          adv_dashboard_hint: 'Создайте заказ или посмотрите список заказов.',
+          btn_create_order: 'Создать заказ',
+          btn_my_orders: 'Мои заказы',
+          btn_update_profile: 'Обновить профиль',
+          btn_change_role: 'Сменить роль',
+          new_order_h2: 'Новый заказ',
+          btn_hide: 'Скрыть форму',
+          my_orders_h2: 'Мои заказы',
+          blg_dashboard_h1: 'Личный кабинет креатора',
+          blg_dashboard_hint: 'Управление профилем и заказами.',
+          blg_done_h1: 'Вы зарегистрированы как креатор',
+          blg_done_hint: 'Возвращайтесь в бота, чтобы получать офферы и управлять профилем.',
+          btn_confirm_instagram: '✅ Подтвердить Instagram',
+          btn_blogger_orders: 'Мои заказы',
+          btn_update_blg_profile: 'Обновить профиль',
+          btn_blogger_change_role: 'Сменить роль',
+          instagram_code_hint: 'Ваш код (действует 15 минут):',
+          btn_open_instagram: 'Открыть Instagram',
+          btn_back_to_cabinet: 'В личный кабинет',
+          order_detail_back: 'Назад к списку',
+          btn_pay: 'Оплатить',
+          orders_empty: 'Вы пока не откликались на заказы',
+          orders_error: 'Не удалось загрузить заказы',
+          order_created: 'Заказ создан. ID: ',
+          order_error: 'Ошибка создания заказа',
+          order_pay_label: ' Оплатить: ',
+          order_pay_link: 'перейти к оплате',
+          city_selected: 'Выбрано: ',
+          city_not_found: 'Город не найден',
+          city_enter: 'Введите название города',
+          city_error: 'Не удалось определить город для этой точки',
+          agreement_required: 'Подтвердите согласие с документами платформы',
+          agree_checkbox_label: 'Я подтверждаю согласие с документами платформы',
+          btn_map_pick: 'Выбрать на карте',
+          btn_search: 'Найти',
+          price_label: 'Цена за интеграцию ({s}) *',
+          budget_label: 'Бюджет ({s}) *',
+          months: ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],
+        },
+        en: {
+          loading: 'Loading…',
+          select_country_h1: 'Select your country',
+          select_role_h1: 'Select your role',
+          role_hint_new: 'Register as an advertiser or creator.',
+          role_hint_has_profile: 'You can register as a second role or return to your dashboard.',
+          btn_advertiser: 'Advertiser',
+          btn_blogger: 'Creator',
+          adv_reg_h1: 'Advertiser registration',
+          blg_reg_h1: 'Creator registration',
+          btn_register: 'Register',
+          btn_update: 'Update',
+          btn_back: 'Back',
+          btn_save: 'Save',
+          btn_close: 'Close',
+          agreements_intro: 'Please review the platform documents and confirm your agreement.',
+          agreements_fallback: 'Confirm agreement with platform documents.',
+          btn_confirm_agreement: '✅ Confirm agreement',
+          adv_dashboard_h1: 'Advertiser dashboard',
+          adv_dashboard_hint: 'Create an order or view your orders list.',
+          btn_create_order: 'Create order',
+          btn_my_orders: 'My orders',
+          btn_update_profile: 'Update profile',
+          btn_change_role: 'Switch role',
+          new_order_h2: 'New order',
+          btn_hide: 'Hide form',
+          my_orders_h2: 'My orders',
+          blg_dashboard_h1: 'Creator dashboard',
+          blg_dashboard_hint: 'Manage your profile and orders.',
+          blg_done_h1: 'You are registered as a creator',
+          blg_done_hint: 'Return to the bot to receive offers and manage your profile.',
+          btn_confirm_instagram: '✅ Confirm Instagram',
+          btn_blogger_orders: 'My orders',
+          btn_update_blg_profile: 'Update profile',
+          btn_blogger_change_role: 'Switch role',
+          instagram_code_hint: 'Your code (valid for 15 minutes):',
+          btn_open_instagram: 'Open Instagram',
+          btn_back_to_cabinet: 'Back to dashboard',
+          order_detail_back: 'Back to list',
+          btn_pay: 'Pay',
+          orders_empty: 'You have no orders yet',
+          orders_error: 'Failed to load orders',
+          order_created: 'Order created. ID: ',
+          order_error: 'Error creating order',
+          order_pay_label: ' Pay: ',
+          order_pay_link: 'go to payment',
+          city_selected: 'Selected: ',
+          city_not_found: 'City not found',
+          city_enter: 'Enter city name',
+          city_error: 'Could not determine city for this point',
+          agreement_required: 'Please confirm agreement with platform documents',
+          agree_checkbox_label: 'I confirm agreement with platform documents',
+          btn_map_pick: 'Pick on map',
+          btn_search: 'Search',
+          price_label: 'Price ({s}) *',
+          budget_label: 'Budget ({s}) *',
+          months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+        }
+      };
+
+      function tx(key) {
+        var locale = (window._me && window._me.locale) || 'ru';
+        var map = I18N[locale] || I18N.ru;
+        return map[key] !== undefined ? map[key] : (I18N.ru[key] || key);
+      }
+
+      function applyLocale() {
+        var locale = (window._me && window._me.locale) || 'ru';
+        var L = I18N[locale] || I18N.ru;
+        function setText(id, text) {
+          var el = document.getElementById(id);
+          if (el && text !== undefined) el.textContent = text;
+        }
+        function setQ(selector, text) {
+          var el = document.querySelector(selector);
+          if (el && text !== undefined) el.textContent = text;
+        }
+        // Screen headings
+        setQ('#screen-loading .hint', L.loading);
+        setQ('#screen-country-select h1', L.select_country_h1);
+        setQ('#screen-role-choice h1', L.select_role_h1);
+        document.querySelectorAll('[data-role="advertiser"]').forEach(function(b) { b.textContent = L.btn_advertiser; });
+        document.querySelectorAll('[data-role="blogger"]').forEach(function(b) { b.textContent = L.btn_blogger; });
+        setQ('#screen-register-advertiser h1', L.adv_reg_h1);
+        setQ('#screen-register-blogger h1', L.blg_reg_h1);
+        // Agreement screens
+        setText('agreements-adv-intro', L.agreements_intro);
+        setText('agreements-adv-fallback', L.agreements_fallback);
+        setText('btn-confirm-adv-agreement', L.btn_confirm_agreement);
+        setText('back-from-adv-agreements', L.btn_back);
+        setText('agreements-blg-intro', L.agreements_intro);
+        setText('agreements-blg-fallback', L.agreements_fallback);
+        setText('btn-confirm-blg-agreement', L.btn_confirm_agreement);
+        setText('back-from-blg-agreements', L.btn_back);
+        // Advertiser dashboard
+        setQ('#screen-advertiser-dashboard h1', L.adv_dashboard_h1);
+        setQ('#screen-advertiser-dashboard > .hint', L.adv_dashboard_hint);
+        setText('btn-show-create-order', L.btn_create_order);
+        setText('btn-show-orders-list', L.btn_my_orders);
+        setText('btn-adv-update-profile', L.btn_update_profile);
+        setText('btn-change-role-from-adv', L.btn_change_role);
+        setQ('#block-create-order h2', L.new_order_h2);
+        setText('btn-submit-order', L.btn_create_order);
+        setText('hide-create-order', L.btn_hide);
+        setQ('#block-orders-list h2', L.my_orders_h2);
+        setText('hide-orders-list', L.btn_close);
+        // Blogger dashboard
+        setQ('#screen-blogger-dashboard h1', L.blg_dashboard_h1);
+        setQ('#screen-blogger-dashboard > .hint', L.blg_dashboard_hint);
+        setText('btn-blogger-confirm-instagram', L.btn_confirm_instagram);
+        setText('btn-blogger-orders', L.btn_blogger_orders);
+        setQ('#block-blogger-orders-list h2', L.my_orders_h2);
+        setText('hide-blogger-orders-list', L.btn_close);
+        setText('btn-blogger-update-profile', L.btn_update_blg_profile);
+        setText('btn-blogger-change-role', L.btn_blogger_change_role);
+        // Blogger done screen
+        setQ('#screen-blogger-done h1', L.blg_done_h1);
+        setQ('#screen-blogger-done .hint', L.blg_done_hint);
+        setText('btn-close-blogger', L.btn_close);
+        setText('btn-change-role-from-blogger', L.btn_change_role);
+        // Instagram verification
+        setQ('#screen-instagram-verification h1', L.select_role_h1);
+        setQ('#screen-instagram-verification > .hint', L.instagram_code_hint);
+        setText('btn-instagram-open', L.btn_open_instagram);
+        setText('btn-instagram-verification-back', L.btn_back_to_cabinet);
+        // Order detail
+        setText('btn-order-detail-save', L.btn_save);
+        setText('btn-order-detail-back', L.order_detail_back);
+        setText('btn-order-detail-pay', L.btn_pay);
+        // Back buttons
+        setText('back-from-advertiser', L.btn_back);
+        setText('back-from-blogger', L.btn_back);
+        // Agreement checkbox labels
+        document.querySelectorAll('.agreement-checkbox span').forEach(function(el) {
+          el.textContent = L.agree_checkbox_label;
+        });
+        // Map buttons
+        setText('btn-blogger-city-map', L.btn_map_pick);
+        setText('btn-blogger-city-search', L.btn_search);
+      }
+
       function updateRegisterButtonLabels() {
         var me = window._me;
         var advBtn = document.getElementById('btn-submit-advertiser');
         var blgBtn = document.getElementById('btn-submit-blogger');
-        if (advBtn) advBtn.textContent = (me && me.has_advertiser_profile) ? 'Обновить' : 'Зарегистрироваться';
-        if (blgBtn) blgBtn.textContent = (me && me.has_blogger_profile) ? 'Обновить' : 'Зарегистрироваться';
+        if (advBtn) advBtn.textContent = (me && me.has_advertiser_profile) ? tx('btn_update') : tx('btn_register');
+        if (blgBtn) blgBtn.textContent = (me && me.has_blogger_profile) ? tx('btn_update') : tx('btn_register');
       }
 
       function updateBloggerDashboardState(me) {
@@ -659,9 +859,9 @@
         var hint = document.getElementById('role-choice-hint');
         if (hint) {
           if (me && (me.has_advertiser_profile || me.has_blogger_profile)) {
-            hint.textContent = 'Можете зарегистрироваться как вторая роль или вернуться в кабинет.';
+            hint.textContent = tx('role_hint_has_profile');
           } else {
-            hint.textContent = 'Зарегистрируйтесь как рекламодатель или креатор.';
+            hint.textContent = tx('role_hint_new');
           }
         }
       }
@@ -701,10 +901,15 @@
             ul.appendChild(li);
           });
           if (!data.orders || data.orders.length === 0) {
-            ul.innerHTML = '<li>Вы пока не откликались на заказы</li>';
+            var li = document.createElement('li');
+            li.textContent = tx('orders_empty');
+            ul.appendChild(li);
           }
         }).catch(function() {
-          ul.innerHTML = '<li class="error">Не удалось загрузить заказы</li>';
+          var li = document.createElement('li');
+          li.className = 'error';
+          li.textContent = tx('orders_error');
+          ul.appendChild(li);
         });
       });
       document.getElementById('hide-blogger-orders-list').addEventListener('click', function() {
@@ -747,7 +952,7 @@
             document.getElementById('blg-lon').value = String(lon);
             if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
           }).catch(function() {
-            if (hintElCityMap) hintElCityMap.textContent = 'Не удалось определить город для этой точки';
+            if (hintElCityMap) hintElCityMap.textContent = tx('city_error');
           });
         });
       }
@@ -765,7 +970,7 @@
         var block = document.getElementById('block-blogger-city-map');
         var query = document.getElementById('blg-city-search').value.trim();
         if (!query) {
-          if (hintElCityMap) hintElCityMap.textContent = 'Введите название города';
+          if (hintElCityMap) hintElCityMap.textContent = tx('city_enter');
           return;
         }
         if (block) block.style.display = 'block';
@@ -779,7 +984,7 @@
           document.getElementById('blg-country').value = data.country || '';
           document.getElementById('blg-lat').value = String(data.lat);
           document.getElementById('blg-lon').value = String(data.lon);
-          if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
+          if (hintElCityMap) hintElCityMap.textContent = tx('city_selected') + (data.city || '');
           function applyOnMap() {
             if (bloggerCityMapInstance) {
               bloggerCityMapInstance.setView([data.lat, data.lon], 12);
@@ -790,7 +995,7 @@
           if (bloggerCityMapInstance) applyOnMap();
           else setTimeout(applyOnMap, 250);
         }).catch(function() {
-          if (hintElCityMap) hintElCityMap.textContent = 'Город не найден';
+          if (hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
         });
       });
       document.getElementById('blg-city-search').addEventListener('keydown', function(e) {
@@ -805,7 +1010,7 @@
         var cb = document.getElementById('adv-agree-checkbox');
         errEl.textContent = '';
         if (!cb || !cb.checked) {
-          errEl.textContent = 'Подтвердите согласие с документами платформы';
+          errEl.textContent = tx('agreement_required');
           return;
         }
         var btn = document.getElementById('btn-confirm-adv-agreement');
@@ -829,7 +1034,7 @@
         var cb = document.getElementById('blg-agree-checkbox');
         errEl.textContent = '';
         if (!cb || !cb.checked) {
-          errEl.textContent = 'Подтвердите согласие с документами платформы';
+          errEl.textContent = tx('agreement_required');
           return;
         }
         var btn = document.getElementById('btn-confirm-blg-agreement');
@@ -1161,17 +1366,17 @@
         };
         api('/orders', payload).then(function(res) {
           okEl.textContent = '';
-          okEl.appendChild(document.createTextNode('Заказ создан. ID: ' + (res.order_id || '')));
+          okEl.appendChild(document.createTextNode(tx('order_created') + (res.order_id || '')));
           if (res.payment_link) {
             var paySpan = document.createElement('span');
             paySpan.className = 'payment-link';
-            paySpan.appendChild(document.createTextNode(' Оплатить: '));
+            paySpan.appendChild(document.createTextNode(tx('order_pay_label')));
             var payA = document.createElement('a');
             payA.href = res.payment_link;
             payA.className = 'link-pay-close';
             payA.target = '_blank';
             payA.rel = 'noopener';
-            payA.textContent = 'перейти к оплате';
+            payA.textContent = tx('order_pay_link');
             payA.addEventListener('click', function(e) {
               e.preventDefault();
               openPaymentAndClose(res.payment_link);
@@ -1182,7 +1387,7 @@
           document.getElementById('form-order').reset();
           if (submitBtn) submitBtn.disabled = false;
         }).catch(function(err) {
-          errEl.textContent = err.message || 'Ошибка создания заказа';
+          errEl.textContent = err.message || tx('order_error');
           if (submitBtn) submitBtn.disabled = false;
         });
       });
@@ -1194,13 +1399,13 @@
       function updateCurrencyLabels(sym) {
         var s = sym || '₽';
         var labels = [
-          { id: 'lbl-blg-price', text: 'Цена за интеграцию (' + s + ') *' },
-          { id: 'lbl-ord-price', text: 'Бюджет (' + s + ') *' },
-          { id: 'lbl-ord-detail-price', text: 'Бюджет (' + s + ') *' },
+          { id: 'lbl-blg-price', key: 'price_label' },
+          { id: 'lbl-ord-price', key: 'budget_label' },
+          { id: 'lbl-ord-detail-price', key: 'budget_label' },
         ];
         labels.forEach(function(l) {
           var el = document.getElementById(l.id);
-          if (el) el.textContent = l.text;
+          if (el) el.textContent = tx(l.key).replace('{s}', s);
         });
         window._currencySymbol = s;
       }
@@ -1257,12 +1462,16 @@
           showScreen('screen-role-choice');
           return;
         }
+        applyLocale();
+        fillBirthDateSelects();
         updateCurrencyLabels(me.currency_symbol);
         if (!me.country) {
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {
               loadMe().then(function(me2) {
+                applyLocale();
+                fillBirthDateSelects();
                 updateCurrencyLabels(me2.currency_symbol);
                 showRoleOrDashboard(me2);
               });

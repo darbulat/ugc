@@ -825,8 +825,9 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_cancelled": "Отменено.",
         "msg_invalid_uuid": "Неверный идентификатор пользователя.",
         "msg_user_not_telegram": "Пользователь не в Telegram.",
-        # Language selection
+        # Language/country selection
         "language_prompt": "Выберите язык / Choose language:",
+        "country_prompt": "Выберите вашу страну:",
         "btn_change_language": "🌐 Изменить язык",
         "language_changed": "Язык изменён.",
         # Offer texts
@@ -1257,7 +1258,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "prompt_edit_audience_gender": "Who mainly watches your content?",
         "prompt_edit_audience_age": "Main age of your audience?",
         "prompt_edit_audience_geo": "Up to 3 cities, comma-separated:",
-        "prompt_edit_price": "Price for 1 UGC video (in your currency):",
+        "prompt_edit_price": "Price for 1 UGC video ({currency}):",
         "prompt_edit_barter": "Ready to work on barter?",
         "prompt_edit_work_format": "How do you work with brands?",
         "prompt_edit_name": "Enter name:",
@@ -1323,7 +1324,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "msg_step_ask_price": (
             "Brands filter by budget — your price speeds up deals. "
-            "Price for one UGC video? E.g. 500, 1000, 2000\n\nStep 10 of 12"
+            "Price for one UGC video ({currency})? E.g. 500, 1000, 2000\n\nStep 10 of 12"
         ),
         "msg_step_ask_barter": (
             "Many orders are barter — «Yes» increases offers. "
@@ -1434,7 +1435,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "What to shoot and in what format. Example: Unboxing video."
         ),
         "msg_order_budget": (
-            "Budget per 1 UGC video? Enter price (e.g. 500, 1000, 2000)"
+            "Budget per 1 UGC video? Enter price ({currency}): 500, 1000, 2000"
         ),
         "msg_order_barter_ask": (
             "What do you offer as barter?\n"
@@ -1589,8 +1590,9 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_cancelled": "Cancelled.",
         "msg_invalid_uuid": "Invalid user identifier.",
         "msg_user_not_telegram": "User not on Telegram.",
-        # Language selection
+        # Language/country selection
         "language_prompt": "Choose language:",
+        "country_prompt": "Select your country:",
         "btn_change_language": "🌐 Change language",
         "language_changed": "Language changed.",
         # Offer texts
