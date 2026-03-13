@@ -435,4 +435,5 @@ def build_bot_services(
             transaction_manager=transaction_manager,
         ),
         "country_repo": repos["country_repo"],
+        "language_repo": repos["language_repo"],
     }

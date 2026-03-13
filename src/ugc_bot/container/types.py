@@ -2,7 +2,7 @@
 
 from typing import Any, TypedDict
 
-from ugc_bot.application.ports import CountryRepository
+from ugc_bot.application.ports import CountryRepository, LanguageRepository
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -77,3 +77,4 @@ class BotServices(TypedDict):
     default_locale: str
     bot_texts_service: BotTextsService
     country_repo: CountryRepository
+    language_repo: LanguageRepository
