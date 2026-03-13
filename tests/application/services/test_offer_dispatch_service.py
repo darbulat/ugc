@@ -461,6 +461,46 @@ async def test_format_offer_currency_symbol_from_country() -> None:
 
 
 @pytest.mark.asyncio
+async def test_format_offer_accepts_locale_and_bot_texts_service() -> None:
+    """format_offer accepts locale and bot_texts_service parameters."""
+
+    class FakeBotTexts:
+        async def get_many(
+            self, keys: list[str], locale: str
+        ) -> dict[str, str]:
+            return {}  # Falls back to defaults — that's fine
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000620"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000621"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Task for locale test",
+        barter_description=None,
+        price=500.0,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    result = await service.format_offer(
+        order=order,
+        advertiser_status="ACTIVE",
+        locale="en",
+        bot_texts_service=FakeBotTexts(),
+    )
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+@pytest.mark.asyncio
 async def test_dispatch_skips_ineligible_bloggers() -> None:
     """Skip bloggers with missing user or invalid status."""
 

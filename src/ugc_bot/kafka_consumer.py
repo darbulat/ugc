@@ -114,6 +114,8 @@ async def _send_offer_to_blogger(
     retry_delay_seconds: float,
     dlq_producer: AIOKafkaProducer | None,
     dlq_topic: str,
+    locale: str = "ru",
+    bot_texts_service: object | None = None,
 ) -> None:
     """Send offer to one blogger with retries."""
     if blogger.user_id == order.advertiser_id:
@@ -132,20 +134,31 @@ async def _send_offer_to_blogger(
     for attempt in range(1, retries + 1):
         try:
             offer_text = await offer_dispatch_service.format_offer(
-                order, advertisers_status
+                order,
+                advertisers_status,
+                locale=locale,
+                bot_texts_service=bot_texts_service,
             )
+            btn_accept = "Готов снять UGC"
+            btn_skip = "Пропустить"
+            if bot_texts_service is not None:
+                txts = await bot_texts_service.get_many(  # type: ignore[attr-defined]
+                    ["btn_offer_accept", "btn_offer_skip"], locale
+                )
+                btn_accept = txts.get("btn_offer_accept") or btn_accept
+                btn_skip = txts.get("btn_offer_skip") or btn_skip
             reply_markup = Keyboard(
                 kind=KeyboardKind.INLINE,
                 rows=[
                     [
                         Button(
-                            text="Готов снять UGC",
+                            text=btn_accept,
                             callback_data=f"offer:{order.order_id}",
                         )
                     ],
                     [
                         Button(
-                            text="Пропустить",
+                            text=btn_skip,
                             callback_data=f"offer_skip:{order.order_id}",
                         )
                     ],
@@ -220,6 +233,8 @@ async def _send_offers(
     dlq_topic: str,
     retries: int,
     retry_delay_seconds: float,
+    bot_texts_service: object | None = None,
+    default_locale: str = "ru",
 ) -> None:
     order, advertiser = await offer_dispatch_service.get_order_and_advertiser(
         order_id
@@ -252,6 +267,7 @@ async def _send_offers(
         return
 
     for blogger in bloggers:
+        locale = blogger.language if blogger.language else default_locale
         await _send_offer_to_blogger(
             blogger,
             order,
@@ -262,6 +278,8 @@ async def _send_offers(
             retry_delay_seconds,
             dlq_producer,
             dlq_topic,
+            locale=locale,
+            bot_texts_service=bot_texts_service,
         )
 
 
@@ -320,6 +338,8 @@ async def _consume_forever(
     messenger_client: MessengerClient,
     offer_dispatch_service: OfferDispatchService,
     config: AppConfig,
+    bot_texts_service: object | None = None,
+    default_locale: str = "ru",
 ) -> None:
     """Start Kafka clients and process activation events forever."""
     producer_started = False
@@ -363,6 +383,8 @@ async def _consume_forever(
                     config.kafka.kafka_dlq_topic,
                     config.kafka.kafka_send_retries,
                     config.kafka.kafka_send_retry_delay_seconds,
+                    bot_texts_service=bot_texts_service,
+                    default_locale=default_locale,
                 )
                 await _commit_message_offset(consumer, msg)
             except Exception:
@@ -407,6 +429,7 @@ async def run_consumer() -> None:
 
     container = Container(config)
     offer_dispatch_service = container.build_offer_dispatch_service()
+    bot_texts_service = container.build_bot_texts_service()
 
     dlq_producer, consumer = _create_kafka_clients(config)
     logger.info(
@@ -422,6 +445,8 @@ async def run_consumer() -> None:
         messenger_client=messenger_client,
         offer_dispatch_service=offer_dispatch_service,
         config=config,
+        bot_texts_service=bot_texts_service,
+        default_locale=config.market.default_locale,
     )
 
 

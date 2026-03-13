@@ -578,9 +578,11 @@ class OfferDispatchService:
         self,
         order: Order,
         advertiser_status: str,
+        locale: str = "ru",
+        bot_texts_service: object | None = None,
         session: object | None = None,
     ) -> str:
-        """Format offer text for a blogger (without product_link per TZ)."""
+        """Format offer text for a blogger using localized texts."""
         currency_symbol = self.currency_symbol
         if self.country_repo is not None:
             country = await self.country_repo.get_by_currency_code(
@@ -588,46 +590,103 @@ class OfferDispatchService:
             )
             if country is not None:
                 currency_symbol = country.currency_symbol
+
+        # Fetch localized texts
+        texts: dict[str, str] = {}
+        if bot_texts_service is not None:
+            keys = [
+                "offer_header",
+                "offer_details_header",
+                "offer_format",
+                "offer_task",
+                "offer_budget",
+                "offer_barter",
+                "offer_content_usage",
+                "offer_deadlines",
+                "offer_geography",
+                "offer_bloggers_needed",
+                "offer_warning",
+                "offer_how_it_works",
+                "offer_format_label_ugc_placement",
+                "offer_format_label_ugc_only",
+            ]
+            texts = await bot_texts_service.get_many(keys, locale)  # type: ignore[attr-defined]
+
+        def t(key: str, default: str) -> str:
+            return texts.get(key) or default
+
         format_label = (
-            "UGC + размещение"
+            t("offer_format_label_ugc_placement", "UGC + размещение")
             if order.order_type.value == "ugc_plus_placement"
-            else "UGC-видео для бренда"
+            else t("offer_format_label_ugc_only", "UGC-видео для бренда")
         )
+
         parts = [
-            "Новый заказ",
+            t("offer_header", "Новый заказ"),
             "",
-            "📋 Детали заказа:",
-            f"🎥 Формат: {format_label}",
-            f"📝 Задача: {order.offer_text}",
+            t("offer_details_header", "📋 Детали заказа:"),
+            t("offer_format", "🎥 Формат: {format_label}").format(
+                format_label=format_label
+            ),
+            t("offer_task", "📝 Задача: {task}").format(task=order.offer_text),
         ]
         if order.price > 0:
             parts.append(
-                f"💰 Бюджет: {order.price} {currency_symbol} за 1 UGC-видео"
+                t(
+                    "offer_budget",
+                    "💰 Бюджет: {price} {currency} за 1 UGC-видео",
+                ).format(price=order.price, currency=currency_symbol)
             )
         if order.barter_description:
-            parts.append(f"🎁 Бартер: {order.barter_description}")
+            parts.append(
+                t("offer_barter", "🎁 Бартер: {description}").format(
+                    description=order.barter_description
+                )
+            )
         if order.content_usage:
-            parts.append(f"📢 Использование: {order.content_usage}")
+            parts.append(
+                t("offer_content_usage", "📢 Использование: {usage}").format(
+                    usage=order.content_usage
+                )
+            )
         if order.deadlines:
-            parts.append(f"⏱ Сроки: {order.deadlines}")
+            parts.append(
+                t("offer_deadlines", "⏱ Сроки: {deadlines}").format(
+                    deadlines=order.deadlines
+                )
+            )
         if order.geography:
-            parts.append(f"📍 География: {order.geography}")
-        parts.append(f"👥 Нужно креаторов: {order.bloggers_needed}")
-        parts.append("")
+            parts.append(
+                t("offer_geography", "📍 География: {geography}").format(
+                    geography=order.geography
+                )
+            )
         parts.append(
-            "⚠️ Важно\n"
-            "🧷 Откликайтесь только если готовы работать "
-            "на указанных условиях\n"
-            "❗ Отказ после отклика без изменения условий "
-            "со стороны заказчика"
-            "   может привести к жалобе и ограничению аккаунта"
+            t("offer_bloggers_needed", "👥 Нужно креаторов: {count}").format(
+                count=order.bloggers_needed
+            )
         )
         parts.append("")
         parts.append(
-            "⏳ Как это работает\n"
-            "● Вы откликаетесь на оффер\n"
-            "● Получаете ссылку на продукт\n"
-            "● Заказчик получает ваш профиль и пишет вам первым\n"
-            "● Платформа не участвует в переговорах и оплате"
+            t(
+                "offer_warning",
+                "⚠️ Важно\n"
+                "🧷 Откликайтесь только если готовы работать "
+                "на указанных условиях\n"
+                "❗ Отказ после отклика без изменения условий "
+                "со стороны заказчика"
+                "   может привести к жалобе и ограничению аккаунта",
+            )
+        )
+        parts.append("")
+        parts.append(
+            t(
+                "offer_how_it_works",
+                "⏳ Как это работает\n"
+                "● Вы откликаетесь на оффер\n"
+                "● Получаете ссылку на продукт\n"
+                "● Заказчик получает ваш профиль и пишет вам первым\n"
+                "● Платформа не участвует в переговорах и оплате",
+            )
         )
         return "\n".join(parts)

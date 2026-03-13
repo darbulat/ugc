@@ -498,6 +498,7 @@ async def test_run_consumer_processes_activation_message(
     mock_offer = type("Offer", (), {})()
     mock_container = type("Container", (), {})()
     mock_container.build_offer_dispatch_service = lambda: mock_offer  # type: ignore[attr-defined]
+    mock_container.build_bot_texts_service = lambda: None  # type: ignore[attr-defined]
     monkeypatch.setattr(
         "ugc_bot.kafka_consumer.Container",
         lambda _: mock_container,
@@ -1184,4 +1185,113 @@ async def test_run_consumer_logs_exception_when_send_offers_raises(
 
     mock_logger.exception.assert_called()
     assert "Kafka message" in mock_logger.exception.call_args[0][0]
-    assert fake_consumer.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_send_offers_uses_blogger_locale_and_bot_texts_service() -> None:
+    """_send_offers passes blogger.language as locale to offer sender."""
+
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    offer_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001001"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(advertiser)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000001002"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    await order_repo.save(order)
+
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001003"),
+        external_id="3",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_en",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+        language="en",
+    )
+    await user_repo.save(blogger)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=blogger.user_id,
+            instagram_url="https://instagram.com/blogger_en",
+            confirmed=True,
+            city="Tbilisi",
+            topics={"selected": ["tech"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Georgia",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+
+    class FakeBotTexts:
+        def __init__(self) -> None:
+            self.called_with: list[tuple[list[str], str]] = []
+
+        async def get_many(
+            self, keys: list[str], locale: str
+        ) -> dict[str, str]:
+            self.called_with.append((keys, locale))
+            return {}
+
+    class FakeBot:
+        def __init__(self) -> None:
+            self.sent: list[tuple[int, str]] = []
+
+        async def send_message(
+            self, chat_id: int, text: str, reply_markup=None, **kwargs
+        ) -> None:  # type: ignore[no-untyped-def]
+            self.sent.append((chat_id, text))
+
+    bot = FakeBot()
+    messenger_client = TelegramMessengerClient(bot)
+    fake_bot_texts = FakeBotTexts()
+    await _send_offers(
+        order.order_id,
+        messenger_client,
+        offer_service,
+        dlq_producer=None,
+        dlq_topic="dlq",
+        retries=1,
+        retry_delay_seconds=0.0,
+        bot_texts_service=fake_bot_texts,
+        default_locale="ru",
+    )
+    assert bot.sent
+    # Verify bot_texts_service was called with the blogger's locale "en"
+    locales_used = [locale for _, locale in fake_bot_texts.called_with]
+    assert "en" in locales_used

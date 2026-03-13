@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from ugc_bot.container.types import BotServices
 
 from ugc_bot.application.ports import GeocoderPort
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
@@ -79,6 +80,15 @@ class Container:
         repos = self.build_repos()
         return service_factory.build_offer_dispatch_service(
             repos, self._transaction_manager
+        )
+
+    def build_bot_texts_service(self) -> BotTextsService:
+        """BotTextsService for localized text lookup."""
+        repos = self.build_repos()
+        return BotTextsService(
+            bot_texts_repo=repos["bot_texts_repo"],
+            default_locale=self._config.market.default_locale,
+            transaction_manager=self._transaction_manager,
         )
 
     def build_admin_services(
