@@ -225,15 +225,17 @@ Since no language is set yet, the prompt is shown in the language matched from `
 
 ## Service-Level Localization
 
-Some application services build messages sent directly to users (not through bot handlers). These must also be localized.
+Several places across the codebase send messages to users with hardcoded Russian strings, bypassing `bot_texts_service`. All user-facing hardcoded strings must become bot_text keys fetched via `bot_texts_service.get_many(keys, locale)` using the blogger's/user's `user.language`.
 
-### `OfferDispatchService.format_offer()`
+Admin-only messages ("Открыть в админке", "Активировать", complaint/moderation notifications) are excluded — admins always use Russian.
 
-Currently builds a Russian-only offer message. Must accept `locale: str` and `bot_texts_service: BotTextsService`, then fetch all string labels via `bot_texts_service.get_many(keys, locale)`.
+### `OfferDispatchService.format_offer()` + `kafka_consumer.py`
 
-The caller (offer scheduler / handler) already knows the blogger's `user.language` and passes it in. `{currency}` in the offer price line is substituted as usual from `country.currency_symbol`.
+`format_offer()` builds a Russian-only offer message. Must accept `locale: str` and `bot_texts_service: BotTextsService`.
 
-New bot_text keys needed (for all supported locales):
+`kafka_consumer.py::_send_offer_to_blogger()` has hardcoded button texts and must also pass `blogger.language` and `bot_texts_service` to `format_offer()` and the button builder.
+
+New bot_text keys:
 - `offer_header` — "Новый заказ"
 - `offer_details_header` — "📋 Детали заказа:"
 - `offer_format` — "🎥 Формат: {format_label}"
@@ -248,12 +250,37 @@ New bot_text keys needed (for all supported locales):
 - `offer_how_it_works` — how-it-works block text
 - `offer_format_label_ugc_placement` — "UGC + размещение"
 - `offer_format_label_ugc_only` — "UGC-видео для бренда"
+- `btn_offer_accept` — "Готов снять UGC" (button in `kafka_consumer.py`)
+- `btn_offer_skip` — "Пропустить" (button in `kafka_consumer.py`)
 
-**Files:** `application/services/offer_dispatch_service.py`, `bot/texts/defaults.py`
+**Files:** `application/services/offer_dispatch_service.py`, `kafka_consumer.py`, `bot/texts/defaults.py`
 
-### Other services
+### `feedback_scheduler.py`
 
-`admin_notification_service.py` messages ("Открыть в админке", "Активировать") are admin-facing only — no localization needed.
+Sends feedback request messages to users with hardcoded Russian strings. Must load `user.language` per user and fetch texts via `bot_texts_service`.
+
+Affected keys (already exist in `DEFAULT_TEXTS` but not fetched from service):
+- Feedback button texts (`btn_feedback_ok`, `btn_feedback_no_deal`, etc.) — already in `DEFAULT_TEXTS`, need to use user locale
+- Feedback request message templates (`msg_feedback_request`, etc.) — need locale-aware fetch
+
+**File:** `feedback_scheduler.py`
+
+### `complaints.py`
+
+Button "Пожаловаться на {blogger_name}" is hardcoded. Needs bot_text key:
+- `btn_complaint` — "Пожаловаться на {name}"
+
+**File:** `bot/handlers/complaints.py`
+
+### `offer_responses.py`
+
+Hardcoded order type labels ("UGC + размещение", "UGC-видео для бренда") and button fallbacks. These keys already exist in `DEFAULT_TEXTS` — handlers must use `user_locale` when building these strings instead of hardcoding.
+
+**File:** `bot/handlers/offer_responses.py`
+
+### `start.py`, `feedback.py`, `advertiser_registration.py`, `referral.py`
+
+These files have hardcoded Russian fallbacks for cases when `bot_texts_service` returns empty. The strings already exist in `DEFAULT_TEXTS` — the fix is to always call `bot_texts_service.get(key, locale)` and rely on `DEFAULT_TEXTS` as the ultimate fallback (which `BotTextsService` already handles). No new bot_text keys needed for these.
 
 ---
 
@@ -299,6 +326,10 @@ Register `LanguageModel` in SQLAdmin — allows adding/editing/enabling language
 | `bot/handlers/profile.py` | Add language change button + handler |
 | `bot/texts/defaults.py` | Replace hardcoded currency names with `{currency}`; add offer text keys |
 | `application/services/offer_dispatch_service.py` | Accept `locale` + `bot_texts_service`; localize `format_offer()` |
+| `kafka_consumer.py` | Pass blogger `user.language` + `bot_texts_service`; localize offer buttons |
+| `feedback_scheduler.py` | Load `user.language` per user; fetch feedback texts via `bot_texts_service` |
+| `bot/handlers/complaints.py` | Replace hardcoded "Пожаловаться на {name}" with bot_text key |
+| `bot/handlers/offer_responses.py` | Replace hardcoded order type labels with bot_text keys |
 | `container/service_factory.py` | Wire `LanguageRepository`; add `language_repo` to `build_dispatcher_data()` |
 | `miniapp/api.py` | Update `_get_user_locale()` to use `user.language` instead of `country.locale` |
 | `tests/helpers/fakes.py` | Add fake `LanguageRepository` |
