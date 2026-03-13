@@ -59,6 +59,7 @@ from ugc_bot.infrastructure.db.models import (
     ContactPricingModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    LanguageModel,
     NpsResponseModel,
     OfferDispatchModel,
     OrderModel,
@@ -1875,6 +1876,24 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     ]
 
 
+class LanguageAdmin(ModelView, model=LanguageModel):
+    """Admin view for languages."""
+
+    name = "Язык"
+    name_plural = "Языки"
+    icon = "fa-solid fa-language"
+    column_list = [
+        LanguageModel.code,
+        LanguageModel.name_native,
+        LanguageModel.enabled,
+    ]
+    column_labels = {
+        LanguageModel.code: "Код",
+        LanguageModel.name_native: "Название",
+        LanguageModel.enabled: "Активен",
+    }
+
+
 class BotTextAdmin(ModelView, model=BotTextModel):
     """Admin view for localized bot texts (key, locale, value)."""
 
@@ -2134,6 +2153,7 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)
     admin.add_view(ContactPricingAdmin)
+    admin.add_view(LanguageAdmin)
     admin.add_view(BotTextAdmin)
     admin.add_view(NpsResponseAdmin)
     admin.add_view(PayoutRequestAdmin)
