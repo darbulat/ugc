@@ -935,30 +935,43 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
     except OrderCreationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    messenger_client = dispatcher["messenger_client"]
-    user_role_service = dispatcher["user_role_service"]
-    content_moderation_service = dispatcher["content_moderation_service"]
-    await notify_admins_about_order_created(
-        order=order,
-        messenger_client=messenger_client,
-        user_role_service=user_role_service,
-        content_moderation=content_moderation_service,
-        admin_base_url=config.admin.admin_base_url,
-        currency_symbol=config.market.currency_symbol,
-    )
-    support_chat_id = config.referral.referral_support_chat_id
-    if support_chat_id.strip():
-        advertiser_user = await user_role_service.get_user_by_id(user_id)
-        if advertiser_user:
-            await notify_support_chat_about_new_order(
-                order=order,
-                advertiser_user=advertiser_user,
-                advertiser_profile=advertiser,
-                messenger_client=messenger_client,
-                support_chat_id=support_chat_id,
-                admin_base_url=config.admin.admin_base_url,
-                currency_symbol=config.market.currency_symbol,
-            )
+    try:
+        messenger_client = dispatcher["messenger_client"]
+        user_role_service = dispatcher["user_role_service"]
+        content_moderation_service = dispatcher["content_moderation_service"]
+        logger.info(
+            "Sending admin notification for miniapp order",
+            extra={"order_id": str(order.order_id)},
+        )
+        await notify_admins_about_order_created(
+            order=order,
+            messenger_client=messenger_client,
+            user_role_service=user_role_service,
+            content_moderation=content_moderation_service,
+            admin_base_url=config.admin.admin_base_url,
+            currency_symbol=config.market.currency_symbol,
+        )
+        support_chat_id = config.referral.referral_support_chat_id
+        if support_chat_id.strip():
+            advertiser_user = await user_role_service.get_user_by_id(user_id)
+            if advertiser_user:
+                await notify_support_chat_about_new_order(
+                    order=order,
+                    advertiser_user=advertiser_user,
+                    advertiser_profile=advertiser,
+                    messenger_client=messenger_client,
+                    support_chat_id=support_chat_id,
+                    admin_base_url=config.admin.admin_base_url,
+                    currency_symbol=config.market.currency_symbol,
+                )
+    except Exception as exc:
+        logger.error(
+            "Failed to send notifications for miniapp order",
+            extra={
+                "order_id": str(order.order_id),
+                "error": str(exc),
+            },
+        )
 
     payment_link = _payment_link_for_order(
         str(order.order_id), config.bot.bot_username

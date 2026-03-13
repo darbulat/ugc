@@ -855,6 +855,154 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     assert "payment_link" in data
 
 
+def test_miniapp_api_create_order_support_chat_notified(
+    client: TestClient,
+) -> None:
+    """Support chat notification is sent when referral_support_chat_id set."""
+    init_data = _make_valid_init_data("test_token", 88889)
+    user_id = uuid4()
+    order_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="88889",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="Brand",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/p",
+        offer_text="Valid offer text with at least twenty chars.",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_urs.get_user_by_id = AsyncMock(return_value=user)
+    mock_urs.list_admins = AsyncMock(return_value=[])
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    mock_order_svc = MagicMock()
+    mock_order_svc.create_order = AsyncMock(return_value=order)
+    mock_messenger = MagicMock()
+    mock_messenger.send_text = AsyncMock(return_value=None)
+    mock_content_mod = MagicMock()
+    mock_content_mod.order_contains_banned_content = MagicMock(
+        return_value=False
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    dispatcher["order_service"] = mock_order_svc
+    dispatcher["messenger_client"] = mock_messenger
+    dispatcher["content_moderation_service"] = mock_content_mod
+    old_chat_id = app.state.config.referral.referral_support_chat_id
+    app.state.config.referral.referral_support_chat_id = "-100123456789"
+    try:
+        response = client.post(
+            "/miniapp/api/orders",
+            json={
+                "init_data": init_data,
+                "product_link": "https://example.com/p",
+                "offer_text": "Valid offer text with at least twenty chars.",
+                "price": 1000,
+                "bloggers_needed": 1,
+                "order_type": "ugc_only",
+            },
+        )
+    finally:
+        app.state.config.referral.referral_support_chat_id = old_chat_id
+    assert response.status_code == 200
+    assert response.json().get("ok") is True
+
+
+def test_miniapp_api_create_order_notification_error_logged(
+    client: TestClient,
+) -> None:
+    """Notification exception is caught and logged; order still returns 200."""
+    init_data = _make_valid_init_data("test_token", 88890)
+    user_id = uuid4()
+    order_id = uuid4()
+    user = User(
+        user_id=user_id,
+        external_id="88890",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    advertiser = AdvertiserProfile(
+        user_id=user_id,
+        phone="+79001111111",
+        brand="Brand",
+        site_link=None,
+        city=None,
+        company_activity=None,
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/p",
+        offer_text="Valid offer text with at least twenty chars.",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_ps = MagicMock()
+    mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
+    mock_order_svc = MagicMock()
+    mock_order_svc.create_order = AsyncMock(return_value=order)
+    mock_messenger = MagicMock()
+    mock_messenger.send_text = AsyncMock(
+        side_effect=RuntimeError("network error")
+    )
+    mock_content_mod = MagicMock()
+    mock_content_mod.order_contains_banned_content = MagicMock(
+        return_value=False
+    )
+    mock_urs.list_admins = AsyncMock(side_effect=RuntimeError("db error"))
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["profile_service"] = mock_ps
+    dispatcher["order_service"] = mock_order_svc
+    dispatcher["messenger_client"] = mock_messenger
+    dispatcher["content_moderation_service"] = mock_content_mod
+    response = client.post(
+        "/miniapp/api/orders",
+        json={
+            "init_data": init_data,
+            "product_link": "https://example.com/p",
+            "offer_text": "Valid offer text with at least twenty chars.",
+            "price": 1000,
+            "bloggers_needed": 1,
+            "order_type": "ugc_only",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json().get("ok") is True
+
+
 def test_miniapp_api_cities_returns_list(client: TestClient) -> None:
     """GET /miniapp/api/cities returns list of cities with id and label."""
     response = client.get("/miniapp/api/cities")
