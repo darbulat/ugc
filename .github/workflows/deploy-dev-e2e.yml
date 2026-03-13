@@ -103,7 +103,6 @@ jobs:
             --tb=short
 
       - name: Run Telegram E2E tests (optional)
-        if: ${{ secrets.TELEGRAM_E2E_BOT_TOKEN != '' }}
         env:
           TELEGRAM_E2E_BOT_TOKEN: ${{ secrets.TELEGRAM_E2E_BOT_TOKEN }}
           TELEGRAM_E2E_BOT_USERNAME: ${{ secrets.TELEGRAM_E2E_BOT_USERNAME }}
@@ -112,10 +111,15 @@ jobs:
           TELEGRAM_E2E_PHONE: ${{ secrets.TELEGRAM_E2E_PHONE }}
           E2E_DATABASE_URL: ${{ secrets.DEV_E2E_DATABASE_URL }}
           E2E_CLEAN_TELEGRAM: ${{ secrets.E2E_CLEAN_TELEGRAM }}
+          E2E_TIMEOUT: ${{ inputs.e2e_timeout || 90 }}
         run: |
+          if [ -z "$TELEGRAM_E2E_BOT_TOKEN" ]; then
+            echo "Skipping Telegram E2E tests: TELEGRAM_E2E_BOT_TOKEN not set"
+            exit 0
+          fi
           uv sync --extra dev --extra telegram-e2e
           uv run pytest tests/e2e -v -m e2e_telegram \
-            --timeout=${{ inputs.e2e_timeout || 90 }} \
+            --timeout="$E2E_TIMEOUT" \
             --tb=short
 
   report:
