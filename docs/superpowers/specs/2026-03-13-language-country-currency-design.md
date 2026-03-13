@@ -51,11 +51,11 @@ Remove field `locale: str` — country no longer determines UI language.
 
 ### New table: `languages`
 
-| Column        | Type         | Notes        |
-|---------------|--------------|--------------|
-| `code`        | VARCHAR (PK) | e.g. `"ru"`  |
-| `name_native` | VARCHAR      | e.g. `"Русский"` |
-| `enabled`     | BOOLEAN      | default TRUE |
+| Column        | Type             | Notes        |
+|---------------|------------------|--------------|
+| `code`        | VARCHAR(10) (PK) | e.g. `"ru"`  |
+| `name_native` | VARCHAR          | e.g. `"Русский"` |
+| `enabled`     | BOOLEAN          | default TRUE |
 
 ### Modified table: `users`
 
@@ -91,6 +91,9 @@ Steps in a single Alembic revision:
    DELETE FROM bot_texts
    WHERE locale IN ('by', 'kz', 'kg', 'am', 'uz', 'ge')
    ```
+   **Safety:** These rows are safe to delete because all affected keys (`prompt_edit_price`, `msg_step_ask_price`, `msg_order_budget`) have canonical `ru`/`en` rows in `DEFAULT_TEXTS` used as fallback. Verify in migration that `ru` rows exist for all three keys before deleting.
+
+**Note on users with `country = NULL` at migration time:** Step 4 only populates `users.language` for users who already have a country. Users with `country = NULL` will retain `language = NULL`. This is intentional — `LocaleMiddleware` falls back to `default_locale` for them, and the `/start` flow will prompt them to choose a language on next interaction.
 
 ---
 
@@ -128,18 +131,24 @@ New resolution order in `_resolve()`:
 
 ### `/start` — First-time user (three steps)
 
+No FSM state is used. Each step is re-evaluated on each callback by checking `user.language` and `user.country` from the DB. This is the same pattern as the existing `country_selected` handler.
+
 ```
 /start received
   │
   ├─ user.language is None?
   │    ├─ from_user.language_code matches an enabled language?
-  │    │    └─ yes → set_language(code), continue
-  │    └─ no match → show language keyboard → wait for callback
-  │         └─ lang:<code> callback → set_language(code), continue
+  │    │    └─ yes → set_language(code), re-check country below
+  │    └─ no match → show language keyboard → return
+  │         └─ lang:<code> callback:
+  │              set_language(code)
+  │              if user.country is None → show country keyboard → return
+  │              else → show role keyboard → return
   │
   ├─ user.country is None?
-  │    └─ show country keyboard → wait for callback
-  │         └─ country:<code> callback → set_country(code), continue
+  │    └─ show country keyboard → return
+  │         └─ country:<code> callback (existing handler, unchanged):
+  │              set_country(code) → show role keyboard
   │
   └─ show role keyboard
 ```
@@ -150,11 +159,11 @@ Existing users with `language` already set skip step 1. Existing users with `cou
 
 - Callback prefix: `"lang:"`  (e.g. `"lang:ru"`, `"lang:en"`)
 - Button labels: `language.name_native`
-- New handler: `@router.callback_query(lambda c: c.data.startswith("lang:"))`
+- Handler in `bot/handlers/start.py`: `@router.callback_query(lambda c: c.data.startswith(CALLBACK_LANG_PREFIX))`
 
 ### Changing language later
 
-- Command `/language` → shows language keyboard (always, even if language already set)
+- Command `/language` (registered in `bot/handlers/start.py` router) → shows language keyboard (always, even if language already set)
 - Profile screen → button `btn_change_language` → same keyboard
 - Handler saves new language and responds with confirmation in the new language
 
@@ -183,7 +192,9 @@ async def set_language(
 
 ### `{currency}` placeholder
 
-Texts that mention prices use `{currency}` as a placeholder. At render time, handlers substitute it with `country.currency_symbol` via `resolve_currency_symbol()`.
+Texts that mention prices use `{currency}` as a placeholder. At render time, handlers substitute it with `country.currency_symbol` via the existing `resolve_currency_symbol(user, country_repo, default)` helper in `bot/handlers/utils.py` (no changes needed to this function).
+
+**Fallback when user has no country:** `resolve_currency_symbol()` already accepts a `default` argument (currently `"₽"`). The dispatcher also injects `currency_symbol` from `config.market.currency_symbol`. When a user has no country set (mid-onboarding), handlers use the config-provided default symbol. The `{currency}` placeholder will never appear literally — callers must always provide a fallback.
 
 Before:
 ```
@@ -209,6 +220,40 @@ Add to all supported locales:
 ### Language prompt (before language is known)
 
 Since no language is set yet, the prompt is shown in the language matched from `from_user.language_code`. If no match, fall back to default locale.
+
+---
+
+## Service-Level Localization
+
+Some application services build messages sent directly to users (not through bot handlers). These must also be localized.
+
+### `OfferDispatchService.format_offer()`
+
+Currently builds a Russian-only offer message. Must accept `locale: str` and `bot_texts_service: BotTextsService`, then fetch all string labels via `bot_texts_service.get_many(keys, locale)`.
+
+The caller (offer scheduler / handler) already knows the blogger's `user.language` and passes it in. `{currency}` in the offer price line is substituted as usual from `country.currency_symbol`.
+
+New bot_text keys needed (for all supported locales):
+- `offer_header` — "Новый заказ"
+- `offer_details_header` — "📋 Детали заказа:"
+- `offer_format` — "🎥 Формат: {format_label}"
+- `offer_task` — "📝 Задача: {task}"
+- `offer_budget` — "💰 Бюджет: {price} {currency} за 1 UGC-видео"
+- `offer_barter` — "🎁 Бартер: {description}"
+- `offer_content_usage` — "📢 Использование: {usage}"
+- `offer_deadlines` — "⏱ Сроки: {deadlines}"
+- `offer_geography` — "📍 География: {geography}"
+- `offer_bloggers_needed` — "👥 Нужно креаторов: {count}"
+- `offer_warning` — warning block text
+- `offer_how_it_works` — how-it-works block text
+- `offer_format_label_ugc_placement` — "UGC + размещение"
+- `offer_format_label_ugc_only` — "UGC-видео для бренда"
+
+**Files:** `application/services/offer_dispatch_service.py`, `bot/texts/defaults.py`
+
+### Other services
+
+`admin_notification_service.py` messages ("Открыть в админке", "Активировать") are admin-facing only — no localization needed.
 
 ---
 
@@ -252,7 +297,8 @@ Register `LanguageModel` in SQLAdmin — allows adding/editing/enabling language
 | `bot/handlers/start.py` | Add language step, language callback handler |
 | `bot/handlers/keyboards.py` | Add `language_inline_keyboard()`, `CALLBACK_LANG_PREFIX` |
 | `bot/handlers/profile.py` | Add language change button + handler |
-| `bot/texts/defaults.py` | Replace hardcoded currency names with `{currency}` |
-| `container/service_factory.py` | Wire `LanguageRepository` |
-| `telegram_webhook_app.py` | Inject `language_repo` into dispatcher data |
+| `bot/texts/defaults.py` | Replace hardcoded currency names with `{currency}`; add offer text keys |
+| `application/services/offer_dispatch_service.py` | Accept `locale` + `bot_texts_service`; localize `format_offer()` |
+| `container/service_factory.py` | Wire `LanguageRepository`; add `language_repo` to `build_dispatcher_data()` |
+| `miniapp/api.py` | Update `_get_user_locale()` to use `user.language` instead of `country.locale` |
 | `tests/helpers/fakes.py` | Add fake `LanguageRepository` |
