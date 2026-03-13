@@ -195,17 +195,11 @@ list-base-backups-s3:
 upload-wal:
 	docker compose run --rm db_backup python scripts/wal_uploader.py
 
-# PITR: restore from base backup + WAL to a target time.
-# Usage: make pitr-restore TARGET_TIME="2025-06-01 12:00:00"
-# NOTE: PostgreSQL must be stopped before running this.
+# PITR: full restore — stops all services, restores from S3, restarts everything.
+# Usage: make pitr-restore                                  (restore to latest)
+#        make pitr-restore TARGET_TIME="2026-03-13 10:00:00"
 pitr-restore:
-	@if [ -z "$(TARGET_TIME)" ]; then \
-		echo "Error: TARGET_TIME is required. Usage: make pitr-restore TARGET_TIME=\"2025-06-01 12:00:00\""; \
-		exit 1; \
-	fi
-	docker compose run --rm db_backup python scripts/pitr_restore.py \
-		--target-time "$(TARGET_TIME)" \
-		--confirm
+	@bash scripts/pitr_restore_docker.sh $(if $(TARGET_TIME),--target-time "$(TARGET_TIME)")
 
 # Deploy branch to dev and run E2E via GitHub Actions workflow.
 # Usage: make deploy-dev-e2e BRANCH=my-feature  (or omit BRANCH to use current branch)

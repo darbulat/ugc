@@ -228,35 +228,27 @@ make list-base-backups-s3
 
 ### Восстановление на момент времени
 
-**ВАЖНО:** PostgreSQL должен быть остановлен перед восстановлением!
+Скрипт останавливает все сервисы, восстанавливает БД из S3 и перезапускает стек. Root-доступ к хосту не нужен — всё работает через Docker.
 
 ```bash
-# 1. Остановить PostgreSQL
-docker compose stop db
+# Посмотреть доступные base backup'ы в S3
+make list-base-backups-s3
 
-# 2. Запустить PITR-восстановление
-make pitr-restore TARGET_TIME="2025-06-01 12:00:00"
+# Восстановить на текущий момент (последний доступный)
+make pitr-restore
 
-# 3. Запустить PostgreSQL — он войдёт в режим recovery
-docker compose start db
-
-# 4. Проверить статус (должен вернуть false после завершения recovery)
-docker compose exec db psql -U ugc -c "SELECT pg_is_in_recovery();"
+# Восстановить на конкретный момент времени
+make pitr-restore TARGET_TIME="2026-03-13 10:00:00"
 ```
 
-Или напрямую:
-
-```bash
-docker compose run --rm db_backup python scripts/pitr_restore.py \
-    --target-time "2025-06-01 12:00:00" \
-    --confirm
-```
-
-Для восстановления на последний доступный момент (без `--target-time`):
-
-```bash
-docker compose run --rm db_backup python scripts/pitr_restore.py --confirm
-```
+Скрипт автоматически:
+1. Останавливает все сервисы (app, admin, pgbouncer, schedulers, kafka и т.д.)
+2. Очищает PGDATA
+3. Скачивает base backup + WAL из S3
+4. Настраивает recovery (без лишних шагов вручную)
+5. Запускает PostgreSQL в режиме recovery
+6. Дожидается готовности и перезапускает все сервисы
+7. Печатает `pg_is_in_recovery()` для подтверждения
 
 ### Структура S3
 
