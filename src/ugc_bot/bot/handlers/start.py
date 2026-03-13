@@ -115,7 +115,6 @@ async def start_command(
     language_prompt = (
         await bot_texts_service.get("language_prompt", locale)
     ).strip() or "Выберите язык / Choose language:"
-    available_language_codes = {lang.code for lang in languages}
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
@@ -128,7 +127,6 @@ async def start_command(
         country_kb=country_inline_keyboard(countries),
         language_prompt=language_prompt,
         language_kb=language_inline_keyboard(languages),
-        available_language_codes=available_language_codes,
     )
 
 
@@ -495,7 +493,6 @@ async def _start_command(
     country_kb: Keyboard | None = None,
     language_prompt: str = "Выберите язык / Choose language:",
     language_kb: Keyboard | None = None,
-    available_language_codes: set[str] | None = None,
 ) -> None:
     """Handle the /start command. Clears FSM so /start always shows role."""
     if not incoming.user.external_id:
@@ -521,23 +518,7 @@ async def _start_command(
         )
     # Step 1: Language
     if user.language is None:
-        tg_lang = getattr(incoming, "language_code", None) or ""
-        if (
-            tg_lang
-            and available_language_codes
-            and tg_lang in available_language_codes
-        ):
-            await user_role_service.set_language(
-                external_id=incoming.user.external_id,
-                messenger_type=incoming.user.messenger_type,
-                language_code=tg_lang,
-            )
-            refreshed = await user_role_service.get_user(
-                incoming.user.external_id, incoming.user.messenger_type
-            )
-            if refreshed is not None:
-                user = refreshed
-        elif language_kb is not None and language_kb.rows:
+        if language_kb is not None and language_kb.rows:
             await messenger_client.send_text(
                 chat_id=incoming.chat_id,
                 text=language_prompt,
