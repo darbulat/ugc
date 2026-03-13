@@ -818,14 +818,24 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     )
     mock_urs = MagicMock()
     mock_urs.get_user = AsyncMock(return_value=user)
+    mock_urs.get_user_by_id = AsyncMock(return_value=user)
+    mock_urs.list_admins = AsyncMock(return_value=[])
     mock_ps = MagicMock()
     mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
     mock_order_svc = MagicMock()
     mock_order_svc.create_order = AsyncMock(return_value=order)
+    mock_messenger = MagicMock()
+    mock_messenger.send_text = AsyncMock(return_value=None)
+    mock_content_mod = MagicMock()
+    mock_content_mod.order_contains_banned_content = MagicMock(
+        return_value=False
+    )
     dispatcher = app.state.dispatcher
     dispatcher["user_role_service"] = mock_urs
     dispatcher["profile_service"] = mock_ps
     dispatcher["order_service"] = mock_order_svc
+    dispatcher["messenger_client"] = mock_messenger
+    dispatcher["content_moderation_service"] = mock_content_mod
     response = client.post(
         "/miniapp/api/orders",
         json={
