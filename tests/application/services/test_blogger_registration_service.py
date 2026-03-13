@@ -1003,9 +1003,9 @@ async def test_update_blogger_profile_preserves_all_optional_fields() -> None:
     assert saved is not None
     assert saved.city == "Kazan"
     for field in _BLOGGER_PROFILE_OPTIONAL_FIELDS:
-        assert getattr(saved, field) == getattr(
-            profile, field
-        ), f"update_blogger_profile must preserve {field}"
+        assert getattr(saved, field) == getattr(profile, field), (
+            f"update_blogger_profile must preserve {field}"
+        )
 
 
 @pytest.mark.asyncio
@@ -1028,9 +1028,9 @@ async def test_increment_preserves_all_optional_fields() -> None:
     for field in _BLOGGER_PROFILE_OPTIONAL_FIELDS:
         if field == "wanted_to_change_terms_count":
             continue
-        assert getattr(saved, field) == getattr(
-            profile, field
-        ), f"increment_wanted_to_change_terms_count must preserve {field}"
+        assert getattr(saved, field) == getattr(profile, field), (
+            f"increment_wanted_to_change_terms_count must preserve {field}"
+        )
 
 
 @pytest.mark.asyncio
@@ -1796,9 +1796,9 @@ async def test_confirm_blogger_agreement_preserves_user_country() -> None:
 
     saved_user = await user_repo.get_by_id(user_id)
     assert saved_user is not None
-    assert (
-        saved_user.country == "kz"
-    ), "user.country must be preserved after confirm_blogger_agreement"
+    assert saved_user.country == "kz", (
+        "user.country must be preserved after confirm_blogger_agreement"
+    )
 
 
 @pytest.mark.asyncio
@@ -1841,9 +1841,9 @@ async def test_register_blogger_sets_currency_from_user_country() -> None:
         birth_date=date(1998, 3, 10),
     )
 
-    assert (
-        profile.currency == "KZT"
-    ), "blogger_profiles.currency must match the currency of user.country"
+    assert profile.currency == "KZT", (
+        "blogger_profiles.currency must match the currency of user.country"
+    )
 
 
 @pytest.mark.asyncio
@@ -1957,9 +1957,9 @@ async def test_register_blogger_preserves_user_country() -> None:
 
     saved_user = await user_repo.get_by_id(user_id)
     assert saved_user is not None
-    assert (
-        saved_user.country == "kz"
-    ), "user.country must be preserved after register_blogger"
+    assert saved_user.country == "kz", (
+        "user.country must be preserved after register_blogger"
+    )
 
 
 @pytest.mark.asyncio
@@ -1997,6 +1997,6 @@ async def test_save_blogger_before_agreement_preserves_user_country() -> None:
 
     saved_user = await user_repo.get_by_id(user_id)
     assert saved_user is not None
-    assert (
-        saved_user.country == "kz"
-    ), "user.country must be preserved after save_blogger_before_agreement"
+    assert saved_user.country == "kz", (
+        "user.country must be preserved after save_blogger_before_agreement"
+    )

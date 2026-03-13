@@ -557,9 +557,9 @@ async def test_register_advertiser_preserves_user_country() -> None:
 
     saved_user = await user_repo.get_by_id(user_id)
     assert saved_user is not None
-    assert (
-        saved_user.country == "kz"
-    ), "user.country must be preserved after register_advertiser"
+    assert saved_user.country == "kz", (
+        "user.country must be preserved after register_advertiser"
+    )
 
 
 @pytest.mark.asyncio
@@ -588,6 +588,6 @@ async def test_save_advertiser_before_agreement_preserves_user_country() -> (
 
     saved_user = await user_repo.get_by_id(user_id)
     assert saved_user is not None
-    assert (
-        saved_user.country == "kz"
-    ), "user.country must be preserved after save_advertiser_before_agreement"
+    assert saved_user.country == "kz", (
+        "user.country must be preserved after save_advertiser_before_agreement"
+    )
