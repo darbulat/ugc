@@ -81,11 +81,14 @@ Pytest timeout is 5 seconds per test. Coverage threshold is 98%.
 
 ## Workflow
 
-After making any code changes, always run `make all` to execute linters and tests before considering the task done:
+After making any code changes, always run `make fix` to auto-format and verify (matches CI):
 
 ```bash
-make all  # format-check + lint + typecheck + coverage
+make fix  # format + format-check + lint + typecheck + coverage (use before committing)
+make all  # format-check + lint + typecheck + coverage (exact replica of GitHub Actions)
 ```
+
+`make all` is identical to GitHub Actions — no auto-format. Run `make fix` to auto-format first, then verify.
 
 ## Key Patterns
 

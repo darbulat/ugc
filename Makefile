@@ -219,5 +219,8 @@ deploy-dev-e2e-watch:
 	echo "Watching run $$RUN_ID..."; \
 	gh run watch "$$RUN_ID"
 
-# Full pre-commit/CI check: format first, then lint/typecheck/coverage. Do not reorder (lint expects formatted code).
-all: format format-check lint typecheck coverage
+# Full CI check (matches GitHub Actions): no auto-format, just verify. Use 'make fix' to auto-format first.
+all: format-check lint typecheck coverage
+
+# Auto-format then run full CI check
+fix: format all
