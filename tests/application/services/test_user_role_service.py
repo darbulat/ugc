@@ -461,6 +461,27 @@ async def test_set_country_updates_user() -> None:
     assert stored.country == "ru"
 
 
+@pytest.mark.asyncio()
+async def test_set_language_updates_user():
+    """set_language() persists user.language."""
+    user_repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=user_repo)
+    await service.set_user(
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="tester",
+        role_chosen=False,
+    )
+    await service.set_language(
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        language_code="en",
+    )
+    result = await service.get_user("111", MessengerType.TELEGRAM)
+    assert result is not None
+    assert result.language == "en"
+
+
 @pytest.mark.asyncio
 async def test_set_country_not_found() -> None:
     """set_country raises UserNotFoundError when user does not exist."""
