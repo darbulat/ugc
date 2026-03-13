@@ -21,7 +21,7 @@ from ugc_bot.application.messenger.ports import (
     PaymentProvider,
 )
 from ugc_bot.application.services.admin_notification_service import (
-    notify_admins_about_new_order,
+    notify_admins_about_order_paid,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.contact_pricing_service import (
@@ -667,7 +667,7 @@ async def successful_payment_handler(
 
     order = await payment_service.get_order(order_id)
     if order:
-        await notify_admins_about_new_order(
+        await notify_admins_about_order_paid(
             order=order,
             messenger_client=messenger_client,
             user_role_service=user_role_service,

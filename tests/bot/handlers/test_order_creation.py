@@ -25,6 +25,9 @@ from tests.helpers.services import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_MENU_CREATE_ORDER
 from ugc_bot.bot.handlers.order_creation import (
@@ -411,6 +414,7 @@ async def test_order_creation_flow_new_advertiser(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
     assert bot.invoices
     assert len(order_repo.orders) == 1
@@ -540,6 +544,7 @@ async def test_order_creation_flow_with_barter(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
     assert bot.invoices
     assert len(order_repo.orders) == 2
@@ -956,6 +961,7 @@ async def test_order_creation_flow_coop_both(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert bot.invoices
@@ -1147,6 +1153,7 @@ async def test_handle_geography_empty(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert message.answers
@@ -1211,6 +1218,7 @@ async def test_handle_geography_invalid_order_type(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert len(order_repo.orders) == 1
@@ -1335,6 +1343,7 @@ async def test_order_creation_flow_ugc_plus_placement(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert len(order_repo.orders) == 1
@@ -1388,6 +1397,7 @@ async def test_handle_geography_session_expired(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert message.answers
@@ -1445,6 +1455,7 @@ async def test_handle_geography_contact_price_not_configured(
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert len(order_repo.orders) == 1

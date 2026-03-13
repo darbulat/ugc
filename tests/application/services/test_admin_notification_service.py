@@ -8,7 +8,8 @@ import pytest
 from tests.helpers.fakes import FakeMessengerClient
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
-    notify_admins_about_new_order,
+    notify_admins_about_order_created,
+    notify_admins_about_order_paid,
     notify_support_chat_about_new_order,
 )
 from ugc_bot.application.services.content_moderation_service import (
@@ -271,7 +272,7 @@ def _make_order(
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_new_order_no_admins() -> None:
+async def test_notify_admins_about_order_paid_no_admins() -> None:
     """When no admins, return without sending."""
     user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=user_repo)
@@ -279,7 +280,7 @@ async def test_notify_admins_about_new_order_no_admins() -> None:
     content_moderation = ContentModerationService()
     order = _make_order()
 
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order, messenger_client, user_service, content_moderation
     )
 
@@ -288,7 +289,7 @@ async def test_notify_admins_about_new_order_no_admins() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_new_order_sends_message() -> None:
+async def test_notify_admins_about_order_paid_sends_message() -> None:
     """When admins exist, send order details to each."""
     user_repo = InMemoryUserRepository()
     admin = User(
@@ -317,7 +318,7 @@ async def test_notify_admins_about_new_order_sends_message() -> None:
     content_moderation = ContentModerationService()
     order = _make_order(advertiser_id=advertiser.user_id)
 
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order, messenger_client, user_service, content_moderation
     )
 
@@ -325,13 +326,13 @@ async def test_notify_admins_about_new_order_sends_message() -> None:
     first = messenger_client.sent_text[0]
     text = first["text"]
     assert first["chat_id"] == "12345"
-    assert "Новый заказ на модерацию" in text
+    assert "Заказ оплачен" in text
     assert "advertiser" in text
     assert "Test offer" in text
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_new_order_includes_admin_link() -> None:
+async def test_notify_admins_about_order_paid_includes_admin_link() -> None:
     """When admin_base_url set, message has admin link and Activate button."""
     user_repo = InMemoryUserRepository()
     admin = User(
@@ -360,7 +361,7 @@ async def test_notify_admins_about_new_order_includes_admin_link() -> None:
     content_moderation = ContentModerationService()
     order = _make_order(advertiser_id=advertiser.user_id)
 
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order,
         messenger_client,
         user_service,
@@ -372,7 +373,7 @@ async def test_notify_admins_about_new_order_includes_admin_link() -> None:
     first = messenger_client.sent_text[0]
     text = first["text"]
     reply_markup = first["keyboard"]
-    assert "Новый заказ на модерацию" in text
+    assert "Заказ оплачен" in text
     rows = reply_markup.rows if reply_markup else []
     assert len(rows) >= 1
     admin_btn = rows[0][0]
@@ -389,7 +390,7 @@ async def test_notify_admins_about_new_order_includes_admin_link() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_new_order_includes_all_fields() -> None:
+async def test_notify_admins_about_order_paid_includes_all_fields() -> None:
     """Message includes all order fields: type, barter, content_usage, etc."""
     user_repo = InMemoryUserRepository()
     admin = User(
@@ -425,7 +426,7 @@ async def test_notify_admins_about_new_order_includes_all_fields() -> None:
         geography="Russia",
     )
 
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order, messenger_client, user_service, content_moderation
     )
 
@@ -446,7 +447,7 @@ async def test_notify_admins_about_new_order_includes_all_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_new_order_with_banned_content() -> None:
+async def test_notify_admins_about_order_paid_with_banned_content() -> None:
     """When order has banned content, message includes warning."""
     user_repo = InMemoryUserRepository()
     admin = User(
@@ -478,7 +479,7 @@ async def test_notify_admins_about_new_order_with_banned_content() -> None:
         offer_text="1xbet casino gambling",
     )
 
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order, messenger_client, user_service, content_moderation
     )
 
@@ -488,7 +489,7 @@ async def test_notify_admins_about_new_order_with_banned_content() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_new_order_with_product_photo() -> None:
+async def test_notify_admins_about_order_paid_with_product_photo() -> None:
     """When order has product_photo_file_id, send photo with caption."""
     user_repo = InMemoryUserRepository()
     admin = User(
@@ -520,19 +521,17 @@ async def test_notify_admins_about_new_order_with_product_photo() -> None:
         product_photo_file_id="AgACAgIAAxkBAAI",
     )
 
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order, messenger_client, user_service, content_moderation
     )
 
     assert len(messenger_client.sent_photos) == 1
     assert messenger_client.sent_photos[0]["file_id"] == "AgACAgIAAxkBAAI"
-    assert (
-        "Новый заказ на модерацию" in messenger_client.sent_photos[0]["caption"]
-    )
+    assert "Заказ оплачен" in messenger_client.sent_photos[0]["caption"]
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_new_order_continues_on_send_failure() -> (
+async def test_notify_admins_about_order_paid_continues_on_send_failure() -> (
     None
 ):
     """When send fails for one admin, log and continue to next."""
@@ -574,7 +573,7 @@ async def test_notify_admins_about_new_order_continues_on_send_failure() -> (
             messages.append((chat_id, text))
 
     bot = FailingBot()
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order, bot, user_service, content_moderation
     )
 
@@ -661,7 +660,7 @@ async def test_send_admin_photo_uses_raw_bot_send_photo() -> None:
     content_moderation = ContentModerationService()
     order = _make_order(product_photo_file_id="raw_photo_id")
 
-    await notify_admins_about_new_order(
+    await notify_admins_about_order_paid(
         order, messenger_client, user_service, content_moderation
     )
 
@@ -669,6 +668,314 @@ async def test_send_admin_photo_uses_raw_bot_send_photo() -> None:
     assert sent[0]["chat_id"] == 777
     assert sent[0]["photo"] == "raw_photo_id"
     assert sent[0]["caption"] is not None
+
+
+# --- Tests for notify_admins_about_order_created ---
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_no_admins() -> None:
+    """When no admins, return without sending."""
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order()
+
+    await notify_admins_about_order_created(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(messenger_client.sent_text) == 0
+    assert len(messenger_client.sent_photos) == 0
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_header() -> None:
+    """Header contains 'Новый заказ' and does NOT contain 'на модерацию'."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="12345",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order()
+
+    await notify_admins_about_order_created(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    text = messenger_client.sent_text[0]["text"]
+    assert "Новый заказ" in text
+    assert "на модерацию" not in text
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_no_activate_button() -> None:
+    """No 'Активировать' button in any keyboard row."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order()
+
+    await notify_admins_about_order_created(
+        order,
+        messenger_client,
+        user_service,
+        content_moderation,
+        admin_base_url="https://admin.example.com",
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    reply_markup = messenger_client.sent_text[0]["keyboard"]
+    rows = reply_markup.rows if reply_markup else []
+    all_buttons = [btn for row in rows for btn in row]
+    assert not any(btn.text == "Активировать" for btn in all_buttons)
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_open_in_admin_button() -> None:
+    """'Открыть в админке' button present when admin_base_url is set."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order()
+
+    await notify_admins_about_order_created(
+        order,
+        messenger_client,
+        user_service,
+        content_moderation,
+        admin_base_url="https://admin.example.com",
+    )
+
+    reply_markup = messenger_client.sent_text[0]["keyboard"]
+    rows = reply_markup.rows if reply_markup else []
+    all_buttons = [btn for row in rows for btn in row]
+    assert any(btn.text == "Открыть в админке" for btn in all_buttons)
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_no_admin_url_no_keyboard() -> (
+    None
+):
+    """No 'Открыть в админке' when admin_base_url is empty."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order()
+
+    await notify_admins_about_order_created(
+        order,
+        messenger_client,
+        user_service,
+        content_moderation,
+        admin_base_url="",
+    )
+
+    reply_markup = messenger_client.sent_text[0]["keyboard"]
+    assert reply_markup is None
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_with_product_photo() -> None:
+    """When order has product_photo_file_id, send photo not text."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order(product_photo_file_id="photo_file_id_123")
+
+    await notify_admins_about_order_created(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(messenger_client.sent_text) == 0
+    assert len(messenger_client.sent_photos) == 1
+    assert messenger_client.sent_photos[0]["file_id"] == "photo_file_id_123"
+    assert "Новый заказ" in messenger_client.sent_photos[0]["caption"]
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_with_banned_content() -> None:
+    """When order has banned content, creation notification includes warning."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order(offer_text="1xbet casino gambling")
+
+    await notify_admins_about_order_created(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    text = messenger_client.sent_text[0]["text"]
+    assert "запрещённый контент" in text.lower()
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_continues_on_failure() -> None:
+    """When send fails for one admin, log and continue to next."""
+    user_repo = InMemoryUserRepository()
+    admin1 = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="a1",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    admin2 = User(
+        user_id=uuid4(),
+        external_id="222",
+        messenger_type=MessengerType.TELEGRAM,
+        username="a2",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin1)
+    await user_repo.save(admin2)
+    user_service = UserRoleService(user_repo=user_repo)
+    content_moderation = ContentModerationService()
+    order = _make_order()
+
+    messages: list[tuple[int, str]] = []
+
+    class FailingBot:
+        async def send_message(
+            self, chat_id: int, text: str, **kwargs: object
+        ) -> None:
+            if chat_id == 111:
+                raise RuntimeError("Network error")
+            messages.append((chat_id, text))
+
+    bot = FailingBot()
+    await notify_admins_about_order_created(
+        order, bot, user_service, content_moderation
+    )
+
+    assert len(messages) == 1
+    assert messages[0][0] == 222
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_paid_ugc_plus_placement() -> None:
+    """Message includes 'UGC + размещение' for UGC_PLUS_PLACEMENT order type."""
+    from ugc_bot.domain.enums import OrderType
+
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_PLUS_PLACEMENT,
+        product_link="https://example.com/product",
+        offer_text="Test offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+        content_usage=None,
+        deadlines=None,
+        geography=None,
+        product_photo_file_id=None,
+    )
+
+    await notify_admins_about_order_paid(
+        order, messenger_client, user_service, content_moderation
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    text = messenger_client.sent_text[0]["text"]
+    assert "UGC + размещение" in text
 
 
 # --- Tests for notify_support_chat_about_new_order ---

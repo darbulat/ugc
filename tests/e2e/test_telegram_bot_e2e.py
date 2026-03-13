@@ -525,9 +525,9 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
     text = await click_inline_and_get_reply(
         client, entity, "blogger:work:ugc", timeout=15
     )
-    assert _has_any(text or "", "согласи", "agree", "consent"), (
-        "Expected agreements step before exit"
-    )
+    assert _has_any(
+        text or "", "согласи", "agree", "consent"
+    ), "Expected agreements step before exit"
 
     # Exit: send /start instead of confirming consent (clears FSM state).
     text = await send_and_get_reply(
@@ -552,9 +552,9 @@ async def test_blogger_exit_before_consent_then_return_via_my_profile(
         client, entity, "profile:menu:profile", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
-    assert _has_any(text, "согласи", "agree", "consent"), (
-        "Expected agreements again when opening profile without consent"
-    )
+    assert _has_any(
+        text, "согласи", "agree", "consent"
+    ), "Expected agreements again when opening profile without consent"
 
     # Confirm consent and complete registration.
     text = await click_inline_and_get_reply(
@@ -659,9 +659,9 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
         "https://exit-return-e2e.example.com",
         timeout=15,
     )
-    assert _has_any(text or "", "согласи", "agree", "consent"), (
-        "Expected agreements step before exit"
-    )
+    assert _has_any(
+        text or "", "согласи", "agree", "consent"
+    ), "Expected agreements step before exit"
 
     # Exit: send /start instead of confirming consent (clears FSM state).
     text = await send_and_get_reply(
@@ -686,9 +686,9 @@ async def test_advertiser_exit_before_consent_then_return_via_my_profile(
         client, entity, "profile:menu:profile", timeout=20
     )
     assert text is not None, "Bot did not reply to My Profile"
-    assert _has_any(text, "согласи", "agree", "consent"), (
-        "Expected agreements again when opening profile without consent"
-    )
+    assert _has_any(
+        text, "согласи", "agree", "consent"
+    ), "Expected agreements again when opening profile without consent"
 
     # Confirm consent and complete registration.
     text = await click_inline_and_get_reply(

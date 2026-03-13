@@ -14,6 +14,7 @@ from ugc_bot.application.messenger.ports import (
 )
 from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_order_created,
     notify_support_chat_about_new_order,
 )
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -22,6 +23,9 @@ from ugc_bot.application.services.advertiser_registration_service import (
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
+)
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
 )
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
@@ -1185,6 +1189,7 @@ async def handle_geography(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     contact_pricing_service: ContactPricingService,
+    content_moderation_service: ContentModerationService,
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -1254,6 +1259,15 @@ async def handle_geography(
         deadlines=deadlines,
         geography=geography,
         product_photo_file_id=product_photo_file_id,
+    )
+
+    await notify_admins_about_order_created(
+        order=order,
+        messenger_client=messenger_client,
+        user_role_service=user_role_service,
+        content_moderation=content_moderation_service,
+        admin_base_url=config.admin.admin_base_url,
+        currency_symbol=config.market.currency_symbol,
     )
 
     support_chat_id = config.referral.referral_support_chat_id
