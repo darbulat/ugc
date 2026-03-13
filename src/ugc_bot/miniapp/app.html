@@ -145,17 +145,17 @@
   <div id="screen-register-advertiser" class="screen">
     <h1>Регистрация рекламодателя</h1>
     <form id="form-advertiser">
-      <label for="adv-name">Имя / как к вам обращаться</label>
+      <label id="lbl-adv-name" for="adv-name">Имя / как к вам обращаться</label>
       <input type="text" id="adv-name" name="display_name" maxlength="100" placeholder="Иван">
-      <label for="adv-phone">Телефон *</label>
+      <label id="lbl-adv-phone" for="adv-phone">Телефон *</label>
       <input type="tel" id="adv-phone" name="phone" required placeholder="89001234567">
-      <label for="adv-brand">Бренд / компания *</label>
+      <label id="lbl-adv-brand" for="adv-brand">Бренд / компания *</label>
       <input type="text" id="adv-brand" name="brand" required>
-      <label for="adv-site">Сайт</label>
+      <label id="lbl-adv-site" for="adv-site">Сайт</label>
       <input type="url" id="adv-site" name="site_link" placeholder="https://">
-      <label for="adv-city">Город</label>
+      <label id="lbl-adv-city" for="adv-city">Город</label>
       <input type="text" id="adv-city" name="city">
-      <label for="adv-activity">Чем занимается компания</label>
+      <label id="lbl-adv-activity" for="adv-activity">Чем занимается компания</label>
       <input type="text" id="adv-activity" name="company_activity">
       <div id="adv-error" class="error"></div>
       <button type="submit" class="btn" id="btn-submit-advertiser">Зарегистрироваться</button>
@@ -166,22 +166,22 @@
   <div id="screen-register-blogger" class="screen">
     <h1>Регистрация креатора</h1>
     <form id="form-blogger">
-      <label for="blg-name">Имя / ник (как к вам обращаться) *</label>
+      <label id="lbl-blg-name" for="blg-name">Имя / ник (как к вам обращаться) *</label>
       <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Не ссылка на Instagram">
-      <label for="blg-instagram">Ссылка на Instagram *</label>
+      <label id="lbl-blg-instagram" for="blg-instagram">Ссылка на Instagram *</label>
       <div class="instagram-input-group">
         <span class="instagram-prefix">https://instagram.com/</span>
         <input type="text" id="blg-instagram" name="instagram_username" required placeholder="username" pattern="[A-Za-z0-9._]+" title="Только буквы, цифры, точки и подчёркивания">
       </div>
-      <label>Дата рождения *</label>
+      <label id="lbl-blg-birthdate">Дата рождения *</label>
       <div class="date-row">
         <select id="blg-birth-day" name="birth_day" required aria-label="День"></select>
         <select id="blg-birth-month" name="birth_month" required aria-label="Месяц"></select>
         <select id="blg-birth-year" name="birth_year" required aria-label="Год"></select>
       </div>
-      <label for="blg-topics">Тематики (через запятую, от 1 до 10) *</label>
+      <label id="lbl-blg-topics" for="blg-topics">Тематики (через запятую, от 1 до 10) *</label>
       <input type="text" id="blg-topics" name="topics" required placeholder="красота, мода, путешествия">
-      <label for="blg-city">Город *</label>
+      <label id="lbl-blg-city-field" for="blg-city">Город *</label>
       <input type="text" id="blg-city" name="city" required readonly placeholder="Выберите на карте или найдите город">
       <input type="hidden" id="blg-region" name="region">
       <input type="hidden" id="blg-country" name="country">
@@ -196,13 +196,13 @@
         </div>
         <div id="blogger-city-map"></div>
       </div>
-      <label for="blg-audience-geo">География аудитории *</label>
+      <label id="lbl-blg-audience-geo" for="blg-audience-geo">География аудитории *</label>
       <input type="text" id="blg-audience-geo" name="audience_geo" required placeholder="РФ, СНГ и т.д.">
-      <label for="blg-age-min">Возраст аудитории (от)</label>
+      <label id="lbl-blg-age-min" for="blg-age-min">Возраст аудитории (от)</label>
       <input type="number" id="blg-age-min" name="audience_age_min" value="18" min="1">
-      <label for="blg-age-max">Возраст аудитории (до)</label>
+      <label id="lbl-blg-age-max" for="blg-age-max">Возраст аудитории (до)</label>
       <input type="number" id="blg-age-max" name="audience_age_max" value="35" min="1">
-      <label for="blg-audience-gender">Пол аудитории</label>
+      <label id="lbl-blg-audience-gender" for="blg-audience-gender">Пол аудитории</label>
       <select id="blg-audience-gender" name="audience_gender">
         <option value="all">Вся</option>
         <option value="m">Мужская</option>
@@ -210,17 +210,17 @@
       </select>
       <label id="lbl-blg-price" for="blg-price">Цена за интеграцию (₽) *</label>
       <input type="number" id="blg-price" name="price" required min="1" step="1">
-      <label for="blg-barter">Готов к бартеру</label>
+      <label id="lbl-blg-barter" for="blg-barter">Готов к бартеру</label>
       <select id="blg-barter" name="barter">
         <option value="false">Нет</option>
         <option value="true">Да</option>
       </select>
-      <label for="blg-work-format">Формат работы</label>
+      <label id="lbl-blg-work-format" for="blg-work-format">Формат работы</label>
       <select id="blg-work-format" name="work_format">
         <option value="ugc_only">Только UGC</option>
         <option value="ads_in_account">Реклама в сторис/постах</option>
       </select>
-      <label for="blg-blogger-gender">Ваш пол</label>
+      <label id="lbl-blg-blogger-gender" for="blg-blogger-gender">Ваш пол</label>
       <select id="blg-blogger-gender" name="blogger_gender">
         <option value="m">Мужской</option>
         <option value="f">Женский</option>
@@ -270,26 +270,26 @@
     <div id="block-create-order" style="display: none; margin-top: 16px;">
       <h2 style="font-size: 1.1rem;">Новый заказ</h2>
       <form id="form-order">
-        <label for="ord-link">Ссылка на товар *</label>
+        <label id="lbl-ord-link" for="ord-link">Ссылка на товар *</label>
         <input type="url" id="ord-link" name="product_link" required>
-        <label for="ord-offer">Текст оффера *</label>
+        <label id="lbl-ord-offer" for="ord-offer">Текст оффера *</label>
         <textarea id="ord-offer" name="offer_text" required></textarea>
         <label id="lbl-ord-price" for="ord-price">Бюджет (₽) *</label>
         <input type="number" id="ord-price" name="price" required min="0" step="1">
-        <label for="ord-bloggers">Количество креаторов</label>
+        <label id="lbl-ord-bloggers" for="ord-bloggers">Количество креаторов</label>
         <select id="ord-bloggers" name="bloggers_needed"></select>
-        <label for="ord-type">Тип заказа</label>
+        <label id="lbl-ord-type" for="ord-type">Тип заказа</label>
         <select id="ord-type" name="order_type">
           <option value="ugc_only">Только UGC</option>
           <option value="ugc_plus_placement">UGC + размещение</option>
         </select>
-        <label for="ord-barter">Описание бартера (если бартер)</label>
+        <label id="lbl-ord-barter" for="ord-barter">Описание бартера (если бартер)</label>
         <input type="text" id="ord-barter" name="barter_description">
-        <label for="ord-geography">География</label>
+        <label id="lbl-ord-geography" for="ord-geography">География</label>
         <input type="text" id="ord-geography" name="geography" placeholder="Москва, РФ">
-        <label for="ord-deadlines">Сроки</label>
+        <label id="lbl-ord-deadlines" for="ord-deadlines">Сроки</label>
         <input type="text" id="ord-deadlines" name="deadlines" placeholder="7 дней">
-        <label for="ord-content-usage">Использование контента</label>
+        <label id="lbl-ord-content-usage" for="ord-content-usage">Использование контента</label>
         <select id="ord-content-usage" name="content_usage">
           <option value="">— не выбрано —</option>
         </select>
@@ -311,26 +311,26 @@
     <h1 id="order-detail-title">Заказ</h1>
     <p class="hint" id="order-detail-status"></p>
     <form id="form-order-detail">
-      <label for="ord-detail-link">Ссылка на товар *</label>
+      <label id="lbl-ord-detail-link" for="ord-detail-link">Ссылка на товар *</label>
       <input type="url" id="ord-detail-link" name="product_link" required>
-      <label for="ord-detail-offer">Текст оффера *</label>
+      <label id="lbl-ord-detail-offer" for="ord-detail-offer">Текст оффера *</label>
       <textarea id="ord-detail-offer" name="offer_text" required></textarea>
       <label id="lbl-ord-detail-price" for="ord-detail-price">Бюджет (₽) *</label>
       <input type="number" id="ord-detail-price" name="price" required min="0" step="1">
-      <label for="ord-detail-bloggers">Количество креаторов</label>
+      <label id="lbl-ord-detail-bloggers" for="ord-detail-bloggers">Количество креаторов</label>
       <select id="ord-detail-bloggers" name="bloggers_needed"></select>
-      <label for="ord-detail-type">Тип заказа</label>
+      <label id="lbl-ord-detail-type" for="ord-detail-type">Тип заказа</label>
       <select id="ord-detail-type" name="order_type">
         <option value="ugc_only">Только UGC</option>
         <option value="ugc_plus_placement">UGC + размещение</option>
       </select>
-      <label for="ord-detail-barter">Описание бартера (если бартер)</label>
+      <label id="lbl-ord-detail-barter" for="ord-detail-barter">Описание бартера (если бартер)</label>
       <input type="text" id="ord-detail-barter" name="barter_description">
-      <label for="ord-detail-geography">География</label>
+      <label id="lbl-ord-detail-geography" for="ord-detail-geography">География</label>
       <input type="text" id="ord-detail-geography" name="geography" placeholder="Москва, РФ">
-      <label for="ord-detail-deadlines">Сроки</label>
+      <label id="lbl-ord-detail-deadlines" for="ord-detail-deadlines">Сроки</label>
       <input type="text" id="ord-detail-deadlines" name="deadlines" placeholder="7 дней">
-      <label for="ord-detail-content-usage">Использование контента</label>
+      <label id="lbl-ord-detail-content-usage" for="ord-detail-content-usage">Использование контента</label>
       <select id="ord-detail-content-usage" name="content_usage">
         <option value="">— не выбрано —</option>
       </select>
@@ -577,7 +577,11 @@
         }
         if (contentEl) {
           var opts = config.content_usage_options || [];
-          contentEl.innerHTML = '<option value="">— не выбрано —</option>';
+          var firstOpt = document.createElement('option');
+          firstOpt.value = '';
+          firstOpt.textContent = tx('opt_not_selected');
+          contentEl.innerHTML = '';
+          contentEl.appendChild(firstOpt);
           opts.forEach(function(opt) {
             var o = document.createElement('option');
             o.value = opt.value;
@@ -602,7 +606,11 @@
         }
         if (contentEl) {
           var opts = config.content_usage_options || [];
-          contentEl.innerHTML = '<option value="">— не выбрано —</option>';
+          var firstOpt2 = document.createElement('option');
+          firstOpt2.value = '';
+          firstOpt2.textContent = tx('opt_not_selected');
+          contentEl.innerHTML = '';
+          contentEl.appendChild(firstOpt2);
           opts.forEach(function(opt) {
             var o = document.createElement('option');
             o.value = opt.value;
@@ -670,6 +678,59 @@
           price_label: 'Цена за интеграцию ({s}) *',
           budget_label: 'Бюджет ({s}) *',
           months: ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],
+          // Advertiser form labels
+          lbl_adv_name: 'Имя / как к вам обращаться',
+          lbl_adv_phone: 'Телефон *',
+          lbl_adv_brand: 'Бренд / компания *',
+          lbl_adv_site: 'Сайт',
+          lbl_adv_city: 'Город',
+          lbl_adv_activity: 'Чем занимается компания',
+          ph_adv_name: 'Иван',
+          // Blogger form labels
+          lbl_blg_name: 'Имя / ник (как к вам обращаться) *',
+          lbl_blg_instagram: 'Ссылка на Instagram *',
+          lbl_blg_birthdate: 'Дата рождения *',
+          lbl_blg_topics: 'Тематики (через запятую, от 1 до 10) *',
+          lbl_blg_city: 'Город *',
+          lbl_blg_audience_geo: 'География аудитории *',
+          lbl_blg_age_min: 'Возраст аудитории (от)',
+          lbl_blg_age_max: 'Возраст аудитории (до)',
+          lbl_blg_audience_gender: 'Пол аудитории',
+          lbl_blg_barter: 'Готов к бартеру',
+          lbl_blg_work_format: 'Формат работы',
+          lbl_blg_blogger_gender: 'Ваш пол',
+          ph_blg_name: 'Не ссылка на Instagram',
+          ph_blg_topics: 'красота, мода, путешествия',
+          ph_blg_city: 'Выберите на карте или найдите город',
+          ph_blg_audience_geo: 'РФ, СНГ и т.д.',
+          ph_blg_city_search: 'Поиск по городу',
+          ph_blg_city_map_hint: 'Нажмите на карту или найдите город',
+          // Blogger select options
+          opt_gender_all: 'Вся',
+          opt_gender_m: 'Мужская',
+          opt_gender_f: 'Женская',
+          opt_barter_no: 'Нет',
+          opt_barter_yes: 'Да',
+          opt_work_ugc_only: 'Только UGC',
+          opt_work_ads: 'Реклама в сторис/постах',
+          opt_blogger_gender_m: 'Мужской',
+          opt_blogger_gender_f: 'Женский',
+          opt_order_type_ugc: 'Только UGC',
+          opt_order_type_ugc_plus: 'UGC + размещение',
+          opt_not_selected: '— не выбрано —',
+          // Order form labels
+          lbl_ord_link: 'Ссылка на товар *',
+          lbl_ord_offer: 'Текст оффера *',
+          lbl_ord_bloggers: 'Количество креаторов',
+          lbl_ord_type: 'Тип заказа',
+          lbl_ord_barter: 'Описание бартера (если бартер)',
+          lbl_ord_geography: 'География',
+          lbl_ord_deadlines: 'Сроки',
+          lbl_ord_content_usage: 'Использование контента',
+          ph_ord_geography: 'Москва, РФ',
+          ph_ord_deadlines: '7 дней',
+          ph_ord_detail_geography: 'Москва, РФ',
+          ph_ord_detail_deadlines: '7 дней',
         },
         en: {
           loading: 'Loading…',
@@ -728,6 +789,59 @@
           price_label: 'Price ({s}) *',
           budget_label: 'Budget ({s}) *',
           months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+          // Advertiser form labels
+          lbl_adv_name: 'Name / how to address you',
+          lbl_adv_phone: 'Phone *',
+          lbl_adv_brand: 'Brand / company *',
+          lbl_adv_site: 'Website',
+          lbl_adv_city: 'City',
+          lbl_adv_activity: 'Company activity',
+          ph_adv_name: 'John',
+          // Blogger form labels
+          lbl_blg_name: 'Name / nickname (how to address you) *',
+          lbl_blg_instagram: 'Instagram link *',
+          lbl_blg_birthdate: 'Date of birth *',
+          lbl_blg_topics: 'Topics (comma-separated, 1 to 10) *',
+          lbl_blg_city: 'City *',
+          lbl_blg_audience_geo: 'Audience geography *',
+          lbl_blg_age_min: 'Audience age (min)',
+          lbl_blg_age_max: 'Audience age (max)',
+          lbl_blg_audience_gender: 'Audience gender',
+          lbl_blg_barter: 'Open to barter',
+          lbl_blg_work_format: 'Work format',
+          lbl_blg_blogger_gender: 'Your gender',
+          ph_blg_name: 'Not an Instagram link',
+          ph_blg_topics: 'beauty, fashion, travel',
+          ph_blg_city: 'Pick on map or find a city',
+          ph_blg_audience_geo: 'Russia, CIS, etc.',
+          ph_blg_city_search: 'Search by city',
+          ph_blg_city_map_hint: 'Tap the map or find a city',
+          // Blogger select options
+          opt_gender_all: 'All',
+          opt_gender_m: 'Male',
+          opt_gender_f: 'Female',
+          opt_barter_no: 'No',
+          opt_barter_yes: 'Yes',
+          opt_work_ugc_only: 'UGC only',
+          opt_work_ads: 'Ads in stories/posts',
+          opt_blogger_gender_m: 'Male',
+          opt_blogger_gender_f: 'Female',
+          opt_order_type_ugc: 'UGC only',
+          opt_order_type_ugc_plus: 'UGC + placement',
+          opt_not_selected: '— not selected —',
+          // Order form labels
+          lbl_ord_link: 'Product link *',
+          lbl_ord_offer: 'Offer text *',
+          lbl_ord_bloggers: 'Number of creators',
+          lbl_ord_type: 'Order type',
+          lbl_ord_barter: 'Barter description (if barter)',
+          lbl_ord_geography: 'Geography',
+          lbl_ord_deadlines: 'Deadlines',
+          lbl_ord_content_usage: 'Content usage',
+          ph_ord_geography: 'Moscow, Russia',
+          ph_ord_deadlines: '7 days',
+          ph_ord_detail_geography: 'Moscow, Russia',
+          ph_ord_detail_deadlines: '7 days',
         }
       };
 
@@ -810,6 +924,81 @@
         // Map buttons
         setText('btn-blogger-city-map', L.btn_map_pick);
         setText('btn-blogger-city-search', L.btn_search);
+        // Advertiser form labels
+        setText('lbl-adv-name', L.lbl_adv_name);
+        setText('lbl-adv-phone', L.lbl_adv_phone);
+        setText('lbl-adv-brand', L.lbl_adv_brand);
+        setText('lbl-adv-site', L.lbl_adv_site);
+        setText('lbl-adv-city', L.lbl_adv_city);
+        setText('lbl-adv-activity', L.lbl_adv_activity);
+        // Advertiser form placeholders
+        function setPh(id, ph) { var el = document.getElementById(id); if (el) el.placeholder = ph; }
+        setPh('adv-name', L.ph_adv_name);
+        // Blogger form labels
+        setText('lbl-blg-name', L.lbl_blg_name);
+        setText('lbl-blg-instagram', L.lbl_blg_instagram);
+        setText('lbl-blg-birthdate', L.lbl_blg_birthdate);
+        setText('lbl-blg-topics', L.lbl_blg_topics);
+        setText('lbl-blg-city-field', L.lbl_blg_city);
+        setText('lbl-blg-audience-geo', L.lbl_blg_audience_geo);
+        setText('lbl-blg-age-min', L.lbl_blg_age_min);
+        setText('lbl-blg-age-max', L.lbl_blg_age_max);
+        setText('lbl-blg-audience-gender', L.lbl_blg_audience_gender);
+        setText('lbl-blg-barter', L.lbl_blg_barter);
+        setText('lbl-blg-work-format', L.lbl_blg_work_format);
+        setText('lbl-blg-blogger-gender', L.lbl_blg_blogger_gender);
+        // Blogger form placeholders
+        setPh('blg-name', L.ph_blg_name);
+        setPh('blg-topics', L.ph_blg_topics);
+        setPh('blg-city', L.ph_blg_city);
+        setPh('blg-audience-geo', L.ph_blg_audience_geo);
+        setPh('blg-city-search', L.ph_blg_city_search);
+        setText('blg-city-map-hint', L.ph_blg_city_map_hint);
+        // Blogger select options
+        function setOpt(selId, val, text) {
+          var sel = document.getElementById(selId);
+          if (!sel) return;
+          var opt = sel.querySelector('option[value="' + val + '"]');
+          if (opt) opt.textContent = text;
+        }
+        setOpt('blg-audience-gender', 'all', L.opt_gender_all);
+        setOpt('blg-audience-gender', 'm', L.opt_gender_m);
+        setOpt('blg-audience-gender', 'f', L.opt_gender_f);
+        setOpt('blg-barter', 'false', L.opt_barter_no);
+        setOpt('blg-barter', 'true', L.opt_barter_yes);
+        setOpt('blg-work-format', 'ugc_only', L.opt_work_ugc_only);
+        setOpt('blg-work-format', 'ads_in_account', L.opt_work_ads);
+        setOpt('blg-blogger-gender', 'm', L.opt_blogger_gender_m);
+        setOpt('blg-blogger-gender', 'f', L.opt_blogger_gender_f);
+        // Order form labels
+        setText('lbl-ord-link', L.lbl_ord_link);
+        setText('lbl-ord-offer', L.lbl_ord_offer);
+        setText('lbl-ord-bloggers', L.lbl_ord_bloggers);
+        setText('lbl-ord-type', L.lbl_ord_type);
+        setText('lbl-ord-barter', L.lbl_ord_barter);
+        setText('lbl-ord-geography', L.lbl_ord_geography);
+        setText('lbl-ord-deadlines', L.lbl_ord_deadlines);
+        setText('lbl-ord-content-usage', L.lbl_ord_content_usage);
+        setPh('ord-geography', L.ph_ord_geography);
+        setPh('ord-deadlines', L.ph_ord_deadlines);
+        setOpt('ord-type', 'ugc_only', L.opt_order_type_ugc);
+        setOpt('ord-type', 'ugc_plus_placement', L.opt_order_type_ugc_plus);
+        // Order detail form labels
+        setText('lbl-ord-detail-link', L.lbl_ord_link);
+        setText('lbl-ord-detail-offer', L.lbl_ord_offer);
+        setText('lbl-ord-detail-bloggers', L.lbl_ord_bloggers);
+        setText('lbl-ord-detail-type', L.lbl_ord_type);
+        setText('lbl-ord-detail-barter', L.lbl_ord_barter);
+        setText('lbl-ord-detail-geography', L.lbl_ord_geography);
+        setText('lbl-ord-detail-deadlines', L.lbl_ord_deadlines);
+        setText('lbl-ord-detail-content-usage', L.lbl_ord_content_usage);
+        setPh('ord-detail-geography', L.ph_ord_detail_geography);
+        setPh('ord-detail-deadlines', L.ph_ord_detail_deadlines);
+        setOpt('ord-detail-type', 'ugc_only', L.opt_order_type_ugc);
+        setOpt('ord-detail-type', 'ugc_plus_placement', L.opt_order_type_ugc_plus);
+        // Content usage "not selected" option
+        setOpt('ord-content-usage', '', L.opt_not_selected);
+        setOpt('ord-detail-content-usage', '', L.opt_not_selected);
       }
 
       function updateRegisterButtonLabels() {
