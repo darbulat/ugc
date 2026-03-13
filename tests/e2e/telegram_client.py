@@ -176,6 +176,57 @@ async def click_inline_by_index_and_get_reply(
     )
 
 
+async def get_group_message_containing(
+    client,
+    chat_id: int | str,
+    substrings: str | tuple[str, ...],
+    after_id: int = 0,
+    timeout: float = 30.0,
+) -> str | None:
+    """Wait for a message in a group/channel containing the given substring(s).
+
+    Args:
+        client: Telethon TelegramClient.
+        chat_id: Group/channel ID (int or string, e.g. -1001234567890).
+        substrings: One or more substrings to match (OR logic).
+        after_id: Only consider messages with id > after_id.
+        timeout: Seconds to wait before giving up.
+
+    Returns the matching message text, or None on timeout.
+    """
+    if isinstance(substrings, str):
+        substrings = (substrings,)
+    entity = await client.get_entity(int(chat_id))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        messages = await client.get_messages(entity, limit=10)
+        for msg in messages:
+            if msg.id <= after_id:
+                continue
+            text = getattr(msg, "text", None) or ""
+            caption = getattr(msg, "message", None) or ""
+            content = text or caption
+            if any(sub in content for sub in substrings):
+                return content
+        await asyncio.sleep(1)
+    return None
+
+
+async def get_latest_group_message_id(
+    client,
+    chat_id: int | str,
+) -> int:
+    """Return the id of the most recent message in a group/channel.
+
+    Returns 0 if the chat is empty.
+    """
+    entity = await client.get_entity(int(chat_id))
+    messages = await client.get_messages(entity, limit=1)
+    if messages:
+        return messages[0].id
+    return 0
+
+
 @pytest.fixture(scope="session")
 def telegram_e2e_config() -> dict[str, str]:
     """E2E config from env (read-only)."""

@@ -151,7 +151,7 @@ async def notify_admins_about_complaint(
                     parse_mode="Markdown",
                 )
         except Exception as exc:
-            logger.warning(
+            logger.error(
                 "Failed to notify admin about complaint",
                 extra={
                     "admin_id": str(admin.user_id),
@@ -274,7 +274,7 @@ async def notify_admins_about_order_created(
                     keyboard=reply_markup,
                 )
         except Exception as exc:
-            logger.warning(
+            logger.error(
                 "Failed to notify admin about order created",
                 extra={
                     "admin_id": str(admin.user_id),
@@ -366,7 +366,7 @@ async def notify_admins_about_order_paid(
                     keyboard=reply_markup,
                 )
         except Exception as exc:
-            logger.warning(
+            logger.error(
                 "Failed to notify admin about order paid",
                 extra={
                     "admin_id": str(admin.user_id),
@@ -440,7 +440,7 @@ async def notify_support_chat_about_new_order(
             parse_mode="HTML",
         )
     except Exception as exc:
-        logger.warning(
+        logger.error(
             "Failed to notify support chat about new order",
             extra={
                 "support_chat_id": support_chat_id,
