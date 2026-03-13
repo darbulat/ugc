@@ -31,11 +31,17 @@ PGDATA_VOLUME="${PROJECT}_postgres_data"
 WAL_VOLUME="${PROJECT}_wal_archive"
 IMAGE="${PROJECT}-db_backup:latest"
 
+# docker run --env-file does not strip bash-style quotes ("value"), but docker compose does.
+# Build a temporary env file with quotes stripped so values are passed correctly.
+_CLEAN_ENV=$(mktemp)
+trap 'rm -f "$_CLEAN_ENV"' EXIT
+sed -E 's/^([^=]+)="(.*)"\s*$/\1=\2/' .env | grep -v '^#' | grep -v '^$' > "$_CLEAN_ENV"
+
 _run_pitr() {
     docker run --rm \
         -v "${PGDATA_VOLUME}:/var/lib/postgresql/data" \
         -v "${WAL_VOLUME}:/wal_archive" \
-        --env-file .env \
+        --env-file "$_CLEAN_ENV" \
         "${IMAGE}" \
         python3 /app/scripts/pitr_restore.py "$@"
 }
