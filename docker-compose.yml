@@ -273,6 +273,13 @@ services:
     command: ["python", "-m", "ugc_bot.instagram_stats_collector_scheduler"]
     restart: unless-stopped
 
+  wal_archive_init:
+    image: alpine:3.20
+    volumes:
+      - wal_archive:/wal_archive
+    command: ["sh", "-c", "chown 999:999 /wal_archive && chmod 750 /wal_archive"]
+    restart: "no"
+
   db:
     image: postgis/postgis:16-3.4
     environment:
@@ -285,6 +292,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - wal_archive:/wal_archive
       - ./config/postgres/replication.conf:/etc/postgresql/replication.conf:ro
+    depends_on:
+      wal_archive_init:
+        condition: service_completed_successfully
     command:
       - postgres
       - -c
