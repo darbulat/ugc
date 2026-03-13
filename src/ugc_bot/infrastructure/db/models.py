@@ -154,6 +154,9 @@ class UserModel(Base):
         server_default=text("now()"),
     )
     country: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    language: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True, default=None
+    )
 
 
 class BloggerProfileModel(Base):
@@ -388,9 +391,18 @@ class CountryModel(Base):
     name_native: Mapped[str] = mapped_column(String, nullable=False)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     currency_symbol: Mapped[str] = mapped_column(String(10), nullable=False)
-    locale: Mapped[str] = mapped_column(
-        String(8), nullable=False, server_default=text("'ru'")
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
     )
+
+
+class LanguageModel(Base):
+    """Language ORM model."""
+
+    __tablename__ = "languages"
+
+    code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    name_native: Mapped[str] = mapped_column(String(64), nullable=False)
     enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
