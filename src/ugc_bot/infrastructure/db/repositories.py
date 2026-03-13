@@ -1186,6 +1186,7 @@ def _to_user_entity(model: UserModel) -> User:
         referral_payout_rate=getattr(model, "referral_payout_rate", None),
         updated_at=getattr(model, "updated_at", None),
         country=getattr(model, "country", None),
+        language=getattr(model, "language", None),
     )
 
 
@@ -1209,6 +1210,7 @@ def _to_user_model(user: User) -> UserModel:
         updated_at=getattr(user, "updated_at", None)
         or datetime.now(timezone.utc),
         country=getattr(user, "country", None),
+        language=getattr(user, "language", None),
     )
 
 
