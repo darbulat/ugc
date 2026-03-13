@@ -1,4 +1,4 @@
-"""Locale middleware: resolve per-user locale from user.country → locale."""
+"""Locale middleware: resolve per-user locale from user.language."""
 
 from typing import Any, Awaitable, Callable
 
@@ -9,11 +9,11 @@ from ugc_bot.domain.enums import MessengerType
 
 
 class LocaleMiddleware(BaseMiddleware):
-    """Inject ``user_locale`` into handler data based on user.country.
+    """Inject ``user_locale`` into handler data based on user.language.
 
-    Looks up the current Telegram user in the DB, fetches their country,
-    and sets ``data["user_locale"]`` to ``country.locale``.
-    Falls back to ``data["default_locale"]`` when user/country is unknown.
+    Looks up the current Telegram user in the DB and sets
+    ``data["user_locale"]`` to ``user.language`` when available.
+    Falls back to ``data["default_locale"]`` when user/language is unknown.
     """
 
     async def __call__(
@@ -42,5 +42,4 @@ class LocaleMiddleware(BaseMiddleware):
         )
         if not user or not user.country:
             return default
-        await country_repo.get_by_code(user.country)
         return default

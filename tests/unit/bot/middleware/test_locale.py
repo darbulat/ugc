@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from ugc_bot.bot.middleware.locale import LocaleMiddleware
-from ugc_bot.domain.entities import Country, User
+from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 
 
@@ -22,16 +22,6 @@ def _make_user(country: str | None = "ru") -> User:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
         country=country,
-    )
-
-
-def _make_country() -> Country:
-    """Create a Country entity for testing."""
-    return Country(
-        code="ru",
-        name_native="Россия",
-        currency_code="RUB",
-        currency_symbol="₽",
     )
 
 
@@ -131,18 +121,15 @@ class TestLocaleMiddlewareResolve:
 
     @pytest.mark.asyncio
     async def test_user_and_country_found_returns_default(self) -> None:
-        """User has country and country exists — returns default locale."""
+        """User has country set — returns default locale.
+
+        Language-based resolution will be implemented in Task 6.
+        """
         user = _make_user(country="kz")
-        country = Country(
-            code="kz",
-            name_native="Казахстан",
-            currency_code="KZT",
-            currency_symbol="₸",
-        )
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
         country_repo = MagicMock()
-        country_repo.get_by_code = AsyncMock(return_value=country)
+        country_repo.get_by_code = AsyncMock()
 
         data: dict = {
             "user_role_service": user_role_service,
@@ -151,24 +138,7 @@ class TestLocaleMiddlewareResolve:
         }
         result = await LocaleMiddleware._resolve(data)
         assert result == "ru"
-        country_repo.get_by_code.assert_awaited_once_with("kz")
-
-    @pytest.mark.asyncio
-    async def test_user_found_country_not_found_returns_default(self) -> None:
-        """When get_by_code returns None, falls back to default."""
-        user = _make_user(country="xx")
-        user_role_service = MagicMock()
-        user_role_service.get_user = AsyncMock(return_value=user)
-        country_repo = MagicMock()
-        country_repo.get_by_code = AsyncMock(return_value=None)
-
-        data: dict = {
-            "user_role_service": user_role_service,
-            "country_repo": country_repo,
-            "event_from_user": _make_tg_user(),
-        }
-        result = await LocaleMiddleware._resolve(data)
-        assert result == "ru"
+        country_repo.get_by_code.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_custom_default_locale_is_respected(self) -> None:
@@ -228,16 +198,10 @@ class TestLocaleMiddlewareCall:
     async def test_call_resolves_locale_from_default(self) -> None:
         """__call__ sets data['user_locale'] to the default locale."""
         user = _make_user(country="kz")
-        country = Country(
-            code="kz",
-            name_native="Казахстан",
-            currency_code="KZT",
-            currency_symbol="₸",
-        )
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
         country_repo = MagicMock()
-        country_repo.get_by_code = AsyncMock(return_value=country)
+        country_repo.get_by_code = AsyncMock()
 
         middleware = LocaleMiddleware()
         handler = AsyncMock(return_value=None)
