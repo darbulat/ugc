@@ -56,7 +56,7 @@ def create_base_backup(
         "--progress",
         "--verbose",
         "--checkpoint=fast",
-        "--wal-method=stream",
+        "--wal-method=fetch",
     ]
 
     try:

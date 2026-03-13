@@ -59,6 +59,33 @@ async def test_set_user_updates_existing_user() -> None:
 
 
 @pytest.mark.asyncio
+async def test_set_user_preserves_country() -> None:
+    """Regression: set_user must not overwrite user.country with None."""
+
+    repo = InMemoryUserRepository()
+    existing = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000002"),
+        external_id="cnt-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="bob",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        country="kz",
+    )
+    await repo.save(existing)
+    service = UserRoleService(user_repo=repo)
+    await service.set_user(
+        external_id="cnt-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="bob-updated",
+    )
+    found = await repo.get_by_id(existing.user_id)
+    assert found is not None
+    assert found.country == "kz"
+
+
+@pytest.mark.asyncio
 async def test_get_user_id() -> None:
     """Return user id when exists."""
 
@@ -117,6 +144,7 @@ async def test_update_status_preserves_optional_fields() -> None:
         created_at=now,
         referral_code="ref123",
         referral_payout_rate=Decimal("0.10"),
+        country="kz",
     )
     await repo.save(user)
     service = UserRoleService(user_repo=repo)
@@ -126,6 +154,7 @@ async def test_update_status_preserves_optional_fields() -> None:
     assert found.status == UserStatus.PAUSE
     assert found.referral_code == "ref123"
     assert found.referral_payout_rate == Decimal("0.10")
+    assert found.country == "kz"
 
 
 @pytest.mark.asyncio
@@ -325,6 +354,7 @@ async def test_update_last_role_reminder_at_preserves_optional_fields() -> None:
         issue_count=0,
         created_at=now,
         referral_code="remref",
+        country="kz",
     )
     await repo.save(user)
     service = UserRoleService(user_repo=repo)
@@ -333,6 +363,7 @@ async def test_update_last_role_reminder_at_preserves_optional_fields() -> None:
     assert found is not None
     assert found.last_role_reminder_at is not None
     assert found.referral_code == "remref"
+    assert found.country == "kz"
 
 
 @pytest.mark.asyncio

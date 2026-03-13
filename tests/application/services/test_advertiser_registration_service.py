@@ -513,3 +513,81 @@ async def test_confirm_advertiser_agreement_calls_referral_and_metrics() -> (
 
     mock_referral.create_binding_from_pending.assert_called_once()
     metrics.record_advertiser_registration.assert_called_once_with(str(user_id))
+
+
+async def _seed_user_with_country(
+    repo: InMemoryUserRepository, country: str
+) -> UUID:
+    """Seed a user with the given country code."""
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000121"),
+        external_id="778",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv_cnt",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        country=country,
+    )
+    await repo.save(user)
+    return user.user_id
+
+
+@pytest.mark.asyncio
+async def test_register_advertiser_preserves_user_country() -> None:
+    """register_advertiser must not overwrite user.country with None.
+
+    Regression: the method previously constructed User(...) manually without
+    the country field, which caused user.country to be reset to None in the DB.
+    """
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    await service.register_advertiser(
+        user_id=user_id,
+        phone="@contact",
+        brand="Brand KZ",
+    )
+
+    saved_user = await user_repo.get_by_id(user_id)
+    assert saved_user is not None
+    assert (
+        saved_user.country == "kz"
+    ), "user.country must be preserved after register_advertiser"
+
+
+@pytest.mark.asyncio
+async def test_save_advertiser_before_agreement_preserves_user_country() -> (
+    None
+):
+    """save_advertiser_before_agreement must not overwrite user.country.
+
+    Regression: the method previously constructed User(...) manually without
+    the country field, which caused user.country to be reset to None in the DB.
+    """
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    service = AdvertiserRegistrationService(
+        user_repo=user_repo, advertiser_repo=advertiser_repo
+    )
+
+    await service.save_advertiser_before_agreement(
+        user_id=user_id,
+        phone="@contact",
+        brand="Brand KZ",
+    )
+
+    saved_user = await user_repo.get_by_id(user_id)
+    assert saved_user is not None
+    assert (
+        saved_user.country == "kz"
+    ), "user.country must be preserved after save_advertiser_before_agreement"

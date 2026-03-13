@@ -1920,3 +1920,83 @@ async def test_register_blogger_currency_defaults_to_rub_when_no_user_country() 
     )
 
     assert profile.currency == "RUB"
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_preserves_user_country() -> None:
+    """register_blogger must not overwrite user.country with None.
+
+    Regression: the method previously constructed User(...) manually without
+    the country field, which caused user.country to be reset to None in the DB.
+    """
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+    )
+
+    await service.register_blogger(
+        user_id=user_id,
+        instagram_url="https://instagram.com/alice_reg",
+        city="Almaty",
+        topics={"selected": ["travel"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Kazakhstan",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.FEMALE,
+        birth_date=date(1998, 3, 10),
+    )
+
+    saved_user = await user_repo.get_by_id(user_id)
+    assert saved_user is not None
+    assert (
+        saved_user.country == "kz"
+    ), "user.country must be preserved after register_blogger"
+
+
+@pytest.mark.asyncio
+async def test_save_blogger_before_agreement_preserves_user_country() -> None:
+    """save_blogger_before_agreement must not overwrite user.country with None.
+
+    Regression: the method previously constructed User(...) manually without
+    the country field, which caused user.country to be reset to None in the DB.
+    """
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+    )
+
+    await service.save_blogger_before_agreement(
+        user_id=user_id,
+        instagram_url="https://instagram.com/alice_pre",
+        city="Almaty",
+        topics={"selected": ["travel"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Kazakhstan",
+        price=5000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.FEMALE,
+        birth_date=date(1998, 3, 10),
+    )
+
+    saved_user = await user_repo.get_by_id(user_id)
+    assert saved_user is not None
+    assert (
+        saved_user.country == "kz"
+    ), "user.country must be preserved after save_blogger_before_agreement"
