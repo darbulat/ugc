@@ -147,10 +147,13 @@ async def select_complaint_target(
                 if blogger
                 else f"Блогер {str(response.blogger_id)[:8]}"
             )
+            btn_complaint_tpl = (
+                await bot_texts_service.get("btn_complaint", locale)
+            ).strip() or "Пожаловаться на {name}"
             buttons.append(
                 [
                     Button(
-                        text=f"Пожаловаться на {blogger_name}",
+                        text=btn_complaint_tpl.format(name=blogger_name),
                         callback_data=f"complaint:{order_id}:{response.blogger_id}",
                     )
                 ]
