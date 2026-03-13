@@ -311,6 +311,50 @@ async def test_language_selected_shows_role_keyboard_when_country_set(
 
 
 @pytest.mark.asyncio
+async def test_language_callback_rejects_unknown_code(
+    event_adapter, config, bot_texts_service
+) -> None:
+    """lang: callback with unknown code does not save the language."""
+    user_repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=user_repo)
+    await service.set_user(
+        external_id="30",
+        messenger_type=MessengerType.TELEGRAM,
+        username="mallory",
+    )
+
+    language_repo = make_language_repo(
+        Language(code="ru", name_native="Русский", enabled=True),
+        Language(code="en", name_native="English", enabled=True),
+    )
+
+    message = FakeMessage(user=FakeUser(30, "mallory", "Mallory"))
+    callback = FakeCallback(
+        data="lang:xx",
+        user=FakeUser(30, "mallory", "Mallory"),
+        message=message,
+    )
+    client = FakeMessengerClient()
+
+    await language_selected(
+        callback,
+        user_role_service=service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        language_repo=language_repo,
+        messenger_client=client,
+        event_adapter=event_adapter,
+    )
+
+    # Language should NOT be saved
+    saved = await user_repo.get_by_external("30", MessengerType.TELEGRAM)
+    assert saved is None or saved.language is None
+
+    # No message should have been sent
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
 async def test_language_command_sends_language_keyboard(
     event_adapter, bot_texts_service
 ) -> None:

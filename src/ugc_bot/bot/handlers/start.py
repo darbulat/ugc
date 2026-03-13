@@ -203,6 +203,7 @@ async def language_selected(
     config: AppConfig,
     bot_texts_service: BotTextsService,
     country_repo: CountryRepository | None = None,
+    language_repo: LanguageRepository | None = None,
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -216,6 +217,10 @@ async def language_selected(
     language_code = (callback.data or "").removeprefix(CALLBACK_LANG_PREFIX)
     if not language_code:
         return
+    if language_repo is not None:
+        valid_language = await language_repo.get_by_code(language_code)
+        if valid_language is None:
+            return
     await user_role_service.set_language(
         external_id=incoming.user.external_id,
         messenger_type=incoming.user.messenger_type,
