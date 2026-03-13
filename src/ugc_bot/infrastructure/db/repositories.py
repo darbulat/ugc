@@ -2596,6 +2596,5 @@ def _to_country_entity(model: CountryModel) -> Country:
         name_native=model.name_native,
         currency_code=model.currency_code,
         currency_symbol=model.currency_symbol,
-        locale=model.locale,
         enabled=model.enabled,
     )

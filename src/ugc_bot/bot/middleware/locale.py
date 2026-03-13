@@ -42,5 +42,5 @@ class LocaleMiddleware(BaseMiddleware):
         )
         if not user or not user.country:
             return default
-        country = await country_repo.get_by_code(user.country)
-        return country.locale if country else default
+        await country_repo.get_by_code(user.country)
+        return default

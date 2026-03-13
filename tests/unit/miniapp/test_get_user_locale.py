@@ -43,14 +43,13 @@ def _make_user(country: str | None = "ru") -> User:
     )
 
 
-def _make_country(code: str = "ru", locale: str = "ru") -> Country:
+def _make_country(code: str = "ru") -> Country:
     """Create a Country entity."""
     return Country(
         code=code,
         name_native="Россия",
         currency_code="RUB",
         currency_symbol="₽",
-        locale=locale,
     )
 
 
@@ -133,15 +132,14 @@ class TestGetUserLocale:
         country_repo.get_by_code.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_user_and_country_found_returns_country_locale(self) -> None:
-        """When user and country are both found, returns country.locale."""
+    async def test_user_and_country_found_returns_default(self) -> None:
+        """When user and country are both found, returns default locale."""
         user = _make_user(country="kz")
         country = Country(
             code="kz",
             name_native="Казахстан",
             currency_code="KZT",
             currency_symbol="₸",
-            locale="kk",
         )
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
@@ -160,11 +158,10 @@ class TestGetUserLocale:
 
         request = _make_request(default_locale="ru", dispatcher=dispatcher)
         result = await _get_user_locale(request, "123")
-        assert result == "kk"
+        assert result == "ru"
         user_role_service.get_user.assert_awaited_once_with(
             "123", MessengerType.TELEGRAM
         )
-        country_repo.get_by_code.assert_awaited_once_with("kz")
 
     @pytest.mark.asyncio
     async def test_user_found_country_not_found_returns_default(self) -> None:

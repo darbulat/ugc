@@ -23,6 +23,15 @@ from ugc_bot.domain.enums import (
 
 
 @dataclass(frozen=True)
+class Language:
+    """Language entity for multi-language support."""
+
+    code: str
+    name_native: str
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
 class Country:
     """Country entity for multi-country support."""
 
@@ -30,7 +39,6 @@ class Country:
     name_native: str
     currency_code: str
     currency_symbol: str
-    locale: str = "ru"
     enabled: bool = True
 
 
@@ -64,6 +72,7 @@ class User:
     referral_payout_rate: Optional[Decimal] = None
     updated_at: Optional[datetime] = None
     country: Optional[str] = None
+    language: Optional[str] = None
 
 
 @dataclass(frozen=True)

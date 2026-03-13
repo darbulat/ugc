@@ -25,14 +25,13 @@ def _make_user(country: str | None = "ru") -> User:
     )
 
 
-def _make_country(locale: str = "ru") -> Country:
+def _make_country() -> Country:
     """Create a Country entity for testing."""
     return Country(
         code="ru",
         name_native="Россия",
         currency_code="RUB",
         currency_symbol="₽",
-        locale=locale,
     )
 
 
@@ -131,15 +130,14 @@ class TestLocaleMiddlewareResolve:
         country_repo.get_by_code.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_user_and_country_found_returns_country_locale(self) -> None:
-        """User has country and country exists — returns country.locale."""
+    async def test_user_and_country_found_returns_default(self) -> None:
+        """User has country and country exists — returns default locale."""
         user = _make_user(country="kz")
         country = Country(
             code="kz",
             name_native="Казахстан",
             currency_code="KZT",
             currency_symbol="₸",
-            locale="kk",
         )
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
@@ -152,7 +150,7 @@ class TestLocaleMiddlewareResolve:
             "event_from_user": _make_tg_user(),
         }
         result = await LocaleMiddleware._resolve(data)
-        assert result == "kk"
+        assert result == "ru"
         country_repo.get_by_code.assert_awaited_once_with("kz")
 
     @pytest.mark.asyncio
@@ -227,15 +225,14 @@ class TestLocaleMiddlewareCall:
         assert result == "handler_result"
 
     @pytest.mark.asyncio
-    async def test_call_resolves_locale_from_country(self) -> None:
-        """__call__ sets data['user_locale'] to the resolved country locale."""
+    async def test_call_resolves_locale_from_default(self) -> None:
+        """__call__ sets data['user_locale'] to the default locale."""
         user = _make_user(country="kz")
         country = Country(
             code="kz",
             name_native="Казахстан",
             currency_code="KZT",
             currency_symbol="₸",
-            locale="kk",
         )
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
@@ -253,7 +250,7 @@ class TestLocaleMiddlewareCall:
 
         await middleware(handler, event, data)
 
-        assert data["user_locale"] == "kk"
+        assert data["user_locale"] == "ru"
         handler.assert_awaited_once_with(event, data)
 
     @pytest.mark.asyncio
