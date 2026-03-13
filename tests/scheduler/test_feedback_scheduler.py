@@ -854,6 +854,9 @@ def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
                 "profile_service": Mock(),
             }
 
+        def build_bot_texts_service(self) -> Mock:
+            return Mock()
+
     monkeypatch.setattr("ugc_bot.feedback_scheduler.Container", FakeContainer)
 
     def _run(coro) -> None:  # type: ignore[no-untyped-def]
@@ -1164,3 +1167,120 @@ async def test_run_loop_uses_close_method_when_available() -> None:
         max_iterations=1,
     )
     assert bot.closed is True
+
+
+@pytest.mark.asyncio
+async def test_feedback_message_uses_user_locale(fake_tm) -> None:
+    """Feedback scheduler uses user.language when sending messages."""
+    from unittest.mock import AsyncMock
+
+    user_repo = InMemoryUserRepository()
+    advertiser_repo = InMemoryAdvertiserProfileRepository()
+    order_repo = InMemoryOrderRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
+    interaction_repo = InMemoryInteractionRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-0000000099b0"),
+        external_id="9910",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv_en",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        language="en",
+    )
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-0000000099b1"),
+        external_id="9911",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger_en",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        language="en",
+    )
+    await user_repo.save(advertiser)
+    await user_repo.save(blogger)
+    await advertiser_repo.save(
+        AdvertiserProfile(
+            user_id=advertiser.user_id,
+            phone="c",
+            brand="B",
+        )
+    )
+
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-0000000099b2"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc) - timedelta(hours=73),
+    )
+    await order_repo.save(order)
+    await dispatch_repo.record_sent(order.order_id, blogger.user_id)
+    await dispatch_repo.record_response(
+        order.order_id, blogger.user_id, accepted=True, in_offer=True
+    )
+
+    interaction = await interaction_service.create_for_contacts_sent(
+        order_id=order.order_id,
+        blogger_id=blogger.user_id,
+        advertiser_id=advertiser.user_id,
+    )
+    past_interaction = Interaction(
+        interaction_id=interaction.interaction_id,
+        order_id=interaction.order_id,
+        blogger_id=interaction.blogger_id,
+        advertiser_id=interaction.advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        created_at=interaction.created_at,
+        updated_at=interaction.updated_at,
+    )
+    await interaction_repo.save(past_interaction)
+
+    # Build a fake bot_texts_service that records calls to get_many
+    get_many_calls: list[tuple[list[str], str]] = []
+
+    async def fake_get_many(
+        keys: list[str], locale: str | None = None
+    ) -> dict[str, str]:
+        get_many_calls.append((keys, locale or "ru"))
+        # Return English defaults
+        return {k: DEFAULT_TEXTS.get("en", {}).get(k, "") for k in keys}
+
+    bot_texts_service = AsyncMock()
+    bot_texts_service.get_many = fake_get_many
+
+    feedback_config = FeedbackConfig()
+    bot = FakeBot()
+    await run_once(
+        bot,
+        interaction_repo,
+        interaction_service,
+        user_service,
+        None,
+        order_repo,
+        feedback_config,
+        cutoff=datetime.now(timezone.utc),
+        transaction_manager=fake_tm,
+        bot_texts_service=bot_texts_service,
+    )
+    assert len(bot.messages) == 2
+    # bot_texts_service.get_many was called with "en" locale for each user
+    locales_used = [locale for _, locale in get_many_calls]
+    assert "en" in locales_used, (
+        f"Expected 'en' locale calls, got: {locales_used}"
+    )

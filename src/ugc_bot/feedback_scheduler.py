@@ -200,6 +200,16 @@ def _feedback_texts_for_locale(locale: str) -> dict[str, str]:
     return {k: locale_map.get(k, "") for k in keys}
 
 
+_FEEDBACK_TEXT_KEYS = [
+    "msg_fb_feedback_ok",
+    "msg_fb_feedback_no_deal",
+    "msg_fb_feedback_postpone",
+    "msg_fb_feedback_issue",
+    "msg_feedback_request_adv",
+    "msg_feedback_request_blog",
+]
+
+
 async def _send_feedback_requests(
     messenger_client: MessengerClient,
     interaction: Interaction,
@@ -209,9 +219,9 @@ async def _send_feedback_requests(
     order: Optional[Order],
     feedback_config: FeedbackConfig,
     locale: str,
+    bot_texts_service: object | None = None,
 ) -> None:
     """Send feedback requests to both sides for a single interaction."""
-    texts = _feedback_texts_for_locale(locale)
 
     logger.debug(
         "Processing interaction for feedback",
@@ -250,12 +260,19 @@ async def _send_feedback_requests(
         and needs_feedback_reminder(interaction.from_advertiser)
         and advertiser.external_id.isdigit()
     ):
+        adv_locale = getattr(advertiser, "language", None) or locale
+        if bot_texts_service is not None:
+            adv_texts = await bot_texts_service.get_many(  # type: ignore[attr-defined]
+                _FEEDBACK_TEXT_KEYS, adv_locale
+            )
+        else:
+            adv_texts = _feedback_texts_for_locale(adv_locale)
         sent_to_adv = await _send_advertiser_feedback(
             messenger_client,
             interaction,
             advertiser,
             blogger_profile,
-            texts,
+            adv_texts,
         )
 
     if (
@@ -263,8 +280,15 @@ async def _send_feedback_requests(
         and needs_feedback_reminder(interaction.from_blogger)
         and blogger.external_id.isdigit()
     ):
+        blog_locale = getattr(blogger, "language", None) or locale
+        if bot_texts_service is not None:
+            blog_texts = await bot_texts_service.get_many(  # type: ignore[attr-defined]
+                _FEEDBACK_TEXT_KEYS, blog_locale
+            )
+        else:
+            blog_texts = _feedback_texts_for_locale(blog_locale)
         sent_to_blog = await _send_blogger_feedback(
-            messenger_client, interaction, blogger, order, texts
+            messenger_client, interaction, blogger, order, blog_texts
         )
 
     if sent_to_adv or sent_to_blog:
@@ -293,6 +317,7 @@ async def run_once(
     cutoff: datetime,
     transaction_manager,
     locale: str = "ru",
+    bot_texts_service: object | None = None,
 ) -> None:
     """Run a single feedback dispatch cycle."""
 
@@ -321,6 +346,7 @@ async def run_once(
                 order,
                 feedback_config,
                 locale,
+                bot_texts_service=bot_texts_service,
             )
         except (
             Exception
@@ -353,6 +379,7 @@ async def run_loop(
     transaction_manager,
     default_locale: str = "ru",
     max_iterations: int | None = None,
+    bot_texts_service: object | None = None,
 ) -> None:
     """Run periodic feedback dispatch."""
     install_asyncio_exception_handler("feedback-scheduler")
@@ -377,6 +404,7 @@ async def run_loop(
                 cutoff,
                 transaction_manager,
                 locale=default_locale,
+                bot_texts_service=bot_texts_service,
             )
             if max_iterations is not None and iterations >= max_iterations:
                 return
@@ -427,6 +455,7 @@ def main() -> None:
     )
     container = Container(config)
     deps = container.build_feedback_scheduler_deps()
+    bot_texts_service = container.build_bot_texts_service()
 
     bot = Bot(token=config.bot.bot_token)
     messenger_client = TelegramMessengerClient(bot)
@@ -446,6 +475,7 @@ def main() -> None:
                 interval_seconds=config.feedback.feedback_poll_interval_seconds,
                 transaction_manager=deps["transaction_manager"],
                 default_locale=default_locale,
+                bot_texts_service=bot_texts_service,
             )
         )
     finally:
