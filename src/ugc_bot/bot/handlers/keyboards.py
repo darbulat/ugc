@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 
 if TYPE_CHECKING:
-    from ugc_bot.domain.entities import Country
+    from ugc_bot.domain.entities import Country, Language
 
 # Keys per keyboard in docstrings. Use bot_texts_service.get_many(keys, locale).
 
@@ -62,6 +62,7 @@ CALLBACK_PROFILE_REGION_PREFIX = "profile:region:"
 CALLBACK_SUPPORT = "support"
 CALLBACK_CHANGE_ROLE = "change_role"
 CALLBACK_COUNTRY_PREFIX = "country:"
+CALLBACK_LANG_PREFIX = "lang:"
 
 MINIAPP_OPEN_BUTTON_TEXT = "Открыть приложение"
 
@@ -610,6 +611,22 @@ def edit_work_format_inline_keyboard(texts: dict[str, str]) -> Keyboard:
             ],
         ],
     )
+
+
+def language_inline_keyboard(languages: "list[Language]") -> Keyboard:
+    """Inline keyboard with language buttons (2 per row).
+
+    Button text: name_native. Callback: lang:<code>
+    """
+    buttons = [
+        Button(
+            text=lang.name_native,
+            callback_data=f"{CALLBACK_LANG_PREFIX}{lang.code}",
+        )
+        for lang in languages
+    ]
+    rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
 
 def country_inline_keyboard(countries: "list[Country]") -> Keyboard:
