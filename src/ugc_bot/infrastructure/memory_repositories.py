@@ -17,6 +17,7 @@ from ugc_bot.application.ports import (
     InstagramStatsRepository,
     InstagramVerificationRepository,
     InteractionRepository,
+    LanguageRepository,
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
@@ -36,6 +37,7 @@ from ugc_bot.domain.entities import (
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
+    Language,
     OfferDispatch,
     Order,
     OutboxEvent,
@@ -1194,3 +1196,22 @@ class InMemoryCountryRepository(CountryRepository):
             if country.enabled and country.currency_code == currency_code:
                 return country
         return None
+
+
+@dataclass
+class MemoryLanguageRepository(LanguageRepository):
+    """In-memory LanguageRepository for testing."""
+
+    languages: Dict[str, Language] = field(default_factory=dict)
+
+    async def list_enabled(
+        self, session: object | None = None
+    ) -> list[Language]:
+        """List enabled languages."""
+        return [lang for lang in self.languages.values() if lang.enabled]
+
+    async def get_by_code(
+        self, code: str, session: object | None = None
+    ) -> Optional[Language]:
+        """Fetch language by code."""
+        return self.languages.get(code)

@@ -45,6 +45,7 @@ from ugc_bot.application.ports import (
     InstagramStatsRepository,
     InstagramVerificationRepository,
     InteractionRepository,
+    LanguageRepository,
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
@@ -64,6 +65,7 @@ from ugc_bot.domain.entities import (
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
+    Language,
     OfferDispatch,
     Order,
     OutboxEvent,
@@ -96,6 +98,7 @@ from ugc_bot.infrastructure.db.models import (
     InstagramStatsModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    LanguageModel,
     NpsResponseModel,
     OfferDispatchModel,
     OrderModel,
@@ -2598,3 +2601,49 @@ def _to_country_entity(model: CountryModel) -> Country:
         currency_symbol=model.currency_symbol,
         enabled=model.enabled,
     )
+
+
+def _to_language_entity(model: "LanguageModel") -> Language:
+    """Map language ORM model to domain entity."""
+    return Language(
+        code=model.code,
+        name_native=model.name_native,
+        enabled=model.enabled,
+    )
+
+
+@dataclass(slots=True)
+class SqlAlchemyLanguageRepository(LanguageRepository):
+    """SQLAlchemy implementation of LanguageRepository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def _execute_in_session(
+        self, stmt: Any, session: object | None = None
+    ) -> Any:
+        """Execute a statement, using the provided session or a new one."""
+        if session is not None:
+            return await _get_async_session(session).execute(stmt)
+        async with self.session_factory() as db_session:
+            return await db_session.execute(stmt)
+
+    async def list_enabled(
+        self, session: object | None = None
+    ) -> list[Language]:
+        """List enabled languages."""
+        exec_result = await self._execute_in_session(
+            select(LanguageModel).where(LanguageModel.enabled.is_(True)),
+            session,
+        )
+        return [_to_language_entity(row) for row in exec_result.scalars().all()]
+
+    async def get_by_code(
+        self, code: str, session: object | None = None
+    ) -> Optional[Language]:
+        """Fetch language by code."""
+        exec_result = await self._execute_in_session(
+            select(LanguageModel).where(LanguageModel.code == code),
+            session,
+        )
+        result = exec_result.scalar_one_or_none()
+        return _to_language_entity(result) if result else None

@@ -23,6 +23,7 @@ from ugc_bot.domain.entities import (
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
+    Language,
     OfferDispatch,
     Order,
     OutboxEvent,
@@ -956,6 +957,22 @@ class CountryRepository(ABC):
         self, currency_code: str, session: object | None = None
     ) -> Optional[Country]:
         """Fetch any enabled country with the given currency code."""
+
+
+class LanguageRepository(ABC):
+    """Port for language persistence."""
+
+    @abstractmethod
+    async def list_enabled(
+        self, session: object | None = None
+    ) -> list[Language]:
+        """List enabled languages."""
+
+    @abstractmethod
+    async def get_by_code(
+        self, code: str, session: object | None = None
+    ) -> Optional[Language]:
+        """Fetch language by code."""
 
 
 class TransactionManager(Protocol):

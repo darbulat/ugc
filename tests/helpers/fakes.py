@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ugc_bot.application.messenger.dto import Invoice
+from ugc_bot.domain.entities import Language
+from ugc_bot.infrastructure.memory_repositories import MemoryLanguageRepository
 
 _MESSAGE_REGISTRY: dict[str, "FakeMessage"] = {}
 _CALLBACK_REGISTRY: dict[str, "FakeCallback"] = {}
@@ -453,3 +455,10 @@ class FakeReferralService:
     async def save_pending_referral(self, user_id: object, code: str) -> bool:
         """No-op for tests."""
         return False
+
+
+def make_language_repo(*languages: Language) -> MemoryLanguageRepository:
+    """Build a MemoryLanguageRepository from given Language instances."""
+    return MemoryLanguageRepository(
+        languages={lang.code: lang for lang in languages}
+    )

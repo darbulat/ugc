@@ -2750,3 +2750,79 @@ async def test_sqlalchemy_country_repo_get_by_code_not_found() -> None:
     repo = SqlAlchemyCountryRepository(session_factory=_session_factory(None))
     result = await repo.get_by_code("zz", session=session)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_language_repo_list_enabled() -> None:
+    """list_enabled returns enabled languages from the session."""
+    from ugc_bot.infrastructure.db.models import LanguageModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyLanguageRepository,
+    )
+
+    model = LanguageModel()
+    model.code = "ru"
+    model.name_native = "Русский"
+    model.enabled = True
+
+    session = FakeSession([model])
+    repo = SqlAlchemyLanguageRepository(session_factory=_session_factory(None))
+    result = await repo.list_enabled(session=session)
+    assert len(result) == 1
+    assert result[0].code == "ru"
+    assert result[0].name_native == "Русский"
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_language_repo_get_by_code_found() -> None:
+    """get_by_code returns language when found."""
+    from ugc_bot.infrastructure.db.models import LanguageModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyLanguageRepository,
+    )
+
+    model = LanguageModel()
+    model.code = "en"
+    model.name_native = "English"
+    model.enabled = True
+
+    session = FakeSession(model)
+    repo = SqlAlchemyLanguageRepository(session_factory=_session_factory(None))
+    result = await repo.get_by_code("en", session=session)
+    assert result is not None
+    assert result.code == "en"
+    assert result.name_native == "English"
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_language_repo_get_by_code_not_found() -> None:
+    """get_by_code returns None when language not found."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyLanguageRepository,
+    )
+
+    session = FakeSession(None)
+    repo = SqlAlchemyLanguageRepository(session_factory=_session_factory(None))
+    result = await repo.get_by_code("zz", session=session)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_language_repo_list_enabled_no_session() -> None:
+    """list_enabled uses session_factory when no session is provided."""
+    from ugc_bot.infrastructure.db.models import LanguageModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyLanguageRepository,
+    )
+
+    model = LanguageModel()
+    model.code = "en"
+    model.name_native = "English"
+    model.enabled = True
+
+    repo = SqlAlchemyLanguageRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_enabled(session=None)
+    assert len(result) == 1
+    assert result[0].code == "en"
