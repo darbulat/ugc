@@ -661,7 +661,8 @@ Expected: all pass.
 ```bash
 git add src/ugc_bot/bot/middleware/locale.py \
         src/ugc_bot/miniapp/api.py \
-        tests/unit/bot/middleware/test_locale.py
+        tests/unit/bot/middleware/test_locale.py \
+        tests/unit/miniapp/test_get_user_locale.py
 git commit -m "feat: LocaleMiddleware uses user.language; update miniapp _get_user_locale"
 ```
 
@@ -1430,21 +1431,26 @@ Expected: FAIL.
 
 - [ ] **Step 2: Update `feedback_scheduler.py` to use `bot_texts_service` with user locale**
 
-Find where `_feedback_keyboard` and the feedback message are built. Replace:
+**Context:** `feedback_scheduler.py` already has `_feedback_texts_for_locale(locale: str)` (line ~189) which pulls text keys from `DEFAULT_TEXTS[locale]`. The scheduler already passes `locale` down through `_send_feedback_requests`. The goal is to **replace** `_feedback_texts_for_locale` with `bot_texts_service.get_many()` so that DB overrides are respected.
+
+**Note:** `user.language` is the new field being added in Task 1 of this plan. Ensure Task 1 is complete before this step.
+
+Replace the `_feedback_texts_for_locale` function body and its call site. Current call site in `_send_feedback_requests` (line ~214):
 
 ```python
-# Before: uses DEFAULT_TEXTS["ru"] hardcoded
-texts = DEFAULT_TEXTS.get("ru", {})
+# Before:
+texts = _feedback_texts_for_locale(locale)
 ```
 
-After: accept `bot_texts_service` and load with `user.language`:
+After — accept `bot_texts_service` in `_send_feedback_requests` and resolve locale per user using `user.language` (added in Task 1):
 
 ```python
 locale = getattr(user, "language", None) or default_locale
-texts = await bot_texts_service.get_many(feedback_text_keys, locale)
+keys = ["msg_fb_feedback_ok", "msg_fb_feedback_no_deal", ...]  # same keys as _feedback_texts_for_locale
+texts = await bot_texts_service.get_many(keys, locale)
 ```
 
-Propagate `bot_texts_service` from the container through the scheduler setup in `run_feedback_scheduler()`.
+Propagate `bot_texts_service` from the container through the scheduler setup in `run_feedback_scheduler()`. Per-user locale must be resolved **separately for each user** inside the loop, using `user.language` for each blogger/creator receiving the feedback request.
 
 - [ ] **Step 3: Run tests**
 
@@ -1488,28 +1494,11 @@ text=btn_complaint_tpl.format(name=blogger_name),
 
 The handler must already receive `bot_texts_service` and `user_locale` — check if it does; add them to the signature if not.
 
-- [ ] **Step 2: Fix `offer_responses.py` — replace hardcoded order type labels**
+- [ ] **Step 2: Fix `offer_responses.py` — ensure order type labels use bot_texts**
 
-In `src/ugc_bot/bot/handlers/offer_responses.py`, find the two occurrences:
+**Context:** `offer_responses.py` already has `_format_ugc_type(order, texts)` (line ~318) which accepts a `texts` dict and uses `t.get("msg_order_type_placement", "UGC + размещение")` and `t.get("msg_order_type_ugc", "UGC-видео для бренда")` as locale-aware fallbacks. The function is already called with a `texts` dict at its call site (line ~429).
 
-```python
-"UGC + размещение"
-"UGC-видео для бренда"
-```
-
-Replace with:
-
-```python
-texts = await bot_texts_service.get_many(
-    ["offer_format_label_ugc_placement", "offer_format_label_ugc_only"],
-    user_locale,
-)
-format_label = (
-    texts.get("offer_format_label_ugc_placement", "UGC + размещение")
-    if order.order_type.value == "ugc_plus_placement"
-    else texts.get("offer_format_label_ugc_only", "UGC-видео для бренда")
-)
-```
+The fix is **not** to inline new logic — instead, ensure the `texts` dict passed to `_format_ugc_type()` is fetched from `bot_texts_service` for the current user locale, including the keys `"msg_order_type_placement"` and `"msg_order_type_ugc"`. If `bot_texts_service.get_many()` is already called in the handler to build the `texts` dict, verify those two keys are included. If not, add them to the keys list so they are fetched and passed through.
 
 - [ ] **Step 3: Run full suite**
 
@@ -1534,15 +1523,15 @@ git commit -m "feat: localize complaint button and offer response type labels"
 **Files:**
 - Modify: `src/ugc_bot/admin/app.py` (or wherever `CountryAdmin` is registered)
 
-- [ ] **Step 1: Find where `CountryAdmin` is registered**
+- [ ] **Step 1: Locate the `_add_admin_views` function**
 
-```bash
-grep -rn "CountryAdmin\|CountryModel" src/ugc_bot/admin/
-```
+Open `src/ugc_bot/admin/app.py` and find `_add_admin_views(admin: Admin)` (line ~2125). It contains a list of `admin.add_view(...)` calls (e.g. `UserAdmin`, `BotTextAdmin`, `PayoutRequestAdmin`). There is no existing `CountryAdmin` — `LanguageAdmin` will be the first country/language-related view.
+
+Study one of the existing view classes (e.g. `BotTextAdmin` nearby in the same file) to understand the `ModelView` pattern.
 
 - [ ] **Step 2: Add `LanguageAdmin` view**
 
-Add alongside `CountryAdmin`:
+Add inside `_add_admin_views` alongside the other views:
 
 ```python
 class LanguageAdmin(ModelView, model=LanguageModel):
@@ -1606,6 +1595,26 @@ Send `/start` to the bot — verify:
 - [ ] **Step 4: Final commit**
 
 ```bash
-git add .
+git add src/ugc_bot/domain/entities.py \
+        src/ugc_bot/application/ports.py \
+        src/ugc_bot/application/services/user_role_service.py \
+        src/ugc_bot/infrastructure/db/models.py \
+        src/ugc_bot/infrastructure/db/repositories.py \
+        src/ugc_bot/infrastructure/memory_repositories.py \
+        src/ugc_bot/infrastructure/db/migrations/versions/0066_languages.py \
+        src/ugc_bot/bot/middleware/locale.py \
+        src/ugc_bot/bot/handlers/start.py \
+        src/ugc_bot/bot/handlers/keyboards.py \
+        src/ugc_bot/bot/handlers/profile.py \
+        src/ugc_bot/bot/handlers/complaints.py \
+        src/ugc_bot/bot/handlers/offer_responses.py \
+        src/ugc_bot/bot/texts/defaults.py \
+        src/ugc_bot/application/services/offer_dispatch_service.py \
+        src/ugc_bot/kafka_consumer.py \
+        src/ugc_bot/feedback_scheduler.py \
+        src/ugc_bot/miniapp/api.py \
+        src/ugc_bot/container/service_factory.py \
+        src/ugc_bot/admin/app.py \
+        tests/
 git commit -m "feat: complete language/country/currency selection feature"
 ```
