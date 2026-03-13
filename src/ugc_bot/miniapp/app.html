@@ -1015,11 +1015,7 @@
             strong.textContent = o.product_link || o.order_id;
             li.appendChild(strong);
             li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
-            var payLink = o.payment_link;
-            if (!payLink && cfg && cfg.bot_username) {
-              var u = (cfg.bot_username || '').replace(/^@/, '').trim();
-              if (u) payLink = 'https://t.me/' + u + '?start=pay_' + o.order_id;
-            }
+            var payLink = o.payment_link || '';
             if (payLink) {
               var payBtn = document.createElement('a');
               payBtn.href = payLink;

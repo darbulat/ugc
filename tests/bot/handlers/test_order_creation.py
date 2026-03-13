@@ -25,6 +25,9 @@ from tests.helpers.services import (
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
+)
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_MENU_CREATE_ORDER
 from ugc_bot.bot.handlers.order_creation import (
@@ -406,9 +409,12 @@ async def test_order_creation_flow_new_advertiser(
         ),
         state,
         order_service,
+        profile_service,
+        user_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
     assert bot.invoices
     assert len(order_repo.orders) == 1
@@ -533,9 +539,12 @@ async def test_order_creation_flow_with_barter(
         FakeMessage(text="РФ", user=FakeUser(6, "adv", "Adv"), bot=bot),
         state,
         order_service,
+        profile_service,
+        user_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
     assert bot.invoices
     assert len(order_repo.orders) == 2
@@ -947,9 +956,12 @@ async def test_order_creation_flow_coop_both(
         FakeMessage(text="Москва", user=FakeUser(13, "adv", "Adv"), bot=bot),
         state,
         order_service,
+        profile_service,
+        user_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert bot.invoices
@@ -1103,6 +1115,10 @@ async def test_handle_geography_empty(
     """Reject empty geography."""
 
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "token",
@@ -1132,9 +1148,12 @@ async def test_handle_geography_empty(
         message,
         state,
         order_service,
+        profile_service,
+        user_role_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert message.answers
@@ -1157,6 +1176,9 @@ async def test_handle_geography_invalid_order_type(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     state = FakeFSMContext()
     state._data = {
@@ -1191,9 +1213,12 @@ async def test_handle_geography_invalid_order_type(
         message,
         state,
         order_service,
+        profile_service,
+        user_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert len(order_repo.orders) == 1
@@ -1313,9 +1338,12 @@ async def test_order_creation_flow_ugc_plus_placement(
         FakeMessage(text="Казань", user=FakeUser(16, "adv", "Adv"), bot=bot),
         state,
         order_service,
+        profile_service,
+        user_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert len(order_repo.orders) == 1
@@ -1332,6 +1360,10 @@ async def test_handle_geography_session_expired(
     """Show session expired when user_id is missing from state."""
 
     order_service = build_order_service(user_repo, advertiser_repo, order_repo)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "token",
@@ -1360,9 +1392,12 @@ async def test_handle_geography_session_expired(
         message,
         state,
         order_service,
+        profile_service,
+        user_role_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert message.answers
@@ -1383,6 +1418,9 @@ async def test_handle_geography_contact_price_not_configured(
         username="adv",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    profile_service = build_profile_service(
+        user_repo, advertiser_repo=advertiser_repo
+    )
 
     state = FakeFSMContext()
     state._data = {
@@ -1412,9 +1450,12 @@ async def test_handle_geography_contact_price_not_configured(
         message,
         state,
         order_service,
+        profile_service,
+        user_service,
         config,
         bot_texts_service,
         pricing_service,
+        content_moderation_service=ContentModerationService(),
     )
 
     assert len(order_repo.orders) == 1

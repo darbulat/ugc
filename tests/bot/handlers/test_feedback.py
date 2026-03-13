@@ -3499,9 +3499,9 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
         event_adapter=event_adapter,
     )
     nps_after_first = [a for a in callback1.message.answers if "nps:" in str(a)]
-    assert not nps_after_first, (
-        "Advertiser should NOT get NPS after first blogger only"
-    )
+    assert (
+        not nps_after_first
+    ), "Advertiser should NOT get NPS after first blogger only"
 
     callback2 = FakeCallback(
         data=f"feedback:adv:{interaction2.interaction_id}:ok",
@@ -3520,9 +3520,9 @@ async def test_advertiser_nps_only_after_feedback_to_all_bloggers(
         event_adapter=event_adapter,
     )
     nps_after_all = [a for a in callback2.message.answers if "nps:" in str(a)]
-    assert nps_after_all, (
-        "Advertiser should get NPS after feedback to all bloggers"
-    )
+    assert (
+        nps_after_all
+    ), "Advertiser should get NPS after feedback to all bloggers"
 
 
 @pytest.mark.asyncio
