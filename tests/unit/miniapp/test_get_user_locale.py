@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from ugc_bot.domain.entities import Country, User
+from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.miniapp.api import _get_user_locale
 
@@ -29,7 +29,7 @@ def _make_request(
     return request
 
 
-def _make_user(country: str | None = "ru") -> User:
+def _make_user(language: str | None = "ru") -> User:
     """Create a minimal User entity."""
     return User(
         user_id=uuid4(),
@@ -39,17 +39,7 @@ def _make_user(country: str | None = "ru") -> User:
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=datetime.now(timezone.utc),
-        country=country,
-    )
-
-
-def _make_country(code: str = "ru") -> Country:
-    """Create a Country entity."""
-    return Country(
-        code=code,
-        name_native="Россия",
-        currency_code="RUB",
-        currency_symbol="₽",
+        language=language,
     )
 
 
@@ -67,122 +57,60 @@ class TestGetUserLocale:
         assert result == "en"
 
     @pytest.mark.asyncio
-    async def test_no_country_repo_returns_default(self) -> None:
-        """country_repo absent but user_role_service present — default."""
-        user_role_service = MagicMock()
-        user_role_service.get_user = AsyncMock(return_value=_make_user())
-
-        def dispatcher_get(key: str):
-            if key == "user_role_service":
-                return user_role_service
-            return None  # country_repo absent
-
-        dispatcher = MagicMock()
-        dispatcher.get = dispatcher_get
-
-        request = _make_request(default_locale="ru", dispatcher=dispatcher)
-        result = await _get_user_locale(request, "123")
-        assert result == "ru"
-
-    @pytest.mark.asyncio
     async def test_user_not_found_returns_default(self) -> None:
         """When user_role_service.get_user returns None, returns default."""
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=None)
-        country_repo = MagicMock()
-        country_repo.get_by_code = AsyncMock()
-
-        def dispatcher_get(key: str):
-            return (
-                user_role_service
-                if key == "user_role_service"
-                else country_repo
-            )
 
         dispatcher = MagicMock()
-        dispatcher.get = dispatcher_get
+        dispatcher.get.return_value = user_role_service
 
         request = _make_request(default_locale="ru", dispatcher=dispatcher)
         result = await _get_user_locale(request, "123")
         assert result == "ru"
-        country_repo.get_by_code.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_user_found_no_country_returns_default(self) -> None:
-        """When user.country is None, returns default without country lookup."""
-        user = _make_user(country=None)
+    async def test_user_found_no_language_returns_default(self) -> None:
+        """When user.language is None, returns default."""
+        user = _make_user(language=None)
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
-        country_repo = MagicMock()
-        country_repo.get_by_code = AsyncMock()
-
-        def dispatcher_get(key: str):
-            return (
-                user_role_service
-                if key == "user_role_service"
-                else country_repo
-            )
 
         dispatcher = MagicMock()
-        dispatcher.get = dispatcher_get
+        dispatcher.get.return_value = user_role_service
 
         request = _make_request(default_locale="ru", dispatcher=dispatcher)
         result = await _get_user_locale(request, "123")
         assert result == "ru"
-        country_repo.get_by_code.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_user_and_country_found_returns_default(self) -> None:
-        """When user and country are both found, returns default locale."""
-        user = _make_user(country="kz")
-        country = Country(
-            code="kz",
-            name_native="Казахстан",
-            currency_code="KZT",
-            currency_symbol="₸",
-        )
+    async def test_user_with_language_en_returns_en(self) -> None:
+        """When user.language is 'en', returns 'en'."""
+        user = _make_user(language="en")
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
-        country_repo = MagicMock()
-        country_repo.get_by_code = AsyncMock(return_value=country)
-
-        def dispatcher_get(key: str):
-            return (
-                user_role_service
-                if key == "user_role_service"
-                else country_repo
-            )
 
         dispatcher = MagicMock()
-        dispatcher.get = dispatcher_get
+        dispatcher.get.return_value = user_role_service
 
         request = _make_request(default_locale="ru", dispatcher=dispatcher)
         result = await _get_user_locale(request, "123")
-        assert result == "ru"
+        assert result == "en"
         user_role_service.get_user.assert_awaited_once_with(
             "123", MessengerType.TELEGRAM
         )
 
     @pytest.mark.asyncio
-    async def test_user_found_country_not_found_returns_default(self) -> None:
-        """When get_by_code returns None, falls back to default."""
-        user = _make_user(country="xx")
+    async def test_user_with_language_ru_returns_ru(self) -> None:
+        """When user.language is 'ru', returns 'ru'."""
+        user = _make_user(language="ru")
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
-        country_repo = MagicMock()
-        country_repo.get_by_code = AsyncMock(return_value=None)
-
-        def dispatcher_get(key: str):
-            return (
-                user_role_service
-                if key == "user_role_service"
-                else country_repo
-            )
 
         dispatcher = MagicMock()
-        dispatcher.get = dispatcher_get
+        dispatcher.get.return_value = user_role_service
 
-        request = _make_request(default_locale="ru", dispatcher=dispatcher)
+        request = _make_request(default_locale="en", dispatcher=dispatcher)
         result = await _get_user_locale(request, "123")
         assert result == "ru"
 
@@ -195,3 +123,18 @@ class TestGetUserLocale:
         request = _make_request(default_locale="en", dispatcher=dispatcher)
         result = await _get_user_locale(request, "456")
         assert result == "en"
+
+    @pytest.mark.asyncio
+    async def test_exception_in_get_user_returns_default(self) -> None:
+        """When get_user raises an exception, returns default locale."""
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(
+            side_effect=RuntimeError("DB error")
+        )
+
+        dispatcher = MagicMock()
+        dispatcher.get.return_value = user_role_service
+
+        request = _make_request(default_locale="ru", dispatcher=dispatcher)
+        result = await _get_user_locale(request, "123")
+        assert result == "ru"

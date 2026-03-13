@@ -238,18 +238,23 @@ def _payment_link_for_order(order_id: str, bot_username: str) -> str:
 
 
 async def _get_user_locale(request: Request, external_id: str) -> str:
-    """Resolve locale for user by external_id via user.country."""
+    """Resolve locale for user by external_id via user.language."""
     config = request.app.state.config
     default: str = config.market.default_locale
     dispatcher = request.app.state.dispatcher
     user_role_service = dispatcher.get("user_role_service")
-    country_repo = dispatcher.get("country_repo")
-    if not user_role_service or not country_repo:
+    if not user_role_service:
         return default
-    user = await user_role_service.get_user(external_id, MessengerType.TELEGRAM)
-    if not user or not user.country:
+    try:
+        user = await user_role_service.get_user(
+            external_id, MessengerType.TELEGRAM
+        )
+    except Exception:
+        logger.warning("Failed to resolve locale for user %s", external_id)
         return default
-    return default
+    if not user or not user.language:
+        return default
+    return user.language
 
 
 async def _get_validator_texts(request: Request, locale: str) -> dict[str, str]:
