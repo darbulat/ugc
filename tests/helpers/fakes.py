@@ -170,6 +170,7 @@ class FakeUser:
         user_id: int,
         username: str | None = None,
         first_name: str = "",
+        language_code: str | None = None,
     ) -> None:
         """Initialize fake user.
 
@@ -177,10 +178,12 @@ class FakeUser:
             user_id: User ID
             username: Optional username
             first_name: Optional first name
+            language_code: Optional Telegram language code (e.g. 'ru', 'en')
         """
         self.id = user_id
         self.username = username
         self.first_name = first_name
+        self.language_code = language_code
 
 
 class FakeBot:

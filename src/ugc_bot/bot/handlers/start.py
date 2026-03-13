@@ -15,7 +15,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.messenger.state import StateStore
-from ugc_bot.application.ports import CountryRepository
+from ugc_bot.application.ports import CountryRepository, LanguageRepository
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_service import ReferralService
@@ -24,10 +24,12 @@ from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_CHANGE_ROLE,
     CALLBACK_COUNTRY_PREFIX,
+    CALLBACK_LANG_PREFIX,
     CALLBACK_SUPPORT,
     advertiser_menu_inline_keyboard,
     build_support_telegram_url,
     country_inline_keyboard,
+    language_inline_keyboard,
     main_menu_inline_keyboard,
     miniapp_open_inline_keyboard,
     role_inline_keyboard,
@@ -82,6 +84,7 @@ async def start_command(
     bot_texts_service: BotTextsService,
     user_locale: str = "ru",
     country_repo: CountryRepository | None = None,
+    language_repo: LanguageRepository | None = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -108,6 +111,11 @@ async def start_command(
         await bot_texts_service.get("country_prompt", locale)
     ).strip() or "Выберите вашу страну:"
     countries = await country_repo.list_enabled() if country_repo else []
+    languages = await language_repo.list_enabled() if language_repo else []
+    language_prompt = (
+        await bot_texts_service.get("language_prompt", locale)
+    ).strip() or "Выберите язык / Choose language:"
+    available_language_codes = {lang.code for lang in languages}
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
@@ -118,6 +126,9 @@ async def start_command(
         role_kb=role_inline_keyboard(texts),
         country_prompt=country_prompt,
         country_kb=country_inline_keyboard(countries),
+        language_prompt=language_prompt,
+        language_kb=language_inline_keyboard(languages),
+        available_language_codes=available_language_codes,
     )
 
 
@@ -182,6 +193,91 @@ async def country_selected(
         chat_id=incoming.chat_id,
         text=start_text,
         keyboard=role_inline_keyboard(texts),
+    )
+
+
+@router.callback_query(lambda c: c.data.startswith(CALLBACK_LANG_PREFIX))
+async def language_selected(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    country_repo: CountryRepository | None = None,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle language selection — save language, proceed to country or role."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    language_code = (callback.data or "").removeprefix(CALLBACK_LANG_PREFIX)
+    if not language_code:
+        return
+    await user_role_service.set_language(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+        language_code=language_code,
+    )
+    user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    new_locale = language_code
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+    if user and user.country is None and country_repo:
+        countries = await country_repo.list_enabled()
+        country_prompt = (
+            await bot_texts_service.get("country_prompt", new_locale)
+        ).strip() or "Выберите вашу страну:"
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=country_prompt,
+            keyboard=country_inline_keyboard(countries),
+        )
+        return
+    start_text = (
+        await bot_texts_service.get("start_message", new_locale)
+    ).strip() or "UGC — сервис для UGC."
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], new_locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=start_text,
+        keyboard=role_inline_keyboard(texts),
+    )
+
+
+@router.message(Command("language"))
+async def language_command(
+    message: Message,
+    bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
+    language_repo: LanguageRepository | None = None,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle /language — show language selection keyboard."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    languages = await language_repo.list_enabled() if language_repo else []
+    language_prompt = (
+        await bot_texts_service.get("language_prompt", user_locale)
+    ).strip() or "Выберите язык / Choose language:"
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=language_prompt,
+        keyboard=language_inline_keyboard(languages),
     )
 
 
@@ -392,6 +488,9 @@ async def _start_command(
     role_kb: Keyboard,
     country_prompt: str = "Выберите вашу страну:",
     country_kb: Keyboard | None = None,
+    language_prompt: str = "Выберите язык / Choose language:",
+    language_kb: Keyboard | None = None,
+    available_language_codes: set[str] | None = None,
 ) -> None:
     """Handle the /start command. Clears FSM so /start always shows role."""
     if not incoming.user.external_id:
@@ -415,6 +514,32 @@ async def _start_command(
         await referral_service.save_pending_referral(
             user.user_id, referral_code
         )
+    # Step 1: Language
+    if user.language is None:
+        tg_lang = getattr(incoming, "language_code", None) or ""
+        if (
+            tg_lang
+            and available_language_codes
+            and tg_lang in available_language_codes
+        ):
+            await user_role_service.set_language(
+                external_id=incoming.user.external_id,
+                messenger_type=incoming.user.messenger_type,
+                language_code=tg_lang,
+            )
+            refreshed = await user_role_service.get_user(
+                incoming.user.external_id, incoming.user.messenger_type
+            )
+            if refreshed is not None:
+                user = refreshed
+        elif language_kb is not None and language_kb.rows:
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=language_prompt,
+                keyboard=language_kb,
+            )
+            return
+    # Step 2: Country
     if user.country is None and country_kb is not None and country_kb.rows:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -422,6 +547,7 @@ async def _start_command(
             keyboard=country_kb,
         )
         return
+    # Step 3: Role
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=start_text,
