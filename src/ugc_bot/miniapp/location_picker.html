@@ -148,13 +148,13 @@
 
       var params = new URLSearchParams(window.location.search);
       var locale = params.get('locale') || 'ru';
-      var L = I18N[locale] || I18N['ru'];
+      var t = I18N[locale] || I18N['ru'];
 
-      document.getElementById('page-title').textContent = L.title;
-      document.getElementById('map-hint').textContent = L.hint;
-      document.getElementById('city-search').placeholder = L.placeholder;
-      document.getElementById('btn-city-search').textContent = L.btn_search;
-      document.getElementById('send-btn').textContent = L.btn_send;
+      document.getElementById('page-title').textContent = t.title;
+      document.getElementById('map-hint').textContent = t.hint;
+      document.getElementById('city-search').placeholder = t.placeholder;
+      document.getElementById('btn-city-search').textContent = t.btn_search;
+      document.getElementById('send-btn').textContent = t.btn_send;
 
       var DEFAULT_LAT = 55.7558;
       var DEFAULT_LON = 37.6173;
@@ -181,7 +181,7 @@
           var first = detail[0];
           return (first && first.msg) ? first.msg : JSON.stringify(detail);
         }
-        return fallback || L.request_error;
+        return fallback || t.request_error;
       }
 
       function api(path, body) {
@@ -197,7 +197,7 @@
             return r.json().then(function(j) {
               throw new Error(parseApiError(j.detail, r.statusText));
             }).catch(function(e) {
-              if (e instanceof SyntaxError) throw new Error(r.statusText || L.request_error);
+              if (e instanceof SyntaxError) throw new Error(r.statusText || t.request_error);
               throw e;
             });
           }
@@ -219,7 +219,7 @@
             return r.json().then(function(j) {
               throw new Error(parseApiError(j.detail, r.statusText));
             }).catch(function(e) {
-              if (e instanceof SyntaxError) throw new Error(r.statusText || L.request_error);
+              if (e instanceof SyntaxError) throw new Error(r.statusText || t.request_error);
               throw e;
             });
           }
@@ -230,10 +230,10 @@
       function runSearch() {
         var query = (citySearch && citySearch.value || '').trim();
         if (!query) {
-          if (mapHint) { mapHint.textContent = L.enter_city; mapHint.className = 'hint'; }
+          if (mapHint) { mapHint.textContent = t.enter_city; mapHint.className = 'hint'; }
           return;
         }
-        if (mapHint) { mapHint.textContent = L.searching; mapHint.className = 'hint'; }
+        if (mapHint) { mapHint.textContent = t.searching; mapHint.className = 'hint'; }
         geocodeForward(query)
           .then(function(data) {
             var lat = data && (typeof data.lat === 'number' ? data.lat : parseFloat(data.lat));
@@ -244,14 +244,14 @@
               selectedLat = lat;
               selectedLon = lon;
               sendBtn.disabled = false;
-              if (mapHint) { mapHint.textContent = L.city_found + (data.city || query); mapHint.className = 'hint'; }
+              if (mapHint) { mapHint.textContent = t.city_found + (data.city || query); mapHint.className = 'hint'; }
             } else {
-              if (mapHint) { mapHint.textContent = L.city_not_found; mapHint.className = 'hint error'; }
+              if (mapHint) { mapHint.textContent = t.city_not_found; mapHint.className = 'hint error'; }
             }
           })
           .catch(function(err) {
             if (mapHint) {
-              var msg = (err && err.message) ? err.message : L.city_not_found;
+              var msg = (err && err.message) ? err.message : t.city_not_found;
               if (msg === 'City could not be found.' || msg.indexOf('could not be found') !== -1) {
                 msg = L.city_not_found;
               }
@@ -281,7 +281,7 @@
         selectedLat = lat;
         selectedLon = lon;
         sendBtn.disabled = false;
-        if (mapHint) { mapHint.textContent = L.hint; mapHint.className = 'hint'; }
+        if (mapHint) { mapHint.textContent = t.hint; mapHint.className = 'hint'; }
       });
 
       if (btnCitySearch) btnCitySearch.addEventListener('click', runSearch);
