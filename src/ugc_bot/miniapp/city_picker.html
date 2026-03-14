@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Выбор города</title>
+  <title>City picker</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -15,11 +15,7 @@
       color: var(--tg-theme-text-color, #000);
       min-height: 100vh;
     }
-    h1 {
-      font-size: 1.25rem;
-      margin: 0 0 12px 0;
-      font-weight: 600;
-    }
+    h1 { font-size: 1.25rem; margin: 0 0 12px 0; font-weight: 600; }
     #search {
       width: 100%;
       padding: 12px 14px;
@@ -30,9 +26,7 @@
       background: var(--tg-theme-bg-color, #fff);
       color: var(--tg-theme-text-color, #000);
     }
-    #search::placeholder {
-      color: var(--tg-theme-hint-color, #999);
-    }
+    #search::placeholder { color: var(--tg-theme-hint-color, #999); }
     #list {
       list-style: none;
       margin: 0;
@@ -50,30 +44,72 @@
       background: var(--tg-theme-button-color, #2481cc);
       color: var(--tg-theme-button-text-color, #fff);
     }
-    #list li.no-results {
-      cursor: default;
-      color: var(--tg-theme-hint-color, #999);
-    }
-    #list li.no-results:active {
-      background: transparent;
-      color: var(--tg-theme-hint-color, #999);
-    }
+    #list li.no-results { cursor: default; color: var(--tg-theme-hint-color, #999); }
+    #list li.no-results:active { background: transparent; color: var(--tg-theme-hint-color, #999); }
     .loading { padding: 20px; text-align: center; color: var(--tg-theme-hint-color, #999); }
     .error { padding: 20px; color: #c00; }
   </style>
 </head>
 <body>
-  <h1>Выберите город</h1>
-  <input type="text" id="search" placeholder="Загрузка…" autocomplete="off" disabled />
-  <ul id="list">
-    <li class="loading">Загрузка списка городов…</li>
-  </ul>
+  <h1 id="page-title">…</h1>
+  <input type="text" id="search" placeholder="…" autocomplete="off" disabled />
+  <ul id="list"><li class="loading" id="loading-item">…</li></ul>
 
   <script>
     (function() {
+      var I18N = {
+        ru: {
+          title: 'Выберите город',
+          placeholder: 'Начните вводить название города',
+          loading: 'Загрузка списка городов…',
+          no_results: 'Ничего не найдено',
+          no_cities: 'Нет городов',
+          load_error: 'Не удалось загрузить список городов. Попробуйте позже.'
+        },
+        en: {
+          title: 'Choose a city',
+          placeholder: 'Start typing a city name',
+          loading: 'Loading cities…',
+          no_results: 'Nothing found',
+          no_cities: 'No cities',
+          load_error: 'Could not load city list. Please try again later.'
+        },
+        kk: {
+          title: 'Қала таңдаңыз',
+          placeholder: 'Қала атауын теріңіз',
+          loading: 'Қалалар жүктелуде…',
+          no_results: 'Ештеңе табылмады',
+          no_cities: 'Қалалар жоқ',
+          load_error: 'Қалалар тізімін жүктеу мүмкін болмады. Кейінірек қайталаңыз.'
+        },
+        be: {
+          title: 'Выберыце горад',
+          placeholder: 'Пачніце ўводзіць назву горада',
+          loading: 'Загрузка спісу гарадоў…',
+          no_results: 'Нічога не знойдзена',
+          no_cities: 'Няма гарадоў',
+          load_error: 'Не ўдалося загрузіць спіс гарадоў. Паспрабуйце пазней.'
+        },
+        uz: {
+          title: 'Shahar tanlang',
+          placeholder: 'Shahar nomini kiriting',
+          loading: 'Shaharlar yuklanmoqda…',
+          no_results: 'Hech narsa topilmadi',
+          no_cities: "Shaharlar yo'q",
+          load_error: "Shaharlar ro'yxatini yuklab bo'lmadi. Keyinroq urinib ko'ring."
+        }
+      };
+
+      var params = new URLSearchParams(window.location.search);
+      var locale = params.get('locale') || 'ru';
+      var L = I18N[locale] || I18N['ru'];
+
       var MAX_VISIBLE = 100;
       var searchEl = document.getElementById('search');
       var listEl = document.getElementById('list');
+
+      document.getElementById('page-title').textContent = L.title;
+      document.getElementById('loading-item').textContent = L.loading;
 
       function normalizeForSearch(s) {
         if (s == null || s === '') return '';
@@ -95,7 +131,7 @@
         if (filtered.length === 0) {
           var li = document.createElement('li');
           li.className = 'no-results';
-          li.textContent = query ? 'Ничего не найдено' : 'Нет списка городов. Используйте карту или введите город вручную.';
+          li.textContent = query ? L.no_results : L.no_cities;
           listEl.appendChild(li);
           return;
         }
@@ -123,20 +159,22 @@
           .then(function(cities) {
             window._cities = cities;
             renderList(cities, '');
-            searchEl.placeholder = 'Начните вводить название города';
+            searchEl.placeholder = L.placeholder;
             searchEl.disabled = false;
             searchEl.focus();
           })
           .catch(function() {
-            listEl.innerHTML =
-              '<li class="error">Не удалось загрузить список городов. Попробуйте позже.</li>';
+            listEl.innerHTML = '';
+            var li = document.createElement('li');
+            li.className = 'error';
+            li.textContent = L.load_error;
+            listEl.appendChild(li);
             searchEl.disabled = true;
           });
       }
 
       searchEl.addEventListener('input', function() {
-        var q = this.value.trim();
-        renderList(window._cities || [], q);
+        renderList(window._cities || [], this.value.trim());
       });
 
       if (window.Telegram && window.Telegram.WebApp) {
