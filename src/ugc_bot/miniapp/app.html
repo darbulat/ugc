@@ -657,11 +657,18 @@
           btn_update_blg_profile: 'Обновить профиль',
           btn_blogger_change_role: 'Сменить роль',
           instagram_code_hint: 'Ваш код (действует 15 минут):',
+          instagram_warning: '⚠️ Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.',
+          instagram_instr_h1: 'Подтверждение Instagram',
+          instagram_instr_title: 'Для верификации Instagram выполните 3 шага:',
+          instagram_instr_step1: 'Скопируйте код ниже',
+          instagram_instr_step2: 'Отправьте его в Direct аккаунту UGC в Instagram',
+          instagram_instr_step3: 'Дождитесь автоматической верификации',
+          instagram_instr_link: '🔗 Instagram UGC:',
           btn_open_instagram: 'Открыть Instagram',
           btn_back_to_cabinet: 'В личный кабинет',
           order_detail_back: 'Назад к списку',
           btn_pay: 'Оплатить',
-          orders_empty: 'Вы пока не откликались на заказы',
+          orders_empty: 'Заказов пока нет',
           orders_error: 'Не удалось загрузить заказы',
           order_created: 'Заказ создан. ID: ',
           order_error: 'Ошибка создания заказа',
@@ -768,11 +775,18 @@
           btn_update_blg_profile: 'Update profile',
           btn_blogger_change_role: 'Switch role',
           instagram_code_hint: 'Your code (valid for 15 minutes):',
+          instagram_warning: '⚠️ Without a confirmed Instagram account, you won\'t receive orders. Confirm Instagram to start receiving orders from advertisers.',
+          instagram_instr_h1: 'Instagram verification',
+          instagram_instr_title: 'To verify your Instagram account, follow 3 steps:',
+          instagram_instr_step1: 'Copy the code below',
+          instagram_instr_step2: 'Send it in a direct message to the UGC Instagram account',
+          instagram_instr_step3: 'Wait for automatic verification',
+          instagram_instr_link: '🔗 Instagram UGC:',
           btn_open_instagram: 'Open Instagram',
           btn_back_to_cabinet: 'Back to dashboard',
           order_detail_back: 'Back to list',
           btn_pay: 'Pay',
-          orders_empty: 'You have no orders yet',
+          orders_empty: 'No orders yet',
           orders_error: 'Failed to load orders',
           order_created: 'Order created. ID: ',
           order_error: 'Error creating order',
@@ -905,8 +919,10 @@
         setQ('#screen-blogger-done .hint', L.blg_done_hint);
         setText('btn-close-blogger', L.btn_close);
         setText('btn-change-role-from-blogger', L.btn_change_role);
+        // Instagram warning
+        setText('blogger-instagram-warning', L.instagram_warning);
         // Instagram verification
-        setQ('#screen-instagram-verification h1', L.select_role_h1);
+        setQ('#screen-instagram-verification h1', L.instagram_instr_h1);
         setQ('#screen-instagram-verification > .hint', L.instagram_code_hint);
         setText('btn-instagram-open', L.btn_open_instagram);
         setText('btn-instagram-verification-back', L.btn_back_to_cabinet);
@@ -1357,10 +1373,24 @@
           var codeEl = document.getElementById('instagram-verification-code');
           if (instrEl) {
             instrEl.textContent = '';
-            (res.instruction || '').split('\n').forEach(function(line, i) {
-              if (i > 0) instrEl.appendChild(document.createElement('br'));
-              instrEl.appendChild(document.createTextNode(line));
+            var titleEl = document.createElement('strong');
+            titleEl.textContent = tx('instagram_instr_title');
+            instrEl.appendChild(titleEl);
+            [tx('instagram_instr_step1'), tx('instagram_instr_step2'), tx('instagram_instr_step3')].forEach(function(step, i) {
+              instrEl.appendChild(document.createElement('br'));
+              instrEl.appendChild(document.createTextNode((i + 1) + '. ' + step));
             });
+            instrEl.appendChild(document.createElement('br'));
+            instrEl.appendChild(document.createElement('br'));
+            instrEl.appendChild(document.createTextNode(tx('instagram_instr_link') + ' '));
+            if (window._instagramVerificationUrl) {
+              var linkEl = document.createElement('a');
+              linkEl.href = window._instagramVerificationUrl;
+              linkEl.target = '_blank';
+              linkEl.rel = 'noopener';
+              linkEl.textContent = window._instagramVerificationUrl;
+              instrEl.appendChild(linkEl);
+            }
           }
           if (codeEl) codeEl.textContent = res.code || '';
           showScreen('screen-instagram-verification');
@@ -1416,7 +1446,7 @@
               payBtn.target = '_blank';
               payBtn.rel = 'noopener';
               payBtn.className = 'btn btn-pay';
-              payBtn.textContent = 'Оплатить';
+              payBtn.textContent = tx('btn_pay');
               payBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1431,11 +1461,18 @@
             ul.appendChild(li);
           });
           if (!data.orders || data.orders.length === 0) {
-            ul.innerHTML = '<li>Заказов пока нет</li>';
+            var emptyLi = document.createElement('li');
+            emptyLi.textContent = tx('orders_empty');
+            ul.appendChild(emptyLi);
           }
         }).catch(function() {
           var ul = document.getElementById('orders-list');
-          if (ul) ul.innerHTML = '<li class="error">Не удалось загрузить заказы</li>';
+          if (ul) {
+            var errLi = document.createElement('li');
+            errLi.className = 'error';
+            errLi.textContent = tx('orders_error');
+            ul.appendChild(errLi);
+          }
         });
       });
       document.getElementById('hide-orders-list').addEventListener('click', function() {
@@ -1472,7 +1509,12 @@
           showScreen('screen-order-detail');
         }).catch(function(err) {
           var ul = document.getElementById('orders-list');
-          if (ul) ul.innerHTML = '<li class="error">' + (err.message || 'Не удалось загрузить заказ') + '</li>';
+          if (ul) {
+            var errLi2 = document.createElement('li');
+            errLi2.className = 'error';
+            errLi2.textContent = err.message || tx('orders_error');
+            ul.appendChild(errLi2);
+          }
         });
       }
 
