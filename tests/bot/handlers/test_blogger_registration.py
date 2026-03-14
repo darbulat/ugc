@@ -3336,8 +3336,10 @@ async def test_blogger_gender_callback_shows_selection(
         event_adapter=adapter,
     )
 
-    assert any("Ваш пол?" in e["text"] for e in client.edited_text), (
-        "expected edit_text with question and selected label"
+    gender_label = (await bot_texts_service.get("btn_gender_m", "ru")).strip()
+    assert any(
+        "Ваш пол?" in e["text"] and gender_label in e["text"]
+        for e in client.edited_text
     )
 
 
@@ -3365,4 +3367,118 @@ async def test_barter_callback_shows_selection(
         event_adapter=adapter,
     )
 
-    assert any("Готовы к бартеру?" in e["text"] for e in client.edited_text)
+    barter_label = (await bot_texts_service.get("btn_barter_yes", "ru")).strip()
+    assert any(
+        "Готовы к бартеру?" in e["text"] and barter_label in e["text"]
+        for e in client.edited_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_audience_gender_callback_shows_selection(
+    bot_texts_service, config
+) -> None:
+    """After audience gender chosen, message edited to show label."""
+    state = FakeFSMContext(
+        state=BloggerRegistrationStates.audience_gender.state
+    )
+    msg = FakeMessage(text="Пол аудитории?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AUDIENCE_F,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_audience_gender_callback(
+        callback,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    audience_gender_label = (
+        await bot_texts_service.get("btn_audience_f", "ru")
+    ).strip()
+    assert any(
+        "Пол аудитории?" in e["text"] and audience_gender_label in e["text"]
+        for e in client.edited_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_audience_age_callback_shows_selection(
+    bot_texts_service, config
+) -> None:
+    """After audience age chosen, message edited to show label."""
+    state = FakeFSMContext(state=BloggerRegistrationStates.audience_age.state)
+    msg = FakeMessage(text="Возраст аудитории?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_AGE_18_24,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_audience_age_callback(
+        callback,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    age_label = (await bot_texts_service.get("btn_age_18_24", "ru")).strip()
+    assert any(
+        "Возраст аудитории?" in e["text"] and age_label in e["text"]
+        for e in client.edited_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_work_format_callback_shows_selection(
+    bot_texts_service, config, user_repo, blogger_repo
+) -> None:
+    """After work format chosen, message edited to show label."""
+    user = await create_test_user(
+        user_repo,
+        user_id=UUID("00000000-0000-0000-0000-0000000000a2"),
+        external_id="a2",
+        username="u",
+    )
+    registration_service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+    state = FakeFSMContext(state=BloggerRegistrationStates.work_format.state)
+    await state.update_data(**_work_format_state_data(user.user_id))
+    msg = FakeMessage(text="Формат работы?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_WORK_ADS,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_work_format_callback(
+        callback,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        blogger_registration_service=registration_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    work_format_label = (
+        await bot_texts_service.get("btn_work_format_ads", "ru")
+    ).strip()
+    assert any(
+        "Формат работы?" in e["text"] and work_format_label in e["text"]
+        for e in client.edited_text
+    )
