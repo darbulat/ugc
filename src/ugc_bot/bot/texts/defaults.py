@@ -828,8 +828,6 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         # Language/country selection
         "language_prompt": "Выберите язык / Choose language:",
         "country_prompt": "Выберите вашу страну:",
-        "btn_change_language": "🌐 Изменить язык",
-        "language_changed": "Язык изменён.",
         # Offer texts
         "offer_header": "Новый заказ",
         "offer_details_header": "📋 Детали заказа:",
@@ -1593,8 +1591,6 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         # Language/country selection
         "language_prompt": "Choose language:",
         "country_prompt": "Select your country:",
-        "btn_change_language": "🌐 Change language",
-        "language_changed": "Language changed.",
         # Offer texts
         "offer_header": "New order",
         "offer_details_header": "📋 Order details:",

@@ -20,6 +20,7 @@ from aiokafka.structs import OffsetAndMetadata  # type: ignore[import-untyped]
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
@@ -115,7 +116,7 @@ async def _send_offer_to_blogger(
     dlq_producer: AIOKafkaProducer | None,
     dlq_topic: str,
     locale: str = "ru",
-    bot_texts_service: object | None = None,
+    bot_texts_service: BotTextsService | None = None,
 ) -> None:
     """Send offer to one blogger with retries."""
     if blogger.user_id == order.advertiser_id:
@@ -142,7 +143,7 @@ async def _send_offer_to_blogger(
             btn_accept = "Готов снять UGC"
             btn_skip = "Пропустить"
             if bot_texts_service is not None:
-                txts = await bot_texts_service.get_many(  # type: ignore[attr-defined]
+                txts = await bot_texts_service.get_many(
                     ["btn_offer_accept", "btn_offer_skip"], locale
                 )
                 btn_accept = txts.get("btn_offer_accept") or btn_accept
@@ -233,7 +234,7 @@ async def _send_offers(
     dlq_topic: str,
     retries: int,
     retry_delay_seconds: float,
-    bot_texts_service: object | None = None,
+    bot_texts_service: BotTextsService | None = None,
     default_locale: str = "ru",
 ) -> None:
     order, advertiser = await offer_dispatch_service.get_order_and_advertiser(
@@ -338,7 +339,7 @@ async def _consume_forever(
     messenger_client: MessengerClient,
     offer_dispatch_service: OfferDispatchService,
     config: AppConfig,
-    bot_texts_service: object | None = None,
+    bot_texts_service: BotTextsService | None = None,
     default_locale: str = "ru",
 ) -> None:
     """Start Kafka clients and process activation events forever."""

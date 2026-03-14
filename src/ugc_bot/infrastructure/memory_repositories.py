@@ -1213,5 +1213,9 @@ class MemoryLanguageRepository(LanguageRepository):
     async def get_by_code(
         self, code: str, session: object | None = None
     ) -> Optional[Language]:
-        """Fetch language by code."""
+        """Fetch language by code regardless of enabled status.
+
+        This intentionally does not filter by enabled — validation uses
+        existence, not enabled status (same as SqlAlchemyLanguageRepository).
+        """
         return self.languages.get(code)

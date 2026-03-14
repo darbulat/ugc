@@ -5,6 +5,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.messenger.dto import (
     IncomingCallback,
     IncomingMessage,
@@ -219,15 +220,14 @@ async def language_selected(
         valid_language = await language_repo.get_by_code(language_code)
         if valid_language is None:
             return
-    await user_role_service.set_language(
-        external_id=incoming.user.external_id,
-        messenger_type=incoming.user.messenger_type,
-        language_code=language_code,
-    )
-    user = await user_role_service.get_user(
-        external_id=incoming.user.external_id,
-        messenger_type=incoming.user.messenger_type,
-    )
+    try:
+        user = await user_role_service.set_language(
+            external_id=incoming.user.external_id,
+            messenger_type=incoming.user.messenger_type,
+            language_code=language_code,
+        )
+    except UserNotFoundError:
+        return
     new_locale = language_code
     if incoming.message_id:
         await messenger_client.edit_reply_markup(

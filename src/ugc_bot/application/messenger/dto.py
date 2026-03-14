@@ -85,7 +85,6 @@ class IncomingMessage:
     location_lon: float | None = None
     web_app_data: str | None = None
     raw: dict[str, Any] | None = None
-    language_code: str = ""
 
 
 @dataclass(frozen=True, slots=True)

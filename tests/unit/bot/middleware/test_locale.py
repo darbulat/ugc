@@ -137,11 +137,11 @@ class TestLocaleMiddlewareResolveCurrency:
         assert result == "₽"
 
     @pytest.mark.asyncio
-    async def test_no_fallback_in_data_defaults_to_ruble(self) -> None:
-        """No currency_symbol in data and no country: falls back to ruble."""
+    async def test_no_fallback_in_data_defaults_to_empty_string(self) -> None:
+        """No currency_symbol in data and no country: falls back to ''."""
         data: dict = {}
         result = await LocaleMiddleware._resolve_currency(None, data)
-        assert result == "₽"
+        assert result == ""
 
 
 class TestLocaleMiddlewareGetUser:

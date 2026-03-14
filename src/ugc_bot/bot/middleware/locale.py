@@ -54,7 +54,9 @@ class LocaleMiddleware(BaseMiddleware):
     @staticmethod
     async def _resolve_currency(user: Any, data: dict[str, Any]) -> str:
         """Return currency_symbol from user's country, or static fallback."""
-        fallback: str = data.get("currency_symbol") or "₽"
+        # data["currency_symbol"] is set from config by the DI container;
+        # use it as fallback so EN users don't see a hardcoded ruble symbol.
+        fallback: str = data.get("currency_symbol") or ""
         if not user or not user.country:
             return fallback
         country_repo = data.get("country_repo")

@@ -93,7 +93,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Reverse migration."""
+    """Reverse migration.
+
+    WARNING: This downgrade is destructive. Per-country locale values and
+    per-user language data are NOT restored. All countries will have
+    locale='ru' and users.language will be dropped permanently.
+    Data restoration must be done manually if needed.
+    """
     # Re-add countries.locale (default 'ru')
     op.add_column(
         "countries",

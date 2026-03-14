@@ -18,6 +18,7 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.domain.entities import BloggerProfile, InstagramStats, Order, User
 from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus, WorkFormat
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -579,7 +580,7 @@ class OfferDispatchService:
         order: Order,
         advertiser_status: str,
         locale: str = "ru",
-        bot_texts_service: object | None = None,
+        bot_texts_service: BotTextsService | None = None,
         session: object | None = None,
     ) -> str:
         """Format offer text for a blogger using localized texts."""
@@ -610,7 +611,7 @@ class OfferDispatchService:
                 "offer_format_label_ugc_placement",
                 "offer_format_label_ugc_only",
             ]
-            texts = await bot_texts_service.get_many(keys, locale)  # type: ignore[attr-defined]
+            texts = await bot_texts_service.get_many(keys, locale)
 
         def t(key: str, default: str) -> str:
             return texts.get(key) or default

@@ -360,6 +360,36 @@ async def test_language_callback_rejects_unknown_code(
 
 
 @pytest.mark.asyncio
+async def test_language_selected_user_not_found_returns_silently(
+    event_adapter, config, bot_texts_service
+) -> None:
+    """lang: callback with no matching DB user returns without error."""
+    user_repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=user_repo)
+    # Do NOT create the user — simulates duplicate callback or race condition
+
+    message = FakeMessage(user=FakeUser(99, "ghost", "Ghost"))
+    callback = FakeCallback(
+        data="lang:ru",
+        user=FakeUser(99, "ghost", "Ghost"),
+        message=message,
+    )
+    client = FakeMessengerClient()
+
+    # Should not raise; should return silently
+    await language_selected(
+        callback,
+        user_role_service=service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=event_adapter,
+    )
+
+    assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
 async def test_language_command_sends_language_keyboard(
     event_adapter, bot_texts_service
 ) -> None:

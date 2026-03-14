@@ -14,6 +14,7 @@ from ugc_bot.application.feedback_utils import (
 )
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -219,7 +220,7 @@ async def _send_feedback_requests(
     order: Optional[Order],
     feedback_config: FeedbackConfig,
     locale: str,
-    bot_texts_service: object | None = None,
+    bot_texts_service: BotTextsService | None = None,
 ) -> None:
     """Send feedback requests to both sides for a single interaction."""
 
@@ -262,7 +263,7 @@ async def _send_feedback_requests(
     ):
         adv_locale = getattr(advertiser, "language", None) or locale
         if bot_texts_service is not None:
-            adv_texts = await bot_texts_service.get_many(  # type: ignore[attr-defined]
+            adv_texts = await bot_texts_service.get_many(
                 _FEEDBACK_TEXT_KEYS, adv_locale
             )
         else:
@@ -282,7 +283,7 @@ async def _send_feedback_requests(
     ):
         blog_locale = getattr(blogger, "language", None) or locale
         if bot_texts_service is not None:
-            blog_texts = await bot_texts_service.get_many(  # type: ignore[attr-defined]
+            blog_texts = await bot_texts_service.get_many(
                 _FEEDBACK_TEXT_KEYS, blog_locale
             )
         else:
@@ -317,7 +318,7 @@ async def run_once(
     cutoff: datetime,
     transaction_manager,
     locale: str = "ru",
-    bot_texts_service: object | None = None,
+    bot_texts_service: BotTextsService | None = None,
 ) -> None:
     """Run a single feedback dispatch cycle."""
 
@@ -379,7 +380,7 @@ async def run_loop(
     transaction_manager,
     default_locale: str = "ru",
     max_iterations: int | None = None,
-    bot_texts_service: object | None = None,
+    bot_texts_service: BotTextsService | None = None,
 ) -> None:
     """Run periodic feedback dispatch."""
     install_asyncio_exception_handler("feedback-scheduler")
