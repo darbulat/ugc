@@ -3380,8 +3380,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         ),
         "msg_fb_postpone_72": "Tekshiruv 72 soatga ko'chirildi. Ko'chirishlar: {cnt}/{max_cnt}",
         "msg_fb_postpone_ok_blog": (
-            "Yaxshi, keyinroq qaytamiz 👍 "
-            "Buyurtmachi yozsa — javob bering."
+            "Yaxshi, keyinroq qaytamiz 👍 Buyurtmachi yozsa — javob bering."
         ),
         "msg_fb_postpone_ok_adv": (
             "Tushunarli, keyinroq qaytamiz 👍\n"
