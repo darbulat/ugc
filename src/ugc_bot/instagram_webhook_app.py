@@ -208,7 +208,8 @@ async def _notify_user_verification_success(
 
         from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 
-        locale = getattr(config.market, "default_locale", "ru") or "ru"
+        default_locale = getattr(config.market, "default_locale", "ru") or "ru"
+        locale = (user.language if user.language else None) or default_locale
         locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
         keys = [
             "btn_confirm_instagram",
@@ -276,7 +277,8 @@ async def _notify_user_verification_mismatch(
             )
             return
 
-        locale = getattr(config.market, "default_locale", "ru") or "ru"
+        default_locale = getattr(config.market, "default_locale", "ru") or "ru"
+        locale = (user.language if user.language else None) or default_locale
         locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
         keys = [
             "btn_edit_profile",
