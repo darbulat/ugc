@@ -79,7 +79,9 @@ class Container:
         """OfferDispatchService for Kafka consumer."""
         repos = self.build_repos()
         return service_factory.build_offer_dispatch_service(
-            repos, self._transaction_manager
+            repos,
+            self._transaction_manager,
+            currency_symbol=self._config.market.currency_symbol,
         )
 
     def build_bot_texts_service(self) -> BotTextsService:

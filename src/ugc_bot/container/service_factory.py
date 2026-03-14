@@ -116,7 +116,7 @@ def build_geocoder(config: AppConfig) -> GeocoderPort:
     )
 
 
-def build_offer_dispatch_service(repos, transaction_manager):
+def build_offer_dispatch_service(repos, transaction_manager, currency_symbol="₽"):
     """Build OfferDispatchService for Kafka consumer."""
     return OfferDispatchService(
         user_repo=repos["user_repo"],
@@ -127,6 +127,7 @@ def build_offer_dispatch_service(repos, transaction_manager):
         interaction_repo=repos["interaction_repo"],
         instagram_stats_repo=repos.get("instagram_stats_repo"),
         transaction_manager=transaction_manager,
+        currency_symbol=currency_symbol,
     )
 
 
