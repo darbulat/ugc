@@ -921,7 +921,10 @@ async def _update_blogger_field_city(
         miniapp_url = None
         base = getattr(config.webhook, "webhook_base_url", None) or ""
         if base:
-            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+            miniapp_url = (
+                base.rstrip("/")
+                + f"/miniapp/location_picker.html?locale={user_locale}"
+            )
         location_btn_keys = ["btn_location_request", "btn_location_map"]
         location_texts = await bot_texts_service.get_many(
             location_btn_keys, locale
@@ -1636,6 +1639,7 @@ def _get_edit_field_reply_markup(
     profile_type: str,
     edit_texts: dict,
     config: AppConfig,
+    user_locale: str = "ru",
 ):
     """Return reply_markup for editing the given field."""
     if field_key == "audience_gender":
@@ -1652,7 +1656,10 @@ def _get_edit_field_reply_markup(
         miniapp_url = None
         base = getattr(config.webhook, "webhook_base_url", None) or ""
         if base:
-            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+            miniapp_url = (
+                base.rstrip("/")
+                + f"/miniapp/location_picker.html?locale={user_locale}"
+            )
         return flow_keyboard_city_request(
             edit_texts, miniapp_location_url=miniapp_url
         )
@@ -1743,7 +1750,7 @@ async def handle_profile_edit_field_callback(
     ]
     edit_texts = await bot_texts_service.get_many(edit_keys, locale)
     reply_markup = _get_edit_field_reply_markup(
-        field_key, profile_type, edit_texts, config
+        field_key, profile_type, edit_texts, config, user_locale=locale
     )
     await message_ctx.answer(prompt, reply_markup=reply_markup)
     await state.set_state(EditProfileStates.entering_value)
@@ -2168,7 +2175,7 @@ async def edit_profile_choose_field(
         PROMPT_EDIT_GENERIC, ""
     )
     reply_markup = _get_edit_field_reply_markup(
-        field_key, profile_type, field_texts, config
+        field_key, profile_type, field_texts, config, user_locale=user_locale
     )
     await message_ctx.answer(prompt, reply_markup=reply_markup)
     await state.set_state(EditProfileStates.entering_value)
@@ -2226,7 +2233,10 @@ async def handle_profile_region_callback(
         miniapp_url = None
         base = getattr(config.webhook, "webhook_base_url", None) or ""
         if base:
-            miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+            miniapp_url = (
+                base.rstrip("/")
+                + f"/miniapp/location_picker.html?locale={user_locale}"
+            )
         location_btn_keys = ["btn_location_request", "btn_location_map"]
         location_texts = await bot_texts_service.get_many(
             location_btn_keys, locale

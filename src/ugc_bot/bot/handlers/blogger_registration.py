@@ -506,7 +506,9 @@ async def handle_instagram(
     miniapp_url = None
     base = getattr(config.webhook, "webhook_base_url", None) or ""
     if base:
-        miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+        miniapp_url = (
+            base.rstrip("/") + f"/miniapp/location_picker.html?locale={locale}"
+        )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=step_city,
@@ -628,7 +630,9 @@ async def _city_step_keyboard_async(
     miniapp_url = None
     base = getattr(config.webhook, "webhook_base_url", None) or ""
     if base:
-        miniapp_url = base.rstrip("/") + "/miniapp/location_picker.html"
+        miniapp_url = (
+            base.rstrip("/") + f"/miniapp/location_picker.html?locale={locale}"
+        )
     return flow_keyboard_city_request(
         city_btn_texts, miniapp_location_url=miniapp_url
     )

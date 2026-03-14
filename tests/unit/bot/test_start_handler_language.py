@@ -26,13 +26,13 @@ from ugc_bot.infrastructure.memory_repositories import (
 
 
 @pytest.mark.asyncio
-async def test_start_always_shows_language_keyboard_when_language_not_set(
+async def test_start_auto_detects_language_from_tg_code(
     messenger_client, event_adapter, config, bot_texts_service
 ) -> None:
-    """Always show language keyboard when user.language is None.
+    """Auto-detect language from Telegram when it matches an available language.
 
     user.language=None, tg_language_code='ru' (matches available)
-    -> shows language keyboard regardless of tg code (no auto-detect).
+    -> language is auto-set, language keyboard is skipped, role keyboard shown.
     """
     user_repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=user_repo)
@@ -63,11 +63,12 @@ async def test_start_always_shows_language_keyboard_when_language_not_set(
         event_adapter=event_adapter,
     )
 
-    # Language is NOT auto-detected — user must choose manually
+    # Language IS auto-detected from Telegram
     saved = await user_repo.get_by_external("1", MessengerType.TELEGRAM)
-    assert saved is None or saved.language is None
+    assert saved is not None
+    assert saved.language == "ru"
 
-    # Should show language keyboard
+    # Should show role keyboard (language step skipped)
     assert len(client.sent_text) == 1
     sent = client.sent_text[0]
     assert sent["keyboard"] is not None
@@ -77,7 +78,7 @@ async def test_start_always_shows_language_keyboard_when_language_not_set(
         for btn in row
         if btn.callback_data
     ]
-    assert any(cd.startswith("lang:") for cd in all_callback_data)
+    assert not any(cd.startswith("lang:") for cd in all_callback_data)
 
 
 @pytest.mark.asyncio
