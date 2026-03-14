@@ -667,6 +667,10 @@
           btn_open_instagram: 'Открыть Instagram',
           btn_back_to_cabinet: 'В личный кабинет',
           order_detail_back: 'Назад к списку',
+          order_detail_title: 'Заказ',
+          order_detail_status: 'Статус: ',
+          order_updated: 'Заказ обновлён.',
+          order_save_error: 'Ошибка сохранения',
           btn_pay: 'Оплатить',
           orders_empty: 'Заказов пока нет',
           orders_error: 'Не удалось загрузить заказы',
@@ -785,6 +789,10 @@
           btn_open_instagram: 'Open Instagram',
           btn_back_to_cabinet: 'Back to dashboard',
           order_detail_back: 'Back to list',
+          order_detail_title: 'Order',
+          order_detail_status: 'Status: ',
+          order_updated: 'Order updated.',
+          order_save_error: 'Save error',
           btn_pay: 'Pay',
           orders_empty: 'No orders yet',
           orders_error: 'Failed to load orders',
@@ -1482,8 +1490,8 @@
       function openOrderDetail(orderId) {
         api('/orders/get', { order_id: orderId }).then(function(order) {
           window._currentOrderId = orderId;
-          document.getElementById('order-detail-title').textContent = 'Заказ ' + (order.product_link || order.order_id);
-          document.getElementById('order-detail-status').textContent = 'Статус: ' + order.status;
+          document.getElementById('order-detail-title').textContent = tx('order_detail_title') + ' ' + (order.product_link || order.order_id);
+          document.getElementById('order-detail-status').textContent = tx('order_detail_status') + order.status;
           document.getElementById('ord-detail-link').value = order.product_link || '';
           document.getElementById('ord-detail-offer').value = order.offer_text || '';
           document.getElementById('ord-detail-price').value = String(order.price || 0);
@@ -1558,14 +1566,14 @@
           content_usage: document.getElementById('ord-detail-content-usage').value.trim() || null
         };
         api('/orders/update', payload).then(function(res) {
-          okEl.textContent = 'Заказ обновлён.';
+          okEl.textContent = tx('order_updated');
           if (res.payment_link) {
             var payBtn = document.getElementById('btn-order-detail-pay');
             if (payBtn) { payBtn.href = res.payment_link; payBtn.style.display = 'block'; }
           }
           if (submitBtn) submitBtn.disabled = false;
         }).catch(function(err) {
-          errEl.textContent = err.message || 'Ошибка сохранения';
+          errEl.textContent = err.message || tx('order_save_error');
           if (submitBtn) submitBtn.disabled = false;
         });
       });
