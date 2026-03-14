@@ -232,6 +232,71 @@ async def test_resolve_city_to_location_returns_none_when_geocoder_none() -> (
 
 
 @pytest.mark.asyncio
+async def test_resolve_city_to_coordinates_none_when_geocoder_none() -> None:
+    """resolve_city_to_coordinates returns None when geocoder is not set."""
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=None,
+    )
+    assert await service.resolve_city_to_coordinates("Moscow") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_to_coordinates_none_for_empty_city() -> None:
+    """resolve_city_to_coordinates returns None for empty/whitespace city."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_geocoder = MagicMock()
+    mock_geocoder.geocode_with_details = AsyncMock(return_value=None)
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=mock_geocoder,
+    )
+    assert await service.resolve_city_to_coordinates("") is None
+    assert await service.resolve_city_to_coordinates("   ") is None
+    mock_geocoder.geocode_with_details.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_to_coordinates_geocoder_none_returns_none() -> None:
+    """resolve_city_to_coordinates returns None when geocoder returns None."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_geocoder = MagicMock()
+    mock_geocoder.geocode_with_details = AsyncMock(return_value=None)
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=mock_geocoder,
+    )
+    assert await service.resolve_city_to_coordinates("UnknownCity") is None
+    mock_geocoder.geocode_with_details.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_to_coordinates_lat_lon_region_country() -> None:
+    """resolve_city_to_coordinates returns (lat, lon, region, country)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_geocoder = MagicMock()
+    mock_geocoder.geocode_with_details = AsyncMock(
+        return_value=(55.75, 37.62, "place", "city", "Moscow", "Russia")
+    )
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=mock_geocoder,
+    )
+    result = await service.resolve_city_to_coordinates("Moscow")
+    assert result is not None
+    lat, lon, region, country = result
+    assert lat == 55.75 and lon == 37.62
+    assert region == "Moscow" and country == "Russia"
+
+
+@pytest.mark.asyncio
 async def test_resolve_city_to_location_returns_wkt_and_region_country() -> (
     None
 ):
@@ -1298,6 +1363,114 @@ async def test_update_blogger_profile_location_geometry_direct() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_blogger_profile_with_country_sets_new_country() -> None:
+    """update_blogger_profile with country= uses passed country."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/cc_user",
+            confirmed=False,
+            city="Berlin",
+            topics={"selected": []},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Berlin",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+            country="Germany",
+        )
+    )
+
+    class FakeGeocoder:
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (52.52, 13.405, "place", "city", "Berlin", "Germany")
+
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        geocoder=FakeGeocoder(),
+    )
+    result = await service.update_blogger_profile(
+        user_id, city="Berlin", country="Germany"
+    )
+    assert result.profile is not None
+    assert result.profile.country == "Germany"
+
+
+@pytest.mark.asyncio
+async def test_update_blogger_profile_geocoder_country_sets_new_country() -> (
+    None
+):
+    """update_blogger_profile without country= uses country from geocoder."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    now = datetime.now(timezone.utc)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user_id,
+            instagram_url="https://instagram.com/geo_user",
+            confirmed=False,
+            city="Paris",
+            topics={"selected": []},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Paris",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=now,
+        )
+    )
+
+    class FakeGeocoder:
+        async def geocode_with_details(self, query, region=None, country=None):
+            if not query:
+                return None
+            return (48.8566, 2.3522, "place", "city", "Île-de-France", "France")
+
+        def accepts_as_populated_place(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+        def accepts_as_place_or_region(
+            self, place_class: str, place_type: str
+        ) -> bool:
+            return True
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        geocoder=FakeGeocoder(),
+    )
+    result = await service.update_blogger_profile(user_id, city="Paris")
+    assert result.profile is not None
+    assert result.profile.country == "France"
+    assert result.profile.region == "Île-de-France"
+
+
+@pytest.mark.asyncio
 async def test_update_blogger_profile_with_transaction_manager(
     fake_tm: object,
 ) -> None:
@@ -2000,3 +2173,53 @@ async def test_save_blogger_before_agreement_preserves_user_country() -> None:
     assert saved_user.country == "kz", (
         "user.country must be preserved after save_blogger_before_agreement"
     )
+
+
+@pytest.mark.asyncio
+async def test_save_blogger_before_agreement_currency_from_country_repo() -> (
+    None
+):
+    """save_blogger_before_agreement sets currency from country_repo."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryCountryRepository,
+    )
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    country_repo = InMemoryCountryRepository()
+    country_repo.countries["kz"] = _make_country_kz()
+    user_id = await _seed_user_with_country(user_repo, "kz")
+
+    mock_geocoder = MagicMock()
+    mock_geocoder.geocode_with_details = AsyncMock(
+        return_value=(43.22, 76.85, "place", "city", "Almaty", "KZ")
+    )
+    mock_geocoder.accepts_as_populated_place = MagicMock(return_value=True)
+    mock_geocoder.accepts_as_place_or_region = MagicMock(return_value=True)
+
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        country_repo=country_repo,
+        geocoder=mock_geocoder,
+    )
+
+    profile = await service.save_blogger_before_agreement(
+        user_id=user_id,
+        instagram_url="https://instagram.com/kz_user",
+        city="Almaty",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="KZ",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        blogger_gender=BloggerGender.MALE,
+        birth_date=date(1990, 1, 1),
+    )
+
+    assert profile.currency == "KZT"

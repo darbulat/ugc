@@ -1,14 +1,13 @@
-"""Tests for geography parsing and blogger matching."""
+"""Tests for geography parsing and blogger matching.
+
+No hardcoded region/city dictionaries; cities are arbitrary worldwide.
+"""
 
 from ugc_bot.application.geography import (
-    REGION_TO_CITIES,
     GeographySpec,
-    get_canonical_cities_set,
     get_cities_list_for_miniapp,
     get_geometry_queries_from_spec,
     get_regions_for_city,
-    is_canonical_city,
-    is_canonical_city_only,
     normalize_geo_token,
     parse_geography,
     parse_miniapp_city_id,
@@ -135,44 +134,12 @@ class TestGetGeometryQueriesFromSpec:
 
 
 class TestGetCitiesListForMiniapp:
-    """Tests for get_cities_list_for_miniapp."""
+    """Tests for get_cities_list_for_miniapp (no hardcoded list)."""
 
-    def test_returns_list_of_dicts_with_id_and_label(self) -> None:
-        """List items have id and label keys."""
+    def test_returns_empty_list(self) -> None:
+        """Returns empty list; cities are arbitrary worldwide."""
         cities = get_cities_list_for_miniapp()
-        assert len(cities) > 0
-        for item in cities:
-            assert "id" in item
-            assert "label" in item
-            assert isinstance(item["id"], str)
-            assert isinstance(item["label"], str)
-
-    def test_contains_moscow_and_spb(self) -> None:
-        """List contains Moscow, SPB, Kazan; id format region:city."""
-        cities = get_cities_list_for_miniapp()
-        ids = {c["id"] for c in cities}
-        assert "москва:москва" in ids
-        assert "республика татарстан:казань" in ids
-        assert any("санкт-петербург" in i for i in ids)
-
-    def test_label_includes_region(self) -> None:
-        """Each item label is 'City (Region)'."""
-        cities = get_cities_list_for_miniapp()
-        for item in cities:
-            assert " (" in item["label"]
-            assert item["label"].endswith(")")
-
-    def test_sorted_by_label(self) -> None:
-        """List is sorted by label."""
-        cities = get_cities_list_for_miniapp()
-        labels = [c["label"] for c in cities]
-        assert labels == sorted(labels)
-
-    def test_no_duplicate_ids(self) -> None:
-        """No duplicate ids (each region:city pair once)."""
-        cities = get_cities_list_for_miniapp()
-        ids = [c["id"] for c in cities]
-        assert len(ids) == len(set(ids))
+        assert cities == []
 
 
 class TestRegionKeyToLabel:
@@ -197,59 +164,25 @@ class TestRegionKeyToLabel:
 
 
 class TestGetRegionsForCity:
-    """Tests for get_regions_for_city."""
+    """Tests for get_regions_for_city (no hardcoded dictionary)."""
 
-    def test_city_in_one_region(self) -> None:
-        """City in one region returns single-element list."""
-        regions = get_regions_for_city("Москва")
-        assert regions == ["москва"]
-
-    def test_city_in_multiple_regions(self) -> None:
-        """City in multiple regions returns all region keys."""
-        regions = get_regions_for_city("Железногорск")
-        assert len(regions) >= 2
-        assert "красноярский край" in regions
-        assert "курская область" in regions
-
-    def test_unknown_city_returns_empty(self) -> None:
-        """Unknown city returns empty list."""
+    def test_always_returns_empty(self) -> None:
+        """Always returns empty list; region resolved by geocoder."""
+        assert get_regions_for_city("Москва") == []
+        assert get_regions_for_city("Berlin") == []
         assert get_regions_for_city("НесуществующийГород") == []
 
 
 class TestResolveRegionFromCityField:
-    """Tests for resolve_region_from_city_field."""
+    """Tests for resolve_region_from_city_field (no hardcoded dictionary)."""
 
-    def test_plain_city_one_region_returns_ok(self) -> None:
-        """Single city in one region returns (region, 'ok')."""
+    def test_any_city_returns_unrecognized(self) -> None:
+        """Any city string returns (None, 'unrecognized')."""
         region_key, status = resolve_region_from_city_field("Москва")
-        assert status == "ok"
-        assert region_key == "москва"
-
-    def test_city_with_region_token_returns_ok(self) -> None:
-        """City and matching region in field use explicit region."""
-        region_key, status = resolve_region_from_city_field("Казань, Татарстан")
-        assert status == "ok"
-        assert region_key == "республика татарстан"
-
-    def test_region_before_city_returns_ok(self) -> None:
-        """Region then city in field uses that region."""
-        region_key, status = resolve_region_from_city_field(
-            "Московская область, Балашиха"
-        )
-        assert status == "ok"
-        assert region_key == "московская область"
-
-    def test_city_in_multiple_regions_returns_multiple(self) -> None:
-        """City in several regions returns (None, 'multiple')."""
-        region_key, status = resolve_region_from_city_field("Железногорск")
-        assert status == "multiple"
+        assert status == "unrecognized"
         assert region_key is None
 
-    def test_unrecognized_city_returns_unrecognized(self) -> None:
-        """Unknown city returns (None, 'unrecognized')."""
-        region_key, status = resolve_region_from_city_field(
-            "НесуществующийГород"
-        )
+        region_key, status = resolve_region_from_city_field("Казань, Татарстан")
         assert status == "unrecognized"
         assert region_key is None
 
@@ -257,12 +190,6 @@ class TestResolveRegionFromCityField:
         """Empty or whitespace returns (None, 'unrecognized')."""
         assert resolve_region_from_city_field("") == (None, "unrecognized")
         assert resolve_region_from_city_field("   ") == (None, "unrecognized")
-
-    def test_only_region_token_returns_unrecognized(self) -> None:
-        """Only region name (no city) is treated as unrecognized city."""
-        region_key, status = resolve_region_from_city_field("Татарстан")
-        assert status == "unrecognized"
-        assert region_key is None
 
 
 class TestParseMiniappCityId:
@@ -286,66 +213,11 @@ class TestParseMiniappCityId:
         assert parse_miniapp_city_id("   ") == ("", None)
 
 
-class TestIsCanonicalCity:
-    """Tests for is_canonical_city."""
-
-    def test_known_cities_true(self) -> None:
-        """Known cities return True."""
-        assert is_canonical_city("москва") is True
-        assert is_canonical_city("Москва") is True
-        assert is_canonical_city("казань") is True
-        assert is_canonical_city("санкт-петербург") is True
-
-    def test_unknown_returns_false(self) -> None:
-        """Unknown or typo returns False."""
-        assert is_canonical_city("питер") is False
-        assert is_canonical_city("unknown_city") is False
-        assert is_canonical_city("") is False
-
-
-class TestIsCanonicalCityOnly:
-    """Tests for is_canonical_city_only (city names only, not regions)."""
-
-    def test_city_returns_true(self) -> None:
-        """Actual city names return True."""
-        assert is_canonical_city_only("москва") is True
-        assert is_canonical_city_only("якутск") is True
-        assert is_canonical_city_only("казань") is True
-
-    def test_region_returns_false(self) -> None:
-        """Region names must not pass as city."""
-        assert is_canonical_city_only("республика якутия") is False
-        assert is_canonical_city_only("республика татарстан") is False
-        assert is_canonical_city_only("саха") is False
-
-    def test_unknown_returns_false(self) -> None:
-        """Unknown value returns False."""
-        assert is_canonical_city_only("питер") is False
-        assert is_canonical_city_only("") is False
-
-
-class TestGetCanonicalCitiesSet:
-    """Tests for get_canonical_cities_set."""
-
-    def test_contains_expected_ids(self) -> None:
-        """Set contains region keys and city values from REGION_TO_CITIES."""
-        s = get_canonical_cities_set()
-        assert "москва" in s
-        assert "санкт-петербург" in s
-        assert "республика татарстан" in s
-        assert "казань" in s
-
-    def test_is_frozenset(self) -> None:
-        """Returns frozenset."""
-        assert isinstance(get_canonical_cities_set(), frozenset)
-
-
 class TestParseGeographyEdgeCases:
     """Additional edge cases for parse_geography (lines 59, uncovered)."""
 
     def test_separator_only_returns_none(self) -> None:
         """Text that splits into empty tokens returns None (line 59)."""
-        # Commas/semicolons with no actual content
         result = parse_geography(",,,")
         assert result is None
 
@@ -363,57 +235,3 @@ class TestGetGeometryQueriesEdgeCases:
         spec = GeographySpec(type="places", values=[])
         result = get_geometry_queries_from_spec(spec)
         assert result == []
-
-
-class TestResolveRegionFromCityFieldEdgeCases:
-    """resolve_region_from_city_field edge cases (lines 211, 235, 238)."""
-
-    def test_empty_city_returns_none_unrecognized(self) -> None:
-        """Empty city_raw returns (None, 'unrecognized') (line 211)."""
-        result = resolve_region_from_city_field("")
-        assert result == (None, "unrecognized")
-
-    def test_city_with_one_region_returns_ok(self) -> None:
-        """City with exactly one region returns that region (line 235)."""
-        # Find a city that appears in exactly one region
-        city = None
-        for _region_key, cities in REGION_TO_CITIES.items():
-            for c in cities:
-                regions = get_regions_for_city(c)
-                if len(regions) == 1:
-                    city = c
-                    break
-            if city:
-                break
-        if city is not None:
-            result = resolve_region_from_city_field(city)
-            assert result[1] == "ok"
-
-    def test_city_with_multiple_regions_returns_multiple(self) -> None:
-        """City in multiple regions returns (None, 'multiple') (237-238)."""
-        # Find a city in multiple regions
-        city = None
-        for _region_key, cities in REGION_TO_CITIES.items():
-            for c in cities:
-                regions = get_regions_for_city(c)
-                if len(regions) > 1:
-                    city = c
-                    break
-            if city:
-                break
-        if city is not None:
-            result = resolve_region_from_city_field(city)
-            assert result == (None, "multiple")
-
-
-class TestRegionToCitiesCoverage:
-    """Sanity check for REGION_TO_CITIES."""
-
-    def test_region_to_cities_has_normalized_keys(self) -> None:
-        """REGION_TO_CITIES keys and values are normalized (lower, no space)."""
-        for key, cities in REGION_TO_CITIES.items():
-            assert key == key.lower()
-            assert key.strip() == key
-            for city in cities:
-                assert city == city.lower()
-                assert city.strip() == city

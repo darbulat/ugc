@@ -13,7 +13,6 @@ from aiogram.types import CallbackQuery, Message
 from ugc_bot.application.geography import (
     get_regions_for_city,
     normalize_geo_token,
-    region_key_to_label,
 )
 
 # Application errors are handled by ErrorHandlerMiddleware
@@ -576,36 +575,15 @@ async def _handle_city_from_location(
         )
         return True
     location_geometry = wkt_multipoint_from_lat_lon(location_lat, location_lon)
-    state_data = {
-        "city": normalized,
-        "country": (country_from_geo or "").strip(),
-        "location_geometry": location_geometry,
-    }
-    regions = get_regions_for_city(normalized)
-    msg_multi_region = await bot_texts_service.get(
-        "msg_city_multiple_regions", locale
-    )
     step_birth_date = await bot_texts_service.get(
         "msg_step_ask_birth_date", locale
     )
-    if len(regions) > 1:
-        await state_store.update_data(**state_data)
-        region_buttons = [
-            [
-                Button(
-                    text=region_key_to_label(r),
-                    callback_data=f"{CALLBACK_BLOGGER_REGION_PREFIX}{r}",
-                )
-            ]
-            for r in regions
-        ]
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_multi_region,
-            keyboard=flow_inline_keyboard(region_buttons),
-        )
-        return True
-    state_data["region"] = regions[0] if regions else (region_from_geo or "")
+    state_data = {
+        "city": normalized,
+        "region": region_from_geo or "",
+        "country": (country_from_geo or "").strip(),
+        "location_geometry": location_geometry,
+    }
     await state_store.update_data(**state_data)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -678,35 +656,10 @@ async def _handle_city_from_text(
         return
     location_geometry, region_geo, country_geo = location_result
     country = (country_geo or "").strip()
-    regions = get_regions_for_city(normalized)
-    msg_multi_region = await bot_texts_service.get(
-        "msg_city_multiple_regions", locale
-    )
+    region = region_geo or ""
     step_birth_date = await bot_texts_service.get(
         "msg_step_ask_birth_date", locale
     )
-    if len(regions) > 1:
-        await state_store.update_data(
-            city=normalized,
-            location_geometry=location_geometry,
-            country=country,
-        )
-        region_buttons = [
-            [
-                Button(
-                    text=region_key_to_label(r),
-                    callback_data=f"{CALLBACK_BLOGGER_REGION_PREFIX}{r}",
-                )
-            ]
-            for r in regions
-        ]
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_multi_region,
-            keyboard=flow_inline_keyboard(region_buttons),
-        )
-        return
-    region = regions[0] if regions else (region_geo or "")
     await state_store.update_data(
         city=normalized,
         region=region,
@@ -797,19 +750,26 @@ async def handle_city_region_callback(
     if region not in get_regions_for_city(city):
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         return
-    locale = user_locale
-    step_birth_date = await bot_texts_service.get(
+    # Unreachable: no hardcoded regions (get_regions_for_city always []).
+    locale = user_locale  # pragma: no cover
+    step_birth_date = await bot_texts_service.get(  # pragma: no cover
         "msg_step_ask_birth_date", locale
     )
-    await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    await state_store.update_data(region=region)
-    await messenger_client.send_text(
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id
+    )  # pragma: no cover
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client
+    )  # pragma: no cover
+    await state_store.update_data(region=region)  # pragma: no cover
+    await messenger_client.send_text(  # pragma: no cover
         chat_id=incoming.chat_id,
         text=step_birth_date,
         keyboard=flow_keyboard_remove(),
     )
-    await state_store.set_state(BloggerRegistrationStates.birth_date.state)
+    await state_store.set_state(
+        BloggerRegistrationStates.birth_date.state
+    )  # pragma: no cover
 
 
 @router.message(BloggerRegistrationStates.birth_date)

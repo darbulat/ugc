@@ -1004,14 +1004,12 @@ def test_miniapp_api_create_order_notification_error_logged(
 
 
 def test_miniapp_api_cities_returns_list(client: TestClient) -> None:
-    """GET /miniapp/api/cities returns list of cities with id and label."""
+    """GET /miniapp/api/cities returns empty list."""
     response = client.get("/miniapp/api/cities")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    if data:
-        assert "id" in data[0]
-        assert "label" in data[0]
+    assert data == []
 
 
 def test_miniapp_api_config_success(client: TestClient) -> None:

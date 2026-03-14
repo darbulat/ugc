@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Backfill blogger_profiles.region from city field.
 
-Uses region_cities_data and geography: parses city string (may contain
-"City", "Region, City" or "City, Region"), resolves to one region and saves
-to profile.region. Logs user_id and city when city is in multiple regions
-or when city is unrecognized.
+No hardcoded region/city dictionary: resolve_region_from_city_field always
+returns (None, "unrecognized"). This script logs each profile's city and
+does not update region. To backfill region from city, use the geocoder
+(Nominatim) in this script or run profile update flow which resolves
+location via geocoder.
 """
 
 import argparse

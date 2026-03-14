@@ -1061,10 +1061,10 @@ async def test_handle_city_any_city_accepted_and_asks_birth_date(
 
 
 @pytest.mark.asyncio
-async def test_handle_city_multi_region_shows_region_buttons(
+async def test_handle_city_stores_region_from_geocoder(
     user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
-    """handle_city with city in multiple regions shows region picker."""
+    """handle_city stores city and region from geocoder, asks birth date."""
     reg_service = MagicMock(spec=BloggerRegistrationService)
     reg_service.resolve_city_to_location = AsyncMock(
         return_value=("MULTIPOINT((93.5 56.0))", "Krasnoyarsk Krai", "Russia")
@@ -1087,9 +1087,13 @@ async def test_handle_city_multi_region_shows_region_buttons(
 
     reg_service.resolve_city_to_location.assert_called_once_with("железногорск")
     assert state._data.get("city") == "железногорск"
+    assert state._data.get("region") == "Krasnoyarsk Krai"
     assert state._data.get("location_geometry") == "MULTIPOINT((93.5 56.0))"
-    assert state.state != BloggerRegistrationStates.birth_date
-    assert any("регион" in s["text"].lower() for s in client.sent_text)
+    assert state.state == BloggerRegistrationStates.birth_date
+    assert any(
+        "дату рождения" in s["text"].lower() or "дд.мм" in s["text"].lower()
+        for s in client.sent_text
+    )
 
 
 @pytest.mark.asyncio
@@ -1304,10 +1308,10 @@ async def test_handle_city_with_location_normalized_empty_sends_error(
 
 
 @pytest.mark.asyncio
-async def test_handle_city_with_location_multi_region_shows_region_buttons(
+async def test_handle_city_with_location_stores_region_from_geocoder(
     user_repo, blogger_repo, config, bot_texts_service
 ) -> None:
-    """handle_city location + city in multiple regions shows region picker."""
+    """handle_city with location stores city and region from geocoder."""
     reg_service = MagicMock(spec=BloggerRegistrationService)
     reg_service.resolve_city_from_location = AsyncMock(
         return_value=("Железногорск", None, None)
@@ -1333,7 +1337,8 @@ async def test_handle_city_with_location_multi_region_shows_region_buttons(
     )
 
     assert state._data.get("city") == "железногорск"
-    assert any("регион" in s["text"].lower() for s in client.sent_text)
+    assert state._data.get("region") == ""
+    assert state.state == BloggerRegistrationStates.birth_date
 
 
 @pytest.mark.asyncio
@@ -1398,10 +1403,10 @@ async def test_handle_city_region_callback_invalid_region_answers_only(
 
 
 @pytest.mark.asyncio
-async def test_handle_city_region_callback_success_asks_birth_date(
+async def test_handle_city_region_callback_no_regions_answers_only(
     config, bot_texts_service
 ) -> None:
-    """Valid region in city_region_callback stores region, asks birth date."""
+    """city_region_callback with no region list only answers."""
     state = FakeFSMContext()
     await state.set_state(BloggerRegistrationStates.city.state)
     await state.update_data(city="железногорск")
@@ -1422,11 +1427,11 @@ async def test_handle_city_region_callback_success_asks_birth_date(
         event_adapter=adapter,
     )
 
-    assert state._data.get("region") == "красноярский край"
-    assert state.state == BloggerRegistrationStates.birth_date
-    assert any(
-        "дату рождения" in s["text"].lower() or "дд.мм" in s["text"]
-        for s in client.sent_text
+    assert state._data.get("region") is None
+    assert state.state == BloggerRegistrationStates.city.state
+    assert len(client.answered_callbacks) == 1
+    assert not any(
+        "дату рождения" in s["text"].lower() for s in client.sent_text
     )
 
 

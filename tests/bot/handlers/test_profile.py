@@ -2022,12 +2022,12 @@ async def test_edit_profile_enter_value_city_with_web_app_data_updates_profile(
 
 
 @pytest.mark.asyncio
-async def test_edit_profile_enter_value_city_multi_region_shows_region_keyboard(
+async def test_edit_profile_enter_value_city_calls_update_no_region_picker(
     user_repo,
     config,
     bot_texts_service,
 ) -> None:
-    """Enter city in multiple regions shows region picker, state kept."""
+    """Enter city calls update_blogger_profile (no region picker)."""
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-00000000081e"),
@@ -2056,13 +2056,12 @@ async def test_edit_profile_enter_value_city_multi_region_shows_region_keyboard(
         user_role_service=FakeUserRoleService(),
         max_order_price=10_000.0,
     )
-    assert state.cleared is False
-    assert state._data.get("pending_city_edit") == "железногорск"
-    assert message.answers
-    first = message.answers[0]
-    text = first[0] if isinstance(first, tuple) else first
-    assert "регион" in text.lower()
-    assert not reg_service.update_calls
+    assert len(reg_service.update_calls) == 1
+    call_kw = reg_service.update_calls[0][1]
+    assert call_kw.get("city") == "железногорск"
+    assert call_kw.get("region") is None
+    assert call_kw.get("country") is None
+    assert state.cleared is True
 
 
 @pytest.mark.asyncio
@@ -5394,17 +5393,16 @@ async def test_handle_profile_edit_field_callback_city_blogger_sends_picker(
 
 
 @pytest.mark.asyncio
-async def test_handle_profile_region_callback_success(
+async def test_handle_profile_region_callback_no_regions_answers_only(
     user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
-    """Profile region callback with valid region updates profile."""
+    """Profile region callback with no hardcoded regions only answers."""
     user = await create_test_user(user_repo, external_id="91", username="u")
     await create_test_blogger_profile(blogger_repo, user.user_id)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
     )
-    updated = _make_blogger_profile(user.user_id)
-    reg_service = FakeBloggerRegistrationService(update_returns=updated)
+    reg_service = FakeBloggerRegistrationService()
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     state = FakeFSMContext()
@@ -5429,11 +5427,9 @@ async def test_handle_profile_region_callback_success(
         messenger_client=client,
         event_adapter=adapter,
     )
-    assert state.cleared is True
-    assert len(reg_service.update_calls) == 1
-    assert reg_service.update_calls[0][1].get("city") == "железногорск"
-    assert reg_service.update_calls[0][1].get("region") == "красноярский край"
-    assert any("Профиль обновлён" in s["text"] for s in client.sent_text)
+    assert state.cleared is False
+    assert len(reg_service.update_calls) == 0
+    assert len(client.answered_callbacks) == 1
 
 
 @pytest.mark.asyncio
@@ -5508,19 +5504,16 @@ async def test_handle_profile_region_callback_missing_state_answers_only(
 
 
 @pytest.mark.asyncio
-async def test_handle_profile_region_callback_profile_none_shows_map(
+async def test_handle_profile_region_callback_no_regions_no_update(
     user_repo, blogger_repo, advertiser_repo, config, bot_texts_service
 ) -> None:
-    """Update profile=None and geometry not resolved: show map message."""
+    """Profile region callback with no hardcoded regions does not update."""
     user = await create_test_user(user_repo, external_id="94", username="u")
     await create_test_blogger_profile(blogger_repo, user.user_id)
     profile_service = build_profile_service(
         user_repo, blogger_repo=blogger_repo, advertiser_repo=advertiser_repo
     )
-    reg_service = FakeBloggerRegistrationService(
-        update_returns=None,
-        location_geometry_resolved=False,
-    )
+    reg_service = FakeBloggerRegistrationService()
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     state = FakeFSMContext()
@@ -5545,13 +5538,8 @@ async def test_handle_profile_region_callback_profile_none_shows_map(
         messenger_client=client,
         event_adapter=adapter,
     )
-    assert len(reg_service.update_calls) == 1
-    assert any(
-        "местоположение" in s["text"]
-        or "карт" in s["text"]
-        or "геопозици" in s["text"]
-        for s in client.sent_text
-    )
+    assert len(reg_service.update_calls) == 0
+    assert len(client.answered_callbacks) == 1
 
 
 @pytest.mark.asyncio

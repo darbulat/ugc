@@ -95,7 +95,7 @@
         if (filtered.length === 0) {
           var li = document.createElement('li');
           li.className = 'no-results';
-          li.textContent = query ? 'Ничего не найдено' : 'Нет городов';
+          li.textContent = query ? 'Ничего не найдено' : 'Нет списка городов. Используйте карту или введите город вручную.';
           listEl.appendChild(li);
           return;
         }
@@ -118,7 +118,7 @@
 
       function loadCities() {
         var base = window.location.origin;
-        fetch(base + '/miniapp/cities.json')
+        fetch(base + '/miniapp/api/cities')
           .then(function(r) { return r.json(); })
           .then(function(cities) {
             window._cities = cities;

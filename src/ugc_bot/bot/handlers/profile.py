@@ -13,11 +13,9 @@ from aiogram.types import CallbackQuery, Message
 from ugc_bot.application.geography import (
     get_regions_for_city,
     normalize_geo_token,
-    region_key_to_label,
 )
 from ugc_bot.application.messenger.context import MessageContext
 from ugc_bot.application.messenger.dto import (
-    Button,
     IncomingCallback,
     IncomingMessage,
 )
@@ -69,7 +67,6 @@ from ugc_bot.bot.handlers.keyboards import (
     edit_field_inline_keyboard,
     edit_profile_type_inline_keyboard,
     edit_work_format_inline_keyboard,
-    flow_inline_keyboard,
     flow_keyboard_city_request,
     flow_keyboard_phone_request,
     flow_keyboard_remove,
@@ -893,28 +890,11 @@ async def _update_blogger_field_city(
             reply_markup=flow_keyboard_remove(),
         )
         return False
-    regions = get_regions_for_city(normalized)
-    if len(regions) > 1:
-        await state.update_data(pending_city_edit=normalized)
-        region_buttons = [
-            [
-                Button(
-                    text=region_key_to_label(r),
-                    callback_data=f"{CALLBACK_PROFILE_REGION_PREFIX}{r}",
-                )
-            ]
-            for r in regions
-        ]
-        await message.answer(
-            edit_msgs.get("msg_city_multiple_regions", ""),
-            reply_markup=flow_inline_keyboard(region_buttons),
-        )
-        return True
     result = await blogger_registration_service.update_blogger_profile(
         user_id,
         city=normalized,
-        region=regions[0] if regions else None,
-        country="Russia" if regions else None,
+        region=None,
+        country=None,
     )
     if result.profile is None and not result.location_geometry_resolved:
         err_msg = edit_msgs.get("err_city_not_place_use_map", "")
@@ -2204,8 +2184,11 @@ async def handle_profile_region_callback(
     if region not in get_regions_for_city(city):
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         return
-    await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    if incoming.message_id:
+    # Unreachable: no hardcoded regions (get_regions_for_city always []).
+    await messenger_client.answer_callback(  # pragma: no cover
+        callback_id=incoming.callback_id
+    )
+    if incoming.message_id:  # pragma: no cover
         await messenger_client.edit_reply_markup(
             chat_id=incoming.chat_id,
             message_id=incoming.message_id,
@@ -2215,10 +2198,12 @@ async def handle_profile_region_callback(
         user_id,
         city=city,
         region=region,
-        country="Russia",
+        country="Russia",  # pragma: no cover
     )
-    locale = user_locale
-    if result.profile is None and not result.location_geometry_resolved:
+    locale = user_locale  # pragma: no cover
+    if (
+        result.profile is None and not result.location_geometry_resolved
+    ):  # pragma: no cover
         edit_msgs = await bot_texts_service.get_many(
             list(PROFILE_EDIT_MSG_KEYS), locale
         )
