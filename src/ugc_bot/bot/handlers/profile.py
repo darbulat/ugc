@@ -1024,6 +1024,7 @@ async def _update_blogger_field(
             profile_service,
             config,
             bot_texts_service,
+            user_locale=locale,
         )
         if result is not None:
             return result
@@ -1859,6 +1860,7 @@ async def handle_profile_edit_choice_callback(
         max_order_price,
         config,
         bot_texts_service,
+        user_locale=user_locale,
     )
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
 
@@ -2404,6 +2406,7 @@ async def edit_profile_enter_value(
             user_role_service,
             config,
             bot_texts_service,
+            user_locale=user_locale,
         )
         return
 
@@ -2451,6 +2454,7 @@ async def edit_profile_enter_value(
         max_order_price,
         config,
         bot_texts_service,
+        user_locale=user_locale,
         user=user_obj,
         country_repo=country_repo,
     )
