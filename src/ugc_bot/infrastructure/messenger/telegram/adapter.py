@@ -79,6 +79,9 @@ class TelegramEventAdapter:
         message = callback.message
         chat_id = str(message.chat.id) if message else ""
         message_id = str(message.message_id) if message else None
+        message_text = None
+        if message is not None:
+            message_text = getattr(message, "text", None)
         return IncomingCallback(
             callback_id=callback.id,
             chat_id=chat_id,
@@ -89,6 +92,7 @@ class TelegramEventAdapter:
             ),
             data=callback.data,
             message_id=message_id,
+            message_text=message_text,
             raw=_safe_raw(callback),
         )
 

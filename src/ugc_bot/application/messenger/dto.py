@@ -96,6 +96,7 @@ class IncomingCallback:
     user: IncomingUser
     data: str | None = None
     message_id: str | None = None
+    message_text: str | None = None
     raw: dict[str, Any] | None = None
 
 
