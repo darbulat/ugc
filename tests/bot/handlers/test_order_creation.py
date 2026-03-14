@@ -1,6 +1,6 @@
 """Tests for order creation handlers."""
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -2256,3 +2256,127 @@ async def test_deadlines_callback_wrong_state_only_answers(
 
     assert len(client.answered_callbacks) == 1
     assert len(client.sent_text) == 0
+
+
+@pytest.mark.asyncio
+async def test_order_type_callback_shows_selection(bot_texts_service) -> None:
+    """After order type chosen, message is edited to show the selected label."""
+    state = FakeFSMContext(state=OrderCreationStates.order_type.state)
+    await state.update_data(user_id=str(uuid4()))
+    msg = FakeMessage(text="Что вам нужно?", user=FakeUser(42, "user", "User"))
+    callback = FakeCallback(
+        data=CALLBACK_ORDER_TYPE_UGC,
+        user=FakeUser(42, "user", "User"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_order_type_callback(
+        callback,
+        state=state,
+        config=_order_creation_config(),
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "Что вам нужно?" in e["text"] and ORDER_TYPE_UGC_ONLY in e["text"]
+        for e in client.edited_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_cooperation_format_callback_shows_selection(
+    bot_texts_service,
+) -> None:
+    """After coop format chosen, message edited to show selected label."""
+    state = FakeFSMContext(state=OrderCreationStates.cooperation_format.state)
+    await state.update_data(user_id=str(uuid4()))
+    msg = FakeMessage(
+        text="Формат сотрудничества?", user=FakeUser(42, "u", "U")
+    )
+    callback = FakeCallback(
+        data=CALLBACK_ORDER_COOP_PAYMENT,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_cooperation_format_callback(
+        callback,
+        state=state,
+        config=_order_creation_config(),
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "Формат сотрудничества?" in e["text"] and COOP_PAYMENT in e["text"]
+        for e in client.edited_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_bloggers_needed_callback_shows_selection(
+    bot_texts_service,
+) -> None:
+    """After bloggers count chosen, message edited to show count."""
+    state = FakeFSMContext(state=OrderCreationStates.bloggers_needed.state)
+    await state.update_data(user_id=str(uuid4()))
+    counts = frozenset({1, 3, 5})
+    msg = FakeMessage(text="Сколько креаторов?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=f"{CALLBACK_ORDER_BLOGGERS_PREFIX}3",
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_bloggers_needed_callback(
+        callback,
+        state=state,
+        config=_order_creation_config(),
+        bot_texts_service=bot_texts_service,
+        allowed_blogger_counts=counts,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "Сколько креаторов?" in e["text"] and "3" in e["text"]
+        for e in client.edited_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_deadlines_callback_shows_selection(bot_texts_service) -> None:
+    """After deadline chosen, message edited to show deadline label."""
+    state = FakeFSMContext(state=OrderCreationStates.deadlines.state)
+    await state.update_data(user_id=str(uuid4()))
+    msg = FakeMessage(text="Дедлайн?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=f"{CALLBACK_ORDER_DEADLINES_PREFIX}7",
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_deadlines_callback(
+        callback,
+        state=state,
+        config=_order_creation_config(),
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "Дедлайн?" in e["text"] and DEADLINES_7 in e["text"]
+        for e in client.edited_text
+    )

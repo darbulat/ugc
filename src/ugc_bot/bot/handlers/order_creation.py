@@ -105,9 +105,18 @@ logger = logging.getLogger(__name__)
 async def _remove_inline_keyboard_from_callback(
     incoming: IncomingCallback,
     messenger_client: MessengerClient,
+    selected_label: str | None = None,
 ) -> None:
-    """Remove inline keyboard from the message that triggered the callback."""
-    if incoming.message_id:
+    """Remove inline keyboard; if selected_label given, show it in message."""
+    if not incoming.message_id:
+        return
+    if selected_label and incoming.message_text:
+        await messenger_client.edit_text(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            text=f"{incoming.message_text}: {selected_label}",
+        )
+    else:
         await messenger_client.edit_reply_markup(
             chat_id=incoming.chat_id,
             message_id=incoming.message_id,
@@ -387,8 +396,15 @@ async def handle_order_type_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
+    label = (
+        ORDER_TYPE_UGC_ONLY
+        if data == CALLBACK_ORDER_TYPE_UGC
+        else ORDER_TYPE_UGC_PLUS_PLACEMENT
+    )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
     await state_store.update_data(order_type=order_type.value)
     locale = user_locale
     msg_task = await bot_texts_service.get("msg_order_task_description", locale)
@@ -527,7 +543,9 @@ async def handle_cooperation_format_callback(
         return
     text = coop_map[data]
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=text
+    )
     await state_store.update_data(cooperation_format=text)
     locale = user_locale
     msg_budget = (
@@ -787,7 +805,9 @@ async def handle_bloggers_needed_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=str(bloggers_needed)
+    )
     await state_store.update_data(bloggers_needed=bloggers_needed)
     locale = user_locale
     msg_product = await bot_texts_service.get("msg_product_link", locale)
@@ -910,8 +930,15 @@ async def handle_order_photo_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = incoming.data or ""
+    label = (
+        ORDER_PHOTO_SKIP
+        if data == CALLBACK_ORDER_PHOTO_SKIP
+        else ORDER_PHOTO_ADD
+    )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
     locale = user_locale
     msg_where = await bot_texts_service.get("msg_where_use_ugc", locale)
     msg_send_photo = await bot_texts_service.get("msg_send_photo", locale)
@@ -1034,6 +1061,13 @@ async def handle_content_usage(
     await state_store.set_state(OrderCreationStates.deadlines.state)
 
 
+_CONTENT_USAGE_DISPLAY_LABEL = {
+    CALLBACK_ORDER_CONTENT_SOCIAL: CONTENT_USAGE_SOCIAL,
+    CALLBACK_ORDER_CONTENT_ADS: CONTENT_USAGE_ADS,
+    CALLBACK_ORDER_CONTENT_BOTH: CONTENT_USAGE_BOTH,
+}
+
+
 def _content_usage_from_callback(data: str) -> str | None:
     """Map content usage callback to offer text."""
     m = {
@@ -1081,8 +1115,11 @@ async def handle_content_usage_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
+    display_label = _CONTENT_USAGE_DISPLAY_LABEL.get(incoming.data or "")
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=display_label
+    )
     await state_store.update_data(content_usage=content_usage_offer)
     locale = user_locale
     msg_deadline = await bot_texts_service.get("msg_order_deadline", locale)
@@ -1094,13 +1131,24 @@ async def handle_content_usage_callback(
     await state_store.set_state(OrderCreationStates.deadlines.state)
 
 
-def _deadlines_offer_from_callback(data: str) -> str | None:
-    """Map deadlines callback_data to offer text."""
+_DEADLINES_SUFFIX_TO_LABEL = {
+    "3": DEADLINES_3,
+    "7": DEADLINES_7,
+    "14": DEADLINES_14,
+}
+
+
+def _deadlines_label_from_callback(data: str) -> str | None:
+    """Return display label for a deadlines callback (e.g. '⏱ До 3 дней')."""
     if not data or not data.startswith(CALLBACK_ORDER_DEADLINES_PREFIX):
         return None
     suffix = data[len(CALLBACK_ORDER_DEADLINES_PREFIX) :]
-    key_map = {"3": DEADLINES_3, "7": DEADLINES_7, "14": DEADLINES_14}
-    key = key_map.get(suffix)
+    return _DEADLINES_SUFFIX_TO_LABEL.get(suffix)
+
+
+def _deadlines_offer_from_callback(data: str) -> str | None:
+    """Map deadlines callback_data to offer text."""
+    key = _deadlines_label_from_callback(data)
     return DEADLINES_TO_OFFER.get(key) if key else None
 
 
@@ -1132,8 +1180,11 @@ async def handle_deadlines_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
+    label = _deadlines_label_from_callback(incoming.data or "")
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
     await state_store.update_data(deadlines=deadlines_offer)
     locale = user_locale
     msg_geo = await bot_texts_service.get("msg_order_geo", locale)
