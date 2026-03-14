@@ -74,7 +74,7 @@ async def _resolve_location_and_geocoder_details(
     if details is None:
         return (None, None, None)
     lat, lon, place_class, place_type, region_geo, country_geo = details
-    if not geocoder.accepts_as_populated_place(place_class, place_type):
+    if not geocoder.accepts_as_place_or_region(place_class, place_type):
         return (None, None, None)
     wkt = wkt_multipoint_from_lat_lon(lat, lon)
     return (wkt, region_geo, country_geo)
