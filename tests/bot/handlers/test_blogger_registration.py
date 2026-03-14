@@ -3310,3 +3310,59 @@ async def test_handle_agreements_unique_violation(
     ans = message.answers[0]
     text = ans[0] if isinstance(ans, tuple) else ans
     assert "уже зарегистрирован" in text
+
+
+@pytest.mark.asyncio
+async def test_blogger_gender_callback_shows_selection(
+    bot_texts_service, config
+) -> None:
+    """After gender chosen, message is edited to show the gender label."""
+    state = FakeFSMContext(state=BloggerRegistrationStates.blogger_gender.state)
+    msg = FakeMessage(text="Ваш пол?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_GENDER_M,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_blogger_gender_callback(
+        callback,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Ваш пол?" in e["text"] for e in client.edited_text), (
+        "expected edit_text with question and selected label"
+    )
+
+
+@pytest.mark.asyncio
+async def test_barter_callback_shows_selection(
+    bot_texts_service, config
+) -> None:
+    """After barter chosen, message is edited to show the barter label."""
+    state = FakeFSMContext(state=BloggerRegistrationStates.barter.state)
+    msg = FakeMessage(text="Готовы к бартеру?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=CALLBACK_BLOGGER_BARTER_Y,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_barter_callback(
+        callback,
+        state=state,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any("Готовы к бартеру?" in e["text"] for e in client.edited_text)

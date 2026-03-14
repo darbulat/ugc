@@ -90,13 +90,51 @@ from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 router = Router()
 logger = logging.getLogger(__name__)
 
+_BLOGGER_GENDER_CALLBACK_TO_BTN = {
+    CALLBACK_BLOGGER_GENDER_M: "btn_gender_m",
+    CALLBACK_BLOGGER_GENDER_F: "btn_gender_f",
+}
+
+_AUDIENCE_GENDER_CALLBACK_TO_BTN = {
+    CALLBACK_BLOGGER_AUDIENCE_F: "btn_audience_f",
+    CALLBACK_BLOGGER_AUDIENCE_M: "btn_audience_m",
+    CALLBACK_BLOGGER_AUDIENCE_A: "btn_audience_a",
+}
+
+_AGE_CALLBACK_TO_BTN = {
+    CALLBACK_BLOGGER_AGE_0_17: "btn_age_0_17",
+    CALLBACK_BLOGGER_AGE_18_24: "btn_age_18_24",
+    CALLBACK_BLOGGER_AGE_25_34: "btn_age_25_34",
+    CALLBACK_BLOGGER_AGE_35_44: "btn_age_35_44",
+    CALLBACK_BLOGGER_AGE_45_99: "btn_age_45_99",
+}
+
+_BARTER_CALLBACK_TO_BTN = {
+    CALLBACK_BLOGGER_BARTER_Y: "btn_barter_yes",
+    CALLBACK_BLOGGER_BARTER_N: "btn_barter_no",
+}
+
+_WORK_FORMAT_CALLBACK_TO_BTN = {
+    CALLBACK_BLOGGER_WORK_ADS: "btn_work_format_ads",
+    CALLBACK_BLOGGER_WORK_UGC: "btn_work_format_ugc_only",
+}
+
 
 async def _remove_inline_keyboard_from_callback(
     incoming: IncomingCallback,
     messenger_client: MessengerClient,
+    selected_label: str | None = None,
 ) -> None:
-    """Remove inline keyboard from the message that triggered the callback."""
-    if incoming.message_id:
+    """Remove inline keyboard; if selected_label given, append it to text."""
+    if not incoming.message_id:
+        return
+    if selected_label and incoming.message_text:
+        await messenger_client.edit_text(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            text=f"{incoming.message_text}: {selected_label}",
+        )
+    else:
         await messenger_client.edit_reply_markup(
             chat_id=incoming.chat_id,
             message_id=incoming.message_id,
@@ -857,9 +895,13 @@ async def handle_blogger_gender_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     locale = user_locale
+    btn_key = _BLOGGER_GENDER_CALLBACK_TO_BTN.get(incoming.data or "")
+    label = await bot_texts_service.get(btn_key, locale) if btn_key else None
     step_topics = await bot_texts_service.get("msg_step_ask_topics", locale)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
     await state_store.update_data(blogger_gender=blogger_gender)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1026,6 +1068,8 @@ async def handle_audience_gender_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     locale = user_locale
+    btn_key = _AUDIENCE_GENDER_CALLBACK_TO_BTN.get(incoming.data or "")
+    label = await bot_texts_service.get(btn_key, locale) if btn_key else None
     step_age = await bot_texts_service.get("msg_step_ask_audience_age", locale)
     age_texts = await bot_texts_service.get_many(
         [
@@ -1038,7 +1082,9 @@ async def handle_audience_gender_callback(
         locale,
     )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
     await state_store.update_data(audience_gender=audience_gender)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1261,9 +1307,13 @@ async def handle_audience_age_callback(
         return
     min_age, max_age = _AGE_CALLBACK_TO_RANGE[data]
     locale = user_locale
+    btn_key = _AGE_CALLBACK_TO_BTN.get(data)
+    label = await bot_texts_service.get(btn_key, locale) if btn_key else None
     step_geo = await bot_texts_service.get("msg_step_ask_audience_geo", locale)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
     await state_store.update_data(
         audience_age_min=min_age, audience_age_max=max_age
     )
@@ -1434,11 +1484,15 @@ async def handle_barter_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     barter = incoming.data == CALLBACK_BLOGGER_BARTER_Y
-    await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    await state_store.update_data(barter=barter)
     locale = user_locale
+    btn_key = _BARTER_CALLBACK_TO_BTN.get(incoming.data or "")
+    label = await bot_texts_service.get(btn_key, locale) if btn_key else None
     step_work = await bot_texts_service.get("msg_step_ask_work_format", locale)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
+    await state_store.update_data(barter=barter)
     texts = await bot_texts_service.get_many(
         ["btn_work_format_ads", "btn_work_format_ugc_only"],
         locale,
@@ -1565,8 +1619,13 @@ async def handle_work_format_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
+    locale = user_locale
+    btn_key = _WORK_FORMAT_CALLBACK_TO_BTN.get(incoming.data or "")
+    label = await bot_texts_service.get(btn_key, locale) if btn_key else None
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    await _remove_inline_keyboard_from_callback(
+        incoming, messenger_client, selected_label=label
+    )
     await state_store.update_data(work_format=work_format)
     data = await state_store.get_data()
     user_id = parse_user_id_from_state(data, key="user_id")
