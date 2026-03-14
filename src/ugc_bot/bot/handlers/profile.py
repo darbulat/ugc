@@ -526,7 +526,12 @@ async def _update_advertiser_field(
             reply_markup=advertiser_menu_inline_keyboard(adv_texts),
         )
         await show_profile(
-            message, profile_service, state, config, bot_texts_service
+            message,
+            profile_service,
+            state,
+            config,
+            bot_texts_service,
+            user_locale=locale,
         )
         return True
 
@@ -560,7 +565,12 @@ async def _update_advertiser_field(
         reply_markup=advertiser_menu_inline_keyboard(adv_texts),
     )
     await show_profile(
-        message, profile_service, state, config, bot_texts_service
+        message,
+        profile_service,
+        state,
+        config,
+        bot_texts_service,
+        user_locale=locale,
     )
     return True
 
@@ -934,7 +944,12 @@ async def _update_blogger_field_city(
         reply_markup=flow_keyboard_remove(),
     )
     await show_profile(
-        message, profile_service, state, config, bot_texts_service
+        message,
+        profile_service,
+        state,
+        config,
+        bot_texts_service,
+        user_locale=locale,
     )
     return True
 
@@ -990,7 +1005,12 @@ async def _update_blogger_field(
             ),
         )
         await show_profile(
-            message, profile_service, state, config, bot_texts_service
+            message,
+            profile_service,
+            state,
+            config,
+            bot_texts_service,
+            user_locale=locale,
         )
         return True
 
@@ -1089,7 +1109,12 @@ async def _update_blogger_field(
         ),
     )
     await show_profile(
-        message, profile_service, state, config, bot_texts_service
+        message,
+        profile_service,
+        state,
+        config,
+        bot_texts_service,
+        user_locale=locale,
     )
     return True
 
@@ -1985,6 +2010,7 @@ async def edit_profile_choose_type(
             state=state,
             config=config,
             bot_texts_service=bot_texts_service,
+            user_locale=user_locale,
             messenger_client=messenger_client,
             event_adapter=event_adapter,
         )
@@ -2074,6 +2100,7 @@ async def edit_profile_choose_field(
             state=state,
             config=config,
             bot_texts_service=bot_texts_service,
+            user_locale=user_locale,
             messenger_client=messenger_client,
             event_adapter=event_adapter,
         )
@@ -2233,6 +2260,7 @@ async def handle_profile_region_callback(
         state=state,
         config=config,
         bot_texts_service=bot_texts_service,
+        user_locale=locale,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
@@ -2305,6 +2333,7 @@ async def _try_handle_blogger_city_by_location(
         state=state,
         config=config,
         bot_texts_service=bot_texts_service,
+        user_locale=locale,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )

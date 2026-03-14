@@ -61,9 +61,10 @@ def _seconds_until_next_run(config) -> float:
     return (next_run - now_local).total_seconds()
 
 
-def _reminder_text_and_keyboard(config):
-    """Start message and role keyboard for reminder (uses default locale)."""
-    locale = getattr(config.market, "default_locale", "ru") or "ru"
+def _reminder_text_and_keyboard(config, user_locale: str | None = None):
+    """Start message and role keyboard for reminder."""
+    default_locale = getattr(config.market, "default_locale", "ru") or "ru"
+    locale = user_locale or default_locale
     locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
     start_text = locale_texts.get(
         "msg_start", locale_texts.get("start_message", "")
@@ -94,7 +95,10 @@ async def run_once(
         try:
             await user_role_service.update_last_role_reminder_at(user.user_id)
             chat_id = int(user.external_id)
-            start_text, keyboard = _reminder_text_and_keyboard(config)
+            user_locale = user.language or None
+            start_text, keyboard = _reminder_text_and_keyboard(
+                config, user_locale=user_locale
+            )
             await send_with_retry(
                 messenger_client,
                 chat_id=str(chat_id),
