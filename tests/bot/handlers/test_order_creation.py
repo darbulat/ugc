@@ -2380,3 +2380,63 @@ async def test_deadlines_callback_shows_selection(bot_texts_service) -> None:
         "Дедлайн?" in e["text"] and DEADLINES_7 in e["text"]
         for e in client.edited_text
     )
+
+
+@pytest.mark.asyncio
+async def test_order_photo_skip_callback_shows_selection(
+    bot_texts_service,
+) -> None:
+    """After photo skip chosen, message edited to show skip label."""
+    state = FakeFSMContext(state=OrderCreationStates.order_photo.state)
+    msg = FakeMessage(text="Добавить фото?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=CALLBACK_ORDER_PHOTO_SKIP,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_order_photo_callback(
+        callback,
+        state=state,
+        config=_order_creation_config(),
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "Добавить фото?" in e["text"] and ORDER_PHOTO_SKIP in e["text"]
+        for e in client.edited_text
+    )
+
+
+@pytest.mark.asyncio
+async def test_content_usage_callback_shows_selection(
+    bot_texts_service,
+) -> None:
+    """After content usage chosen, message edited to show display label."""
+    state = FakeFSMContext(state=OrderCreationStates.content_usage.state)
+    msg = FakeMessage(text="Где используете?", user=FakeUser(42, "u", "U"))
+    callback = FakeCallback(
+        data=CALLBACK_ORDER_CONTENT_BOTH,
+        user=FakeUser(42, "u", "U"),
+        message=msg,
+    )
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+
+    await handle_content_usage_callback(
+        callback,
+        state=state,
+        config=_order_creation_config(),
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert any(
+        "Где используете?" in e["text"] and CONTENT_USAGE_BOTH in e["text"]
+        for e in client.edited_text
+    )

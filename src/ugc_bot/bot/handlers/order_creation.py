@@ -930,11 +930,7 @@ async def handle_order_photo_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = incoming.data or ""
-    label = (
-        ORDER_PHOTO_SKIP
-        if data == CALLBACK_ORDER_PHOTO_SKIP
-        else ORDER_PHOTO_ADD
-    )
+    label = _PHOTO_CALLBACK_TO_LABEL.get(data)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(
         incoming, messenger_client, selected_label=label
@@ -1061,6 +1057,14 @@ async def handle_content_usage(
     await state_store.set_state(OrderCreationStates.deadlines.state)
 
 
+_PHOTO_CALLBACK_TO_LABEL = {
+    CALLBACK_ORDER_PHOTO_SKIP: ORDER_PHOTO_SKIP,
+    CALLBACK_ORDER_PHOTO_ADD: ORDER_PHOTO_ADD,
+}
+
+
+# Button display labels shown in message after selection (emoji + full text).
+# Contrast with _content_usage_from_callback() returning shorter offer string.
 _CONTENT_USAGE_DISPLAY_LABEL = {
     CALLBACK_ORDER_CONTENT_SOCIAL: CONTENT_USAGE_SOCIAL,
     CALLBACK_ORDER_CONTENT_ADS: CONTENT_USAGE_ADS,
