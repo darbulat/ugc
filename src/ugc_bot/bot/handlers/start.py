@@ -95,15 +95,13 @@ async def start_command(
     )
     incoming = event_adapter.from_message(message)
 
-    languages = await language_repo.list_enabled() if language_repo else []
-    supported_codes = {lang.code for lang in languages}
-
-    # Detect Telegram UI language for new users (language not yet set)
+    # Detect Telegram UI language for new users (language not yet set).
+    # Use language_code directly without filtering by supported_codes so that
+    # kk, be, uz etc. are picked up even if not yet seeded in the languages
+    # table.
     tg_lang: str | None = None
     if message.from_user and message.from_user.language_code:
-        candidate = message.from_user.language_code.split("-")[0].lower()
-        if candidate in supported_codes:
-            tg_lang = candidate
+        tg_lang = message.from_user.language_code.split("-")[0].lower()
 
     # Use detected locale for text generation if user has no language set yet
     locale = (
@@ -129,9 +127,6 @@ async def start_command(
         await bot_texts_service.get("country_prompt", locale)
     ).strip() or "Выберите вашу страну:"
     countries = await country_repo.list_enabled() if country_repo else []
-    language_prompt = (
-        await bot_texts_service.get("language_prompt", locale)
-    ).strip() or "Выберите язык / Choose language:"
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
@@ -142,8 +137,6 @@ async def start_command(
         role_kb=role_inline_keyboard(texts),
         country_prompt=country_prompt,
         country_kb=country_inline_keyboard(countries),
-        language_prompt=language_prompt,
-        language_kb=language_inline_keyboard(languages),
         tg_language_code=tg_lang,
     )
 
@@ -508,8 +501,6 @@ async def _start_command(
     role_kb: Keyboard,
     country_prompt: str = "Выберите вашу страну:",
     country_kb: Keyboard | None = None,
-    language_prompt: str = "Выберите язык / Choose language:",
-    language_kb: Keyboard | None = None,
     tg_language_code: str | None = None,
 ) -> None:
     """Handle the /start command. Clears FSM so /start always shows role."""
@@ -534,22 +525,15 @@ async def _start_command(
         await referral_service.save_pending_referral(
             user.user_id, referral_code
         )
-    # Auto-set language from Telegram for new users who haven't chosen one yet
+    # Auto-set language from Telegram for new users who haven't chosen one yet.
+    # Language can only be changed explicitly via the /language command.
     if user.language is None and tg_language_code:
         user = await user_role_service.set_language(
             external_id=incoming.user.external_id,
             messenger_type=incoming.user.messenger_type,
             language_code=tg_language_code,
         )
-    # Step 1: Language (shown only if not auto-detected and not yet set)
-    if user.language is None and language_kb is not None and language_kb.rows:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=language_prompt,
-            keyboard=language_kb,
-        )
-        return
-    # Step 2: Country
+    # Step 1: Country
     if user.country is None and country_kb is not None and country_kb.rows:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

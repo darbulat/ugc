@@ -314,7 +314,7 @@ async def test_resolve_city_to_location_returns_wkt_and_region_country() -> (
             "Russia",
         )
     )
-    mock_geocoder.accepts_as_populated_place = MagicMock(return_value=True)
+    mock_geocoder.accepts_as_place_or_region = MagicMock(return_value=True)
     service = BloggerRegistrationService(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),

@@ -82,13 +82,13 @@ async def test_start_auto_detects_language_from_tg_code(
 
 
 @pytest.mark.asyncio
-async def test_start_shows_language_keyboard_when_tg_code_not_in_available(
+async def test_start_auto_detects_unsupported_language_code(
     messenger_client, event_adapter, config, bot_texts_service
 ) -> None:
-    """Show language keyboard when tg code is not in available set.
+    """language_code not in the languages table is still auto-set on the user.
 
-    user.language=None, tg_language_code='fr', available={'ru','en'}
-    -> sends language keyboard.
+    user.language=None, tg_language_code='fr', languages table={'ru','en'}
+    -> language is auto-set to 'fr' (no supported_codes filter applied).
     """
     user_repo = InMemoryUserRepository()
     service = UserRoleService(user_repo=user_repo)
@@ -99,7 +99,7 @@ async def test_start_shows_language_keyboard_when_tg_code_not_in_available(
         Language(code="en", name_native="English", enabled=True),
     )
 
-    # User with tg language_code="fr" (not available)
+    # User with tg language_code="fr" (not in languages table)
     message = FakeMessage(
         text="/start",
         user=FakeUser(2, "bob", "Bob", language_code="fr"),
@@ -119,22 +119,10 @@ async def test_start_shows_language_keyboard_when_tg_code_not_in_available(
         event_adapter=event_adapter,
     )
 
-    # Should show language keyboard and return early
-    assert len(client.sent_text) == 1
-    sent = client.sent_text[0]
-    assert sent["keyboard"] is not None
-    # Language keyboard has rows with lang: callback data
-    all_callback_data = [
-        btn.callback_data
-        for row in sent["keyboard"].rows
-        for btn in row
-        if btn.callback_data
-    ]
-    assert any(cd.startswith("lang:") for cd in all_callback_data)
-
-    # Language should NOT be set on user
+    # Language IS auto-set from Telegram even if not in languages table
     saved = await user_repo.get_by_external("2", MessengerType.TELEGRAM)
-    assert saved is None or saved.language is None
+    assert saved is not None
+    assert saved.language == "fr"
 
 
 @pytest.mark.asyncio

@@ -252,31 +252,18 @@ async def _start_registration_flow_impl(
     config: AppConfig,
     user_locale: str = "ru",
 ) -> None:
-    """Start blogger registration: first step (name or instagram)."""
+    """Start blogger registration: first step (name)."""
     locale = user_locale
-    step_instagram_first = await bot_texts_service.get(
-        "msg_step_ask_instagram_first", locale
-    )
     step_name = await bot_texts_service.get("msg_step_ask_name", locale)
     user_id = getattr(user, "user_id", None)
     external_id = getattr(user, "external_id", None)
-    username = getattr(user, "username", None) or ""
     await state_store.update_data(user_id=user_id, external_id=external_id)
-    if username and len(username.strip()) >= 2:
-        await state_store.update_data(nickname=username)
-        await messenger_client.send_text(
-            chat_id=chat_id,
-            text=step_instagram_first,
-            keyboard=flow_keyboard_remove(),
-        )
-        await state_store.set_state(BloggerRegistrationStates.instagram.state)
-    else:
-        await messenger_client.send_text(
-            chat_id=chat_id,
-            text=step_name,
-            keyboard=flow_keyboard_remove(),
-        )
-        await state_store.set_state(BloggerRegistrationStates.name.state)
+    await messenger_client.send_text(
+        chat_id=chat_id,
+        text=step_name,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(BloggerRegistrationStates.name.state)
 
 
 async def _start_registration_flow(

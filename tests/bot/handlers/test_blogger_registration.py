@@ -2037,7 +2037,7 @@ async def test_choose_creator_role_inline_calls_impl(
 async def test_start_registration_button(
     user_repo, config, bot_texts_service
 ) -> None:
-    """start_registration_button sends first step (instagram or name)."""
+    """start_registration_button always asks for name as first step."""
     user_service = UserRoleService(user_repo=user_repo)
     await create_test_user(
         user_repo,
@@ -2067,7 +2067,8 @@ async def test_start_registration_button(
     assert message.answers
     ans = message.answers[0]
     text = (ans[0] if isinstance(ans, tuple) else ans).lower()
-    assert "instagram" in text or "ссылку" in text
+    assert "зовут" in text or "имя" in text
+    assert state.state == BloggerRegistrationStates.name
 
 
 @pytest.mark.asyncio
