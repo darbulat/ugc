@@ -50,7 +50,6 @@ jobs:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
-          script_stop: true
           script: |
             set -e
             cd ${{ env.DEV_PROJECT_DIR }}
