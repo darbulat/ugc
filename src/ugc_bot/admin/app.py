@@ -17,7 +17,6 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
-from wtforms import StringField  # type: ignore[import-untyped]
 
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import (
@@ -1543,17 +1542,14 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.price_filter_delta,
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
-        "managers",
     ]
-    form_extra_fields = {
-        "managers": StringField("Менеджеры (через запятую @username)"),
-    }
     edit_template = "order_edit.html"
 
     async def update_model(self, request: Request, pk: str, data: dict):
         """Update order with banned content check and activation publishing."""
         pk_uuid = UUID(pk)
-        managers_raw = data.pop("managers", "") or ""
+        form_data = await request.form()
+        managers_raw = str(form_data.get("managers", "") or "")
 
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
         old_status = obj.status if obj else None
@@ -2065,20 +2061,23 @@ async def _inject_order_managers(
     try:
         container = _get_admin_container()
         if container:
-            repos = container.build_repos()
-            manager_order_repo = repos["manager_order_repo"]
-            user_repo = repos["user_repo"]
-            manager_orders = await manager_order_repo.list_by_order(
-                model.order_id
-            )
+            manager_service = container.build_manager_service()
+            manager_order_repo = manager_service.manager_order_repo
+            user_repo = manager_service.user_repo
+            tm = container.transaction_manager
             usernames: list[str] = []
-            for mo in manager_orders:
-                user = await user_repo.get_by_id(mo.user_id)
-                if user and user.telegram:
-                    usernames.append(f"@{user.telegram}")
-            form = context.get("form")
-            if form and hasattr(form, "managers"):
-                form.managers.data = ", ".join(usernames)
+            if tm:
+                async with tm.transaction() as session:
+                    manager_orders = await manager_order_repo.list_by_order(
+                        model.order_id, session=session
+                    )
+                    for mo in manager_orders:
+                        user = await user_repo.get_by_id(
+                            mo.user_id, session=session
+                        )
+                        if user and user.telegram:
+                            usernames.append(f"@{user.telegram}")
+            context["managers_value"] = ", ".join(usernames)
     except Exception:
         logger.exception("Failed to inject order managers")
 

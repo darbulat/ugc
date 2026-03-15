@@ -8,4 +8,14 @@
 </div>
 {% endif %}
 {{ super() }}
+<div class="col-12 mt-3">
+  <div class="card">
+    <div class="card-body">
+      <label for="managers" class="form-label fw-bold">Менеджеры (через запятую @username)</label>
+      <input type="text" class="form-control" id="managers" name="managers"
+             value="{{ managers_value|default('', true) }}"
+             placeholder="@username1, @username2">
+    </div>
+  </div>
+</div>
 {% endblock %}

@@ -991,6 +991,7 @@ async def test_order_admin_update_model_banned_content_rejected() -> None:
     admin.is_async = True  # type: ignore[attr-defined]
 
     request = MagicMock()
+    request.form = AsyncMock(return_value={})
     data = {
         "status": OrderStatus.ACTIVE,
         "product_link": "https://1xbet.com/link",
@@ -1067,6 +1068,7 @@ async def test_order_admin_update_model_activation_publishes() -> None:
     admin.is_async = True  # type: ignore[attr-defined]
 
     request = MagicMock()
+    request.form = AsyncMock(return_value={})
     data = {"status": OrderStatus.ACTIVE}
 
     with (
@@ -1149,6 +1151,7 @@ async def test_order_admin_update_model_activation_no_order() -> None:
     admin.is_async = True  # type: ignore[attr-defined]
 
     request = MagicMock()
+    request.form = AsyncMock(return_value={})
     data = {"status": OrderStatus.ACTIVE}
 
     with (
@@ -1232,6 +1235,7 @@ async def test_order_admin_update_model_activation_exception_handled() -> None:
     admin.is_async = True  # type: ignore[attr-defined]
 
     request = MagicMock()
+    request.form = AsyncMock(return_value={})
     data = {"status": OrderStatus.ACTIVE}
 
     with (
@@ -1273,6 +1277,7 @@ async def test_order_admin_geography_change_updates_location_geometry() -> None:
     admin.is_async = True  # type: ignore[attr-defined]
 
     request = MagicMock()
+    request.form = AsyncMock(return_value={})
     data = {"status": OrderStatus.ACTIVE, "geography": "Москва"}
 
     with (
