@@ -1,6 +1,8 @@
 """SQLAlchemy repository implementations."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import (
@@ -176,6 +178,32 @@ def _get_async_session(session: object | None) -> AsyncSession:
     return session  # type: ignore[return-value]
 
 
+@asynccontextmanager
+async def _resolve_session(
+    session_factory: Any,
+    session: object | None = None,
+) -> AsyncIterator[AsyncSession]:
+    """Use the provided session or open a new auto-committing one.
+
+    When *session* is given (e.g., from a transaction manager), it is yielded
+    as-is — the caller owns the transaction.  When *session* is ``None``, a
+    fresh session is created from *session_factory*, committed on success,
+    rolled back on error, and closed on exit.
+    """
+    if session is not None:
+        yield session  # type: ignore[misc]
+    else:
+        new_session = session_factory()
+        try:
+            yield new_session
+            await new_session.commit()
+        except Exception:
+            await new_session.rollback()
+            raise
+        finally:
+            await new_session.close()
+
+
 @dataclass(slots=True)
 class SqlAlchemyUserRepository(UserRepository):
     """SQLAlchemy-backed user repository."""
@@ -187,12 +215,14 @@ class SqlAlchemyUserRepository(UserRepository):
     ) -> Optional[User]:
         """Fetch a user by ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserModel).where(UserModel.user_id == user_id)
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_user_entity(result) if result else None
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserModel).where(UserModel.user_id == user_id)
+            )
+            result = exec_result.scalar_one_or_none()
+            return _to_user_entity(result) if result else None
 
     async def get_by_ids(
         self,
@@ -202,12 +232,14 @@ class SqlAlchemyUserRepository(UserRepository):
         """Fetch users by IDs in one query."""
         if not user_ids:
             return {}
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserModel).where(UserModel.user_id.in_(user_ids))
-        )
-        rows = exec_result.scalars().all()
-        return {row.user_id: _to_user_entity(row) for row in rows}
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserModel).where(UserModel.user_id.in_(user_ids))
+            )
+            rows = exec_result.scalars().all()
+            return {row.user_id: _to_user_entity(row) for row in rows}
 
     async def get_by_external(
         self,
@@ -217,29 +249,33 @@ class SqlAlchemyUserRepository(UserRepository):
     ) -> Optional[User]:
         """Fetch a user by external messenger id."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserModel).where(
-                UserModel.external_id == external_id,
-                UserModel.messenger_type == messenger_type.value,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserModel).where(
+                    UserModel.external_id == external_id,
+                    UserModel.messenger_type == messenger_type.value,
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_user_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_user_entity(result) if result else None
 
     async def get_by_referral_code(
         self, referral_code: str, session: object | None = None
     ) -> Optional[User]:
         """Fetch a user by referral code."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserModel).where(
-                UserModel.referral_code == referral_code,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserModel).where(
+                    UserModel.referral_code == referral_code,
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_user_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_user_entity(result) if result else None
 
     async def get_by_telegram(
         self, telegram: str, session: object | None = None
@@ -248,37 +284,43 @@ class SqlAlchemyUserRepository(UserRepository):
         normalized = (telegram or "").strip().lstrip("@").lower()
         if not normalized:
             return None
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserModel).where(
-                func.lower(UserModel.telegram) == normalized,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserModel).where(
+                    func.lower(UserModel.telegram) == normalized,
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_user_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_user_entity(result) if result else None
 
     async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user."""
 
-        db_session = _get_async_session(session)
-        model = _to_user_model(user)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_user_model(user)
+            await db_session.merge(model)
 
     async def list_pending_role_reminders(
         self, reminder_cutoff: datetime, session: object | None = None
     ) -> Iterable[User]:
         """List users who have not chosen a role and are due for a reminder."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserModel).where(
-                UserModel.role_chosen_at.is_(None),
-                (UserModel.last_role_reminder_at.is_(None))
-                | (UserModel.last_role_reminder_at < reminder_cutoff),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserModel).where(
+                    UserModel.role_chosen_at.is_(None),
+                    (UserModel.last_role_reminder_at.is_(None))
+                    | (UserModel.last_role_reminder_at < reminder_cutoff),
+                )
             )
-        )
-        results = exec_result.scalars().all()
-        return [_to_user_entity(row) for row in results]
+            results = exec_result.scalars().all()
+            return [_to_user_entity(row) for row in results]
 
     async def list_admins(
         self,
@@ -287,15 +329,17 @@ class SqlAlchemyUserRepository(UserRepository):
     ) -> Iterable[User]:
         """List users with admin=True. Optionally filter by messenger_type."""
 
-        db_session = _get_async_session(session)
-        query = select(UserModel).where(UserModel.admin.is_(True))
-        if messenger_type is not None:
-            query = query.where(
-                UserModel.messenger_type == messenger_type.value
-            )
-        exec_result = await db_session.execute(query)
-        results = exec_result.scalars().all()
-        return [_to_user_entity(row) for row in results]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            query = select(UserModel).where(UserModel.admin.is_(True))
+            if messenger_type is not None:
+                query = query.where(
+                    UserModel.messenger_type == messenger_type.value
+                )
+            exec_result = await db_session.execute(query)
+            results = exec_result.scalars().all()
+            return [_to_user_entity(row) for row in results]
 
 
 @dataclass(slots=True)
@@ -309,14 +353,16 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by user id."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(BloggerProfileModel).where(
-                BloggerProfileModel.user_id == user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(BloggerProfileModel).where(
+                    BloggerProfileModel.user_id == user_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_blogger_profile_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_blogger_profile_entity(result) if result else None
 
     async def get_by_user_ids(
         self,
@@ -326,37 +372,45 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         """Fetch blogger profiles by user IDs in one query."""
         if not user_ids:
             return {}
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(BloggerProfileModel).where(
-                BloggerProfileModel.user_id.in_(user_ids)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(BloggerProfileModel).where(
+                    BloggerProfileModel.user_id.in_(user_ids)
+                )
             )
-        )
-        rows = exec_result.scalars().all()
-        return {row.user_id: _to_blogger_profile_entity(row) for row in rows}
+            rows = exec_result.scalars().all()
+            return {
+                row.user_id: _to_blogger_profile_entity(row) for row in rows
+            }
 
     async def get_by_instagram_url(
         self, instagram_url: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram URL."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(BloggerProfileModel).where(
-                BloggerProfileModel.instagram_url == instagram_url
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(BloggerProfileModel).where(
+                    BloggerProfileModel.instagram_url == instagram_url
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_blogger_profile_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_blogger_profile_entity(result) if result else None
 
     async def save(
         self, profile: BloggerProfile, session: object | None = None
     ) -> None:
         """Persist blogger profile."""
 
-        db_session = _get_async_session(session)
-        model = _to_blogger_profile_model(profile)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_blogger_profile_model(profile)
+            await db_session.merge(model)
 
     async def list_confirmed_user_ids(
         self,
@@ -422,47 +476,50 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         When stats_older_than is set, only profiles with no instagram_stats
         row or instagram_stats.fetched_at < stats_older_than are returned.
         """
-        db_session = _get_async_session(session)
-        base_conditions = (
-            BloggerProfileModel.confirmed.is_(True),
-            BloggerProfileModel.instagram_user_id.isnot(None),
-            BloggerProfileModel.instagram_user_id != "",
-        )
-        if stats_older_than is None:
-            stmt = (
-                select(BloggerProfileModel)
-                .where(*base_conditions)
-                .order_by(
-                    BloggerProfileModel.instagram_stats_fetched_at.asc().nulls_first(),
-                    BloggerProfileModel.user_id,
-                )
-                .limit(limit)
-                .offset(offset)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            base_conditions = (
+                BloggerProfileModel.confirmed.is_(True),
+                BloggerProfileModel.instagram_user_id.isnot(None),
+                BloggerProfileModel.instagram_user_id != "",
             )
-        else:
-            stmt = (
-                select(BloggerProfileModel)
-                .outerjoin(
-                    InstagramStatsModel,
-                    BloggerProfileModel.user_id == InstagramStatsModel.user_id,
+            if stats_older_than is None:
+                stmt = (
+                    select(BloggerProfileModel)
+                    .where(*base_conditions)
+                    .order_by(
+                        BloggerProfileModel.instagram_stats_fetched_at.asc().nulls_first(),
+                        BloggerProfileModel.user_id,
+                    )
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .where(
-                    *base_conditions,
-                    or_(
-                        InstagramStatsModel.fetched_at.is_(None),
-                        InstagramStatsModel.fetched_at < stats_older_than,
-                    ),
+            else:
+                stmt = (
+                    select(BloggerProfileModel)
+                    .outerjoin(
+                        InstagramStatsModel,
+                        BloggerProfileModel.user_id
+                        == InstagramStatsModel.user_id,
+                    )
+                    .where(
+                        *base_conditions,
+                        or_(
+                            InstagramStatsModel.fetched_at.is_(None),
+                            InstagramStatsModel.fetched_at < stats_older_than,
+                        ),
+                    )
+                    .order_by(
+                        InstagramStatsModel.fetched_at.asc().nulls_first(),
+                        BloggerProfileModel.user_id,
+                    )
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .order_by(
-                    InstagramStatsModel.fetched_at.asc().nulls_first(),
-                    BloggerProfileModel.user_id,
-                )
-                .limit(limit)
-                .offset(offset)
-            )
-        result = await db_session.execute(stmt)
-        rows = result.scalars().all()
-        return [_to_blogger_profile_entity(row) for row in rows]
+            result = await db_session.execute(stmt)
+            rows = result.scalars().all()
+            return [_to_blogger_profile_entity(row) for row in rows]
 
 
 @dataclass(slots=True)
@@ -476,23 +533,27 @@ class SqlAlchemyAdvertiserProfileRepository(AdvertiserProfileRepository):
     ) -> Optional[AdvertiserProfile]:
         """Fetch advertiser profile by user id."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(AdvertiserProfileModel).where(
-                AdvertiserProfileModel.user_id == user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(AdvertiserProfileModel).where(
+                    AdvertiserProfileModel.user_id == user_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_advertiser_profile_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_advertiser_profile_entity(result) if result else None
 
     async def save(
         self, profile: AdvertiserProfile, session: object | None = None
     ) -> None:
         """Persist advertiser profile."""
 
-        db_session = _get_async_session(session)
-        model = _to_advertiser_profile_model(profile)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_advertiser_profile_model(profile)
+            await db_session.merge(model)
 
 
 @dataclass(slots=True)
@@ -508,9 +569,11 @@ class SqlAlchemyInstagramVerificationRepository(
     ) -> None:
         """Persist verification code."""
 
-        db_session = _get_async_session(session)
-        model = _to_verification_model(code)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_verification_model(code)
+            await db_session.merge(model)
 
     async def get_valid_code(
         self, user_id: UUID, code: str, session: object | None = None
@@ -518,34 +581,40 @@ class SqlAlchemyInstagramVerificationRepository(
         """Fetch a valid, unexpired verification code."""
 
         now = datetime.now(timezone.utc)
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InstagramVerificationCodeModel).where(
-                InstagramVerificationCodeModel.user_id == user_id,
-                InstagramVerificationCodeModel.code == code,
-                InstagramVerificationCodeModel.used.is_(False),
-                InstagramVerificationCodeModel.expires_at > now,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InstagramVerificationCodeModel).where(
+                    InstagramVerificationCodeModel.user_id == user_id,
+                    InstagramVerificationCodeModel.code == code,
+                    InstagramVerificationCodeModel.used.is_(False),
+                    InstagramVerificationCodeModel.expires_at > now,
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        if result is None:
-            return None
-        if result.used or result.expires_at <= now:
-            return None  # defensive: query already filters
-        if result.code != code or result.user_id != user_id:
-            return None
-        return _to_verification_entity(result)
+            result = exec_result.scalar_one_or_none()
+            if result is None:
+                return None
+            if result.used or result.expires_at <= now:
+                return None  # defensive: query already filters
+            if result.code != code or result.user_id != user_id:
+                return None
+            return _to_verification_entity(result)
 
     async def mark_used(
         self, code_id: UUID, session: object | None = None
     ) -> None:
         """Mark verification code as used."""
 
-        db_session = _get_async_session(session)
-        model = await db_session.get(InstagramVerificationCodeModel, code_id)
-        if model is None:
-            return
-        model.used = True
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = await db_session.get(
+                InstagramVerificationCodeModel, code_id
+            )
+            if model is None:
+                return
+            model.used = True
 
     async def get_valid_code_by_code(
         self, code: str, session: object | None = None
@@ -553,20 +622,22 @@ class SqlAlchemyInstagramVerificationRepository(
         """Fetch a valid, unexpired verification code by code string."""
 
         now = datetime.now(timezone.utc)
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InstagramVerificationCodeModel).where(
-                InstagramVerificationCodeModel.code == code,
-                InstagramVerificationCodeModel.used.is_(False),
-                InstagramVerificationCodeModel.expires_at > now,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InstagramVerificationCodeModel).where(
+                    InstagramVerificationCodeModel.code == code,
+                    InstagramVerificationCodeModel.used.is_(False),
+                    InstagramVerificationCodeModel.expires_at > now,
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        if result is None:
-            return None
-        if result.used or result.expires_at <= now:
-            return None
-        return _to_verification_entity(result)
+            result = exec_result.scalar_one_or_none()
+            if result is None:
+                return None
+            if result.used or result.expires_at <= now:
+                return None
+            return _to_verification_entity(result)
 
 
 @dataclass(slots=True)
@@ -579,14 +650,16 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
         self, user_id: UUID, session: object | None = None
     ) -> Optional[InstagramStats]:
         """Fetch Instagram stats by user id."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InstagramStatsModel).where(
-                InstagramStatsModel.user_id == user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InstagramStatsModel).where(
+                    InstagramStatsModel.user_id == user_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_instagram_stats_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_instagram_stats_entity(result) if result else None
 
     async def get_by_user_ids(
         self,
@@ -596,22 +669,28 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
         """Fetch Instagram stats by user IDs in one query."""
         if not user_ids:
             return {}
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InstagramStatsModel).where(
-                InstagramStatsModel.user_id.in_(user_ids)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InstagramStatsModel).where(
+                    InstagramStatsModel.user_id.in_(user_ids)
+                )
             )
-        )
-        rows = exec_result.scalars().all()
-        return {row.user_id: _to_instagram_stats_entity(row) for row in rows}
+            rows = exec_result.scalars().all()
+            return {
+                row.user_id: _to_instagram_stats_entity(row) for row in rows
+            }
 
     async def save(
         self, stats: InstagramStats, session: object | None = None
     ) -> None:
         """Persist or update Instagram stats (upsert by user_id)."""
-        db_session = _get_async_session(session)
-        model = _to_instagram_stats_model(stats)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_instagram_stats_model(stats)
+            await db_session.merge(model)
 
 
 @dataclass(slots=True)
@@ -625,12 +704,14 @@ class SqlAlchemyOrderRepository(OrderRepository):
     ) -> Optional[Order]:
         """Fetch order by ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OrderModel).where(OrderModel.order_id == order_id)
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_order_entity(result) if result else None
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OrderModel).where(OrderModel.order_id == order_id)
+            )
+            result = exec_result.scalar_one_or_none()
+            return _to_order_entity(result) if result else None
 
     async def get_by_ids(
         self,
@@ -640,12 +721,16 @@ class SqlAlchemyOrderRepository(OrderRepository):
         """Fetch orders by IDs in a single query."""
         if not order_ids:
             return []
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OrderModel).where(OrderModel.order_id.in_(order_ids))
-        )
-        by_id = {m.order_id: _to_order_entity(m) for m in exec_result.scalars()}
-        return [by_id[oid] for oid in order_ids if oid in by_id]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OrderModel).where(OrderModel.order_id.in_(order_ids))
+            )
+            by_id = {
+                m.order_id: _to_order_entity(m) for m in exec_result.scalars()
+            }
+            return [by_id[oid] for oid in order_ids if oid in by_id]
 
     async def get_by_id_for_update(
         self, order_id: UUID, session: object | None = None
@@ -657,70 +742,86 @@ class SqlAlchemyOrderRepository(OrderRepository):
             .where(OrderModel.order_id == order_id)
             .with_for_update()
         )
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(stmt)
-        result = exec_result.scalar_one_or_none()
-        return _to_order_entity(result) if result else None
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(stmt)
+            result = exec_result.scalar_one_or_none()
+            return _to_order_entity(result) if result else None
 
     async def list_active(
         self, session: object | None = None
     ) -> Iterable[Order]:
         """List active orders."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OrderModel).where(OrderModel.status == OrderStatus.ACTIVE)
-        )
-        result = exec_result.scalars()
-        return [_to_order_entity(item) for item in result]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OrderModel).where(
+                    OrderModel.status == OrderStatus.ACTIVE
+                )
+            )
+            result = exec_result.scalars()
+            return [_to_order_entity(item) for item in result]
 
     async def list_by_advertiser(
         self, advertiser_id: UUID, session: object | None = None
     ) -> Iterable[Order]:
         """List orders by advertiser."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OrderModel).where(OrderModel.advertiser_id == advertiser_id)
-        )
-        result = exec_result.scalars()
-        return [_to_order_entity(item) for item in result]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OrderModel).where(
+                    OrderModel.advertiser_id == advertiser_id
+                )
+            )
+            result = exec_result.scalars()
+            return [_to_order_entity(item) for item in result]
 
     async def list_completed_before(
         self, cutoff: datetime, session: object | None = None
     ) -> Iterable[Order]:
         """List orders completed before cutoff."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OrderModel).where(
-                OrderModel.completed_at.is_not(None),
-                OrderModel.completed_at <= cutoff,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OrderModel).where(
+                    OrderModel.completed_at.is_not(None),
+                    OrderModel.completed_at <= cutoff,
+                )
             )
-        )
-        result = exec_result.scalars()
-        return [_to_order_entity(item) for item in result]
+            result = exec_result.scalars()
+            return [_to_order_entity(item) for item in result]
 
     async def count_by_advertiser(
         self, advertiser_id: UUID, session: object | None = None
     ) -> int:
         """Count orders by advertiser."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OrderModel)
-            .where(OrderModel.advertiser_id == advertiser_id)
-        )
-        result = exec_result.scalar_one()
-        return int(result)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(OrderModel)
+                .where(OrderModel.advertiser_id == advertiser_id)
+            )
+            result = exec_result.scalar_one()
+            return int(result)
 
     async def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
 
         model = _to_order_model(order)
-        db_session = _get_async_session(session)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.merge(model)
 
 
 @dataclass(slots=True)
@@ -734,24 +835,30 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
     ) -> Optional[Payment]:
         """Fetch payment by order id."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(PaymentModel).where(PaymentModel.order_id == order_id)
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_payment_entity(result) if result else None
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(PaymentModel).where(PaymentModel.order_id == order_id)
+            )
+            result = exec_result.scalar_one_or_none()
+            return _to_payment_entity(result) if result else None
 
     async def get_by_external_id(
         self, external_id: str, session: object | None = None
     ) -> Optional[Payment]:
         """Fetch payment by provider external id."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(PaymentModel).where(PaymentModel.external_id == external_id)
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_payment_entity(result) if result else None
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(PaymentModel).where(
+                    PaymentModel.external_id == external_id
+                )
+            )
+            result = exec_result.scalar_one_or_none()
+            return _to_payment_entity(result) if result else None
 
     async def save(
         self, payment: Payment, session: object | None = None
@@ -759,8 +866,10 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
         """Persist payment."""
 
         model = _to_payment_model(payment)
-        db_session = _get_async_session(session)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.merge(model)
 
 
 @dataclass(slots=True)
@@ -774,14 +883,16 @@ class SqlAlchemyContactPricingRepository(ContactPricingRepository):
     ) -> Optional[ContactPricing]:
         """Fetch pricing by bloggers count."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ContactPricingModel).where(
-                ContactPricingModel.bloggers_count == bloggers_count
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ContactPricingModel).where(
+                    ContactPricingModel.bloggers_count == bloggers_count
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_contact_pricing_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_contact_pricing_entity(result) if result else None
 
 
 @dataclass(slots=True)
@@ -794,26 +905,30 @@ class SqlAlchemyBotTextsRepository(BotTextsRepository):
         self, key: str, locale: str, session: object | None = None
     ) -> Optional[str]:
         """Fetch text value for key and locale."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(BotTextModel).where(
-                and_(
-                    BotTextModel.key == key,
-                    BotTextModel.locale == locale,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(BotTextModel).where(
+                    and_(
+                        BotTextModel.key == key,
+                        BotTextModel.locale == locale,
+                    )
                 )
             )
-        )
-        row = exec_result.scalar_one_or_none()
-        return row.value if row else None
+            row = exec_result.scalar_one_or_none()
+            return row.value if row else None
 
     async def get_all(
         self, session: object | None = None
     ) -> list[tuple[str, str, str]]:
         """Fetch all bot_texts rows as (key, locale, value)."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(select(BotTextModel))
-        rows = exec_result.scalars().all()
-        return [(r.key, r.locale, r.value) for r in rows]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(select(BotTextModel))
+            rows = exec_result.scalars().all()
+            return [(r.key, r.locale, r.value) for r in rows]
 
 
 @dataclass(slots=True)
@@ -829,13 +944,15 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         session: object | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
-        db_session = _get_async_session(session)
-        model = OfferDispatchModel(
-            order_id=order_id,
-            blogger_id=blogger_id,
-            in_offer=False,
-        )
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = OfferDispatchModel(
+                order_id=order_id,
+                blogger_id=blogger_id,
+                in_offer=False,
+            )
+            await db_session.merge(model)
 
     async def record_response(
         self,
@@ -847,49 +964,55 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         manager_id: UUID | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
-        db_session = _get_async_session(session)
-        now = datetime.now(timezone.utc)
-        await db_session.execute(
-            update(OfferDispatchModel)
-            .where(
-                OfferDispatchModel.order_id == order_id,
-                OfferDispatchModel.blogger_id == blogger_id,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            now = datetime.now(timezone.utc)
+            await db_session.execute(
+                update(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+                .values(
+                    accepted=accepted,
+                    in_offer=in_offer,
+                    updated_at=now,
+                    manager_id=manager_id,
+                )
             )
-            .values(
-                accepted=accepted,
-                in_offer=in_offer,
-                updated_at=now,
-                manager_id=manager_id,
-            )
-        )
 
     async def list_blogger_ids_sent_for_order(
         self, order_id: UUID, session: object | None = None
     ) -> list[UUID]:
         """List blogger ids who already received an offer for this order."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OfferDispatchModel.blogger_id).where(
-                OfferDispatchModel.order_id == order_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OfferDispatchModel.blogger_id).where(
+                    OfferDispatchModel.order_id == order_id
+                )
             )
-        )
-        return list(exec_result.scalars().all())
+            return list(exec_result.scalars().all())
 
     async def list_responses_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> List[OfferDispatch]:
         """List dispatches (with response) by order."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OfferDispatchModel)
-            .where(OfferDispatchModel.order_id == order_id)
-            .order_by(
-                OfferDispatchModel.updated_at.asc().nullslast(),
-                OfferDispatchModel.created_at.asc(),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OfferDispatchModel)
+                .where(OfferDispatchModel.order_id == order_id)
+                .order_by(
+                    OfferDispatchModel.updated_at.asc().nullslast(),
+                    OfferDispatchModel.created_at.asc(),
+                )
             )
-        )
-        results = exec_result.scalars().all()
-        return [_to_offer_dispatch_entity(m) for m in results]
+            results = exec_result.scalars().all()
+            return [_to_offer_dispatch_entity(m) for m in results]
 
     async def list_responses_by_blogger(
         self,
@@ -902,69 +1025,77 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         When in_offer_only is True, return only dispatches that ended up in the
         offer (in_offer=true).
         """
-        db_session = _get_async_session(session)
-        where = [
-            OfferDispatchModel.blogger_id == blogger_id,
-            OfferDispatchModel.accepted.isnot(None),
-        ]
-        if in_offer_only:
-            where.append(OfferDispatchModel.in_offer.is_(True))
-        exec_result = await db_session.execute(
-            select(OfferDispatchModel)
-            .where(*where)
-            .order_by(
-                OfferDispatchModel.updated_at.desc().nullslast(),
-                OfferDispatchModel.created_at.desc(),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            where = [
+                OfferDispatchModel.blogger_id == blogger_id,
+                OfferDispatchModel.accepted.isnot(None),
+            ]
+            if in_offer_only:
+                where.append(OfferDispatchModel.in_offer.is_(True))
+            exec_result = await db_session.execute(
+                select(OfferDispatchModel)
+                .where(*where)
+                .order_by(
+                    OfferDispatchModel.updated_at.desc().nullslast(),
+                    OfferDispatchModel.created_at.desc(),
+                )
             )
-        )
-        results = exec_result.scalars().all()
-        return [_to_offer_dispatch_entity(m) for m in results]
+            results = exec_result.scalars().all()
+            return [_to_offer_dispatch_entity(m) for m in results]
 
     async def exists_responded(
         self, order_id: UUID, blogger_id: UUID, session: object | None = None
     ) -> bool:
         """Check if blogger already responded (accepted is not null)."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OfferDispatchModel)
-            .where(
-                OfferDispatchModel.order_id == order_id,
-                OfferDispatchModel.blogger_id == blogger_id,
-                OfferDispatchModel.accepted.isnot(None),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                    OfferDispatchModel.accepted.isnot(None),
+                )
             )
-        )
-        result = exec_result.scalar_one()
-        return int(result) > 0
+            result = exec_result.scalar_one()
+            return int(result) > 0
 
     async def count_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> int:
         """Count dispatches by order (all rows)."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OfferDispatchModel)
-            .where(OfferDispatchModel.order_id == order_id)
-        )
-        result = exec_result.scalar_one()
-        return int(result)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(OfferDispatchModel)
+                .where(OfferDispatchModel.order_id == order_id)
+            )
+            result = exec_result.scalar_one()
+            return int(result)
 
     async def count_accepted_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> int:
         """Count in_offer=true by order (accepted within limit)."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OfferDispatchModel)
-            .where(
-                OfferDispatchModel.order_id == order_id,
-                OfferDispatchModel.in_offer.is_(True),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.in_offer.is_(True),
+                )
             )
-        )
-        result = exec_result.scalar_one()
-        return int(result)
+            result = exec_result.scalar_one()
+            return int(result)
 
     async def count_completed_orders_by_blogger_ids(
         self,
@@ -974,42 +1105,46 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         """Count completed orders (CLOSED, interaction OK) per blogger ID."""
         if not blogger_ids:
             return {}
-        db_session = _get_async_session(session)
-        query = (
-            select(
-                OfferDispatchModel.blogger_id,
-                func.count().label("cnt"),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            query = (
+                select(
+                    OfferDispatchModel.blogger_id,
+                    func.count().label("cnt"),
+                )
+                .select_from(OfferDispatchModel)
+                .join(
+                    OrderModel,
+                    and_(
+                        OfferDispatchModel.order_id == OrderModel.order_id,
+                        OrderModel.status == OrderStatus.CLOSED,
+                    ),
+                )
+                .join(
+                    InteractionModel,
+                    and_(
+                        InteractionModel.order_id
+                        == OfferDispatchModel.order_id,
+                        InteractionModel.blogger_id
+                        == OfferDispatchModel.blogger_id,
+                        InteractionModel.advertiser_id
+                        == OrderModel.advertiser_id,
+                        InteractionModel.status == InteractionStatus.OK,
+                    ),
+                )
+                .where(
+                    OfferDispatchModel.blogger_id.in_(blogger_ids),
+                    OfferDispatchModel.in_offer.is_(True),
+                )
+                .group_by(OfferDispatchModel.blogger_id)
             )
-            .select_from(OfferDispatchModel)
-            .join(
-                OrderModel,
-                and_(
-                    OfferDispatchModel.order_id == OrderModel.order_id,
-                    OrderModel.status == OrderStatus.CLOSED,
-                ),
-            )
-            .join(
-                InteractionModel,
-                and_(
-                    InteractionModel.order_id == OfferDispatchModel.order_id,
-                    InteractionModel.blogger_id
-                    == OfferDispatchModel.blogger_id,
-                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
-                    InteractionModel.status == InteractionStatus.OK,
-                ),
-            )
-            .where(
-                OfferDispatchModel.blogger_id.in_(blogger_ids),
-                OfferDispatchModel.in_offer.is_(True),
-            )
-            .group_by(OfferDispatchModel.blogger_id)
-        )
-        exec_result = await db_session.execute(query)
-        rows = exec_result.all()
-        result = {uid: 0 for uid in blogger_ids}
-        for row in rows:
-            result[row.blogger_id] = int(row.cnt)
-        return result
+            exec_result = await db_session.execute(query)
+            rows = exec_result.all()
+            result = {uid: 0 for uid in blogger_ids}
+            for row in rows:
+                result[row.blogger_id] = int(row.cnt)
+            return result
 
     async def list_responses_by_order_and_manager(
         self,
@@ -1021,26 +1156,28 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         session: object | None = None,
     ) -> list[OfferDispatch]:
         """List dispatches by order and manager with pagination."""
-        db_session = _get_async_session(session)
-        conditions = [
-            OfferDispatchModel.order_id == order_id,
-            OfferDispatchModel.in_offer == in_offer,
-            OfferDispatchModel.accepted.is_(True),
-        ]
-        if manager_id is not None:
-            conditions.append(OfferDispatchModel.manager_id == manager_id)
-        exec_result = await db_session.execute(
-            select(OfferDispatchModel)
-            .where(*conditions)
-            .order_by(
-                OfferDispatchModel.updated_at.asc().nullslast(),
-                OfferDispatchModel.created_at.asc(),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            conditions = [
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.in_offer == in_offer,
+                OfferDispatchModel.accepted.is_(True),
+            ]
+            if manager_id is not None:
+                conditions.append(OfferDispatchModel.manager_id == manager_id)
+            exec_result = await db_session.execute(
+                select(OfferDispatchModel)
+                .where(*conditions)
+                .order_by(
+                    OfferDispatchModel.updated_at.asc().nullslast(),
+                    OfferDispatchModel.created_at.asc(),
+                )
+                .offset(offset)
+                .limit(limit)
             )
-            .offset(offset)
-            .limit(limit)
-        )
-        results = exec_result.scalars().all()
-        return [_to_offer_dispatch_entity(m) for m in results]
+            results = exec_result.scalars().all()
+            return [_to_offer_dispatch_entity(m) for m in results]
 
     async def count_responses_by_order_and_manager(
         self,
@@ -1050,21 +1187,23 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         session: object | None = None,
     ) -> int:
         """Count dispatches by order and manager."""
-        db_session = _get_async_session(session)
-        conditions = [
-            OfferDispatchModel.order_id == order_id,
-            OfferDispatchModel.in_offer == in_offer,
-            OfferDispatchModel.accepted.is_(True),
-        ]
-        if manager_id is not None:
-            conditions.append(OfferDispatchModel.manager_id == manager_id)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(OfferDispatchModel)
-            .where(*conditions)
-        )
-        result = exec_result.scalar_one()
-        return int(result)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            conditions = [
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.in_offer == in_offer,
+                OfferDispatchModel.accepted.is_(True),
+            ]
+            if manager_id is not None:
+                conditions.append(OfferDispatchModel.manager_id == manager_id)
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(OfferDispatchModel)
+                .where(*conditions)
+            )
+            result = exec_result.scalar_one()
+            return int(result)
 
 
 @dataclass(slots=True)
@@ -1078,14 +1217,16 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
     ) -> Optional[Interaction]:
         """Fetch interaction by id."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InteractionModel).where(
-                InteractionModel.interaction_id == interaction_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.interaction_id == interaction_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_interaction_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_interaction_entity(result) if result else None
 
     async def get_by_participants(
         self,
@@ -1096,84 +1237,94 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
     ) -> Optional[Interaction]:
         """Fetch interaction by order/blogger/advertiser."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InteractionModel).where(
-                InteractionModel.order_id == order_id,
-                InteractionModel.blogger_id == blogger_id,
-                InteractionModel.advertiser_id == advertiser_id,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.order_id == order_id,
+                    InteractionModel.blogger_id == blogger_id,
+                    InteractionModel.advertiser_id == advertiser_id,
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_interaction_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_interaction_entity(result) if result else None
 
     async def list_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> Iterable[Interaction]:
         """List interactions for order."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InteractionModel).where(
-                InteractionModel.order_id == order_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.order_id == order_id
+                )
             )
-        )
-        results = exec_result.scalars()
-        return [_to_interaction_entity(item) for item in results]
+            results = exec_result.scalars()
+            return [_to_interaction_entity(item) for item in results]
 
     async def list_due_for_feedback(
         self, cutoff: datetime, session: object | None = None
     ) -> Iterable[Interaction]:
         """List interactions due for feedback."""
 
-        db_session = _get_async_session(session)
-        status_param = cast(
-            bindparam(
-                "status_1",
-                value=InteractionStatus.PENDING.value,
-                type_=String(),
-            ),
-            InteractionModel.status.type,
-        )
-        exec_result = await db_session.execute(
-            select(InteractionModel).where(
-                InteractionModel.next_check_at <= cutoff,
-                InteractionModel.status == status_param,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            status_param = cast(
+                bindparam(
+                    "status_1",
+                    value=InteractionStatus.PENDING.value,
+                    type_=String(),
+                ),
+                InteractionModel.status.type,
             )
-        )
-        results = exec_result.scalars()
-        return [_to_interaction_entity(item) for item in results]
+            exec_result = await db_session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.next_check_at <= cutoff,
+                    InteractionModel.status == status_param,
+                )
+            )
+            results = exec_result.scalars()
+            return [_to_interaction_entity(item) for item in results]
 
     async def list_by_status(
         self, status: InteractionStatus, session: object | None = None
     ) -> Iterable[Interaction]:
         """List interactions by status."""
 
-        db_session = _get_async_session(session)
-        status_param = cast(
-            bindparam(
-                "status_1",
-                value=status.value,
-                type_=String(),
-            ),
-            InteractionModel.status.type,
-        )
-        exec_result = await db_session.execute(
-            select(InteractionModel).where(
-                InteractionModel.status == status_param
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            status_param = cast(
+                bindparam(
+                    "status_1",
+                    value=status.value,
+                    type_=String(),
+                ),
+                InteractionModel.status.type,
             )
-        )
-        results = exec_result.scalars()
-        return [_to_interaction_entity(item) for item in results]
+            exec_result = await db_session.execute(
+                select(InteractionModel).where(
+                    InteractionModel.status == status_param
+                )
+            )
+            results = exec_result.scalars()
+            return [_to_interaction_entity(item) for item in results]
 
     async def save(
         self, interaction: Interaction, session: object | None = None
     ) -> None:
         """Persist interaction."""
 
-        db_session = _get_async_session(session)
-        model = _to_interaction_model(interaction)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_interaction_model(interaction)
+            await db_session.merge(model)
 
     async def update_next_check_at(
         self,
@@ -1183,29 +1334,33 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
     ) -> None:
         """Update next_check_at for an interaction."""
 
-        db_session = _get_async_session(session)
-        await db_session.execute(
-            update(InteractionModel)
-            .where(InteractionModel.interaction_id == interaction_id)
-            .values(next_check_at=next_check_at)
-        )
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.execute(
+                update(InteractionModel)
+                .where(InteractionModel.interaction_id == interaction_id)
+                .values(next_check_at=next_check_at)
+            )
 
     async def list_blogger_ids_with_unfulfilled_interaction(
         self, session: object | None = None
     ) -> list[UUID]:
         """Blogger ids with at least one interaction PENDING or ISSUE."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(InteractionModel.blogger_id)
-            .where(
-                InteractionModel.status.in_(
-                    [InteractionStatus.PENDING, InteractionStatus.ISSUE]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(InteractionModel.blogger_id)
+                .where(
+                    InteractionModel.status.in_(
+                        [InteractionStatus.PENDING, InteractionStatus.ISSUE]
+                    )
                 )
+                .distinct()
             )
-            .distinct()
-        )
-        return list(exec_result.scalars().all())
+            return list(exec_result.scalars().all())
 
 
 @dataclass(slots=True)
@@ -1223,27 +1378,31 @@ class SqlAlchemyNpsRepository(NpsRepository):
     ) -> None:
         """Save NPS score for a user."""
 
-        db_session = _get_async_session(session)
-        model = NpsResponseModel(
-            user_id=user_id,
-            score=score,
-            comment=comment,
-        )
-        db_session.add(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = NpsResponseModel(
+                user_id=user_id,
+                score=score,
+                comment=comment,
+            )
+            db_session.add(model)
 
     async def exists_for_user(
         self, user_id: UUID, session: object | None = None
     ) -> bool:
         """Check if user already gave NPS."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(NpsResponseModel)
-            .where(NpsResponseModel.user_id == user_id)
-        )
-        count = exec_result.scalar_one()
-        return int(count) > 0
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(NpsResponseModel)
+                .where(NpsResponseModel.user_id == user_id)
+            )
+            count = exec_result.scalar_one()
+            return int(count) > 0
 
 
 def _to_user_entity(model: UserModel) -> User:
@@ -1663,61 +1822,69 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         """Persist outbox event."""
 
         model = _to_outbox_event_model(event)
-        db_session = _get_async_session(session)
-        db_session.add(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            db_session.add(model)
 
     async def get_pending_events(
         self, limit: int = 100, session: object | None = None
     ) -> List[OutboxEvent]:
         """Get pending events for processing."""
 
-        db_session = _get_async_session(session)
-        result = await db_session.execute(
-            select(OutboxEventModel)
-            .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
-            .order_by(OutboxEventModel.created_at)
-            .limit(limit)
-        )
-        models = result.scalars().all()
-        return [_to_outbox_event_entity(model) for model in models]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            result = await db_session.execute(
+                select(OutboxEventModel)
+                .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
+                .order_by(OutboxEventModel.created_at)
+                .limit(limit)
+            )
+            models = result.scalars().all()
+            return [_to_outbox_event_entity(model) for model in models]
 
     async def claim_pending_events(
         self, limit: int = 100, session: object | None = None
     ) -> List[OutboxEvent]:
         """Claim pending events (set to PROCESSING) and return them."""
 
-        db_session = _get_async_session(session)
-        result = await db_session.execute(
-            select(OutboxEventModel)
-            .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
-            .order_by(OutboxEventModel.created_at)
-            .limit(limit)
-            .with_for_update(skip_locked=True)
-        )
-        models = result.scalars().all()
-        if models:
-            event_ids = [m.event_id for m in models]
-            await db_session.execute(
-                update(OutboxEventModel)
-                .where(OutboxEventModel.event_id.in_(event_ids))
-                .values(
-                    status=OutboxEventStatus.PROCESSING,
-                    claimed_at=datetime.now(timezone.utc),
-                )
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            result = await db_session.execute(
+                select(OutboxEventModel)
+                .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
+                .order_by(OutboxEventModel.created_at)
+                .limit(limit)
+                .with_for_update(skip_locked=True)
             )
-        return [_to_outbox_event_entity(model) for model in models]
+            models = result.scalars().all()
+            if models:
+                event_ids = [m.event_id for m in models]
+                await db_session.execute(
+                    update(OutboxEventModel)
+                    .where(OutboxEventModel.event_id.in_(event_ids))
+                    .values(
+                        status=OutboxEventStatus.PROCESSING,
+                        claimed_at=datetime.now(timezone.utc),
+                    )
+                )
+            return [_to_outbox_event_entity(model) for model in models]
 
     async def mark_as_processing(
         self, event_id: UUID, session: object | None = None
     ) -> None:
         """Mark event as processing."""
 
-        db_session = _get_async_session(session)
-        await db_session.execute(
-            update(OutboxEventModel)
-            .where(OutboxEventModel.event_id == event_id)
-            .values(status=OutboxEventStatus.PROCESSING)
-        )
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == event_id)
+                .values(status=OutboxEventStatus.PROCESSING)
+            )
 
     async def mark_as_published(
         self,
@@ -1727,14 +1894,17 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
     ) -> None:
         """Mark event as published."""
 
-        db_session = _get_async_session(session)
-        await db_session.execute(
-            update(OutboxEventModel)
-            .where(OutboxEventModel.event_id == event_id)
-            .values(
-                status=OutboxEventStatus.PUBLISHED, processed_at=processed_at
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == event_id)
+                .values(
+                    status=OutboxEventStatus.PUBLISHED,
+                    processed_at=processed_at,
+                )
             )
-        )
 
     async def mark_as_failed(
         self,
@@ -1745,16 +1915,18 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
     ) -> None:
         """Mark event as failed (terminal state)."""
 
-        db_session = _get_async_session(session)
-        await db_session.execute(
-            update(OutboxEventModel)
-            .where(OutboxEventModel.event_id == event_id)
-            .values(
-                status=OutboxEventStatus.FAILED,
-                last_error=error,
-                retry_count=retry_count,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == event_id)
+                .values(
+                    status=OutboxEventStatus.FAILED,
+                    last_error=error,
+                    retry_count=retry_count,
+                )
             )
-        )
 
     async def mark_for_retry(
         self,
@@ -1765,30 +1937,34 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
     ) -> None:
         """Reset event to PENDING for retry."""
 
-        db_session = _get_async_session(session)
-        await db_session.execute(
-            update(OutboxEventModel)
-            .where(OutboxEventModel.event_id == event_id)
-            .values(
-                status=OutboxEventStatus.PENDING,
-                last_error=error,
-                retry_count=retry_count,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.execute(
+                update(OutboxEventModel)
+                .where(OutboxEventModel.event_id == event_id)
+                .values(
+                    status=OutboxEventStatus.PENDING,
+                    last_error=error,
+                    retry_count=retry_count,
+                )
             )
-        )
 
     async def get_by_id(
         self, event_id: UUID, session: object | None = None
     ) -> Optional[OutboxEvent]:
         """Get event by ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(OutboxEventModel).where(
-                OutboxEventModel.event_id == event_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OutboxEventModel).where(
+                    OutboxEventModel.event_id == event_id
+                )
             )
-        )
-        model = exec_result.scalar_one_or_none()
-        return _to_outbox_event_entity(model) if model else None
+            model = exec_result.scalar_one_or_none()
+            return _to_outbox_event_entity(model) if model else None
 
     async def delete_processed_events(
         self,
@@ -1802,29 +1978,33 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
             return 0
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        db_session = _get_async_session(session)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            subq = (
+                select(OutboxEventModel.event_id)
+                .where(
+                    or_(
+                        and_(
+                            OutboxEventModel.status
+                            == OutboxEventStatus.PUBLISHED,
+                            OutboxEventModel.processed_at < cutoff,
+                        ),
+                        and_(
+                            OutboxEventModel.status == OutboxEventStatus.FAILED,
+                            OutboxEventModel.created_at < cutoff,
+                        ),
+                    )
+                )
+                .limit(batch_size)
+            )
 
-        subq = (
-            select(OutboxEventModel.event_id)
-            .where(
-                or_(
-                    and_(
-                        OutboxEventModel.status == OutboxEventStatus.PUBLISHED,
-                        OutboxEventModel.processed_at < cutoff,
-                    ),
-                    and_(
-                        OutboxEventModel.status == OutboxEventStatus.FAILED,
-                        OutboxEventModel.created_at < cutoff,
-                    ),
+            result = await db_session.execute(
+                delete(OutboxEventModel).where(
+                    OutboxEventModel.event_id.in_(subq)
                 )
             )
-            .limit(batch_size)
-        )
-
-        result = await db_session.execute(
-            delete(OutboxEventModel).where(OutboxEventModel.event_id.in_(subq))
-        )
-        return getattr(result, "rowcount", None) or 0
+            return getattr(result, "rowcount", None) or 0
 
     async def reset_stale_processing_events(
         self,
@@ -1835,16 +2015,18 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         cutoff = datetime.now(timezone.utc) - timedelta(
             minutes=stale_after_minutes
         )
-        db_session = _get_async_session(session)
-        result = await db_session.execute(
-            update(OutboxEventModel)
-            .where(
-                OutboxEventModel.status == OutboxEventStatus.PROCESSING,
-                OutboxEventModel.claimed_at < cutoff,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            result = await db_session.execute(
+                update(OutboxEventModel)
+                .where(
+                    OutboxEventModel.status == OutboxEventStatus.PROCESSING,
+                    OutboxEventModel.claimed_at < cutoff,
+                )
+                .values(status=OutboxEventStatus.PENDING)
             )
-            .values(status=OutboxEventStatus.PENDING)
-        )
-        return getattr(result, "rowcount", None) or 0
+            return getattr(result, "rowcount", None) or 0
 
 
 def _to_outbox_event_entity(model: OutboxEventModel) -> OutboxEvent:
@@ -1892,76 +2074,90 @@ class SqlAlchemyComplaintRepository(ComplaintRepository):
     ) -> None:
         """Persist complaint."""
 
-        db_session = _get_async_session(session)
-        model = _to_complaint_model(complaint)
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_complaint_model(complaint)
+            await db_session.merge(model)
 
     async def get_by_id(
         self, complaint_id: UUID, session: object | None = None
     ) -> Optional[Complaint]:
         """Get complaint by ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ComplaintModel).where(
-                ComplaintModel.complaint_id == complaint_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ComplaintModel).where(
+                    ComplaintModel.complaint_id == complaint_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_complaint_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_complaint_entity(result) if result else None
 
     async def list_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> Iterable[Complaint]:
         """List complaints for a specific order."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ComplaintModel).where(ComplaintModel.order_id == order_id)
-        )
-        results = exec_result.scalars()
-        return [_to_complaint_entity(item) for item in results]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ComplaintModel).where(
+                    ComplaintModel.order_id == order_id
+                )
+            )
+            results = exec_result.scalars()
+            return [_to_complaint_entity(item) for item in results]
 
     async def list_by_reporter(
         self, reporter_id: UUID, session: object | None = None
     ) -> Iterable[Complaint]:
         """List complaints filed by a specific user."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ComplaintModel).where(
-                ComplaintModel.reporter_id == reporter_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ComplaintModel).where(
+                    ComplaintModel.reporter_id == reporter_id
+                )
             )
-        )
-        results = exec_result.scalars()
-        return [_to_complaint_entity(item) for item in results]
+            results = exec_result.scalars()
+            return [_to_complaint_entity(item) for item in results]
 
     async def exists(
         self, order_id: UUID, reporter_id: UUID, session: object | None = None
     ) -> bool:
         """Check if reporter already filed a complaint for this order."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count(ComplaintModel.complaint_id)).where(
-                ComplaintModel.order_id == order_id,
-                ComplaintModel.reporter_id == reporter_id,
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count(ComplaintModel.complaint_id)).where(
+                    ComplaintModel.order_id == order_id,
+                    ComplaintModel.reporter_id == reporter_id,
+                )
             )
-        )
-        count = exec_result.scalar()
-        return (count or 0) > 0
+            count = exec_result.scalar()
+            return (count or 0) > 0
 
     async def list_by_status(
         self, status: ComplaintStatus, session: object | None = None
     ) -> Iterable[Complaint]:
         """List complaints by status."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ComplaintModel).where(ComplaintModel.status == status)
-        )
-        results = exec_result.scalars()
-        return [_to_complaint_entity(item) for item in results]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ComplaintModel).where(ComplaintModel.status == status)
+            )
+            results = exec_result.scalars()
+            return [_to_complaint_entity(item) for item in results]
 
 
 def _to_complaint_entity(model: ComplaintModel) -> Complaint:
@@ -2011,27 +2207,32 @@ class SqlAlchemyUserReferralBindingRepository(UserReferralBindingRepository):
     ) -> None:
         """Persist referral binding."""
 
-        db_session = _get_async_session(session)
-        model = UserReferralBindingModel(
-            referrer_user_id=binding.referrer_user_id,
-            referred_user_id=binding.referred_user_id,
-            created_at=binding.created_at,
-        )
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = UserReferralBindingModel(
+                referrer_user_id=binding.referrer_user_id,
+                referred_user_id=binding.referred_user_id,
+                created_at=binding.created_at,
+            )
+            await db_session.merge(model)
 
     async def get_by_referred_user(
         self, referred_user_id: UUID, session: object | None = None
     ) -> Optional[UserReferralBinding]:
         """Fetch binding by referred user ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserReferralBindingModel).where(
-                UserReferralBindingModel.referred_user_id == referred_user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserReferralBindingModel).where(
+                    UserReferralBindingModel.referred_user_id
+                    == referred_user_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_user_referral_binding_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_user_referral_binding_entity(result) if result else None
 
     async def list_by_referrer(
         self,
@@ -2042,35 +2243,41 @@ class SqlAlchemyUserReferralBindingRepository(UserReferralBindingRepository):
     ) -> Iterable[UserReferralBinding]:
         """List bindings by referrer user ID with pagination."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserReferralBindingModel)
-            .where(
-                UserReferralBindingModel.referrer_user_id == referrer_user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserReferralBindingModel)
+                .where(
+                    UserReferralBindingModel.referrer_user_id
+                    == referrer_user_id
+                )
+                .order_by(UserReferralBindingModel.created_at)
+                .offset(offset)
+                .limit(limit)
             )
-            .order_by(UserReferralBindingModel.created_at)
-            .offset(offset)
-            .limit(limit)
-        )
-        return [
-            _to_user_referral_binding_entity(m)
-            for m in exec_result.scalars().all()
-        ]
+            return [
+                _to_user_referral_binding_entity(m)
+                for m in exec_result.scalars().all()
+            ]
 
     async def count_by_referrer(
         self, referrer_user_id: UUID, session: object | None = None
     ) -> int:
         """Count bindings by referrer user ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(UserReferralBindingModel)
-            .where(
-                UserReferralBindingModel.referrer_user_id == referrer_user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(UserReferralBindingModel)
+                .where(
+                    UserReferralBindingModel.referrer_user_id
+                    == referrer_user_id
+                )
             )
-        )
-        return int(exec_result.scalar_one() or 0)
+            return int(exec_result.scalar_one() or 0)
 
 
 @dataclass(slots=True)
@@ -2086,39 +2293,45 @@ class SqlAlchemyUserReferralPendingRepository(UserReferralPendingRepository):
     ) -> None:
         """Persist pending referral."""
 
-        db_session = _get_async_session(session)
-        model = UserReferralPendingModel(
-            user_id=pending.user_id,
-            referrer_user_id=pending.referrer_user_id,
-            created_at=pending.created_at,
-        )
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = UserReferralPendingModel(
+                user_id=pending.user_id,
+                referrer_user_id=pending.referrer_user_id,
+                created_at=pending.created_at,
+            )
+            await db_session.merge(model)
 
     async def get_by_user(
         self, user_id: UUID, session: object | None = None
     ) -> Optional[UserReferralPending]:
         """Fetch pending referral by user ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserReferralPendingModel).where(
-                UserReferralPendingModel.user_id == user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserReferralPendingModel).where(
+                    UserReferralPendingModel.user_id == user_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_user_referral_pending_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_user_referral_pending_entity(result) if result else None
 
     async def delete_by_user(
         self, user_id: UUID, session: object | None = None
     ) -> None:
         """Delete pending referral by user ID."""
 
-        db_session = _get_async_session(session)
-        await db_session.execute(
-            delete(UserReferralPendingModel).where(
-                UserReferralPendingModel.user_id == user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.execute(
+                delete(UserReferralPendingModel).where(
+                    UserReferralPendingModel.user_id == user_id
+                )
             )
-        )
 
     async def list_by_referrer(
         self,
@@ -2129,35 +2342,41 @@ class SqlAlchemyUserReferralPendingRepository(UserReferralPendingRepository):
     ) -> Iterable[UserReferralPending]:
         """List pending referrals by referrer user ID with pagination."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(UserReferralPendingModel)
-            .where(
-                UserReferralPendingModel.referrer_user_id == referrer_user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(UserReferralPendingModel)
+                .where(
+                    UserReferralPendingModel.referrer_user_id
+                    == referrer_user_id
+                )
+                .order_by(UserReferralPendingModel.created_at)
+                .offset(offset)
+                .limit(limit)
             )
-            .order_by(UserReferralPendingModel.created_at)
-            .offset(offset)
-            .limit(limit)
-        )
-        return [
-            _to_user_referral_pending_entity(m)
-            for m in exec_result.scalars().all()
-        ]
+            return [
+                _to_user_referral_pending_entity(m)
+                for m in exec_result.scalars().all()
+            ]
 
     async def count_by_referrer(
         self, referrer_user_id: UUID, session: object | None = None
     ) -> int:
         """Count pending referrals by referrer user ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(UserReferralPendingModel)
-            .where(
-                UserReferralPendingModel.referrer_user_id == referrer_user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(UserReferralPendingModel)
+                .where(
+                    UserReferralPendingModel.referrer_user_id
+                    == referrer_user_id
+                )
             )
-        )
-        return int(exec_result.scalar_one() or 0)
+            return int(exec_result.scalar_one() or 0)
 
 
 @dataclass(slots=True)
@@ -2173,23 +2392,27 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
     ) -> None:
         """Persist payout request."""
 
-        db_session = _get_async_session(session)
-        model = _to_payout_request_model(request)
-        db_session.add(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = _to_payout_request_model(request)
+            db_session.add(model)
 
     async def get_by_id(
         self, request_id: UUID, session: object | None = None
     ) -> Optional[PayoutRequest]:
         """Fetch payout request by ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(PayoutRequestModel).where(
-                PayoutRequestModel.request_id == request_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(PayoutRequestModel).where(
+                    PayoutRequestModel.request_id == request_id
+                )
             )
-        )
-        result = exec_result.scalar_one_or_none()
-        return _to_payout_request_entity(result) if result else None
+            result = exec_result.scalar_one_or_none()
+            return _to_payout_request_entity(result) if result else None
 
     async def update_status(
         self,
@@ -2198,28 +2421,33 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         session: object | None = None,
     ) -> bool:
         """Update payout request status. Returns True if row was updated."""
-        db_session = _get_async_session(session)
-        result = await db_session.execute(
-            update(PayoutRequestModel)
-            .where(PayoutRequestModel.request_id == request_id)
-            .values(status=status)
-        )
-        return result.rowcount > 0  # type: ignore[attr-defined]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            result = await db_session.execute(
+                update(PayoutRequestModel)
+                .where(PayoutRequestModel.request_id == request_id)
+                .values(status=status)
+            )
+            return result.rowcount > 0  # type: ignore[attr-defined]
 
     async def list_by_user(
         self, user_id: UUID, session: object | None = None
     ) -> Iterable[PayoutRequest]:
         """List payout requests by user ID."""
 
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(PayoutRequestModel).where(
-                PayoutRequestModel.user_id == user_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(PayoutRequestModel).where(
+                    PayoutRequestModel.user_id == user_id
+                )
             )
-        )
-        return [
-            _to_payout_request_entity(m) for m in exec_result.scalars().all()
-        ]
+            return [
+                _to_payout_request_entity(m)
+                for m in exec_result.scalars().all()
+            ]
 
     async def list_by_user_ids(
         self,
@@ -2229,20 +2457,25 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         """List payout requests for given user IDs in one query."""
         if not user_ids:
             return []
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(PayoutRequestModel).where(
-                PayoutRequestModel.user_id.in_(user_ids)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(PayoutRequestModel).where(
+                    PayoutRequestModel.user_id.in_(user_ids)
+                )
             )
-        )
-        return [
-            _to_payout_request_entity(m) for m in exec_result.scalars().all()
-        ]
+            return [
+                _to_payout_request_entity(m)
+                for m in exec_result.scalars().all()
+            ]
 
 
 @dataclass(slots=True)
 class SqlReferralOrderIncomeLoader:
     """Loads referral order income rows in one query to avoid N+1."""
+
+    session_factory: async_sessionmaker[AsyncSession]
 
     async def load_referral_order_income_rows(
         self,
@@ -2251,65 +2484,72 @@ class SqlReferralOrderIncomeLoader:
         session: object | None = None,
     ) -> list[ReferralOrderIncomeRow]:
         """Return completed-order rows for referred creators (CLOSED, OK)."""
-        db_session = _get_async_session(session)
-        query = (
-            select(
-                UserModel.created_at.label("creator_created_at"),
-                func.coalesce(
-                    OrderModel.completed_at, OrderModel.created_at
-                ).label("order_completed_at"),
-                PaymentModel.amount.label("payment_amount"),
-                OrderModel.bloggers_needed.label("bloggers_needed"),
-                OrderModel.order_id.label("order_id"),
-            )
-            .select_from(UserReferralBindingModel)
-            .join(
-                OfferDispatchModel,
-                and_(
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            query = (
+                select(
+                    UserModel.created_at.label("creator_created_at"),
+                    func.coalesce(
+                        OrderModel.completed_at, OrderModel.created_at
+                    ).label("order_completed_at"),
+                    PaymentModel.amount.label("payment_amount"),
+                    OrderModel.bloggers_needed.label("bloggers_needed"),
+                    OrderModel.order_id.label("order_id"),
+                )
+                .select_from(UserReferralBindingModel)
+                .join(
+                    OfferDispatchModel,
+                    and_(
+                        UserReferralBindingModel.referred_user_id
+                        == OfferDispatchModel.blogger_id,
+                        OfferDispatchModel.in_offer.is_(True),
+                    ),
+                )
+                .join(
+                    OrderModel,
+                    OfferDispatchModel.order_id == OrderModel.order_id,
+                )
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
+                .join(
+                    InteractionModel,
+                    and_(
+                        InteractionModel.order_id == OrderModel.order_id,
+                        InteractionModel.blogger_id
+                        == UserReferralBindingModel.referred_user_id,
+                        InteractionModel.advertiser_id
+                        == OrderModel.advertiser_id,
+                    ),
+                )
+                .join(
+                    UserModel,
                     UserReferralBindingModel.referred_user_id
-                    == OfferDispatchModel.blogger_id,
-                    OfferDispatchModel.in_offer.is_(True),
-                ),
+                    == UserModel.user_id,
+                )
+                .where(
+                    UserReferralBindingModel.referrer_user_id
+                    == referrer_user_id,
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                    InteractionModel.status == InteractionStatus.OK,
+                    OrderModel.bloggers_needed > 0,
+                )
+                .limit(limit)
             )
-            .join(
-                OrderModel,
-                OfferDispatchModel.order_id == OrderModel.order_id,
-            )
-            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
-            .join(
-                InteractionModel,
-                and_(
-                    InteractionModel.order_id == OrderModel.order_id,
-                    InteractionModel.blogger_id
-                    == UserReferralBindingModel.referred_user_id,
-                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
-                ),
-            )
-            .join(
-                UserModel,
-                UserReferralBindingModel.referred_user_id == UserModel.user_id,
-            )
-            .where(
-                UserReferralBindingModel.referrer_user_id == referrer_user_id,
-                OrderModel.status == OrderStatus.CLOSED,
-                PaymentModel.status == PaymentStatus.PAID,
-                InteractionModel.status == InteractionStatus.OK,
-                OrderModel.bloggers_needed > 0,
-            )
-            .limit(limit)
-        )
-        result = await db_session.execute(query)
-        rows = result.all()
-        return [
-            ReferralOrderIncomeRow(
-                creator_created_at=row.creator_created_at,
-                order_completed_at=row.order_completed_at,
-                payment_amount=float(row.payment_amount),
-                bloggers_needed=row.bloggers_needed,
-                order_id=row.order_id,
-            )
-            for row in rows
-        ]
+            result = await db_session.execute(query)
+            rows = result.all()
+            return [
+                ReferralOrderIncomeRow(
+                    creator_created_at=row.creator_created_at,
+                    order_completed_at=row.order_completed_at,
+                    payment_amount=float(row.payment_amount),
+                    bloggers_needed=row.bloggers_needed,
+                    order_id=row.order_id,
+                )
+                for row in rows
+            ]
 
     async def load_referral_order_income_rows_advertisers(
         self,
@@ -2318,47 +2558,53 @@ class SqlReferralOrderIncomeLoader:
         session: object | None = None,
     ) -> list[ReferralOrderIncomeRow]:
         """Return rows for referred advertisers (CLOSED, PAID)."""
-        db_session = _get_async_session(session)
-        query = (
-            select(
-                UserModel.created_at.label("creator_created_at"),
-                func.coalesce(
-                    OrderModel.completed_at, OrderModel.created_at
-                ).label("order_completed_at"),
-                PaymentModel.amount.label("payment_amount"),
-                func.coalesce(1).label("bloggers_needed"),
-                OrderModel.order_id.label("order_id"),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            query = (
+                select(
+                    UserModel.created_at.label("creator_created_at"),
+                    func.coalesce(
+                        OrderModel.completed_at, OrderModel.created_at
+                    ).label("order_completed_at"),
+                    PaymentModel.amount.label("payment_amount"),
+                    func.coalesce(1).label("bloggers_needed"),
+                    OrderModel.order_id.label("order_id"),
+                )
+                .select_from(UserReferralBindingModel)
+                .join(
+                    OrderModel,
+                    OrderModel.advertiser_id
+                    == UserReferralBindingModel.referred_user_id,
+                )
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
+                .join(
+                    UserModel,
+                    UserReferralBindingModel.referred_user_id
+                    == UserModel.user_id,
+                )
+                .where(
+                    UserReferralBindingModel.referrer_user_id
+                    == referrer_user_id,
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                )
+                .limit(limit)
             )
-            .select_from(UserReferralBindingModel)
-            .join(
-                OrderModel,
-                OrderModel.advertiser_id
-                == UserReferralBindingModel.referred_user_id,
-            )
-            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
-            .join(
-                UserModel,
-                UserReferralBindingModel.referred_user_id == UserModel.user_id,
-            )
-            .where(
-                UserReferralBindingModel.referrer_user_id == referrer_user_id,
-                OrderModel.status == OrderStatus.CLOSED,
-                PaymentModel.status == PaymentStatus.PAID,
-            )
-            .limit(limit)
-        )
-        result = await db_session.execute(query)
-        rows = result.all()
-        return [
-            ReferralOrderIncomeRow(
-                creator_created_at=row.creator_created_at,
-                order_completed_at=row.order_completed_at,
-                payment_amount=float(row.payment_amount),
-                bloggers_needed=1,
-                order_id=row.order_id,
-            )
-            for row in rows
-        ]
+            result = await db_session.execute(query)
+            rows = result.all()
+            return [
+                ReferralOrderIncomeRow(
+                    creator_created_at=row.creator_created_at,
+                    order_completed_at=row.order_completed_at,
+                    payment_amount=float(row.payment_amount),
+                    bloggers_needed=1,
+                    order_id=row.order_id,
+                )
+                for row in rows
+            ]
 
     async def load_referral_order_income_rows_combined(
         self,
@@ -2367,97 +2613,108 @@ class SqlReferralOrderIncomeLoader:
         session: object | None = None,
     ) -> list[ReferralOrderIncomeRow]:
         """Blogger + advertiser rows in one query (UNION ALL, one LIMIT)."""
-        db_session = _get_async_session(session)
-        bloggers_query = (
-            select(
-                UserModel.created_at.label("creator_created_at"),
-                func.coalesce(
-                    OrderModel.completed_at, OrderModel.created_at
-                ).label("order_completed_at"),
-                PaymentModel.amount.label("payment_amount"),
-                OrderModel.bloggers_needed.label("bloggers_needed"),
-                OrderModel.order_id.label("order_id"),
-            )
-            .select_from(UserReferralBindingModel)
-            .join(
-                OfferDispatchModel,
-                and_(
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            bloggers_query = (
+                select(
+                    UserModel.created_at.label("creator_created_at"),
+                    func.coalesce(
+                        OrderModel.completed_at, OrderModel.created_at
+                    ).label("order_completed_at"),
+                    PaymentModel.amount.label("payment_amount"),
+                    OrderModel.bloggers_needed.label("bloggers_needed"),
+                    OrderModel.order_id.label("order_id"),
+                )
+                .select_from(UserReferralBindingModel)
+                .join(
+                    OfferDispatchModel,
+                    and_(
+                        UserReferralBindingModel.referred_user_id
+                        == OfferDispatchModel.blogger_id,
+                        OfferDispatchModel.in_offer.is_(True),
+                    ),
+                )
+                .join(
+                    OrderModel,
+                    OfferDispatchModel.order_id == OrderModel.order_id,
+                )
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
+                .join(
+                    InteractionModel,
+                    and_(
+                        InteractionModel.order_id == OrderModel.order_id,
+                        InteractionModel.blogger_id
+                        == UserReferralBindingModel.referred_user_id,
+                        InteractionModel.advertiser_id
+                        == OrderModel.advertiser_id,
+                    ),
+                )
+                .join(
+                    UserModel,
                     UserReferralBindingModel.referred_user_id
-                    == OfferDispatchModel.blogger_id,
-                    OfferDispatchModel.in_offer.is_(True),
-                ),
+                    == UserModel.user_id,
+                )
+                .where(
+                    UserReferralBindingModel.referrer_user_id
+                    == referrer_user_id,
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                    InteractionModel.status == InteractionStatus.OK,
+                    OrderModel.bloggers_needed > 0,
+                )
             )
-            .join(
-                OrderModel,
-                OfferDispatchModel.order_id == OrderModel.order_id,
-            )
-            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
-            .join(
-                InteractionModel,
-                and_(
-                    InteractionModel.order_id == OrderModel.order_id,
-                    InteractionModel.blogger_id
+            advertisers_query = (
+                select(
+                    UserModel.created_at.label("creator_created_at"),
+                    func.coalesce(
+                        OrderModel.completed_at, OrderModel.created_at
+                    ).label("order_completed_at"),
+                    PaymentModel.amount.label("payment_amount"),
+                    func.coalesce(1).label("bloggers_needed"),
+                    OrderModel.order_id.label("order_id"),
+                )
+                .select_from(UserReferralBindingModel)
+                .join(
+                    OrderModel,
+                    OrderModel.advertiser_id
                     == UserReferralBindingModel.referred_user_id,
-                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
-                ),
+                )
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
+                .join(
+                    UserModel,
+                    UserReferralBindingModel.referred_user_id
+                    == UserModel.user_id,
+                )
+                .where(
+                    UserReferralBindingModel.referrer_user_id
+                    == referrer_user_id,
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                )
             )
-            .join(
-                UserModel,
-                UserReferralBindingModel.referred_user_id == UserModel.user_id,
+            combined = union_all(bloggers_query, advertisers_query).subquery()
+            stmt = (
+                select(combined)
+                .order_by(combined.c.order_completed_at.desc())
+                .limit(limit)
             )
-            .where(
-                UserReferralBindingModel.referrer_user_id == referrer_user_id,
-                OrderModel.status == OrderStatus.CLOSED,
-                PaymentModel.status == PaymentStatus.PAID,
-                InteractionModel.status == InteractionStatus.OK,
-                OrderModel.bloggers_needed > 0,
-            )
-        )
-        advertisers_query = (
-            select(
-                UserModel.created_at.label("creator_created_at"),
-                func.coalesce(
-                    OrderModel.completed_at, OrderModel.created_at
-                ).label("order_completed_at"),
-                PaymentModel.amount.label("payment_amount"),
-                func.coalesce(1).label("bloggers_needed"),
-                OrderModel.order_id.label("order_id"),
-            )
-            .select_from(UserReferralBindingModel)
-            .join(
-                OrderModel,
-                OrderModel.advertiser_id
-                == UserReferralBindingModel.referred_user_id,
-            )
-            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
-            .join(
-                UserModel,
-                UserReferralBindingModel.referred_user_id == UserModel.user_id,
-            )
-            .where(
-                UserReferralBindingModel.referrer_user_id == referrer_user_id,
-                OrderModel.status == OrderStatus.CLOSED,
-                PaymentModel.status == PaymentStatus.PAID,
-            )
-        )
-        combined = union_all(bloggers_query, advertisers_query).subquery()
-        stmt = (
-            select(combined)
-            .order_by(combined.c.order_completed_at.desc())
-            .limit(limit)
-        )
-        result = await db_session.execute(stmt)
-        rows = result.all()
-        return [
-            ReferralOrderIncomeRow(
-                creator_created_at=row.creator_created_at,
-                order_completed_at=row.order_completed_at,
-                payment_amount=float(row.payment_amount),
-                bloggers_needed=row.bloggers_needed,
-                order_id=row.order_id,
-            )
-            for row in rows
-        ]
+            result = await db_session.execute(stmt)
+            rows = result.all()
+            return [
+                ReferralOrderIncomeRow(
+                    creator_created_at=row.creator_created_at,
+                    order_completed_at=row.order_completed_at,
+                    payment_amount=float(row.payment_amount),
+                    bloggers_needed=row.bloggers_needed,
+                    order_id=row.order_id,
+                )
+                for row in rows
+            ]
 
     async def load_referral_order_income_rows_combined_batch(
         self,
@@ -2468,107 +2725,116 @@ class SqlReferralOrderIncomeLoader:
         """Load income rows for multiple referrers in one query (UNION)."""
         if not referrer_user_ids:
             return []
-        db_session = _get_async_session(session)
-        effective_limit = limit if limit is not None else 100_000
-        bloggers_query = (
-            select(
-                UserReferralBindingModel.referrer_user_id.label(
-                    "referrer_user_id"
-                ),
-                UserModel.created_at.label("creator_created_at"),
-                func.coalesce(
-                    OrderModel.completed_at, OrderModel.created_at
-                ).label("order_completed_at"),
-                PaymentModel.amount.label("payment_amount"),
-                OrderModel.bloggers_needed.label("bloggers_needed"),
-                OrderModel.order_id.label("order_id"),
-            )
-            .select_from(UserReferralBindingModel)
-            .join(
-                OfferDispatchModel,
-                and_(
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            effective_limit = limit if limit is not None else 100_000
+            bloggers_query = (
+                select(
+                    UserReferralBindingModel.referrer_user_id.label(
+                        "referrer_user_id"
+                    ),
+                    UserModel.created_at.label("creator_created_at"),
+                    func.coalesce(
+                        OrderModel.completed_at, OrderModel.created_at
+                    ).label("order_completed_at"),
+                    PaymentModel.amount.label("payment_amount"),
+                    OrderModel.bloggers_needed.label("bloggers_needed"),
+                    OrderModel.order_id.label("order_id"),
+                )
+                .select_from(UserReferralBindingModel)
+                .join(
+                    OfferDispatchModel,
+                    and_(
+                        UserReferralBindingModel.referred_user_id
+                        == OfferDispatchModel.blogger_id,
+                        OfferDispatchModel.in_offer.is_(True),
+                    ),
+                )
+                .join(
+                    OrderModel,
+                    OfferDispatchModel.order_id == OrderModel.order_id,
+                )
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
+                .join(
+                    InteractionModel,
+                    and_(
+                        InteractionModel.order_id == OrderModel.order_id,
+                        InteractionModel.blogger_id
+                        == UserReferralBindingModel.referred_user_id,
+                        InteractionModel.advertiser_id
+                        == OrderModel.advertiser_id,
+                    ),
+                )
+                .join(
+                    UserModel,
                     UserReferralBindingModel.referred_user_id
-                    == OfferDispatchModel.blogger_id,
-                    OfferDispatchModel.in_offer.is_(True),
-                ),
+                    == UserModel.user_id,
+                )
+                .where(
+                    UserReferralBindingModel.referrer_user_id.in_(
+                        referrer_user_ids
+                    ),
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                    InteractionModel.status == InteractionStatus.OK,
+                    OrderModel.bloggers_needed > 0,
+                )
             )
-            .join(
-                OrderModel,
-                OfferDispatchModel.order_id == OrderModel.order_id,
-            )
-            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
-            .join(
-                InteractionModel,
-                and_(
-                    InteractionModel.order_id == OrderModel.order_id,
-                    InteractionModel.blogger_id
+            advertisers_query = (
+                select(
+                    UserReferralBindingModel.referrer_user_id.label(
+                        "referrer_user_id"
+                    ),
+                    UserModel.created_at.label("creator_created_at"),
+                    func.coalesce(
+                        OrderModel.completed_at, OrderModel.created_at
+                    ).label("order_completed_at"),
+                    PaymentModel.amount.label("payment_amount"),
+                    func.coalesce(1).label("bloggers_needed"),
+                    OrderModel.order_id.label("order_id"),
+                )
+                .select_from(UserReferralBindingModel)
+                .join(
+                    OrderModel,
+                    OrderModel.advertiser_id
                     == UserReferralBindingModel.referred_user_id,
-                    InteractionModel.advertiser_id == OrderModel.advertiser_id,
-                ),
+                )
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
+                .join(
+                    UserModel,
+                    UserReferralBindingModel.referred_user_id
+                    == UserModel.user_id,
+                )
+                .where(
+                    UserReferralBindingModel.referrer_user_id.in_(
+                        referrer_user_ids
+                    ),
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                )
             )
-            .join(
-                UserModel,
-                UserReferralBindingModel.referred_user_id == UserModel.user_id,
-            )
-            .where(
-                UserReferralBindingModel.referrer_user_id.in_(
-                    referrer_user_ids
-                ),
-                OrderModel.status == OrderStatus.CLOSED,
-                PaymentModel.status == PaymentStatus.PAID,
-                InteractionModel.status == InteractionStatus.OK,
-                OrderModel.bloggers_needed > 0,
-            )
-        )
-        advertisers_query = (
-            select(
-                UserReferralBindingModel.referrer_user_id.label(
-                    "referrer_user_id"
-                ),
-                UserModel.created_at.label("creator_created_at"),
-                func.coalesce(
-                    OrderModel.completed_at, OrderModel.created_at
-                ).label("order_completed_at"),
-                PaymentModel.amount.label("payment_amount"),
-                func.coalesce(1).label("bloggers_needed"),
-                OrderModel.order_id.label("order_id"),
-            )
-            .select_from(UserReferralBindingModel)
-            .join(
-                OrderModel,
-                OrderModel.advertiser_id
-                == UserReferralBindingModel.referred_user_id,
-            )
-            .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
-            .join(
-                UserModel,
-                UserReferralBindingModel.referred_user_id == UserModel.user_id,
-            )
-            .where(
-                UserReferralBindingModel.referrer_user_id.in_(
-                    referrer_user_ids
-                ),
-                OrderModel.status == OrderStatus.CLOSED,
-                PaymentModel.status == PaymentStatus.PAID,
-            )
-        )
-        combined = union_all(bloggers_query, advertisers_query).subquery()
-        stmt = select(combined).limit(effective_limit)
-        result = await db_session.execute(stmt)
-        rows = result.all()
-        return [
-            (
-                row.referrer_user_id,
-                ReferralOrderIncomeRow(
-                    creator_created_at=row.creator_created_at,
-                    order_completed_at=row.order_completed_at,
-                    payment_amount=float(row.payment_amount),
-                    bloggers_needed=row.bloggers_needed,
-                    order_id=row.order_id,
-                ),
-            )
-            for row in rows
-        ]
+            combined = union_all(bloggers_query, advertisers_query).subquery()
+            stmt = select(combined).limit(effective_limit)
+            result = await db_session.execute(stmt)
+            rows = result.all()
+            return [
+                (
+                    row.referrer_user_id,
+                    ReferralOrderIncomeRow(
+                        creator_created_at=row.creator_created_at,
+                        order_completed_at=row.order_completed_at,
+                        payment_amount=float(row.payment_amount),
+                        bloggers_needed=row.bloggers_needed,
+                        order_id=row.order_id,
+                    ),
+                )
+                for row in rows
+            ]
 
 
 def _to_user_referral_binding_entity(
@@ -2754,30 +3020,34 @@ class SqlAlchemyManagerOrderRepository(ManagerOrderRepository):
         self, order_id: UUID, session: object | None = None
     ) -> list[ManagerOrder]:
         """List manager assignments for an order."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ManagerOrderModel)
-            .where(ManagerOrderModel.order_id == order_id)
-            .order_by(
-                ManagerOrderModel.created_at.asc(),
-                ManagerOrderModel.user_id.asc(),
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ManagerOrderModel)
+                .where(ManagerOrderModel.order_id == order_id)
+                .order_by(
+                    ManagerOrderModel.created_at.asc(),
+                    ManagerOrderModel.user_id.asc(),
+                )
             )
-        )
-        results = exec_result.scalars().all()
-        return [_to_manager_order_entity(m) for m in results]
+            results = exec_result.scalars().all()
+            return [_to_manager_order_entity(m) for m in results]
 
     async def list_by_user(
         self, user_id: UUID, session: object | None = None
     ) -> list[ManagerOrder]:
         """List order assignments for a manager."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ManagerOrderModel)
-            .where(ManagerOrderModel.user_id == user_id)
-            .order_by(ManagerOrderModel.created_at.desc())
-        )
-        results = exec_result.scalars().all()
-        return [_to_manager_order_entity(m) for m in results]
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ManagerOrderModel)
+                .where(ManagerOrderModel.user_id == user_id)
+                .order_by(ManagerOrderModel.created_at.desc())
+            )
+            results = exec_result.scalars().all()
+            return [_to_manager_order_entity(m) for m in results]
 
     async def list_order_ids_by_user(
         self,
@@ -2787,62 +3057,72 @@ class SqlAlchemyManagerOrderRepository(ManagerOrderRepository):
         session: object | None = None,
     ) -> list[UUID]:
         """List order IDs assigned to a manager with pagination."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(ManagerOrderModel.order_id)
-            .where(ManagerOrderModel.user_id == user_id)
-            .order_by(ManagerOrderModel.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-        return list(exec_result.scalars().all())
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(ManagerOrderModel.order_id)
+                .where(ManagerOrderModel.user_id == user_id)
+                .order_by(ManagerOrderModel.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            return list(exec_result.scalars().all())
 
     async def count_by_user(
         self, user_id: UUID, session: object | None = None
     ) -> int:
         """Count orders assigned to a manager."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(ManagerOrderModel)
-            .where(ManagerOrderModel.user_id == user_id)
-        )
-        result = exec_result.scalar_one()
-        return int(result)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(ManagerOrderModel)
+                .where(ManagerOrderModel.user_id == user_id)
+            )
+            result = exec_result.scalar_one()
+            return int(result)
 
     async def save(
         self, manager_order: ManagerOrder, session: object | None = None
     ) -> None:
         """Persist manager-order assignment."""
-        db_session = _get_async_session(session)
-        model = ManagerOrderModel(
-            user_id=manager_order.user_id,
-            order_id=manager_order.order_id,
-            created_at=manager_order.created_at,
-            updated_at=manager_order.updated_at,
-        )
-        await db_session.merge(model)
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = ManagerOrderModel(
+                user_id=manager_order.user_id,
+                order_id=manager_order.order_id,
+                created_at=manager_order.created_at,
+                updated_at=manager_order.updated_at,
+            )
+            await db_session.merge(model)
 
     async def delete_by_order(
         self, order_id: UUID, session: object | None = None
     ) -> None:
         """Delete all manager assignments for an order."""
-        db_session = _get_async_session(session)
-        await db_session.execute(
-            delete(ManagerOrderModel).where(
-                ManagerOrderModel.order_id == order_id
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            await db_session.execute(
+                delete(ManagerOrderModel).where(
+                    ManagerOrderModel.order_id == order_id
+                )
             )
-        )
 
     async def exists_for_user(
         self, user_id: UUID, session: object | None = None
     ) -> bool:
         """Check if manager has any order assignments."""
-        db_session = _get_async_session(session)
-        exec_result = await db_session.execute(
-            select(func.count())
-            .select_from(ManagerOrderModel)
-            .where(ManagerOrderModel.user_id == user_id)
-        )
-        result = exec_result.scalar_one()
-        return int(result) > 0
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(ManagerOrderModel)
+                .where(ManagerOrderModel.user_id == user_id)
+            )
+            result = exec_result.scalar_one()
+            return int(result) > 0

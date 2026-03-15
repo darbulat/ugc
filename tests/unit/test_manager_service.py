@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from ugc_bot.application.services.manager_service import ManagerService
-from ugc_bot.domain.entities import Order, User
+from ugc_bot.domain.entities import OfferDispatch, Order, User
 from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
@@ -16,6 +16,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryManagerOrderRepository,
+    InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
 )
@@ -215,3 +216,129 @@ async def test_list_orders_for_manager_empty():
     result_orders, total = await svc.list_orders_for_manager(uuid4())
     assert total == 0
     assert result_orders == []
+
+
+@pytest.mark.asyncio
+async def test_is_manager_for_order_true():
+    """is_manager_for_order returns True when user is assigned to order."""
+    svc, _, user_repo, _ = _build_service()
+    user = _make_user(telegram="alice")
+    await user_repo.save(user)
+    order = _make_order()
+    await svc.set_managers_for_order(order.order_id, ["alice"])
+
+    result = await svc.is_manager_for_order(user.user_id, order.order_id)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_manager_for_order_false_different_order():
+    """is_manager_for_order returns False when user assigned to other order."""
+    svc, _, user_repo, _ = _build_service()
+    user = _make_user(telegram="alice")
+    await user_repo.save(user)
+    order = _make_order()
+    await svc.set_managers_for_order(order.order_id, ["alice"])
+
+    other_order_id = uuid4()
+    result = await svc.is_manager_for_order(user.user_id, other_order_id)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_is_manager_for_order_false_no_assignments():
+    """is_manager_for_order returns False when order has no managers."""
+    svc, _, _, _ = _build_service()
+    result = await svc.is_manager_for_order(uuid4(), uuid4())
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_list_creators_for_order_no_dispatch_repo():
+    """list_creators_for_order returns empty when no dispatch repo."""
+    svc, _, _, _ = _build_service()
+    assert svc.offer_dispatch_repo is None
+    dispatches, total = await svc.list_creators_for_order(
+        order_id=uuid4(),
+        manager_id=uuid4(),
+        in_offer=True,
+    )
+    assert dispatches == []
+    assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_list_creators_for_order_in_offer_filters_by_manager():
+    """list_creators_for_order with in_offer=True filters by manager_id."""
+    manager_order_repo = InMemoryManagerOrderRepository()
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
+    svc = ManagerService(
+        manager_order_repo=manager_order_repo,
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=dispatch_repo,
+    )
+
+    order_id = uuid4()
+    manager_id = uuid4()
+    blogger_id = uuid4()
+    now = datetime.now(timezone.utc)
+    dispatch = OfferDispatch(
+        order_id=order_id,
+        blogger_id=blogger_id,
+        created_at=now,
+        accepted=True,
+        in_offer=True,
+        manager_id=manager_id,
+    )
+    dispatch_repo._dispatches[blogger_id] = dispatch
+
+    dispatches, total = await svc.list_creators_for_order(
+        order_id=order_id,
+        manager_id=manager_id,
+        in_offer=True,
+    )
+    assert total == 1
+    assert len(dispatches) == 1
+    assert dispatches[0].blogger_id == blogger_id
+
+
+@pytest.mark.asyncio
+async def test_list_creators_for_order_not_in_offer_ignores_manager():
+    """list_creators_for_order with in_offer=False returns all dispatches."""
+    manager_order_repo = InMemoryManagerOrderRepository()
+    user_repo = InMemoryUserRepository()
+    order_repo = InMemoryOrderRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
+    svc = ManagerService(
+        manager_order_repo=manager_order_repo,
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=dispatch_repo,
+    )
+
+    order_id = uuid4()
+    manager_a = uuid4()
+    manager_b = uuid4()
+    now = datetime.now(timezone.utc)
+    # Two dispatches with different managers, both not in_offer
+    for mid, bid in [(manager_a, uuid4()), (manager_b, uuid4())]:
+        d = OfferDispatch(
+            order_id=order_id,
+            blogger_id=bid,
+            created_at=now,
+            accepted=True,
+            in_offer=False,
+            manager_id=mid,
+        )
+        dispatch_repo._dispatches[bid] = d
+
+    dispatches, total = await svc.list_creators_for_order(
+        order_id=order_id,
+        manager_id=manager_a,
+        in_offer=False,
+    )
+    assert total == 2
+    assert len(dispatches) == 2

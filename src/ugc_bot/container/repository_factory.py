@@ -88,7 +88,9 @@ def build_repos(
         "payout_request_repo": SqlAlchemyPayoutRequestRepository(
             session_factory=session_factory
         ),
-        "referral_order_income_loader": SqlReferralOrderIncomeLoader(),
+        "referral_order_income_loader": SqlReferralOrderIncomeLoader(
+            session_factory=session_factory
+        ),
         "country_repo": SqlAlchemyCountryRepository(
             session_factory=session_factory
         ),
