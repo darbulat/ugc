@@ -38,6 +38,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.manager_service import ManagerService
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
@@ -439,4 +440,10 @@ def build_bot_services(
         ),
         "country_repo": repos["country_repo"],
         "language_repo": repos["language_repo"],
+        "manager_service": ManagerService(
+            manager_order_repo=repos["manager_order_repo"],
+            user_repo=repos["user_repo"],
+            order_repo=repos["order_repo"],
+        ),
+        "manager_order_repo": repos["manager_order_repo"],
     }

@@ -13,6 +13,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyLanguageRepository,
+    SqlAlchemyManagerOrderRepository,
     SqlAlchemyNpsRepository,
     SqlAlchemyOfferDispatchRepository,
     SqlAlchemyOrderRepository,
@@ -92,6 +93,9 @@ def build_repos(
             session_factory=session_factory
         ),
         "language_repo": SqlAlchemyLanguageRepository(
+            session_factory=session_factory
+        ),
+        "manager_order_repo": SqlAlchemyManagerOrderRepository(
             session_factory=session_factory
         ),
     }
