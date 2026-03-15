@@ -445,6 +445,7 @@ def build_bot_services(
             manager_order_repo=repos["manager_order_repo"],
             user_repo=repos["user_repo"],
             order_repo=repos["order_repo"],
+            transaction_manager=transaction_manager,
         ),
         "manager_order_repo": repos["manager_order_repo"],
     }

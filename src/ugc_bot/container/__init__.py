@@ -189,6 +189,7 @@ class Container:
             manager_order_repo=repos["manager_order_repo"],
             user_repo=repos["user_repo"],
             order_repo=repos["order_repo"],
+            transaction_manager=self._transaction_manager,
         )
 
     def build_bot_services(self) -> "BotServices":
