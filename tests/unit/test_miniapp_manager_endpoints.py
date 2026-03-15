@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 
-from ugc_bot.domain.entities import ManagerOrder, OfferDispatch, Order
+from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.miniapp.api import (
     ManagerCreatorsRequest,
@@ -44,14 +44,6 @@ def _make_dispatch() -> OfferDispatch:
         created_at=datetime.now(timezone.utc),
         in_offer=True,
         manager_id=MANAGER_ID,
-    )
-
-
-def _make_manager_order() -> ManagerOrder:
-    return ManagerOrder(
-        user_id=MANAGER_ID,
-        order_id=ORDER_ID,
-        created_at=datetime.now(timezone.utc),
     )
 
 
@@ -166,19 +158,11 @@ class TestManagerCreatorsEndpoint:
     @pytest.mark.asyncio
     async def test_returns_creators_for_manager(self) -> None:
         dispatch = _make_dispatch()
-        manager_order = _make_manager_order()
 
-        manager_order_repo = MagicMock()
-        manager_order_repo.list_by_order = AsyncMock(
-            return_value=[manager_order]
-        )
-
-        offer_dispatch_repo = MagicMock()
-        offer_dispatch_repo.list_responses_by_order_and_manager = AsyncMock(
-            return_value=[dispatch]
-        )
-        offer_dispatch_repo.count_responses_by_order_and_manager = AsyncMock(
-            return_value=1
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(return_value=True)
+        manager_service.list_creators_for_order = AsyncMock(
+            return_value=([dispatch], 1)
         )
 
         user = MagicMock()
@@ -192,15 +176,13 @@ class TestManagerCreatorsEndpoint:
         profile_service.get_blogger_profile = AsyncMock(return_value=profile)
 
         deps = {
-            "manager_order_repo": manager_order_repo,
-            "offer_dispatch_repo": offer_dispatch_repo,
+            "manager_service": manager_service,
             "user_repo": user_repo,
             "profile_service": profile_service,
         }
 
         dispatcher = MagicMock()
         dispatcher.__getitem__ = lambda self, k: deps[k]
-        dispatcher.get = lambda k, default=None: deps.get(k, default)
 
         request = MagicMock()
         request.app.state.dispatcher = dispatcher
@@ -222,27 +204,16 @@ class TestManagerCreatorsEndpoint:
 
     @pytest.mark.asyncio
     async def test_403_when_not_manager_for_order(self) -> None:
-        other_manager = ManagerOrder(
-            user_id=uuid4(),
-            order_id=ORDER_ID,
-            created_at=datetime.now(timezone.utc),
-        )
-
-        manager_order_repo = MagicMock()
-        manager_order_repo.list_by_order = AsyncMock(
-            return_value=[other_manager]
-        )
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(return_value=False)
 
         deps = {
-            "manager_order_repo": manager_order_repo,
-            "offer_dispatch_repo": MagicMock(),
-            "user_repo": MagicMock(),
+            "manager_service": manager_service,
             "profile_service": MagicMock(),
         }
 
         dispatcher = MagicMock()
         dispatcher.__getitem__ = lambda self, k: deps[k]
-        dispatcher.get = lambda k, default=None: deps.get(k, default)
 
         request = MagicMock()
         request.app.state.dispatcher = dispatcher
@@ -264,19 +235,11 @@ class TestManagerCreatorsEndpoint:
     async def test_creators_with_no_profile(self) -> None:
         """Creator with no profile returns None fields."""
         dispatch = _make_dispatch()
-        manager_order = _make_manager_order()
 
-        manager_order_repo = MagicMock()
-        manager_order_repo.list_by_order = AsyncMock(
-            return_value=[manager_order]
-        )
-
-        offer_dispatch_repo = MagicMock()
-        offer_dispatch_repo.list_responses_by_order_and_manager = AsyncMock(
-            return_value=[dispatch]
-        )
-        offer_dispatch_repo.count_responses_by_order_and_manager = AsyncMock(
-            return_value=1
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(return_value=True)
+        manager_service.list_creators_for_order = AsyncMock(
+            return_value=([dispatch], 1)
         )
 
         user_repo = MagicMock()
@@ -286,15 +249,13 @@ class TestManagerCreatorsEndpoint:
         profile_service.get_blogger_profile = AsyncMock(return_value=None)
 
         deps = {
-            "manager_order_repo": manager_order_repo,
-            "offer_dispatch_repo": offer_dispatch_repo,
+            "manager_service": manager_service,
             "user_repo": user_repo,
             "profile_service": profile_service,
         }
 
         dispatcher = MagicMock()
         dispatcher.__getitem__ = lambda self, k: deps[k]
-        dispatcher.get = lambda k, default=None: deps.get(k, default)
 
         request = MagicMock()
         request.app.state.dispatcher = dispatcher

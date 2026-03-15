@@ -527,6 +527,14 @@ class InMemoryOrderRepository(OrderRepository):
 
         return self.orders.get(order_id)
 
+    async def get_by_ids(
+        self,
+        order_ids: list[UUID],
+        session: object | None = None,
+    ) -> list[Order]:
+        """Fetch orders by IDs."""
+        return [self.orders[oid] for oid in order_ids if oid in self.orders]
+
     async def get_by_id_for_update(
         self, order_id: UUID, session: object | None = None
     ) -> Optional[Order]:

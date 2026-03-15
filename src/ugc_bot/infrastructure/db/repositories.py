@@ -632,6 +632,21 @@ class SqlAlchemyOrderRepository(OrderRepository):
         result = exec_result.scalar_one_or_none()
         return _to_order_entity(result) if result else None
 
+    async def get_by_ids(
+        self,
+        order_ids: list[UUID],
+        session: object | None = None,
+    ) -> list[Order]:
+        """Fetch orders by IDs in a single query."""
+        if not order_ids:
+            return []
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(OrderModel).where(OrderModel.order_id.in_(order_ids))
+        )
+        by_id = {m.order_id: _to_order_entity(m) for m in exec_result.scalars()}
+        return [by_id[oid] for oid in order_ids if oid in by_id]
+
     async def get_by_id_for_update(
         self, order_id: UUID, session: object | None = None
     ) -> Optional[Order]:

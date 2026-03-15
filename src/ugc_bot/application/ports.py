@@ -196,6 +196,19 @@ class OrderRepository(ABC):
     ) -> Optional[Order]:
         """Fetch order by ID."""
 
+    async def get_by_ids(
+        self,
+        order_ids: List[UUID],
+        session: object | None = None,
+    ) -> List[Order]:
+        """Fetch orders by IDs in a single query. Override for batch."""
+        result: List[Order] = []
+        for oid in order_ids:
+            o = await self.get_by_id(oid, session=session)
+            if o is not None:
+                result.append(o)
+        return result
+
     @abstractmethod
     async def get_by_id_for_update(
         self, order_id: UUID, session: object | None = None

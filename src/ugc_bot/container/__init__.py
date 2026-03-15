@@ -189,6 +189,7 @@ class Container:
             manager_order_repo=repos["manager_order_repo"],
             user_repo=repos["user_repo"],
             order_repo=repos["order_repo"],
+            offer_dispatch_repo=repos["offer_dispatch_repo"],
             transaction_manager=self._transaction_manager,
         )
 

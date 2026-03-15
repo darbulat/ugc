@@ -146,12 +146,35 @@ async def _update_order_location_geometry_after_geography_change(
         )
 
 
+async def _publish_order_activation(order_id: UUID) -> None:
+    """Publish order activation event via outbox."""
+    try:
+        container = _get_admin_container()
+        if not container:
+            return
+        _, outbox_publisher, order_repo = _get_order_moderation_deps(container)
+        tm = container.transaction_manager
+        if tm:
+            async with tm.transaction() as session:
+                order = await order_repo.get_by_id(order_id, session=session)
+                if order:
+                    await outbox_publisher.publish_order_activation(
+                        order, session=session
+                    )
+    except Exception:
+        logger.exception(
+            "Failed to publish order activation after admin approval",
+            extra={"order_id": str(order_id)},
+        )
+
+
 async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
-    """Parse managers field and update manager-order assignments."""
+    """Parse managers field and update manager-order assignments.
+
+    An empty string removes all manager assignments for the order.
+    """
     container = _get_admin_container()
     if not container:
-        return
-    if not managers_raw.strip():
         return
     manager_service = container.build_manager_service()
     usernames = [
@@ -1595,29 +1618,15 @@ class OrderAdmin(ModelView, model=OrderModel):
             old_status != OrderStatus.ACTIVE
             and new_status == OrderStatus.ACTIVE
         ):
-            try:
-                container = _get_admin_container()
-                if container:
-                    _, outbox_publisher, order_repo = (
-                        _get_order_moderation_deps(container)
-                    )
-                    tm = container.transaction_manager
-                    if tm:
-                        async with tm.transaction() as session:
-                            order = await order_repo.get_by_id(
-                                pk_uuid, session=session
-                            )
-                            if order:
-                                await outbox_publisher.publish_order_activation(
-                                    order, session=session
-                                )
-            except Exception:
-                logger.exception(
-                    "Failed to publish order activation after admin approval",
-                    extra={"order_id": str(pk_uuid)},
-                )
+            await _publish_order_activation(pk_uuid)
 
-        await _update_order_managers(pk_uuid, managers_raw)
+        try:
+            await _update_order_managers(pk_uuid, managers_raw)
+        except Exception:
+            logger.exception(
+                "Failed to update order managers",
+                extra={"order_id": str(pk_uuid)},
+            )
 
         return result
 

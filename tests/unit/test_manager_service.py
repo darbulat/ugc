@@ -89,7 +89,7 @@ async def test_set_managers_for_order_success():
 
 @pytest.mark.asyncio
 async def test_set_managers_for_order_username_not_found():
-    """set_managers_for_order raises ValueError when username not in DB."""
+    """Raises ManagerUserNotFoundError when username not in DB."""
     svc, _, _, _ = _build_service()
     order = _make_order()
 

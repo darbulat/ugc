@@ -91,6 +91,21 @@ class OfferResponseService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def _get_round_robin_manager(
+        self,
+        order: Order,
+        session: object | None,
+    ) -> UUID | None:
+        """Pick next manager via round-robin, or None."""
+        if self.manager_order_repo is None:
+            return None
+        managers = await self.manager_order_repo.list_by_order(
+            order.order_id, session=session
+        )
+        if not managers:
+            return None
+        return managers[order.last_round_robin_index % len(managers)].user_id
+
     async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID
     ) -> OfferResponseResult:
@@ -123,17 +138,7 @@ class OfferResponseService:
                 raise OrderCreationError("You already responded to this order.")
 
             within_limit = accepted_count < order.bloggers_needed
-
-            # Round-robin manager assignment
-            manager_id: UUID | None = None
-            if self.manager_order_repo is not None:
-                managers = await self.manager_order_repo.list_by_order(
-                    order_id, session=session
-                )
-                if managers:
-                    manager_id = managers[
-                        order.last_round_robin_index % len(managers)
-                    ].user_id
+            manager_id = await self._get_round_robin_manager(order, session)
 
             await self.dispatch_repo.record_response(
                 order_id,
@@ -149,7 +154,6 @@ class OfferResponseService:
                 updated = _update_order_after_response(
                     order, response_count, now=now
                 )
-                await self.order_repo.save(updated, session=session)
             else:
                 updated = order
                 response_count = accepted_count
@@ -159,7 +163,10 @@ class OfferResponseService:
                 updated = replace(
                     updated,
                     last_round_robin_index=order.last_round_robin_index + 1,
+                    updated_at=now,
                 )
+
+            if updated is not order:
                 await self.order_repo.save(updated, session=session)
 
         if self.metrics_collector:

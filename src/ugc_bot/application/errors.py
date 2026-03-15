@@ -41,6 +41,14 @@ class ComplaintNotFoundError(ValueError):
     """Raised when a complaint cannot be found."""
 
 
+class ManagerUserNotFoundError(ValueError):
+    """Raised when a Telegram user for manager assignment is not found."""
+
+    def __init__(self, telegram_username: str) -> None:
+        self.telegram_username = telegram_username
+        super().__init__(f"User with Telegram @{telegram_username} not found")
+
+
 class ScrapeCreatorsAPIError(RuntimeError):
     """ScrapeCreators API error (e.g. 402 out of credits)."""
 

@@ -5,13 +5,15 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from ugc_bot.application.errors import ManagerUserNotFoundError
 from ugc_bot.application.ports import (
     ManagerOrderRepository,
+    OfferDispatchRepository,
     OrderRepository,
     TransactionManager,
     UserRepository,
 )
-from ugc_bot.domain.entities import ManagerOrder, Order
+from ugc_bot.domain.entities import ManagerOrder, OfferDispatch, Order
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -22,6 +24,7 @@ class ManagerService:
     manager_order_repo: ManagerOrderRepository
     user_repo: UserRepository
     order_repo: OrderRepository
+    offer_dispatch_repo: OfferDispatchRepository | None = None
     transaction_manager: TransactionManager | None = None
 
     async def set_managers_for_order(
@@ -39,9 +42,7 @@ class ManagerService:
                     clean, session=session
                 )
                 if user is None:
-                    raise ValueError(
-                        f"Пользователь с Telegram @{clean} не найден в базе"
-                    )
+                    raise ManagerUserNotFoundError(clean)
                 user_ids.append(user.user_id)
 
             await self.manager_order_repo.delete_by_order(
@@ -103,11 +104,60 @@ class ManagerService:
                 offset=offset,
                 session=session,
             )
-            orders: list[Order] = []
-            for oid in order_ids:
-                order = await self.order_repo.get_by_id(oid, session=session)
-                if order is not None:
-                    orders.append(order)
+            orders = await self.order_repo.get_by_ids(
+                order_ids, session=session
+            )
             return orders, total
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def is_manager_for_order(self, user_id: UUID, order_id: UUID) -> bool:
+        """Check whether user is a manager for a specific order."""
+
+        async def _run(session: object | None) -> bool:
+            managers = await self.manager_order_repo.list_by_order(
+                order_id, session=session
+            )
+            return any(m.user_id == user_id for m in managers)
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def list_creators_for_order(
+        self,
+        order_id: UUID,
+        manager_id: UUID,
+        in_offer: bool,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[OfferDispatch], int]:
+        """List creator dispatches for an order visible to a manager.
+
+        For in_offer=True returns only dispatches assigned to *manager_id*.
+        For in_offer=False (reserve) returns all dispatches for the order.
+        """
+        if self.offer_dispatch_repo is None:
+            return [], 0
+
+        repo = self.offer_dispatch_repo
+
+        async def _run(
+            session: object | None,
+        ) -> tuple[list[OfferDispatch], int]:
+            effective_manager_id = manager_id if in_offer else None
+            dispatches = await repo.list_responses_by_order_and_manager(
+                order_id=order_id,
+                manager_id=effective_manager_id,
+                in_offer=in_offer,
+                limit=limit,
+                offset=offset,
+                session=session,
+            )
+            total = await repo.count_responses_by_order_and_manager(
+                order_id=order_id,
+                manager_id=effective_manager_id,
+                in_offer=in_offer,
+                session=session,
+            )
+            return dispatches, total
 
         return await with_optional_tx(self.transaction_manager, _run)

@@ -51,7 +51,6 @@ from ugc_bot.domain.enums import (
     OrderType,
     WorkFormat,
 )
-from ugc_bot.infrastructure.db.session import with_optional_tx
 from ugc_bot.miniapp.auth import (
     get_telegram_user_id_and_username,
     validate_init_data_and_get_telegram_user_id,
@@ -1426,53 +1425,32 @@ async def manager_creators(
     """List creators for an order assigned to the current manager."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
-    transaction_manager = dispatcher.get("transaction_manager")
-    manager_order_repo = dispatcher["manager_order_repo"]
-    offer_dispatch_repo = dispatcher["offer_dispatch_repo"]
-    user_repo = dispatcher["user_repo"]
+    manager_service = dispatcher["manager_service"]
     profile_service = dispatcher["profile_service"]
 
-    async def _run(
-        session: object | None,
-    ) -> ManagerCreatorsResponse:
-        managers = await manager_order_repo.list_by_order(
-            order_id, session=session
-        )
-        if not any(m.user_id == user_id for m in managers):
-            raise HTTPException(
-                status_code=403, detail="Not a manager for this order"
-            )
-
-        # Reserve creators (in_offer=False) are visible to all managers
-        effective_manager_id = user_id if body.in_offer else None
-        dispatches = (
-            await offer_dispatch_repo.list_responses_by_order_and_manager(
-                order_id=order_id,
-                manager_id=effective_manager_id,
-                in_offer=body.in_offer,
-                limit=body.limit,
-                offset=body.offset,
-                session=session,
-            )
-        )
-        total = await offer_dispatch_repo.count_responses_by_order_and_manager(
-            order_id=order_id,
-            manager_id=effective_manager_id,
-            in_offer=body.in_offer,
-            session=session,
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
         )
 
-        creators: list[CreatorItem] = []
-        for d in dispatches:
-            user = await user_repo.get_by_id(d.blogger_id, session=session)
-            profile = await profile_service.get_blogger_profile(d.blogger_id)
-            creators.append(
-                CreatorItem(
-                    instagram_url=profile.instagram_url if profile else None,
-                    telegram=user.telegram if user else None,
-                )
+    dispatches, total = await manager_service.list_creators_for_order(
+        order_id=order_id,
+        manager_id=user_id,
+        in_offer=body.in_offer,
+        limit=body.limit,
+        offset=body.offset,
+    )
+
+    user_repo = dispatcher["user_repo"]
+    creators: list[CreatorItem] = []
+    for d in dispatches:
+        user = await user_repo.get_by_id(d.blogger_id)
+        profile = await profile_service.get_blogger_profile(d.blogger_id)
+        creators.append(
+            CreatorItem(
+                instagram_url=profile.instagram_url if profile else None,
+                telegram=user.telegram if user else None,
             )
+        )
 
-        return ManagerCreatorsResponse(creators=creators, total=total)
-
-    return await with_optional_tx(transaction_manager, _run)
+    return ManagerCreatorsResponse(creators=creators, total=total)
