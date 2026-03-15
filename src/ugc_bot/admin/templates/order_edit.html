@@ -1,4 +1,5 @@
-{% extends "sqladmin/edit.html" %}
+{% extends "sqladmin/layout.html" %}
+{% from 'sqladmin/_macros.html' import render_form_fields %}
 {% block content %}
 {% if eligible_bloggers_count is not none %}
 <div class="col-12 mb-2">
@@ -7,14 +8,49 @@
   </div>
 </div>
 {% endif %}
-{{ super() }}
-<div class="col-12 mt-3">
+<div class="col-12">
   <div class="card">
-    <div class="card-body">
-      <label for="managers" class="form-label fw-bold">Менеджеры (через запятую @username)</label>
-      <input type="text" class="form-control" id="managers" name="managers"
-             value="{{ managers_value|default('', true) }}"
-             placeholder="@username1, @username2">
+    <div class="card-header">
+      <h3 class="card-title">Edit {{ model_view.name }}</h3>
+    </div>
+    <div class="card-body border-bottom py-3">
+      <form action="{{ model_view._build_url_for('admin:edit', request, obj) }}" method="POST"
+        enctype="multipart/form-data">
+        <div class="row">
+          {% if error %}
+          <div class="alert alert-danger" role="alert">{{ error }}</div>
+          {% endif %}
+        </div>
+        <fieldset class="form-fieldset">
+          {{ render_form_fields(form, form_opts=form_opts) }}
+          <div class="mb-3">
+            <label for="managers" class="form-label">Менеджеры (через запятую @username)</label>
+            <input type="text" class="form-control" id="managers" name="managers"
+                   value="{{ managers_value|default('', true) }}"
+                   placeholder="@username1, @username2">
+          </div>
+        </fieldset>
+        <div class="row">
+          <div class="col-md-2">
+            <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn">
+              Cancel
+            </a>
+          </div>
+          <div class="col-md-6">
+            <div class="btn-group flex-wrap" data-toggle="buttons">
+              <input type="submit" name="save" value="Save" class="btn">
+              <input type="submit" name="save" value="Save and continue editing" class="btn">
+              {% if model_view.can_create %}
+              {% if model_view.save_as %}
+              <input type="submit" name="save" value="Save as new" class="btn">
+              {% else %}
+              <input type="submit" name="save" value="Save and add another" class="btn">
+              {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
   </div>
 </div>
