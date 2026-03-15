@@ -999,7 +999,7 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
     async def list_responses_by_order_and_manager(
         self,
         order_id: UUID,
-        manager_id: UUID,
+        manager_id: UUID | None,
         in_offer: bool,
         limit: int = 20,
         offset: int = 0,
@@ -1007,14 +1007,16 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
     ) -> list[OfferDispatch]:
         """List dispatches by order and manager with pagination."""
         db_session = _get_async_session(session)
+        conditions = [
+            OfferDispatchModel.order_id == order_id,
+            OfferDispatchModel.in_offer == in_offer,
+            OfferDispatchModel.accepted.is_(True),
+        ]
+        if manager_id is not None:
+            conditions.append(OfferDispatchModel.manager_id == manager_id)
         exec_result = await db_session.execute(
             select(OfferDispatchModel)
-            .where(
-                OfferDispatchModel.order_id == order_id,
-                OfferDispatchModel.manager_id == manager_id,
-                OfferDispatchModel.in_offer == in_offer,
-                OfferDispatchModel.accepted.is_(True),
-            )
+            .where(*conditions)
             .order_by(
                 OfferDispatchModel.updated_at.asc().nullslast(),
                 OfferDispatchModel.created_at.asc(),
@@ -1028,21 +1030,23 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
     async def count_responses_by_order_and_manager(
         self,
         order_id: UUID,
-        manager_id: UUID,
+        manager_id: UUID | None,
         in_offer: bool,
         session: object | None = None,
     ) -> int:
         """Count dispatches by order and manager."""
         db_session = _get_async_session(session)
+        conditions = [
+            OfferDispatchModel.order_id == order_id,
+            OfferDispatchModel.in_offer == in_offer,
+            OfferDispatchModel.accepted.is_(True),
+        ]
+        if manager_id is not None:
+            conditions.append(OfferDispatchModel.manager_id == manager_id)
         exec_result = await db_session.execute(
             select(func.count())
             .select_from(OfferDispatchModel)
-            .where(
-                OfferDispatchModel.order_id == order_id,
-                OfferDispatchModel.manager_id == manager_id,
-                OfferDispatchModel.in_offer == in_offer,
-                OfferDispatchModel.accepted.is_(True),
-            )
+            .where(*conditions)
         )
         result = exec_result.scalar_one()
         return int(result)

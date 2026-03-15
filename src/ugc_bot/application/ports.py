@@ -306,23 +306,30 @@ class OfferDispatchRepository(ABC):
     async def list_responses_by_order_and_manager(
         self,
         order_id: UUID,
-        manager_id: UUID,
+        manager_id: UUID | None,
         in_offer: bool,
         limit: int = 20,
         offset: int = 0,
         session: object | None = None,
     ) -> list[OfferDispatch]:
-        """List dispatches by order and manager with pagination."""
+        """List dispatches by order and manager with pagination.
+
+        When *manager_id* is ``None`` the filter is skipped and all
+        dispatches for the order are returned (used for reserve view).
+        """
 
     @abstractmethod
     async def count_responses_by_order_and_manager(
         self,
         order_id: UUID,
-        manager_id: UUID,
+        manager_id: UUID | None,
         in_offer: bool,
         session: object | None = None,
     ) -> int:
-        """Count dispatches by order and manager."""
+        """Count dispatches by order and manager.
+
+        When *manager_id* is ``None`` the filter is skipped.
+        """
 
 
 class ManagerOrderRepository(ABC):

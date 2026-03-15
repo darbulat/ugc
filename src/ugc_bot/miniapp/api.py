@@ -1443,10 +1443,12 @@ async def manager_creators(
                 status_code=403, detail="Not a manager for this order"
             )
 
+        # Reserve creators (in_offer=False) are visible to all managers
+        effective_manager_id = user_id if body.in_offer else None
         dispatches = (
             await offer_dispatch_repo.list_responses_by_order_and_manager(
                 order_id=order_id,
-                manager_id=user_id,
+                manager_id=effective_manager_id,
                 in_offer=body.in_offer,
                 limit=body.limit,
                 offset=body.offset,
@@ -1455,7 +1457,7 @@ async def manager_creators(
         )
         total = await offer_dispatch_repo.count_responses_by_order_and_manager(
             order_id=order_id,
-            manager_id=user_id,
+            manager_id=effective_manager_id,
             in_offer=body.in_offer,
             session=session,
         )

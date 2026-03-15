@@ -740,7 +740,7 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
     async def list_responses_by_order_and_manager(
         self,
         order_id: UUID,
-        manager_id: UUID,
+        manager_id: UUID | None,
         in_offer: bool,
         limit: int = 20,
         offset: int = 0,
@@ -752,7 +752,7 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
                 d
                 for d in self._dispatches.values()
                 if d.order_id == order_id
-                and d.manager_id == manager_id
+                and (manager_id is None or d.manager_id == manager_id)
                 and d.in_offer == in_offer
                 and d.accepted is True
             ],
@@ -763,7 +763,7 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
     async def count_responses_by_order_and_manager(
         self,
         order_id: UUID,
-        manager_id: UUID,
+        manager_id: UUID | None,
         in_offer: bool,
         session: object | None = None,
     ) -> int:
@@ -772,7 +772,7 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
             1
             for d in self._dispatches.values()
             if d.order_id == order_id
-            and d.manager_id == manager_id
+            and (manager_id is None or d.manager_id == manager_id)
             and d.in_offer == in_offer
             and d.accepted is True
         )
