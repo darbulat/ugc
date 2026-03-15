@@ -207,11 +207,16 @@ async def start_order_creation(
         return
 
     await state_store.update_data(user_id=user.user_id)
+    order_type_texts = await bot_texts_service.get_many(
+        ["order_type_ugc_only", "order_type_ugc_placement"], locale
+    )
     msg_what_need = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_what_need,
-        keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
+        keyboard=flow_inline_keyboard(
+            rows=order_type_keyboard(order_type_texts)
+        ),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
 
@@ -298,11 +303,16 @@ async def start_order_creation_from_profile_callback(
         await state_store.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
     await state_store.update_data(user_id=user.user_id)
+    order_type_texts = await bot_texts_service.get_many(
+        ["order_type_ugc_only", "order_type_ugc_placement"], locale
+    )
     msg_what_need = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_what_need,
-        keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
+        keyboard=flow_inline_keyboard(
+            rows=order_type_keyboard(order_type_texts)
+        ),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
 
@@ -355,11 +365,16 @@ async def handle_order_agree_callback(
     )
     await state_store.update_data(flow_type=None)
     locale = user_locale
+    order_type_texts = await bot_texts_service.get_many(
+        ["order_type_ugc_only", "order_type_ugc_placement"], locale
+    )
     msg_what = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_what,
-        keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
+        keyboard=flow_inline_keyboard(
+            rows=order_type_keyboard(order_type_texts)
+        ),
     )
     await state_store.set_state(OrderCreationStates.order_type.state)
 
@@ -396,17 +411,22 @@ async def handle_order_type_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
+    locale = user_locale
+    order_type_texts = await bot_texts_service.get_many(
+        ["order_type_ugc_only", "order_type_ugc_placement"], locale
+    )
     label = (
-        ORDER_TYPE_UGC_ONLY
+        order_type_texts.get("order_type_ugc_only", ORDER_TYPE_UGC_ONLY)
         if data == CALLBACK_ORDER_TYPE_UGC
-        else ORDER_TYPE_UGC_PLUS_PLACEMENT
+        else order_type_texts.get(
+            "order_type_ugc_placement", ORDER_TYPE_UGC_PLUS_PLACEMENT
+        )
     )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(
         incoming, messenger_client, selected_label=label
     )
     await state_store.update_data(order_type=order_type.value)
-    locale = user_locale
     msg_task = await bot_texts_service.get("msg_order_task_description", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -439,13 +459,18 @@ async def handle_order_type(
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
         locale = user_locale
+        order_type_texts = await bot_texts_service.get_many(
+            ["order_type_ugc_only", "order_type_ugc_placement"], locale
+        )
         msg_choose = await bot_texts_service.get(
             "msg_choose_from_keyboard", locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_choose,
-            keyboard=flow_inline_keyboard(rows=order_type_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=order_type_keyboard(order_type_texts)
+            ),
         )
         return
 
@@ -491,11 +516,16 @@ async def handle_offer_text(
         return
 
     await state_store.update_data(offer_text=offer_text)
+    coop_texts = await bot_texts_service.get_many(
+        ["coop_barter", "coop_payment", "coop_both"], locale
+    )
     msg_coop = await bot_texts_service.get("msg_coop_format", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_coop,
-        keyboard=flow_inline_keyboard(rows=cooperation_format_keyboard()),
+        keyboard=flow_inline_keyboard(
+            rows=cooperation_format_keyboard(coop_texts)
+        ),
     )
     await state_store.set_state(OrderCreationStates.cooperation_format.state)
 
@@ -541,18 +571,27 @@ async def handle_cooperation_format_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
-    text = coop_map[data]
+    canonical = coop_map[data]
+    locale = user_locale
+    coop_label_key = {
+        CALLBACK_ORDER_COOP_BARTER: "coop_barter",
+        CALLBACK_ORDER_COOP_PAYMENT: "coop_payment",
+        CALLBACK_ORDER_COOP_BOTH: "coop_both",
+    }[data]
+    coop_texts = await bot_texts_service.get_many(
+        ["coop_barter", "coop_payment", "coop_both"], locale
+    )
+    label = coop_texts.get(coop_label_key, canonical)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(
-        incoming, messenger_client, selected_label=text
+        incoming, messenger_client, selected_label=label
     )
-    await state_store.update_data(cooperation_format=text)
-    locale = user_locale
+    await state_store.update_data(cooperation_format=canonical)
     msg_budget = (
         await bot_texts_service.get("msg_order_budget", locale)
     ).format(currency=currency_symbol)
     msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
-    if text == COOP_PAYMENT:
+    if canonical == COOP_PAYMENT:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_budget,
@@ -560,7 +599,7 @@ async def handle_cooperation_format_callback(
         )
         await state_store.set_state(OrderCreationStates.price.state)
         return
-    if text == COOP_BARTER:
+    if canonical == COOP_BARTER:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_barter,
@@ -599,13 +638,18 @@ async def handle_cooperation_format(
     text = (incoming.text or "").strip()
     if text not in (COOP_BARTER, COOP_PAYMENT, COOP_BOTH):
         locale = user_locale
+        coop_texts = await bot_texts_service.get_many(
+            ["coop_barter", "coop_payment", "coop_both"], locale
+        )
         msg_choose = await bot_texts_service.get(
             "msg_choose_from_keyboard", locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_choose,
-            keyboard=flow_inline_keyboard(rows=cooperation_format_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=cooperation_format_keyboard(coop_texts)
+            ),
         )
         return
     await state_store.update_data(cooperation_format=text)
@@ -895,13 +939,16 @@ async def handle_product_link(
         return
 
     await state_store.update_data(product_link=normalize_url(product_link))
+    photo_texts = await bot_texts_service.get_many(
+        ["order_photo_add", "order_photo_skip"], locale
+    )
     msg_photo_intro = await bot_texts_service.get(
         "msg_order_photo_intro", locale
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_photo_intro,
-        keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
+        keyboard=flow_inline_keyboard(rows=order_photo_keyboard(photo_texts)),
     )
     await state_store.set_state(OrderCreationStates.order_photo.state)
 
@@ -930,12 +977,24 @@ async def handle_order_photo_callback(
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
     data = incoming.data or ""
-    label = _PHOTO_CALLBACK_TO_LABEL.get(data)
+    locale = user_locale
+    photo_texts = await bot_texts_service.get_many(
+        ["order_photo_add", "order_photo_skip"], locale
+    )
+    _photo_label_keys = {
+        CALLBACK_ORDER_PHOTO_SKIP: "order_photo_skip",
+        CALLBACK_ORDER_PHOTO_ADD: "order_photo_add",
+    }
+    label = photo_texts.get(
+        _photo_label_keys.get(data, ""), _PHOTO_CALLBACK_TO_LABEL.get(data)
+    )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(
         incoming, messenger_client, selected_label=label
     )
-    locale = user_locale
+    content_texts = await bot_texts_service.get_many(
+        ["content_social", "content_ads", "content_both"], locale
+    )
     msg_where = await bot_texts_service.get("msg_where_use_ugc", locale)
     msg_send_photo = await bot_texts_service.get("msg_send_photo", locale)
     if data == CALLBACK_ORDER_PHOTO_SKIP:
@@ -943,7 +1002,9 @@ async def handle_order_photo_callback(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_where,
-            keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=content_usage_keyboard(content_texts)
+            ),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
         return
@@ -951,7 +1012,9 @@ async def handle_order_photo_callback(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_send_photo,
-            keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=order_photo_keyboard(photo_texts)
+            ),
         )
 
 
@@ -973,6 +1036,12 @@ async def handle_order_photo(
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
     locale = user_locale
+    photo_texts = await bot_texts_service.get_many(
+        ["order_photo_add", "order_photo_skip"], locale
+    )
+    content_texts = await bot_texts_service.get_many(
+        ["content_social", "content_ads", "content_both"], locale
+    )
     msg_where = await bot_texts_service.get("msg_where_use_ugc", locale)
     msg_send_photo = await bot_texts_service.get("msg_send_photo", locale)
     msg_photo_choose = await bot_texts_service.get(
@@ -983,7 +1052,9 @@ async def handle_order_photo(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_where,
-            keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=content_usage_keyboard(content_texts)
+            ),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
         return
@@ -991,7 +1062,9 @@ async def handle_order_photo(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_send_photo,
-            keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=order_photo_keyboard(photo_texts)
+            ),
         )
         return
 
@@ -1001,7 +1074,9 @@ async def handle_order_photo(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_where,
-            keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=content_usage_keyboard(content_texts)
+            ),
         )
         await state_store.set_state(OrderCreationStates.content_usage.state)
         return
@@ -1009,7 +1084,7 @@ async def handle_order_photo(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_photo_choose,
-        keyboard=flow_inline_keyboard(rows=order_photo_keyboard()),
+        keyboard=flow_inline_keyboard(rows=order_photo_keyboard(photo_texts)),
     )
 
 
@@ -1031,6 +1106,9 @@ async def handle_content_usage(
     state_store = AiogramStateStore(state)
     text = (incoming.text or "").strip()
     locale = user_locale
+    content_texts = await bot_texts_service.get_many(
+        ["content_social", "content_ads", "content_both"], locale
+    )
     if text not in (
         CONTENT_USAGE_SOCIAL,
         CONTENT_USAGE_ADS,
@@ -1042,17 +1120,22 @@ async def handle_content_usage(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_choose,
-            keyboard=flow_inline_keyboard(rows=content_usage_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=content_usage_keyboard(content_texts)
+            ),
         )
         return
 
     content_usage_offer = CONTENT_USAGE_TO_OFFER.get(text, text)
     await state_store.update_data(content_usage=content_usage_offer)
+    deadlines_texts = await bot_texts_service.get_many(
+        ["deadlines_3", "deadlines_7", "deadlines_14"], locale
+    )
     msg_deadline = await bot_texts_service.get("msg_order_deadline", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_deadline,
-        keyboard=flow_inline_keyboard(rows=deadlines_keyboard()),
+        keyboard=flow_inline_keyboard(rows=deadlines_keyboard(deadlines_texts)),
     )
     await state_store.set_state(OrderCreationStates.deadlines.state)
 
@@ -1119,18 +1202,32 @@ async def handle_content_usage_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
-    display_label = _CONTENT_USAGE_DISPLAY_LABEL.get(incoming.data or "")
+    locale = user_locale
+    _content_label_keys = {
+        CALLBACK_ORDER_CONTENT_SOCIAL: "content_social",
+        CALLBACK_ORDER_CONTENT_ADS: "content_ads",
+        CALLBACK_ORDER_CONTENT_BOTH: "content_both",
+    }
+    content_texts = await bot_texts_service.get_many(
+        ["content_social", "content_ads", "content_both"], locale
+    )
+    display_label = content_texts.get(
+        _content_label_keys.get(incoming.data or "", ""),
+        _CONTENT_USAGE_DISPLAY_LABEL.get(incoming.data or ""),
+    )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(
         incoming, messenger_client, selected_label=display_label
     )
     await state_store.update_data(content_usage=content_usage_offer)
-    locale = user_locale
+    deadlines_texts = await bot_texts_service.get_many(
+        ["deadlines_3", "deadlines_7", "deadlines_14"], locale
+    )
     msg_deadline = await bot_texts_service.get("msg_order_deadline", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_deadline,
-        keyboard=flow_inline_keyboard(rows=deadlines_keyboard()),
+        keyboard=flow_inline_keyboard(rows=deadlines_keyboard(deadlines_texts)),
     )
     await state_store.set_state(OrderCreationStates.deadlines.state)
 
@@ -1184,13 +1281,25 @@ async def handle_deadlines_callback(
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         await _remove_inline_keyboard_from_callback(incoming, messenger_client)
         return
-    label = _deadlines_label_from_callback(incoming.data or "")
+    canonical_label = _deadlines_label_from_callback(incoming.data or "")
+    locale = user_locale
+    _deadlines_key_map = {
+        "3": "deadlines_3",
+        "7": "deadlines_7",
+        "14": "deadlines_14",
+    }
+    suffix = (incoming.data or "")[len(CALLBACK_ORDER_DEADLINES_PREFIX) :]
+    deadlines_texts = await bot_texts_service.get_many(
+        ["deadlines_3", "deadlines_7", "deadlines_14"], locale
+    )
+    label = deadlines_texts.get(
+        _deadlines_key_map.get(suffix, ""), canonical_label
+    )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(
         incoming, messenger_client, selected_label=label
     )
     await state_store.update_data(deadlines=deadlines_offer)
-    locale = user_locale
     msg_geo = await bot_texts_service.get("msg_order_geo", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1219,13 +1328,18 @@ async def handle_deadlines(
     text = (incoming.text or "").strip()
     locale = user_locale
     if text not in (DEADLINES_3, DEADLINES_7, DEADLINES_14):
+        deadlines_texts = await bot_texts_service.get_many(
+            ["deadlines_3", "deadlines_7", "deadlines_14"], locale
+        )
         msg_choose = await bot_texts_service.get(
             "msg_choose_from_keyboard", locale
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_choose,
-            keyboard=flow_inline_keyboard(rows=deadlines_keyboard()),
+            keyboard=flow_inline_keyboard(
+                rows=deadlines_keyboard(deadlines_texts)
+            ),
         )
         return
 
@@ -1349,9 +1463,12 @@ async def handle_geography(
             )
 
     await state_store.clear()
+    msg_order_created = await bot_texts_service.get(
+        "msg_order_created", user_locale
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=ORDER_CREATED_MESSAGE,
+        text=msg_order_created or ORDER_CREATED_MESSAGE,
         parse_mode="Markdown",
     )
     contact_price = await contact_pricing_service.get_price(bloggers_needed)

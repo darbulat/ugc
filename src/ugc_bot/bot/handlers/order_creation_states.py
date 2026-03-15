@@ -71,40 +71,72 @@ class OrderCreationStates(StatesGroup):
     geography = State()
 
 
-def order_type_keyboard() -> list[list[Button]]:
+def order_type_keyboard(
+    texts: dict[str, str] | None = None,
+) -> list[list[Button]]:
     """Keyboard for order type: UGC only or UGC + placement (inline)."""
+    t = texts or {}
     return [
         [
             Button(
-                text=ORDER_TYPE_UGC_ONLY,
+                text=t.get("order_type_ugc_only", ORDER_TYPE_UGC_ONLY),
                 callback_data=CALLBACK_ORDER_TYPE_UGC,
             )
         ],
         [
             Button(
-                text=ORDER_TYPE_UGC_PLUS_PLACEMENT,
+                text=t.get(
+                    "order_type_ugc_placement", ORDER_TYPE_UGC_PLUS_PLACEMENT
+                ),
                 callback_data=CALLBACK_ORDER_TYPE_PLACEMENT,
             )
         ],
     ]
 
 
-def cooperation_format_keyboard() -> list[list[Button]]:
+def cooperation_format_keyboard(
+    texts: dict[str, str] | None = None,
+) -> list[list[Button]]:
     """Keyboard for cooperation format (inline)."""
+    t = texts or {}
     return [
-        [Button(text=COOP_BARTER, callback_data=CALLBACK_ORDER_COOP_BARTER)],
-        [Button(text=COOP_PAYMENT, callback_data=CALLBACK_ORDER_COOP_PAYMENT)],
-        [Button(text=COOP_BOTH, callback_data=CALLBACK_ORDER_COOP_BOTH)],
+        [
+            Button(
+                text=t.get("coop_barter", COOP_BARTER),
+                callback_data=CALLBACK_ORDER_COOP_BARTER,
+            )
+        ],
+        [
+            Button(
+                text=t.get("coop_payment", COOP_PAYMENT),
+                callback_data=CALLBACK_ORDER_COOP_PAYMENT,
+            )
+        ],
+        [
+            Button(
+                text=t.get("coop_both", COOP_BOTH),
+                callback_data=CALLBACK_ORDER_COOP_BOTH,
+            )
+        ],
     ]
 
 
-def order_photo_keyboard() -> list[list[Button]]:
+def order_photo_keyboard(
+    texts: dict[str, str] | None = None,
+) -> list[list[Button]]:
     """Keyboard for optional order photo: add or skip (inline)."""
+    t = texts or {}
     return [
-        [Button(text=ORDER_PHOTO_ADD, callback_data=CALLBACK_ORDER_PHOTO_ADD)],
         [
             Button(
-                text=ORDER_PHOTO_SKIP, callback_data=CALLBACK_ORDER_PHOTO_SKIP
+                text=t.get("order_photo_add", ORDER_PHOTO_ADD),
+                callback_data=CALLBACK_ORDER_PHOTO_ADD,
+            )
+        ],
+        [
+            Button(
+                text=t.get("order_photo_skip", ORDER_PHOTO_SKIP),
+                callback_data=CALLBACK_ORDER_PHOTO_SKIP,
             )
         ],
     ]
@@ -125,48 +157,54 @@ def bloggers_needed_keyboard(
     ]
 
 
-def content_usage_keyboard() -> list[list[Button]]:
+def content_usage_keyboard(
+    texts: dict[str, str] | None = None,
+) -> list[list[Button]]:
     """Keyboard for content usage (inline)."""
+    t = texts or {}
     return [
         [
             Button(
-                text=CONTENT_USAGE_SOCIAL,
+                text=t.get("content_social", CONTENT_USAGE_SOCIAL),
                 callback_data=CALLBACK_ORDER_CONTENT_SOCIAL,
             )
         ],
         [
             Button(
-                text=CONTENT_USAGE_ADS,
+                text=t.get("content_ads", CONTENT_USAGE_ADS),
                 callback_data=CALLBACK_ORDER_CONTENT_ADS,
             )
         ],
         [
             Button(
-                text=CONTENT_USAGE_BOTH,
+                text=t.get("content_both", CONTENT_USAGE_BOTH),
                 callback_data=CALLBACK_ORDER_CONTENT_BOTH,
             )
         ],
     ]
 
 
-def deadlines_keyboard() -> list[list[Button]]:
+def deadlines_keyboard(
+    texts: dict[str, str] | None = None,
+) -> list[list[Button]]:
     """Keyboard for deadlines (inline)."""
+    t = texts or {}
     return [
         [
             Button(
-                text=DEADLINES_3,
+                text=t.get("deadlines_3", DEADLINES_3),
                 callback_data=f"{CALLBACK_ORDER_DEADLINES_PREFIX}3",
             )
         ],
         [
             Button(
-                text=DEADLINES_7,
+                text=t.get("deadlines_7", DEADLINES_7),
                 callback_data=f"{CALLBACK_ORDER_DEADLINES_PREFIX}7",
             )
         ],
         [
             Button(
-                text=DEADLINES_14,
+                text=t.get("deadlines_14", DEADLINES_14),
                 callback_data=f"{CALLBACK_ORDER_DEADLINES_PREFIX}14",
             )
         ],

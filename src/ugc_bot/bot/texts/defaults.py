@@ -668,6 +668,20 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Укажите один вариант: например, Казань, Москва, Татарстан или РФ. "
             "Нужно для бартерных заказов и доставки продукта."
         ),
+        "msg_order_created": (
+            "Заказ создан ✅\n\n"
+            "Мы отправим предложение подходящим UGC-креаторам после оплаты.\n\n"
+            "🔄 **Как это работает**\n\n"
+            "• Креаторы получают оффер с зафиксированными условиями\n"
+            "• Откликаются только те, кто готов работать на ваших условиях\n"
+            "• Вы получите отклики со ссылками на профили креаторов\n"
+            "• Связь начинается с вашей стороны\n\n"
+            "⚠️ **Важно**\n\n"
+            "• Оплату креатору рекомендуем производить после превью с водяным знаком\n"
+            "• Платформа не участвует в переговорах и оплате\n"
+            "• Мы не гарантируем, что креатор не изменит своё решение\n"
+            "• Креатор не видит ваши контакты и не может написать первым"
+        ),
         # Messages: Instagram
         "msg_profile_empty_creator": (
             "Профиль не заполнен. «Создать профиль» или /creator"
@@ -1457,6 +1471,20 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "In which city, region or country can the creator be located? "
             "Specify one option, e.g. London, UK or Worldwide. "
             "Used for barter orders and product delivery."
+        ),
+        "msg_order_created": (
+            "Order created ✅\n\n"
+            "We will send your offer to suitable UGC creators after payment.\n\n"
+            "🔄 **How it works**\n\n"
+            "• Creators receive an offer with fixed terms\n"
+            "• Only those ready to work on your terms respond\n"
+            "• You will receive responses with links to creator profiles\n"
+            "• You initiate contact\n\n"
+            "⚠️ **Important**\n\n"
+            "• We recommend paying the creator after receiving a watermarked preview\n"
+            "• The platform does not participate in negotiations or payments\n"
+            "• We cannot guarantee the creator will not change their decision\n"
+            "• The creator cannot see your contacts and cannot message first"
         ),
         "msg_profile_empty_creator": "Profile not filled. «Create profile» or /creator",
         "msg_instagram_already_confirmed": "Your Instagram is already verified",
@@ -2260,6 +2288,20 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Креатор қай қалада, аймақта немесе елде болуы мүмкін? "
             "Бір нұсқаны көрсетіңіз: мысалы Астана, Алматы, Қазақстан. "
             "Бартер тапсырыстары және өнім жеткізу үшін қажет."
+        ),
+        "msg_order_created": (
+            "Тапсырыс жасалды ✅\n\n"
+            "Біз төлемнен кейін сәйкес UGC-креаторларға ұсыныс жібереміз.\n\n"
+            "🔄 **Қалай жұмыс істейді**\n\n"
+            "• Креаторлар бекітілген шарттармен оффер алады\n"
+            "• Тек сіздің шарттарыңызда жұмыс істеуге дайын адамдар жауап береді\n"
+            "• Сіз креатор профилдеріне сілтемелермен жауаптар аласыз\n"
+            "• Байланысты сіз бастайсыз\n\n"
+            "⚠️ **Маңызды**\n\n"
+            "• Су белгісі бар алдын ала қарауды алғаннан кейін төлеуді ұсынамыз\n"
+            "• Платформа келіссөздерге және төлемдерге қатыспайды\n"
+            "• Креатордың шешімін өзгертпейтінін кепілдей алмаймыз\n"
+            "• Креатор сіздің контактыларыңызды көрмейді және бірінші жаза алмайды"
         ),
         "msg_profile_empty_creator": (
             "Профиль толтырылмаған. «Профиль жасау» немесе /creator"
@@ -3086,6 +3128,20 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "У якім горадзе, рэгіёне або краіне можа знаходзіцца крэатар? "
             "Укажыце адзін варыянт: напрыклад, Мінск, Гомель, Брэсцкая вобл. або РБ. "
             "Патрэбна для бартэрных заказаў і дастаўкі прадукту."
+        ),
+        "msg_order_created": (
+            "Заказ створаны ✅\n\n"
+            "Мы адправім прапанову падыходным UGC-крэатарам пасля аплаты.\n\n"
+            "🔄 **Як гэта працуе**\n\n"
+            "• Крэатары атрымліваюць аффер з зафіксаванымі ўмовамі\n"
+            "• Адгукаюцца толькі тыя, хто гатовы працаваць на вашых умовах\n"
+            "• Вы атрымаеце адгукі са спасылкамі на профілі крэатараў\n"
+            "• Сувязь пачынаецца з вашага боку\n\n"
+            "⚠️ **Важна**\n\n"
+            "• Аплату крэатару рэкамендуем рабіць пасля прэв'ю з вадзяным знакам\n"
+            "• Платформа не ўдзельнічае ў перамовах і аплаце\n"
+            "• Мы не гарантуем, што крэатар не зменіць сваё рашэнне\n"
+            "• Крэатар не бачыць вашы кантакты і не можа напісаць першым"
         ),
         # Messages: Instagram
         "msg_profile_empty_creator": (
@@ -3928,6 +3984,20 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
             "Kreator qaysi shahar, viloyat yoki mamlakatda bo'lishi mumkin? "
             "Bitta variant ko'rsating: masalan, Toshkent, Farg'ona yoki O'zbekiston. "
             "Barter buyurtmalari va mahsulot yetkazib berish uchun kerak."
+        ),
+        "msg_order_created": (
+            "Buyurtma yaratildi ✅\n\n"
+            "Biz to'lovdan so'ng mos UGC-kreatorlarga taklif yuboramiz.\n\n"
+            "🔄 **Qanday ishlaydi**\n\n"
+            "• Kreatorlar belgilangan shartlar bilan offer oladi\n"
+            "• Faqat sizning shartlaringizda ishlashga tayyor bo'lganlar javob beradi\n"
+            "• Siz kreator profillari havolalari bilan javoblar olasiz\n"
+            "• Muloqotni siz boshlaysiz\n\n"
+            "⚠️ **Muhim**\n\n"
+            "• Kreatorga suv belgili ko'rinishni olgach to'lashni tavsiya qilamiz\n"
+            "• Platforma muzokaralarda va to'lovlarda ishtirok etmaydi\n"
+            "• Kreatorning qarorini o'zgartirishini kafolatlay olmaymiz\n"
+            "• Kreator sizning kontaktlaringizni ko'rmaydi va birinchi yoza olmaydi"
         ),
         # Messages: Instagram
         "msg_profile_empty_creator": (
