@@ -46,6 +46,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     InteractionRepository,
     LanguageRepository,
+    ManagerOrderRepository,
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
@@ -66,6 +67,7 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
     Interaction,
     Language,
+    ManagerOrder,
     OfferDispatch,
     Order,
     OutboxEvent,
@@ -98,6 +100,7 @@ from ugc_bot.infrastructure.db.models import (
     InstagramStatsModel,
     InstagramVerificationCodeModel,
     InteractionModel,
+    ManagerOrderModel,
     LanguageModel,
     NpsResponseModel,
     OfferDispatchModel,
@@ -826,6 +829,7 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         accepted: bool,
         in_offer: bool,
         session: object | None = None,
+        manager_id: UUID | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
         db_session = _get_async_session(session)
@@ -836,7 +840,12 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                 OfferDispatchModel.order_id == order_id,
                 OfferDispatchModel.blogger_id == blogger_id,
             )
-            .values(accepted=accepted, in_offer=in_offer, updated_at=now)
+            .values(
+                accepted=accepted,
+                in_offer=in_offer,
+                updated_at=now,
+                manager_id=manager_id,
+            )
         )
 
     async def list_blogger_ids_sent_for_order(
@@ -986,6 +995,57 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         for row in rows:
             result[row.blogger_id] = int(row.cnt)
         return result
+
+    async def list_responses_by_order_and_manager(
+        self,
+        order_id: UUID,
+        manager_id: UUID,
+        in_offer: bool,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[OfferDispatch]:
+        """List dispatches by order and manager with pagination."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.manager_id == manager_id,
+                OfferDispatchModel.in_offer == in_offer,
+                OfferDispatchModel.accepted.is_(True),
+            )
+            .order_by(
+                OfferDispatchModel.updated_at.asc().nullslast(),
+                OfferDispatchModel.created_at.asc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        results = exec_result.scalars().all()
+        return [_to_offer_dispatch_entity(m) for m in results]
+
+    async def count_responses_by_order_and_manager(
+        self,
+        order_id: UUID,
+        manager_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> int:
+        """Count dispatches by order and manager."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.manager_id == manager_id,
+                OfferDispatchModel.in_offer == in_offer,
+                OfferDispatchModel.accepted.is_(True),
+            )
+        )
+        result = exec_result.scalar_one()
+        return int(result)
 
 
 @dataclass(slots=True)
@@ -1472,6 +1532,7 @@ def _to_order_entity(model: OrderModel) -> Order:
             getattr(model, "location_geometry", None)
         ),
         currency=getattr(model, "currency", "RUB"),
+        last_round_robin_index=getattr(model, "last_round_robin_index", 0),
     )
 
 
@@ -1485,6 +1546,7 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         updated_at=getattr(model, "updated_at", None),
         accepted=getattr(model, "accepted", None),
         in_offer=getattr(model, "in_offer", True),
+        manager_id=getattr(model, "manager_id", None),
     )
 
 
@@ -1521,6 +1583,7 @@ def _to_order_model(order: Order) -> OrderModel:
         filter_by_barter=order.filter_by_barter,
         location_geometry=_wkt_to_geometry_element(order.location_geometry),
         currency=getattr(order, "currency", "RUB"),
+        last_round_robin_index=getattr(order, "last_round_robin_index", 0),
     )
 
 
@@ -2649,3 +2712,118 @@ class SqlAlchemyLanguageRepository(LanguageRepository):
         )
         result = exec_result.scalar_one_or_none()
         return _to_language_entity(result) if result else None
+
+
+def _to_manager_order_entity(model: ManagerOrderModel) -> ManagerOrder:
+    """Map manager order ORM model to domain entity."""
+
+    return ManagerOrder(
+        user_id=model.user_id,
+        order_id=model.order_id,
+        created_at=model.created_at,
+        updated_at=getattr(model, "updated_at", None),
+    )
+
+
+@dataclass(slots=True)
+class SqlAlchemyManagerOrderRepository(ManagerOrderRepository):
+    """SQLAlchemy-backed manager order repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[ManagerOrder]:
+        """List manager assignments for an order."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(ManagerOrderModel)
+            .where(ManagerOrderModel.order_id == order_id)
+            .order_by(
+                ManagerOrderModel.created_at.asc(),
+                ManagerOrderModel.user_id.asc(),
+            )
+        )
+        results = exec_result.scalars().all()
+        return [_to_manager_order_entity(m) for m in results]
+
+    async def list_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> list[ManagerOrder]:
+        """List order assignments for a manager."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(ManagerOrderModel)
+            .where(ManagerOrderModel.user_id == user_id)
+            .order_by(ManagerOrderModel.created_at.desc())
+        )
+        results = exec_result.scalars().all()
+        return [_to_manager_order_entity(m) for m in results]
+
+    async def list_order_ids_by_user(
+        self,
+        user_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[UUID]:
+        """List order IDs assigned to a manager with pagination."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(ManagerOrderModel.order_id)
+            .where(ManagerOrderModel.user_id == user_id)
+            .order_by(ManagerOrderModel.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(exec_result.scalars().all())
+
+    async def count_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count orders assigned to a manager."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(ManagerOrderModel)
+            .where(ManagerOrderModel.user_id == user_id)
+        )
+        result = exec_result.scalar_one()
+        return int(result)
+
+    async def save(
+        self, manager_order: ManagerOrder, session: object | None = None
+    ) -> None:
+        """Persist manager-order assignment."""
+        db_session = _get_async_session(session)
+        model = ManagerOrderModel(
+            user_id=manager_order.user_id,
+            order_id=manager_order.order_id,
+            created_at=manager_order.created_at,
+            updated_at=manager_order.updated_at,
+        )
+        await db_session.merge(model)
+
+    async def delete_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete all manager assignments for an order."""
+        db_session = _get_async_session(session)
+        await db_session.execute(
+            delete(ManagerOrderModel).where(
+                ManagerOrderModel.order_id == order_id
+            )
+        )
+
+    async def exists_for_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if manager has any order assignments."""
+        db_session = _get_async_session(session)
+        exec_result = await db_session.execute(
+            select(func.count())
+            .select_from(ManagerOrderModel)
+            .where(ManagerOrderModel.user_id == user_id)
+        )
+        result = exec_result.scalar_one()
+        return int(result) > 0
