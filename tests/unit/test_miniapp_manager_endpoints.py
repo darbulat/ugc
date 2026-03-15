@@ -168,9 +168,7 @@ class TestManagerCreatorsEndpoint:
         user = MagicMock()
         user.telegram = "blogger_user"
         user_repo = MagicMock()
-        user_repo.get_by_ids = AsyncMock(
-            return_value={BLOGGER_ID: user}
-        )
+        user_repo.get_by_ids = AsyncMock(return_value={BLOGGER_ID: user})
 
         profile = MagicMock()
         profile.instagram_url = "https://instagram.com/blogger"
