@@ -207,6 +207,10 @@ async def handle_offer_skip(
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id, text=msg_skip
     )
+    if user is not None:
+        user = await user_role_service.update_telegram(
+            user, callback.from_user.username
+        )
     if order_id is not None and user is not None:
         await offer_dispatch_service.record_skip(order_id, user.user_id)
     if incoming.message_id:
@@ -255,6 +259,9 @@ async def handle_offer_response(
     )
     if user is None:
         return
+    user = await user_role_service.update_telegram(
+        user, callback.from_user.username
+    )
     blogger_profile = await profile_service.get_blogger_profile(user.user_id)
     if blogger_profile is None:
         msg_profile_fill = await bot_texts_service.get(
