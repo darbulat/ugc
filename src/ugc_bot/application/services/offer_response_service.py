@@ -11,6 +11,7 @@ from ugc_bot.application.errors import (
     OrderNotFoundError,
 )
 from ugc_bot.application.ports import (
+    ManagerOrderRepository,
     OfferDispatchRepository,
     OrderRepository,
     TransactionManager,
@@ -30,6 +31,7 @@ class OfferResponseResult:
     order_closed: bool
     completed_at: Optional[datetime]
     accepted: bool  # True = within limit; False = overflow (analytics/reserve)
+    manager_id: UUID | None = None
 
 
 @dataclass(slots=True)
@@ -38,6 +40,7 @@ class OfferResponseService:
 
     order_repo: OrderRepository
     dispatch_repo: OfferDispatchRepository
+    manager_order_repo: ManagerOrderRepository | None = None
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
@@ -120,12 +123,25 @@ class OfferResponseService:
                 raise OrderCreationError("You already responded to this order.")
 
             within_limit = accepted_count < order.bloggers_needed
+
+            # Round-robin manager assignment
+            manager_id: UUID | None = None
+            if self.manager_order_repo is not None:
+                managers = await self.manager_order_repo.list_by_order(
+                    order_id, session=session
+                )
+                if managers:
+                    manager_id = managers[
+                        order.last_round_robin_index % len(managers)
+                    ].user_id
+
             await self.dispatch_repo.record_response(
                 order_id,
                 blogger_id,
                 accepted=True,
                 in_offer=within_limit,
                 session=session,
+                manager_id=manager_id,
             )
 
             if within_limit:
@@ -137,6 +153,14 @@ class OfferResponseService:
             else:
                 updated = order
                 response_count = accepted_count
+
+            # Increment round robin index if manager assigned
+            if manager_id is not None:
+                updated = replace(
+                    updated,
+                    last_round_robin_index=order.last_round_robin_index + 1,
+                )
+                await self.order_repo.save(updated, session=session)
 
         if self.metrics_collector:
             self.metrics_collector.record_blogger_response(
@@ -152,6 +176,7 @@ class OfferResponseService:
             updated_at=now,
             accepted=True,
             in_offer=within_limit,
+            manager_id=manager_id,
         )
         return OfferResponseResult(
             order=updated,
@@ -160,6 +185,7 @@ class OfferResponseService:
             order_closed=order_closed,
             completed_at=updated.completed_at,
             accepted=within_limit,
+            manager_id=manager_id,
         )
 
 

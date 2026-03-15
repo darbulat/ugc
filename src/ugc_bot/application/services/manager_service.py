@@ -33,8 +33,7 @@ class ManagerService:
             user = await self.user_repo.get_by_telegram(clean)
             if user is None:
                 raise ValueError(
-                    f"Пользователь с Telegram "
-                    f"@{clean} не найден в базе"
+                    f"Пользователь с Telegram @{clean} не найден в базе"
                 )
             user_ids.append(user.user_id)
 

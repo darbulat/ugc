@@ -1,4 +1,4 @@
-"""Add manager_orders table, last_round_robin_index to orders, manager_id to offer_dispatches."""
+"""Add manager_orders table, round robin index, manager_id."""
 
 import sqlalchemy as sa
 from alembic import op

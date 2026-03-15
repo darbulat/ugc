@@ -360,6 +360,7 @@ def build_bot_services(
         "offer_response_service": OfferResponseService(
             order_repo=repos["order_repo"],
             dispatch_repo=repos["offer_dispatch_repo"],
+            manager_order_repo=repos["manager_order_repo"],
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),

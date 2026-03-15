@@ -17,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
+from wtforms import StringField  # type: ignore[import-untyped]
 
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import (
@@ -144,6 +145,20 @@ async def _update_order_location_geometry_after_geography_change(
             "Failed to update order location_geometry after geography change",
             extra={"order_id": str(order_id)},
         )
+
+
+async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
+    """Parse managers field and update manager-order assignments."""
+    container = _get_admin_container()
+    if not container:
+        return
+    if not managers_raw.strip():
+        return
+    manager_service = container.build_manager_service()
+    usernames = [
+        u.strip().lstrip("@") for u in managers_raw.split(",") if u.strip()
+    ]
+    await manager_service.set_managers_for_order(order_id, usernames)
 
 
 async def _update_blogger_profile_location_from_nominatim(
@@ -1528,12 +1543,18 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.price_filter_delta,
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
+        "managers",
     ]
+    form_extra_fields = {
+        "managers": StringField("Менеджеры (через запятую @username)"),
+    }
     edit_template = "order_edit.html"
 
     async def update_model(self, request: Request, pk: str, data: dict):
         """Update order with banned content check and activation publishing."""
         pk_uuid = UUID(pk)
+        managers_raw = data.pop("managers", "") or ""
+
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
@@ -1599,6 +1620,8 @@ class OrderAdmin(ModelView, model=OrderModel):
                     "Failed to publish order activation after admin approval",
                     extra={"order_id": str(pk_uuid)},
                 )
+
+        await _update_order_managers(pk_uuid, managers_raw)
 
         return result
 
@@ -2031,6 +2054,35 @@ async def _inject_order_eligible_bloggers_count(
         context["eligible_bloggers_count"] = None
 
 
+async def _inject_order_managers(
+    context: dict[str, Any],
+    model_view: Any,
+    model: Any,
+) -> None:
+    """Pre-populate managers field with current manager usernames."""
+    if not isinstance(model_view, OrderAdmin) or model is None:
+        return
+    try:
+        container = _get_admin_container()
+        if container:
+            repos = container.build_repos()
+            manager_order_repo = repos["manager_order_repo"]
+            user_repo = repos["user_repo"]
+            manager_orders = await manager_order_repo.list_by_order(
+                model.order_id
+            )
+            usernames: list[str] = []
+            for mo in manager_orders:
+                user = await user_repo.get_by_id(mo.user_id)
+                if user and user.telegram:
+                    usernames.append(f"@{user.telegram}")
+            form = context.get("form")
+            if form and hasattr(form, "managers"):
+                form.managers.data = ", ".join(usernames)
+    except Exception:
+        logger.exception("Failed to inject order managers")
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -2086,6 +2138,7 @@ class EnumAwareAdmin(Admin):
             "form": Form(data=form_data),
         }
         await _inject_order_eligible_bloggers_count(context, model_view, model)
+        await _inject_order_managers(context, model_view, model)
 
         if request.method == "GET":
             return await self.templates.TemplateResponse(

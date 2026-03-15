@@ -146,9 +146,7 @@ async def _reply_offer_response_result(
         )
         manager: User | None = None
         if result.manager_id:
-            manager = await user_role_service.get_user_by_id(
-                result.manager_id
-            )
+            manager = await user_role_service.get_user_by_id(result.manager_id)
         await _send_contact_immediately(
             order=result.order,
             blogger_id=blogger_id,
