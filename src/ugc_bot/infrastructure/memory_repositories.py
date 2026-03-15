@@ -18,6 +18,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
     InteractionRepository,
     LanguageRepository,
+    ManagerOrderRepository,
     NpsRepository,
     OfferDispatchRepository,
     OrderRepository,
@@ -38,6 +39,7 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
     Interaction,
     Language,
+    ManagerOrder,
     OfferDispatch,
     Order,
     OutboxEvent,
@@ -619,6 +621,7 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         accepted: bool,
         in_offer: bool,
         session: object | None = None,
+        manager_id: UUID | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
         key = (order_id, blogger_id)
@@ -630,6 +633,7 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
                 updated_at=now,
                 accepted=accepted,
                 in_offer=in_offer,
+                manager_id=manager_id,
             )
 
     async def list_blogger_ids_sent_for_order(
@@ -732,6 +736,46 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
                 ):
                     result[blogger_id] = result.get(blogger_id, 0) + 1
         return result
+
+    async def list_responses_by_order_and_manager(
+        self,
+        order_id: UUID,
+        manager_id: UUID,
+        in_offer: bool,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[OfferDispatch]:
+        """List dispatches by order and manager with pagination."""
+        matches = sorted(
+            [
+                d
+                for d in self._dispatches.values()
+                if d.order_id == order_id
+                and d.manager_id == manager_id
+                and d.in_offer == in_offer
+                and d.accepted is True
+            ],
+            key=lambda x: (x.updated_at or x.created_at, x.created_at),
+        )
+        return matches[offset : offset + limit]
+
+    async def count_responses_by_order_and_manager(
+        self,
+        order_id: UUID,
+        manager_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> int:
+        """Count dispatches by order and manager."""
+        return sum(
+            1
+            for d in self._dispatches.values()
+            if d.order_id == order_id
+            and d.manager_id == manager_id
+            and d.in_offer == in_offer
+            and d.accepted is True
+        )
 
 
 @dataclass
@@ -1219,3 +1263,79 @@ class MemoryLanguageRepository(LanguageRepository):
         existence, not enabled status (same as SqlAlchemyLanguageRepository).
         """
         return self.languages.get(code)
+
+
+@dataclass
+class InMemoryManagerOrderRepository(ManagerOrderRepository):
+    """In-memory implementation of manager order repository."""
+
+    _assignments: Dict[Tuple[UUID, UUID], ManagerOrder] = field(
+        default_factory=dict
+    )
+
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[ManagerOrder]:
+        """List manager assignments for an order."""
+        return sorted(
+            [
+                mo
+                for (uid, oid), mo in self._assignments.items()
+                if oid == order_id
+            ],
+            key=lambda x: (x.created_at, x.user_id),
+        )
+
+    async def list_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> list[ManagerOrder]:
+        """List order assignments for a manager."""
+        return sorted(
+            [
+                mo
+                for (uid, oid), mo in self._assignments.items()
+                if uid == user_id
+            ],
+            key=lambda x: x.created_at,
+            reverse=True,
+        )
+
+    async def list_order_ids_by_user(
+        self,
+        user_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[UUID]:
+        """List order IDs assigned to a manager with pagination."""
+        assignments = await self.list_by_user(user_id, session=session)
+        return [mo.order_id for mo in assignments[offset : offset + limit]]
+
+    async def count_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count orders assigned to a manager."""
+        return sum(1 for (uid, _) in self._assignments if uid == user_id)
+
+    async def save(
+        self, manager_order: ManagerOrder, session: object | None = None
+    ) -> None:
+        """Persist manager-order assignment."""
+        key = (manager_order.user_id, manager_order.order_id)
+        self._assignments[key] = manager_order
+
+    async def delete_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete all manager assignments for an order."""
+        keys_to_delete = [
+            key for key in self._assignments if key[1] == order_id
+        ]
+        for key in keys_to_delete:
+            del self._assignments[key]
+
+    async def exists_for_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if manager has any order assignments."""
+        return any(uid == user_id for (uid, _) in self._assignments)
