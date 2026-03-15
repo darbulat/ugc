@@ -24,6 +24,7 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
     Interaction,
     Language,
+    ManagerOrder,
     OfferDispatch,
     Order,
     OutboxEvent,
@@ -250,6 +251,7 @@ class OfferDispatchRepository(ABC):
         accepted: bool,
         in_offer: bool,
         session: object | None = None,
+        manager_id: UUID | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
 
@@ -299,6 +301,78 @@ class OfferDispatchRepository(ABC):
         session: object | None = None,
     ) -> Dict[UUID, int]:
         """Count completed orders (CLOSED, interaction OK) per blogger ID."""
+
+    @abstractmethod
+    async def list_responses_by_order_and_manager(
+        self,
+        order_id: UUID,
+        manager_id: UUID,
+        in_offer: bool,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[OfferDispatch]:
+        """List dispatches by order and manager with pagination."""
+
+    @abstractmethod
+    async def count_responses_by_order_and_manager(
+        self,
+        order_id: UUID,
+        manager_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> int:
+        """Count dispatches by order and manager."""
+
+
+class ManagerOrderRepository(ABC):
+    """Port for manager-to-order assignment persistence."""
+
+    @abstractmethod
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[ManagerOrder]:
+        """List manager assignments for an order."""
+
+    @abstractmethod
+    async def list_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> list[ManagerOrder]:
+        """List order assignments for a manager."""
+
+    @abstractmethod
+    async def list_order_ids_by_user(
+        self,
+        user_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[UUID]:
+        """List order IDs assigned to a manager with pagination."""
+
+    @abstractmethod
+    async def count_by_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> int:
+        """Count orders assigned to a manager."""
+
+    @abstractmethod
+    async def save(
+        self, manager_order: ManagerOrder, session: object | None = None
+    ) -> None:
+        """Persist manager-order assignment."""
+
+    @abstractmethod
+    async def delete_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete all manager assignments for an order."""
+
+    @abstractmethod
+    async def exists_for_user(
+        self, user_id: UUID, session: object | None = None
+    ) -> bool:
+        """Check if manager has any order assignments."""
 
 
 class InteractionRepository(ABC):
