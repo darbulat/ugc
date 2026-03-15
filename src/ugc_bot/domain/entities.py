@@ -211,6 +211,7 @@ class Order:
     # WKT MULTIPOLYGON (SRID 4326) for countries/regions/cities from geography.
     location_geometry: Optional[str] = None
     currency: str = "RUB"
+    last_round_robin_index: int = 0
 
 
 @dataclass(frozen=True)
@@ -231,6 +232,17 @@ class OfferDispatch:
     in_offer: bool = (
         True  # Counted toward order; at most bloggers_needed per order
     )
+    manager_id: Optional[UUID] = None
+
+
+@dataclass(frozen=True)
+class ManagerOrder:
+    """Manager-to-order assignment for round-robin response routing."""
+
+    user_id: UUID
+    order_id: UUID
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
