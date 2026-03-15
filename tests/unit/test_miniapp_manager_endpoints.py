@@ -191,16 +191,16 @@ class TestManagerCreatorsEndpoint:
         profile_service = MagicMock()
         profile_service.get_blogger_profile = AsyncMock(return_value=profile)
 
-        def dispatcher_getitem(self, k):
-            return {
-                "manager_order_repo": manager_order_repo,
-                "offer_dispatch_repo": offer_dispatch_repo,
-                "user_repo": user_repo,
-                "profile_service": profile_service,
-            }[k]
+        deps = {
+            "manager_order_repo": manager_order_repo,
+            "offer_dispatch_repo": offer_dispatch_repo,
+            "user_repo": user_repo,
+            "profile_service": profile_service,
+        }
 
         dispatcher = MagicMock()
-        dispatcher.__getitem__ = dispatcher_getitem
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+        dispatcher.get = lambda k, default=None: deps.get(k, default)
 
         request = MagicMock()
         request.app.state.dispatcher = dispatcher
@@ -233,8 +233,16 @@ class TestManagerCreatorsEndpoint:
             return_value=[other_manager]
         )
 
+        deps = {
+            "manager_order_repo": manager_order_repo,
+            "offer_dispatch_repo": MagicMock(),
+            "user_repo": MagicMock(),
+            "profile_service": MagicMock(),
+        }
+
         dispatcher = MagicMock()
-        dispatcher.__getitem__ = lambda self, k: manager_order_repo
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+        dispatcher.get = lambda k, default=None: deps.get(k, default)
 
         request = MagicMock()
         request.app.state.dispatcher = dispatcher
@@ -277,16 +285,16 @@ class TestManagerCreatorsEndpoint:
         profile_service = MagicMock()
         profile_service.get_blogger_profile = AsyncMock(return_value=None)
 
-        def dispatcher_getitem(self, k):
-            return {
-                "manager_order_repo": manager_order_repo,
-                "offer_dispatch_repo": offer_dispatch_repo,
-                "user_repo": user_repo,
-                "profile_service": profile_service,
-            }[k]
+        deps = {
+            "manager_order_repo": manager_order_repo,
+            "offer_dispatch_repo": offer_dispatch_repo,
+            "user_repo": user_repo,
+            "profile_service": profile_service,
+        }
 
         dispatcher = MagicMock()
-        dispatcher.__getitem__ = dispatcher_getitem
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+        dispatcher.get = lambda k, default=None: deps.get(k, default)
 
         request = MagicMock()
         request.app.state.dispatcher = dispatcher
