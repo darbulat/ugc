@@ -1442,10 +1442,14 @@ async def manager_creators(
     )
 
     user_repo = dispatcher["user_repo"]
+    blogger_ids = [d.blogger_id for d in dispatches]
+    users_map = await user_repo.get_by_ids(blogger_ids)
+    profiles_map = await profile_service.get_blogger_profiles(blogger_ids)
+
     creators: list[CreatorItem] = []
     for d in dispatches:
-        user = await user_repo.get_by_id(d.blogger_id)
-        profile = await profile_service.get_blogger_profile(d.blogger_id)
+        user = users_map.get(d.blogger_id)
+        profile = profiles_map.get(d.blogger_id)
         creators.append(
             CreatorItem(
                 instagram_url=profile.instagram_url if profile else None,

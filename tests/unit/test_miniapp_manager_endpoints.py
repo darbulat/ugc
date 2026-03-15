@@ -168,12 +168,16 @@ class TestManagerCreatorsEndpoint:
         user = MagicMock()
         user.telegram = "blogger_user"
         user_repo = MagicMock()
-        user_repo.get_by_id = AsyncMock(return_value=user)
+        user_repo.get_by_ids = AsyncMock(
+            return_value={BLOGGER_ID: user}
+        )
 
         profile = MagicMock()
         profile.instagram_url = "https://instagram.com/blogger"
         profile_service = MagicMock()
-        profile_service.get_blogger_profile = AsyncMock(return_value=profile)
+        profile_service.get_blogger_profiles = AsyncMock(
+            return_value={BLOGGER_ID: profile}
+        )
 
         deps = {
             "manager_service": manager_service,
@@ -243,10 +247,10 @@ class TestManagerCreatorsEndpoint:
         )
 
         user_repo = MagicMock()
-        user_repo.get_by_id = AsyncMock(return_value=None)
+        user_repo.get_by_ids = AsyncMock(return_value={})
 
         profile_service = MagicMock()
-        profile_service.get_blogger_profile = AsyncMock(return_value=None)
+        profile_service.get_blogger_profiles = AsyncMock(return_value={})
 
         deps = {
             "manager_service": manager_service,

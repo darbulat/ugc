@@ -45,6 +45,18 @@ class ProfileService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def get_blogger_profiles(
+        self, user_ids: list[UUID]
+    ) -> dict[UUID, BloggerProfile]:
+        """Fetch blogger profiles by user ids in a single query."""
+
+        async def _run(session: object | None):
+            return await self.blogger_repo.get_by_user_ids(
+                user_ids, session=session
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def get_advertiser_profile(
         self, user_id: UUID
     ) -> AdvertiserProfile | None:
