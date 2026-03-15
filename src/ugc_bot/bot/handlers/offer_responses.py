@@ -37,7 +37,7 @@ from ugc_bot.bot.handlers.utils import (
     send_with_retry,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.entities import Order
+from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import OrderType
 
 router = Router()
@@ -144,6 +144,9 @@ async def _reply_offer_response_result(
         contact_texts = await bot_texts_service.get_many(
             list(_SEND_CONTACT_TEXTS_KEYS), locale
         )
+        manager: User | None = None
+        if result.manager_id:
+            manager = await user_role_service.get_user_by_id(result.manager_id)
         await _send_contact_immediately(
             order=result.order,
             blogger_id=blogger_id,
@@ -154,6 +157,7 @@ async def _reply_offer_response_result(
             interaction_service=interaction_service,
             messenger_client=messenger_client,
             texts=contact_texts,
+            manager=manager,
         )
 
 
@@ -409,6 +413,7 @@ async def _send_contact_immediately(
     interaction_service: InteractionService | None,
     messenger_client: MessengerClient,
     texts: dict[str, str],
+    manager: User | None = None,
 ) -> None:
     """Send contact to advertiser after each response (TZ format).
 
@@ -463,6 +468,21 @@ async def _send_contact_immediately(
                     logger=logger,
                     extra={"order_id": str(order.order_id)},
                 )
+
+    if manager and manager.external_id.isdigit():
+        await send_with_retry(
+            messenger_client,
+            chat_id=manager.external_id,
+            text=contact_text,
+            keyboard=open_profile_kb,
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={
+                "order_id": str(order.order_id),
+                "manager_id": str(manager.user_id),
+            },
+        )
 
     advertiser_profile = await profile_service.get_advertiser_profile(
         order.advertiser_id

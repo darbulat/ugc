@@ -92,7 +92,8 @@ make all  # format-check + lint + typecheck + coverage (exact replica of GitHub 
 
 ## Key Patterns
 
-- **Repository pattern:** 20+ abstract repos in `application/ports.py`, SQLAlchemy implementations in `infrastructure/db/repositories.py`, in-memory implementations for tests
+- **Repository pattern:** 20+ abstract repos in `application/ports.py`, SQLAlchemy implementations in `infrastructure/db/repositories.py`, in-memory implementations for tests. **Repositories use `_resolve_session(self.session_factory, session)` context manager** — if `session` is provided it's used as-is, if `None` the repo opens its own session from `session_factory`. This means repos can be called without an explicit session (they'll manage their own transaction), but passing a session keeps multiple operations in one transaction.
+- **Service layer is preferred over direct repo calls** in endpoints. If a service method doesn't exist, add one to the service rather than calling repos directly from `miniapp/api.py` or `bot/` handlers.
 - **Outbox pattern:** `OutboxRepository` + `outbox_processor.py` for event-driven consistency
 - **Zero-downtime deploy:** `scripts/deploy_apps_zero_downtime.sh` rolling deploy between `app` and `app_2` replicas
 - **Session pooling:** PgBouncer in session mode (required for Alembic compatibility)

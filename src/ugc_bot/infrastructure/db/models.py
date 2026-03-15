@@ -380,6 +380,9 @@ class OrderModel(Base):
     currency: Mapped[str] = mapped_column(
         String(3), nullable=False, server_default=text("'RUB'")
     )
+    last_round_robin_index: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
 
 
 class CountryModel(Base):
@@ -464,6 +467,36 @@ class OfferDispatchModel(Base):
     accepted: Mapped[Optional[bool]] = mapped_column(Boolean(), nullable=True)
     in_offer: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, server_default=text("true")
+    )
+    manager_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
+class ManagerOrderModel(Base):
+    """Manager-to-order assignment ORM model."""
+
+    __tablename__ = "manager_orders"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("orders.order_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

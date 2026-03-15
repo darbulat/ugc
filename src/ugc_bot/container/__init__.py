@@ -17,6 +17,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.manager_service import ManagerService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
@@ -180,6 +181,17 @@ class Container:
     def build_instagram_api_client(self):
         """Create Instagram Graph API client if configured."""
         return infrastructure_factory.build_instagram_api_client(self._config)
+
+    def build_manager_service(self) -> ManagerService:
+        """ManagerService for admin panel."""
+        repos = self.build_repos()
+        return ManagerService(
+            manager_order_repo=repos["manager_order_repo"],
+            user_repo=repos["user_repo"],
+            order_repo=repos["order_repo"],
+            offer_dispatch_repo=repos["offer_dispatch_repo"],
+            transaction_manager=self._transaction_manager,
+        )
 
     def build_bot_services(self) -> "BotServices":
         """Build all services and repos for the bot dispatcher."""

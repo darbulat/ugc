@@ -56,15 +56,17 @@
     .role-btns .btn { margin-bottom: 8px; }
     .error { color: #c00; font-size: 0.9rem; margin-top: 8px; }
     .success { color: #0a0; font-size: 0.9rem; margin-top: 8px; }
-    #orders-list, #blogger-orders-list { list-style: none; padding: 0; margin: 0; }
-    #orders-list li, #blogger-orders-list li {
+    #orders-list, #blogger-orders-list, #manager-orders-list, #manager-creators-list { list-style: none; padding: 0; margin: 0; }
+    #orders-list li, #blogger-orders-list li, #manager-orders-list li, #manager-creators-list li {
       padding: 12px;
       margin-bottom: 8px;
       border-radius: 8px;
       background: var(--tg-theme-secondary-bg-color, #f5f5f5);
     }
-    #orders-list li strong, #blogger-orders-list li strong { display: block; margin-bottom: 4px; }
+    #orders-list li strong, #blogger-orders-list li strong, #manager-orders-list li strong { display: block; margin-bottom: 4px; }
     #orders-list .btn-pay, #blogger-orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
+    .pagination-btns { display: flex; gap: 8px; margin-top: 12px; }
+    .pagination-btns .btn { flex: 1; margin-top: 0; }
     .instagram-input-group {
       display: flex;
       align-items: stretch;
@@ -139,6 +141,7 @@
     <div class="role-btns">
       <button type="button" class="btn" data-role="advertiser">Рекламодатель</button>
       <button type="button" class="btn" data-role="blogger">Креатор</button>
+      <button type="button" class="btn" id="btn-manager-role" data-role="manager" style="display:none;">Менеджер</button>
     </div>
   </div>
 
@@ -373,6 +376,33 @@
     <div id="instagram-verification-code" class="instagram-code" style="font-family: monospace; padding: 12px; background: var(--tg-theme-secondary-bg-color, #eee); border-radius: 8px; margin: 8px 0; word-break: break-all;"></div>
     <button type="button" class="btn" id="btn-instagram-open">Открыть Instagram</button>
     <button type="button" class="btn btn-secondary" id="btn-instagram-verification-back">В личный кабинет</button>
+  </div>
+
+  <div id="screen-manager-orders" class="screen">
+    <h1>Мои заказы</h1>
+    <ul id="manager-orders-list"></ul>
+    <div class="pagination-btns">
+      <button type="button" class="btn btn-secondary" id="mgr-orders-prev" style="display:none;">← Назад</button>
+      <button type="button" class="btn btn-secondary" id="mgr-orders-next" style="display:none;">Далее →</button>
+    </div>
+    <button type="button" class="btn btn-secondary" id="mgr-orders-back">Назад</button>
+  </div>
+
+  <div id="screen-manager-order-detail" class="screen">
+    <h1 id="mgr-order-detail-title">Заказ</h1>
+    <button type="button" class="btn" id="btn-mgr-creators-in-offer">Креаторы в заказе</button>
+    <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">Креаторы в резерве</button>
+    <button type="button" class="btn btn-secondary" id="mgr-order-detail-back">Назад</button>
+  </div>
+
+  <div id="screen-manager-creators" class="screen">
+    <h1>Креаторы</h1>
+    <ul id="manager-creators-list"></ul>
+    <div class="pagination-btns">
+      <button type="button" class="btn btn-secondary" id="mgr-creators-prev" style="display:none;">← Назад</button>
+      <button type="button" class="btn btn-secondary" id="mgr-creators-next" style="display:none;">Далее →</button>
+    </div>
+    <button type="button" class="btn btn-secondary" id="mgr-creators-back">Назад</button>
   </div>
 
   <script>
@@ -742,6 +772,18 @@
           ph_ord_deadlines: '7 дней',
           ph_ord_detail_geography: 'Москва, РФ',
           ph_ord_detail_deadlines: '7 дней',
+          btn_manager: 'Менеджер',
+          mgr_orders_h1: 'Мои заказы',
+          mgr_order_detail_title: 'Заказ',
+          btn_mgr_creators_in_offer: 'Креаторы в заказе',
+          btn_mgr_creators_reserve: 'Креаторы в резерве',
+          mgr_creators_h1: 'Креаторы',
+          mgr_prev: '← Назад',
+          mgr_next: 'Далее →',
+          mgr_no_orders: 'Заказов нет',
+          mgr_no_creators: 'Креаторов нет',
+          mgr_orders_error: 'Не удалось загрузить заказы',
+          mgr_creators_error: 'Не удалось загрузить креаторов',
         },
         en: {
           loading: 'Loading…',
@@ -864,6 +906,18 @@
           ph_ord_deadlines: '7 days',
           ph_ord_detail_geography: 'Moscow, Russia',
           ph_ord_detail_deadlines: '7 days',
+          btn_manager: 'Manager',
+          mgr_orders_h1: 'My orders',
+          mgr_order_detail_title: 'Order',
+          btn_mgr_creators_in_offer: 'Creators in order',
+          btn_mgr_creators_reserve: 'Creators in reserve',
+          mgr_creators_h1: 'Creators',
+          mgr_prev: '← Back',
+          mgr_next: 'Next →',
+          mgr_no_orders: 'No orders',
+          mgr_no_creators: 'No creators',
+          mgr_orders_error: 'Failed to load orders',
+          mgr_creators_error: 'Failed to load creators',
         },
         kk: {
           loading: 'Жүктелуде…',
@@ -982,6 +1036,18 @@
           ph_ord_deadlines: '7 күн',
           ph_ord_detail_geography: 'Астана, ҚР',
           ph_ord_detail_deadlines: '7 күн',
+          btn_manager: 'Менеджер',
+          mgr_orders_h1: 'Менің тапсырыстарым',
+          mgr_order_detail_title: 'Тапсырыс',
+          btn_mgr_creators_in_offer: 'Тапсырыстағы креаторлар',
+          btn_mgr_creators_reserve: 'Резервтегі креаторлар',
+          mgr_creators_h1: 'Креаторлар',
+          mgr_prev: '← Артқа',
+          mgr_next: 'Келесі →',
+          mgr_no_orders: 'Тапсырыстар жоқ',
+          mgr_no_creators: 'Креаторлар жоқ',
+          mgr_orders_error: 'Тапсырыстарды жүктеу мүмкін болмады',
+          mgr_creators_error: 'Креаторларды жүктеу мүмкін болмады',
         },
         be: {
           loading: 'Загрузка…',
@@ -1100,6 +1166,18 @@
           ph_ord_deadlines: '7 дзён',
           ph_ord_detail_geography: 'Мінск, РБ',
           ph_ord_detail_deadlines: '7 дзён',
+          btn_manager: 'Менеджар',
+          mgr_orders_h1: 'Мае заказы',
+          mgr_order_detail_title: 'Заказ',
+          btn_mgr_creators_in_offer: 'Крэатары ў заказе',
+          btn_mgr_creators_reserve: 'Крэатары ў рэзерве',
+          mgr_creators_h1: 'Крэатары',
+          mgr_prev: '← Назад',
+          mgr_next: 'Далей →',
+          mgr_no_orders: 'Заказаў няма',
+          mgr_no_creators: 'Крэатараў няма',
+          mgr_orders_error: 'Не ўдалося загрузіць заказы',
+          mgr_creators_error: 'Не ўдалося загрузіць крэатараў',
         },
         uz: {
           loading: 'Yuklanmoqda…',
@@ -1218,6 +1296,18 @@
           ph_ord_deadlines: '7 kun',
           ph_ord_detail_geography: 'Toshkent, O\'zbekiston',
           ph_ord_detail_deadlines: '7 kun',
+          btn_manager: 'Menejer',
+          mgr_orders_h1: 'Mening buyurtmalarim',
+          mgr_order_detail_title: 'Buyurtma',
+          btn_mgr_creators_in_offer: 'Buyurtmadagi kreatorlar',
+          btn_mgr_creators_reserve: 'Rezervdagi kreatorlar',
+          mgr_creators_h1: 'Kreatorlar',
+          mgr_prev: '← Orqaga',
+          mgr_next: 'Keyingi →',
+          mgr_no_orders: 'Buyurtmalar yo\'q',
+          mgr_no_creators: 'Kreatorlar yo\'q',
+          mgr_orders_error: 'Buyurtmalarni yuklab bo\'lmadi',
+          mgr_creators_error: 'Kreatorlarni yuklab bo\'lmadi',
         }
       };
 
@@ -1377,6 +1467,20 @@
         // Content usage "not selected" option
         setOpt('ord-content-usage', '', L.opt_not_selected);
         setOpt('ord-detail-content-usage', '', L.opt_not_selected);
+        // Manager screens
+        var mgrBtn = document.getElementById('btn-manager-role');
+        if (mgrBtn) mgrBtn.textContent = L.btn_manager || L.btn_advertiser;
+        setQ('#screen-manager-orders h1', L.mgr_orders_h1);
+        setText('mgr-orders-prev', L.mgr_prev);
+        setText('mgr-orders-next', L.mgr_next);
+        setText('mgr-orders-back', L.btn_back);
+        setText('btn-mgr-creators-in-offer', L.btn_mgr_creators_in_offer);
+        setText('btn-mgr-creators-reserve', L.btn_mgr_creators_reserve);
+        setText('mgr-order-detail-back', L.btn_back);
+        setQ('#screen-manager-creators h1', L.mgr_creators_h1);
+        setText('mgr-creators-prev', L.mgr_prev);
+        setText('mgr-creators-next', L.mgr_next);
+        setText('mgr-creators-back', L.btn_back);
       }
 
       function updateRegisterButtonLabels() {
@@ -1417,6 +1521,8 @@
               updateRegisterButtonLabels();
               showScreen('screen-register-blogger');
             }
+          } else if (role === 'manager') {
+            loadManagerOrders(0);
           }
         });
       });
@@ -1985,6 +2091,138 @@
         });
       });
 
+      // --- Manager screens ---
+      var MGR_PAGE_LIMIT = 20;
+
+      function clearList(ul) {
+        while (ul && ul.firstChild) ul.removeChild(ul.firstChild);
+      }
+
+      function loadManagerOrders(offset) {
+        var ul = document.getElementById('manager-orders-list');
+        clearList(ul);
+        showScreen('screen-manager-orders');
+        api('/manager/orders', { limit: MGR_PAGE_LIMIT, offset: offset }).then(function(data) {
+          var orders = data.orders || [];
+          var total = data.total || 0;
+          clearList(ul);
+          if (orders.length === 0) {
+            var li = document.createElement('li');
+            li.textContent = tx('mgr_no_orders');
+            if (ul) ul.appendChild(li);
+          } else {
+            orders.forEach(function(o) {
+              var li = document.createElement('li');
+              li.style.cursor = 'pointer';
+              var strong = document.createElement('strong');
+              strong.textContent = o.product_link || o.order_id;
+              li.appendChild(strong);
+              li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
+              li.addEventListener('click', function() {
+                openManagerOrder(o.order_id, o.product_link || o.order_id);
+              });
+              if (ul) ul.appendChild(li);
+            });
+          }
+          var prevBtn = document.getElementById('mgr-orders-prev');
+          var nextBtn = document.getElementById('mgr-orders-next');
+          if (prevBtn) prevBtn.style.display = offset > 0 ? '' : 'none';
+          if (nextBtn) nextBtn.style.display = (offset + MGR_PAGE_LIMIT < total) ? '' : 'none';
+          if (prevBtn) prevBtn.onclick = function() { loadManagerOrders(Math.max(0, offset - MGR_PAGE_LIMIT)); };
+          if (nextBtn) nextBtn.onclick = function() { loadManagerOrders(offset + MGR_PAGE_LIMIT); };
+        }).catch(function() {
+          clearList(ul);
+          if (ul) {
+            var errLi = document.createElement('li');
+            errLi.className = 'error';
+            errLi.textContent = tx('mgr_orders_error');
+            ul.appendChild(errLi);
+          }
+        });
+      }
+
+      function openManagerOrder(orderId, title) {
+        window._mgrCurrentOrderId = orderId;
+        var titleEl = document.getElementById('mgr-order-detail-title');
+        if (titleEl) titleEl.textContent = tx('mgr_order_detail_title') + ' ' + title;
+        showScreen('screen-manager-order-detail');
+      }
+
+      function loadManagerCreators(orderId, inOffer, offset) {
+        var ul = document.getElementById('manager-creators-list');
+        clearList(ul);
+        showScreen('screen-manager-creators');
+        api('/manager/orders/' + orderId + '/creators', { in_offer: inOffer, limit: MGR_PAGE_LIMIT, offset: offset }).then(function(data) {
+          var creators = data.creators || [];
+          var total = data.total || 0;
+          clearList(ul);
+          if (creators.length === 0) {
+            var li = document.createElement('li');
+            li.textContent = tx('mgr_no_creators');
+            if (ul) ul.appendChild(li);
+          } else {
+            creators.forEach(function(c) {
+              var li = document.createElement('li');
+              if (c.instagram_url) {
+                var a = document.createElement('a');
+                a.href = c.instagram_url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.textContent = c.instagram_url;
+                li.appendChild(a);
+              }
+              if (c.telegram) {
+                if (c.instagram_url) li.appendChild(document.createTextNode(' \u00b7 '));
+                var tgLink = document.createElement('a');
+                tgLink.href = 'https://t.me/' + c.telegram;
+                tgLink.target = '_blank';
+                tgLink.rel = 'noopener';
+                tgLink.textContent = '@' + c.telegram;
+                li.appendChild(tgLink);
+              }
+              if (!c.instagram_url && !c.telegram) {
+                li.textContent = '\u2014';
+              }
+              if (ul) ul.appendChild(li);
+            });
+          }
+          var prevBtn = document.getElementById('mgr-creators-prev');
+          var nextBtn = document.getElementById('mgr-creators-next');
+          if (prevBtn) prevBtn.style.display = offset > 0 ? '' : 'none';
+          if (nextBtn) nextBtn.style.display = (offset + MGR_PAGE_LIMIT < total) ? '' : 'none';
+          if (prevBtn) prevBtn.onclick = function() { loadManagerCreators(orderId, inOffer, Math.max(0, offset - MGR_PAGE_LIMIT)); };
+          if (nextBtn) nextBtn.onclick = function() { loadManagerCreators(orderId, inOffer, offset + MGR_PAGE_LIMIT); };
+        }).catch(function() {
+          clearList(ul);
+          if (ul) {
+            var errLi = document.createElement('li');
+            errLi.className = 'error';
+            errLi.textContent = tx('mgr_creators_error');
+            ul.appendChild(errLi);
+          }
+        });
+      }
+
+      document.getElementById('mgr-orders-back').addEventListener('click', function() {
+        updateRoleChoiceHint();
+        showScreen('screen-role-choice');
+      });
+      document.getElementById('mgr-order-detail-back').addEventListener('click', function() {
+        loadManagerOrders(0);
+      });
+      document.getElementById('btn-mgr-creators-in-offer').addEventListener('click', function() {
+        var orderId = window._mgrCurrentOrderId;
+        if (orderId) loadManagerCreators(orderId, true, 0);
+      });
+      document.getElementById('btn-mgr-creators-reserve').addEventListener('click', function() {
+        var orderId = window._mgrCurrentOrderId;
+        if (orderId) loadManagerCreators(orderId, false, 0);
+      });
+      document.getElementById('mgr-creators-back').addEventListener('click', function() {
+        var orderId = window._mgrCurrentOrderId;
+        if (orderId) openManagerOrder(orderId, '');
+      });
+
       document.getElementById('btn-close-blogger').addEventListener('click', function() {
         if (tg && typeof tg.close === 'function') tg.close();
       });
@@ -2010,6 +2248,8 @@
       function showRoleOrDashboard(me) {
         updateRoleChoiceHint();
         updateRegisterButtonLabels();
+        var managerBtn = document.getElementById('btn-manager-role');
+        if (managerBtn) managerBtn.style.display = (me && me.is_manager) ? '' : 'none';
         if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
         } else if (me.has_blogger_profile && !me.has_advertiser_profile) {

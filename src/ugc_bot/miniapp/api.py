@@ -84,6 +84,7 @@ class MeResponse(BaseModel):
     currency_code: str | None = None
     currency_symbol: str | None = None
     locale: str = "ru"
+    is_manager: bool = False
 
 
 # Content usage options for order form (same as bot order_creation_states).
@@ -228,6 +229,44 @@ class UpdateOrderRequest(BaseModel):
     content_usage: str | None = None
     deadlines: str | None = None
     geography: str | None = None
+
+
+class ManagerOrdersRequest(BaseModel):
+    """Manager orders list request."""
+
+    init_data: str
+    limit: int = 20
+    offset: int = 0
+
+
+class ManagerOrdersResponse(BaseModel):
+    """Manager orders list response."""
+
+    orders: list[OrderListItem]
+    total: int
+
+
+class ManagerCreatorsRequest(BaseModel):
+    """Manager creators list request."""
+
+    init_data: str
+    in_offer: bool
+    limit: int = 20
+    offset: int = 0
+
+
+class CreatorItem(BaseModel):
+    """Creator summary for manager view."""
+
+    instagram_url: str | None = None
+    telegram: str | None = None
+
+
+class ManagerCreatorsResponse(BaseModel):
+    """Manager creators list response."""
+
+    creators: list[CreatorItem]
+    total: int
 
 
 def _payment_link_for_order(order_id: str, bot_username: str) -> str:
@@ -391,6 +430,11 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
     user_locale: str = (
         getattr(user, "language", None) or config.market.default_locale
     )
+    # Resolve manager status
+    is_manager = False
+    manager_service = dispatcher.get("manager_service")
+    if manager_service:
+        is_manager = await manager_service.is_manager(user_id)
     return MeResponse(
         user_id=str(user_id),
         external_id=user.external_id,
@@ -403,6 +447,7 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         currency_code=currency_code,
         currency_symbol=currency_symbol,
         locale=user_locale,
+        is_manager=is_manager,
     )
 
 
@@ -1338,3 +1383,78 @@ async def set_country(request: Request, body: SetCountryRequest) -> dict:
         "currency_code": currency_code,
         "currency_symbol": currency_symbol,
     }
+
+
+@router.post("/manager/orders", response_model=ManagerOrdersResponse)
+async def manager_orders(
+    request: Request, body: ManagerOrdersRequest
+) -> ManagerOrdersResponse:
+    """List orders assigned to the current manager."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+    orders, total = await manager_service.list_orders_for_manager(
+        user_id, limit=body.limit, offset=body.offset
+    )
+    cfg = request.app.state.config
+    bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
+    items = [
+        OrderListItem(
+            order_id=str(o.order_id),
+            status=o.status.value,
+            product_link=o.product_link,
+            price=float(o.price),
+            order_type=o.order_type.value,
+            created_at=o.created_at.isoformat(),
+            payment_link=_payment_link_for_order(str(o.order_id), bot_username)
+            if o.status == OrderStatus.NEW
+            else "",
+        )
+        for o in orders
+    ]
+    return ManagerOrdersResponse(orders=items, total=total)
+
+
+@router.post(
+    "/manager/orders/{order_id}/creators",
+    response_model=ManagerCreatorsResponse,
+)
+async def manager_creators(
+    request: Request, order_id: UUID, body: ManagerCreatorsRequest
+) -> ManagerCreatorsResponse:
+    """List creators for an order assigned to the current manager."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+    profile_service = dispatcher["profile_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    dispatches, total = await manager_service.list_creators_for_order(
+        order_id=order_id,
+        manager_id=user_id,
+        in_offer=body.in_offer,
+        limit=body.limit,
+        offset=body.offset,
+    )
+
+    user_repo = dispatcher["user_repo"]
+    blogger_ids = [d.blogger_id for d in dispatches]
+    users_map = await user_repo.get_by_ids(blogger_ids)
+    profiles_map = await profile_service.get_blogger_profiles(blogger_ids)
+
+    creators: list[CreatorItem] = []
+    for d in dispatches:
+        user = users_map.get(d.blogger_id)
+        profile = profiles_map.get(d.blogger_id)
+        creators.append(
+            CreatorItem(
+                instagram_url=profile.instagram_url if profile else None,
+                telegram=user.telegram if user else None,
+            )
+        )
+
+    return ManagerCreatorsResponse(creators=creators, total=total)

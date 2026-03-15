@@ -146,6 +146,43 @@ async def _update_order_location_geometry_after_geography_change(
         )
 
 
+async def _publish_order_activation(order_id: UUID) -> None:
+    """Publish order activation event via outbox."""
+    try:
+        container = _get_admin_container()
+        if not container:
+            return
+        _, outbox_publisher, order_repo = _get_order_moderation_deps(container)
+        tm = container.transaction_manager
+        if tm:
+            async with tm.transaction() as session:
+                order = await order_repo.get_by_id(order_id, session=session)
+                if order:
+                    await outbox_publisher.publish_order_activation(
+                        order, session=session
+                    )
+    except Exception:
+        logger.exception(
+            "Failed to publish order activation after admin approval",
+            extra={"order_id": str(order_id)},
+        )
+
+
+async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
+    """Parse managers field and update manager-order assignments.
+
+    An empty string removes all manager assignments for the order.
+    """
+    container = _get_admin_container()
+    if not container:
+        return
+    manager_service = container.build_manager_service()
+    usernames = [
+        u.strip().lstrip("@") for u in managers_raw.split(",") if u.strip()
+    ]
+    await manager_service.set_managers_for_order(order_id, usernames)
+
+
 async def _update_blogger_profile_location_from_nominatim(
     user_id: UUID, city: Optional[str] = None
 ) -> None:
@@ -1534,6 +1571,9 @@ class OrderAdmin(ModelView, model=OrderModel):
     async def update_model(self, request: Request, pk: str, data: dict):
         """Update order with banned content check and activation publishing."""
         pk_uuid = UUID(pk)
+        form_data = await request.form()
+        managers_raw = str(form_data.get("managers", "") or "")
+
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
@@ -1578,27 +1618,15 @@ class OrderAdmin(ModelView, model=OrderModel):
             old_status != OrderStatus.ACTIVE
             and new_status == OrderStatus.ACTIVE
         ):
-            try:
-                container = _get_admin_container()
-                if container:
-                    _, outbox_publisher, order_repo = (
-                        _get_order_moderation_deps(container)
-                    )
-                    tm = container.transaction_manager
-                    if tm:
-                        async with tm.transaction() as session:
-                            order = await order_repo.get_by_id(
-                                pk_uuid, session=session
-                            )
-                            if order:
-                                await outbox_publisher.publish_order_activation(
-                                    order, session=session
-                                )
-            except Exception:
-                logger.exception(
-                    "Failed to publish order activation after admin approval",
-                    extra={"order_id": str(pk_uuid)},
-                )
+            await _publish_order_activation(pk_uuid)
+
+        try:
+            await _update_order_managers(pk_uuid, managers_raw)
+        except Exception:
+            logger.exception(
+                "Failed to update order managers",
+                extra={"order_id": str(pk_uuid)},
+            )
 
         return result
 
@@ -2031,6 +2059,38 @@ async def _inject_order_eligible_bloggers_count(
         context["eligible_bloggers_count"] = None
 
 
+async def _inject_order_managers(
+    context: dict[str, Any],
+    model_view: Any,
+    model: Any,
+) -> None:
+    """Pre-populate managers field with current manager usernames."""
+    if not isinstance(model_view, OrderAdmin) or model is None:
+        return
+    try:
+        container = _get_admin_container()
+        if container:
+            manager_service = container.build_manager_service()
+            manager_order_repo = manager_service.manager_order_repo
+            user_repo = manager_service.user_repo
+            tm = container.transaction_manager
+            usernames: list[str] = []
+            if tm:
+                async with tm.transaction() as session:
+                    manager_orders = await manager_order_repo.list_by_order(
+                        model.order_id, session=session
+                    )
+                    for mo in manager_orders:
+                        user = await user_repo.get_by_id(
+                            mo.user_id, session=session
+                        )
+                        if user and user.telegram:
+                            usernames.append(f"@{user.telegram}")
+            context["managers_value"] = ", ".join(usernames)
+    except Exception:
+        logger.exception("Failed to inject order managers")
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -2086,6 +2146,7 @@ class EnumAwareAdmin(Admin):
             "form": Form(data=form_data),
         }
         await _inject_order_eligible_bloggers_count(context, model_view, model)
+        await _inject_order_managers(context, model_view, model)
 
         if request.method == "GET":
             return await self.templates.TemplateResponse(

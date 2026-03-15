@@ -21,6 +21,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.manager_service import ManagerService
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
@@ -78,3 +79,5 @@ class BotServices(TypedDict):
     bot_texts_service: BotTextsService
     country_repo: CountryRepository
     language_repo: LanguageRepository
+    manager_service: ManagerService
+    manager_order_repo: Any

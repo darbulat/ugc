@@ -38,3 +38,6 @@
 - `src/ugc_bot/infrastructure/geocoder_cache_redis.py` — Redis cache with ImportError fallback
 - `src/ugc_bot/domain/entities.py` — All domain entity dataclasses
 - `src/ugc_bot/domain/enums.py` — All domain enums
+
+### InstagramStatsModel Fields (gotcha)
+The ORM model uses: `user_id`, `raw_response` (dict), `fetched_at`, `followers_count`, `follows_count`, `media_count`, `instagram_username`, `biography`, `provider`, `instagram_id`. NOT `followers`, `following`, `posts`, `er`.

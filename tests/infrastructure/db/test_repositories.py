@@ -174,6 +174,14 @@ class FakeSession:
         """Mock commit method."""
         self.committed = True
 
+    async def rollback(self):  # type: ignore[no-untyped-def]
+        """Mock rollback method."""
+        pass
+
+    async def close(self):  # type: ignore[no-untyped-def]
+        """Mock close method."""
+        pass
+
     async def merge(self, model):  # type: ignore[no-untyped-def]
         self.merged = model
 
@@ -1033,11 +1041,20 @@ async def test_payment_repository_save_and_get() -> None:
 
 
 @pytest.mark.asyncio
-async def test_payment_repository_rejects_invalid_session() -> None:
-    """Payment repository rejects invalid session type."""
+async def test_payment_repository_uses_session_factory_when_no_session() -> (
+    None
+):
+    """Payment repo uses session_factory when no session."""
+
+    saved_models: list = []
+
+    class TrackingSession(FakeSession):
+        async def merge(self, model):  # type: ignore[no-untyped-def]
+            saved_models.append(model)
+            return model
 
     repo = SqlAlchemyPaymentRepository(
-        session_factory=lambda: FakeSession(None)
+        session_factory=lambda: TrackingSession(None)
     )
     payment = Payment(
         payment_id=UUID("00000000-0000-0000-0000-000000000182"),
@@ -1050,8 +1067,8 @@ async def test_payment_repository_rejects_invalid_session() -> None:
         created_at=datetime.now(timezone.utc),
         paid_at=datetime.now(timezone.utc),
     )
-    with pytest.raises(RuntimeError):
-        await repo.save(payment)
+    await repo.save(payment)
+    assert len(saved_models) == 1
 
 
 @pytest.mark.asyncio
@@ -1165,8 +1182,8 @@ async def test_outbox_repository_save_and_get() -> None:
 
 
 @pytest.mark.asyncio
-async def test_outbox_repository_rejects_invalid_session() -> None:
-    """Outbox repository rejects invalid session type."""
+async def test_outbox_repository_uses_session_factory_when_no_session() -> None:
+    """Outbox repo uses session_factory when no session."""
 
     event = OutboxEvent(
         event_id=UUID("00000000-0000-0000-0000-000000000010"),
@@ -1181,13 +1198,13 @@ async def test_outbox_repository_rejects_invalid_session() -> None:
         last_error=None,
     )
     repo = SqlAlchemyOutboxRepository(session_factory=lambda: FakeSession(None))
-    with pytest.raises(RuntimeError):
-        await repo.save(event)
+    # Should not raise RuntimeError — session_factory opens own session
+    await repo.save(event)
 
 
 @pytest.mark.asyncio
-async def test_require_session_raises_when_no_session() -> None:
-    """Calling repo method without session raises RuntimeError."""
+async def test_repo_uses_session_factory_when_no_session() -> None:
+    """Calling repo method without session uses session_factory to open one."""
     model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000199"),
         external_id="199",
@@ -1198,8 +1215,9 @@ async def test_require_session_raises_when_no_session() -> None:
         created_at=datetime.now(timezone.utc),
     )
     repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
-    with pytest.raises(RuntimeError, match="session is required"):
-        await repo.get_by_id(model.user_id)
+    user = await repo.get_by_id(model.user_id)
+    assert user is not None
+    assert user.external_id == "199"
 
 
 @pytest.mark.asyncio
@@ -2564,7 +2582,7 @@ async def test_sql_referral_order_income_loader_returns_rows() -> None:
         order_id=order_id,
     )
     session = FakeSession([row_data])
-    loader = SqlReferralOrderIncomeLoader()
+    loader = SqlReferralOrderIncomeLoader(session_factory=lambda: session)
     rows = await loader.load_referral_order_income_rows(
         referrer_id, limit=10, session=session
     )
@@ -2600,7 +2618,7 @@ async def test_sql_referral_order_income_loader_advertisers_returns_rows() -> (
         order_id=order_id,
     )
     session = FakeSession([row_data])
-    loader = SqlReferralOrderIncomeLoader()
+    loader = SqlReferralOrderIncomeLoader(session_factory=lambda: session)
     rows = await loader.load_referral_order_income_rows_advertisers(
         referrer_id, limit=10, session=session
     )
@@ -2634,7 +2652,7 @@ async def test_sql_referral_order_income_loader_combined_returns_rows() -> None:
         order_id=order_id,
     )
     session = FakeSession([row_data])
-    loader = SqlReferralOrderIncomeLoader()
+    loader = SqlReferralOrderIncomeLoader(session_factory=lambda: session)
     rows = await loader.load_referral_order_income_rows_combined(
         referrer_id, limit=10, session=session
     )
@@ -2668,7 +2686,9 @@ async def test_sql_referral_order_income_loader_combined_batch() -> None:
         order_id=order_id,
     )
     session = FakeSession([row_data])
-    loader = SqlReferralOrderIncomeLoader()
+    loader = SqlReferralOrderIncomeLoader(
+        session_factory=lambda: FakeSession(None)
+    )
     rows = await loader.load_referral_order_income_rows_combined_batch(
         [referrer_id], limit=None, session=session
     )
@@ -2686,7 +2706,9 @@ async def test_sql_referral_order_income_loader_combined_batch_empty() -> None:
         SqlReferralOrderIncomeLoader,
     )
 
-    loader = SqlReferralOrderIncomeLoader()
+    loader = SqlReferralOrderIncomeLoader(
+        session_factory=lambda: FakeSession(None)
+    )
     rows = await loader.load_referral_order_income_rows_combined_batch(
         [], limit=None, session=FakeSession(None)
     )
@@ -2826,3 +2848,691 @@ async def test_sqlalchemy_language_repo_list_enabled_no_session() -> None:
     result = await repo.list_enabled(session=None)
     assert len(result) == 1
     assert result[0].code == "en"
+
+
+# ---------------------------------------------------------------------------
+# SqlAlchemyManagerOrderRepository tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_list_by_order_returns_entities() -> None:
+    """list_by_order maps ORM models to ManagerOrder entities."""
+    from ugc_bot.domain.entities import ManagerOrder
+    from ugc_bot.infrastructure.db.models import ManagerOrderModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    order_id = UUID("00000000-0000-0000-0000-000000000001")
+    user_id = UUID("00000000-0000-0000-0000-000000000002")
+    now = datetime.now(timezone.utc)
+    model = ManagerOrderModel(
+        user_id=user_id,
+        order_id=order_id,
+        created_at=now,
+        updated_at=None,
+    )
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_by_order(order_id, session=_repo_session(repo))
+    assert len(result) == 1
+    assert isinstance(result[0], ManagerOrder)
+    assert result[0].order_id == order_id
+    assert result[0].user_id == user_id
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_list_by_order_empty() -> None:
+    """list_by_order returns empty list when there are no assignments."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    order_id = UUID("00000000-0000-0000-0000-000000000010")
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory([])
+    )
+    result = await repo.list_by_order(order_id, session=_repo_session(repo))
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_list_by_order_no_session() -> None:
+    """list_by_order uses session_factory when no session is provided."""
+    from ugc_bot.domain.entities import ManagerOrder
+    from ugc_bot.infrastructure.db.models import ManagerOrderModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    order_id = UUID("00000000-0000-0000-0000-000000000003")
+    user_id = UUID("00000000-0000-0000-0000-000000000004")
+    now = datetime.now(timezone.utc)
+    model = ManagerOrderModel(
+        user_id=user_id,
+        order_id=order_id,
+        created_at=now,
+        updated_at=None,
+    )
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_by_order(order_id, session=None)
+    assert len(result) == 1
+    assert isinstance(result[0], ManagerOrder)
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_list_by_user_returns_entities() -> None:
+    """list_by_user maps ORM models to ManagerOrder entities."""
+    from ugc_bot.domain.entities import ManagerOrder
+    from ugc_bot.infrastructure.db.models import ManagerOrderModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000005")
+    order_id = UUID("00000000-0000-0000-0000-000000000006")
+    now = datetime.now(timezone.utc)
+    model = ManagerOrderModel(
+        user_id=user_id,
+        order_id=order_id,
+        created_at=now,
+        updated_at=now,
+    )
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_by_user(user_id, session=_repo_session(repo))
+    assert len(result) == 1
+    assert isinstance(result[0], ManagerOrder)
+    assert result[0].user_id == user_id
+    assert result[0].updated_at == now
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_list_by_user_empty() -> None:
+    """list_by_user returns empty list when no assignments exist for user."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000020")
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory([])
+    )
+    result = await repo.list_by_user(user_id, session=_repo_session(repo))
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_list_order_ids_by_user() -> None:
+    """list_order_ids_by_user returns a list of UUID order IDs."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    order_id = UUID("00000000-0000-0000-0000-000000000007")
+    user_id = UUID("00000000-0000-0000-0000-000000000008")
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory([order_id])
+    )
+    result = await repo.list_order_ids_by_user(
+        user_id, session=_repo_session(repo)
+    )
+    assert result == [order_id]
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_list_order_ids_by_user_empty() -> None:
+    """list_order_ids_by_user returns empty list when no assignments exist."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000030")
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory([])
+    )
+    result = await repo.list_order_ids_by_user(
+        user_id, session=_repo_session(repo)
+    )
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_count_by_user_nonzero() -> None:
+    """count_by_user returns the integer count from the scalar result."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000009")
+    repo = SqlAlchemyManagerOrderRepository(session_factory=_session_factory(3))
+    count = await repo.count_by_user(user_id, session=_repo_session(repo))
+    assert count == 3
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_count_by_user_zero() -> None:
+    """count_by_user returns 0 when no assignments exist."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000040")
+    repo = SqlAlchemyManagerOrderRepository(session_factory=_session_factory(0))
+    count = await repo.count_by_user(user_id, session=_repo_session(repo))
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_save_merges_model() -> None:
+    """save merges a ManagerOrderModel into the session."""
+    from ugc_bot.domain.entities import ManagerOrder
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000011")
+    order_id = UUID("00000000-0000-0000-0000-000000000012")
+    now = datetime.now(timezone.utc)
+    entity = ManagerOrder(
+        user_id=user_id,
+        order_id=order_id,
+        created_at=now,
+        updated_at=None,
+    )
+    session = FakeSession(None)
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.save(entity, session=session)
+    assert session.merged is not None
+    assert session.merged.user_id == user_id
+    assert session.merged.order_id == order_id
+    assert session.merged.created_at == now
+    assert session.merged.updated_at is None
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_save_with_updated_at() -> None:
+    """save persists updated_at when it is set on the entity."""
+    from ugc_bot.domain.entities import ManagerOrder
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000013")
+    order_id = UUID("00000000-0000-0000-0000-000000000014")
+    now = datetime.now(timezone.utc)
+    updated = now + timedelta(hours=1)
+    entity = ManagerOrder(
+        user_id=user_id,
+        order_id=order_id,
+        created_at=now,
+        updated_at=updated,
+    )
+    session = FakeSession(None)
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.save(entity, session=session)
+    assert session.merged.updated_at == updated
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_delete_by_order_executes_delete() -> None:
+    """delete_by_order executes a DELETE statement without raising."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    order_id = UUID("00000000-0000-0000-0000-000000000015")
+    session = FakeSession(None)
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory(None)
+    )
+    # Should complete without error; FakeSession records execute calls.
+    await repo.delete_by_order(order_id, session=session)
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_delete_by_order_no_session() -> None:
+    """delete_by_order uses session_factory when no session is provided."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    order_id = UUID("00000000-0000-0000-0000-000000000050")
+    repo = SqlAlchemyManagerOrderRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.delete_by_order(order_id, session=None)
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_exists_for_user_true() -> None:
+    """exists_for_user returns True when count > 0."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000016")
+    repo = SqlAlchemyManagerOrderRepository(session_factory=_session_factory(2))
+    exists = await repo.exists_for_user(user_id, session=_repo_session(repo))
+    assert exists is True
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_exists_for_user_false() -> None:
+    """exists_for_user returns False when count is 0."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000017")
+    repo = SqlAlchemyManagerOrderRepository(session_factory=_session_factory(0))
+    exists = await repo.exists_for_user(user_id, session=_repo_session(repo))
+    assert exists is False
+
+
+@pytest.mark.asyncio
+async def test_manager_order_repo_exists_for_user_no_session() -> None:
+    """exists_for_user uses session_factory when no session is provided."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyManagerOrderRepository,
+    )
+
+    user_id = UUID("00000000-0000-0000-0000-000000000060")
+    repo = SqlAlchemyManagerOrderRepository(session_factory=_session_factory(1))
+    exists = await repo.exists_for_user(user_id, session=None)
+    assert exists is True
+
+
+# ---------------------------------------------------------------------------
+# _resolve_session, _require_session, _get_async_session helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_session_rollback_on_error() -> None:
+    """_resolve_session rolls back and closes on error."""
+    from ugc_bot.infrastructure.db.repositories import _resolve_session
+
+    class ErrorSession(FakeSession):
+        rollback_called = False
+        close_called = False
+
+        async def rollback(self) -> None:  # type: ignore[override]
+            self.rollback_called = True
+
+        async def close(self) -> None:  # type: ignore[override]
+            self.close_called = True
+
+    sess = ErrorSession(None)
+    with pytest.raises(ValueError):
+        async with _resolve_session(lambda: sess) as _:
+            raise ValueError("test error")
+    assert sess.rollback_called
+    assert sess.close_called
+
+
+@pytest.mark.asyncio
+async def test_require_session_still_raises() -> None:
+    """_require_session raises RuntimeError when session is None."""
+    from ugc_bot.infrastructure.db.repositories import _require_session
+
+    with pytest.raises(RuntimeError, match="session is required"):
+        _require_session(None)
+
+
+@pytest.mark.asyncio
+async def test_get_async_session_none_raises() -> None:
+    """_get_async_session raises RuntimeError when session is None."""
+    from ugc_bot.infrastructure.db.repositories import _get_async_session
+
+    with pytest.raises(RuntimeError):
+        _get_async_session(None)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap fill: existing repos missing tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_blogger_profile_repo_get_by_user_ids_nonempty() -> None:
+    """get_by_user_ids returns a dict keyed by user_id."""
+    user_id = UUID("00000000-0000-0000-0000-000000000701")
+    model = BloggerProfileModel(
+        user_id=user_id,
+        instagram_url="https://instagram.com/u1",
+        confirmed=False,
+        city="Moscow",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyBloggerProfileRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.get_by_user_ids([user_id], session=_repo_session(repo))
+    assert user_id in result
+    assert result[user_id].instagram_url == "https://instagram.com/u1"
+
+
+@pytest.mark.asyncio
+async def test_instagram_stats_repo_get_by_user_ids_nonempty() -> None:
+    """get_by_user_ids returns a dict of InstagramStats keyed by user_id."""
+    user_id = UUID("00000000-0000-0000-0000-000000000702")
+    model = InstagramStatsModel(
+        user_id=user_id,
+        raw_response={},
+        fetched_at=datetime.now(timezone.utc),
+        followers_count=1000,
+        follows_count=200,
+        media_count=50,
+        provider="rapid_api",
+    )
+    repo = SqlAlchemyInstagramStatsRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.get_by_user_ids([user_id], session=_repo_session(repo))
+    assert user_id in result
+    assert result[user_id].followers_count == 1000
+
+
+@pytest.mark.asyncio
+async def test_order_repo_get_by_ids_nonempty() -> None:
+    """get_by_ids returns a list of Order entities in IDs order."""
+    order_id = UUID("00000000-0000-0000-0000-000000000703")
+    model = OrderModel(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000704"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Test",
+        barter_description="Barter",
+        price=0.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyOrderRepository(session_factory=_session_factory([model]))
+    result = await repo.get_by_ids([order_id], session=_repo_session(repo))
+    assert len(result) == 1
+    assert result[0].order_id == order_id
+
+
+@pytest.mark.asyncio
+async def test_bot_texts_repo_get_returns_value() -> None:
+    """get returns the text value when key and locale match."""
+    from ugc_bot.infrastructure.db.models import BotTextModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyBotTextsRepository,
+    )
+
+    model = BotTextModel(
+        key="welcome",
+        locale="ru",
+        value="Добро пожаловать",
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyBotTextsRepository(session_factory=_session_factory(model))
+    value = await repo.get("welcome", "ru", session=_repo_session(repo))
+    assert value == "Добро пожаловать"
+
+
+@pytest.mark.asyncio
+async def test_bot_texts_repo_get_returns_none_when_missing() -> None:
+    """get returns None when no row is found."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyBotTextsRepository,
+    )
+
+    repo = SqlAlchemyBotTextsRepository(session_factory=_session_factory(None))
+    value = await repo.get("nonexistent", "en", session=_repo_session(repo))
+    assert value is None
+
+
+@pytest.mark.asyncio
+async def test_bot_texts_repo_get_all_returns_tuples() -> None:
+    """get_all returns list of (key, locale, value) tuples."""
+    from ugc_bot.infrastructure.db.models import BotTextModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyBotTextsRepository,
+    )
+
+    model = BotTextModel(
+        key="greeting",
+        locale="en",
+        value="Hello",
+        updated_at=datetime.now(timezone.utc),
+    )
+    repo = SqlAlchemyBotTextsRepository(
+        session_factory=_session_factory([model])
+    )
+    rows = await repo.get_all(session=_repo_session(repo))
+    assert rows == [("greeting", "en", "Hello")]
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repo_list_responses_in_offer_only() -> None:
+    """list_responses_by_blogger with in_offer_only=True appends the filter."""
+    blogger_id = UUID("00000000-0000-0000-0000-000000000705")
+    model = OfferDispatchModel(
+        order_id=UUID("00000000-0000-0000-0000-000000000706"),
+        blogger_id=blogger_id,
+        created_at=datetime.now(timezone.utc),
+        accepted=True,
+        in_offer=True,
+    )
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_responses_by_blogger(
+        blogger_id, session=_repo_session(repo), in_offer_only=True
+    )
+    assert len(result) == 1
+    assert result[0].in_offer is True
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repo_list_responses_by_order_and_manager() -> (
+    None
+):
+    """list_responses_by_order_and_manager returns mapped entities."""
+    order_id = UUID("00000000-0000-0000-0000-000000000707")
+    manager_id = UUID("00000000-0000-0000-0000-000000000708")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000709")
+    now = datetime.now(timezone.utc)
+    model = OfferDispatchModel(
+        order_id=order_id,
+        blogger_id=blogger_id,
+        created_at=now,
+        accepted=True,
+        in_offer=True,
+        manager_id=manager_id,
+    )
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_responses_by_order_and_manager(
+        order_id=order_id,
+        manager_id=manager_id,
+        in_offer=True,
+        session=_repo_session(repo),
+    )
+    assert len(result) == 1
+    assert result[0].order_id == order_id
+    assert result[0].manager_id == manager_id
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repo_list_responses_by_manager_none() -> None:
+    """list_responses_by_order_and_manager with manager_id=None returns all."""
+    order_id = UUID("00000000-0000-0000-0000-000000000710")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000711")
+    model = OfferDispatchModel(
+        order_id=order_id,
+        blogger_id=blogger_id,
+        created_at=datetime.now(timezone.utc),
+        accepted=True,
+        in_offer=False,
+    )
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory([model])
+    )
+    result = await repo.list_responses_by_order_and_manager(
+        order_id=order_id,
+        manager_id=None,
+        in_offer=False,
+        session=_repo_session(repo),
+    )
+    assert len(result) == 1
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repo_count_responses_by_order_and_manager() -> (
+    None
+):
+    """count_responses_by_order_and_manager returns scalar count."""
+    order_id = UUID("00000000-0000-0000-0000-000000000712")
+    manager_id = UUID("00000000-0000-0000-0000-000000000713")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(5)
+    )
+    count = await repo.count_responses_by_order_and_manager(
+        order_id=order_id,
+        manager_id=manager_id,
+        in_offer=True,
+        session=_repo_session(repo),
+    )
+    assert count == 5
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repo_count_responses_manager_none() -> None:
+    """count_responses_by_order_and_manager with manager_id=None counts all."""
+    order_id = UUID("00000000-0000-0000-0000-000000000714")
+    repo = SqlAlchemyOfferDispatchRepository(
+        session_factory=_session_factory(3)
+    )
+    count = await repo.count_responses_by_order_and_manager(
+        order_id=order_id,
+        manager_id=None,
+        in_offer=False,
+        session=_repo_session(repo),
+    )
+    assert count == 3
+
+
+@pytest.mark.asyncio
+async def test_outbox_repo_reset_stale_processing_returns_count() -> None:
+    """reset_stale_processing_events returns the rowcount from execute."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyOutboxRepository,
+    )
+
+    class RowcountResult:
+        rowcount = 3
+
+    class RowcountSession(FakeSession):
+        async def execute(self, *_args, **_kwargs):
+            return RowcountResult()
+
+    sess = RowcountSession(None)
+    repo = SqlAlchemyOutboxRepository(session_factory=_session_factory(None))
+    result = await repo.reset_stale_processing_events(
+        stale_after_minutes=15, session=sess
+    )
+    assert result == 3
+
+
+@pytest.mark.asyncio
+async def test_outbox_repo_reset_stale_processing_no_rowcount() -> None:
+    """reset_stale_processing_events returns 0 when rowcount is absent."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyOutboxRepository,
+    )
+
+    class NoRowcountResult:
+        pass
+
+    class NoRowcountSession(FakeSession):
+        async def execute(self, *_args, **_kwargs):
+            return NoRowcountResult()
+
+    sess = NoRowcountSession(None)
+    repo = SqlAlchemyOutboxRepository(session_factory=_session_factory(None))
+    result = await repo.reset_stale_processing_events(
+        stale_after_minutes=15, session=sess
+    )
+    assert result == 0
+
+
+@pytest.mark.asyncio
+async def test_country_repo_get_by_currency_code_found() -> None:
+    """get_by_currency_code returns Country when a matching row exists."""
+    from ugc_bot.infrastructure.db.models import CountryModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyCountryRepository,
+    )
+
+    model = CountryModel()
+    model.code = "RU"
+    model.name_native = "Россия"
+    model.currency_code = "RUB"
+    model.currency_symbol = "₽"
+    model.locale = "ru"
+    model.enabled = True
+
+    repo = SqlAlchemyCountryRepository(session_factory=_session_factory(model))
+    result = await repo.get_by_currency_code("RUB", session=_repo_session(repo))
+    assert result is not None
+    assert result.currency_code == "RUB"
+    assert result.code == "RU"
+
+
+@pytest.mark.asyncio
+async def test_country_repo_get_by_currency_code_not_found() -> None:
+    """get_by_currency_code returns None when no matching country."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyCountryRepository,
+    )
+
+    repo = SqlAlchemyCountryRepository(session_factory=_session_factory(None))
+    result = await repo.get_by_currency_code("XYZ", session=_repo_session(repo))
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_country_repo_execute_in_session_no_session() -> None:
+    """_execute_in_session uses session_factory when session=None."""
+    from ugc_bot.infrastructure.db.models import CountryModel
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyCountryRepository,
+    )
+
+    model = CountryModel()
+    model.code = "GE"
+    model.name_native = "Georgia"
+    model.currency_code = "GEL"
+    model.currency_symbol = "₾"
+    model.locale = "en"
+    model.enabled = True
+
+    repo = SqlAlchemyCountryRepository(session_factory=_session_factory(model))
+    # Passing session=None forces _execute_in_session to use session_factory
+    result = await repo.get_by_currency_code("GEL", session=None)
+    assert result is not None
+    assert result.code == "GE"

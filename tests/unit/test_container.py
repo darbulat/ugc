@@ -290,6 +290,38 @@ def test_container_build_bot_services() -> None:
     assert "contact_pricing_service" in services
     assert "profile_service" in services
     assert "complaint_service" in services
+    assert "manager_service" in services
+    assert "manager_order_repo" in services
+
+
+def test_container_build_bot_texts_service() -> None:
+    """build_bot_texts_service creates BotTextsService instance."""
+    from ugc_bot.application.services.bot_texts_service import BotTextsService
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    service = container.build_bot_texts_service()
+    assert isinstance(service, BotTextsService)
+
+
+def test_container_build_manager_service() -> None:
+    """build_manager_service creates ManagerService instance."""
+    from ugc_bot.application.services.manager_service import ManagerService
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    service = container.build_manager_service()
+    assert isinstance(service, ManagerService)
 
 
 def test_container_build_bot_services_requires_database_url() -> None:

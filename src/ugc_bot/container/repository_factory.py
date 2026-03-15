@@ -13,6 +13,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
     SqlAlchemyLanguageRepository,
+    SqlAlchemyManagerOrderRepository,
     SqlAlchemyNpsRepository,
     SqlAlchemyOfferDispatchRepository,
     SqlAlchemyOrderRepository,
@@ -87,11 +88,16 @@ def build_repos(
         "payout_request_repo": SqlAlchemyPayoutRequestRepository(
             session_factory=session_factory
         ),
-        "referral_order_income_loader": SqlReferralOrderIncomeLoader(),
+        "referral_order_income_loader": SqlReferralOrderIncomeLoader(
+            session_factory=session_factory
+        ),
         "country_repo": SqlAlchemyCountryRepository(
             session_factory=session_factory
         ),
         "language_repo": SqlAlchemyLanguageRepository(
+            session_factory=session_factory
+        ),
+        "manager_order_repo": SqlAlchemyManagerOrderRepository(
             session_factory=session_factory
         ),
     }
