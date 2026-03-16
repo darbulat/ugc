@@ -12,29 +12,54 @@ from sqlalchemy import create_engine
 from ugc_bot.infrastructure.db.base import Base
 
 
+_MINIAPP_CLASS_ORDER = {
+    "TestMiniAppAdvertiser": 0,
+    "TestMiniAppBlogger": 1,
+    "TestMiniAppNavigation": 2,
+}
+
+
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Run profile_update e2e_telegram tests after registration tests."""
+    """Order e2e_telegram and miniapp tests."""
+    # --- Telegram e2e ordering (existing) ---
     telegram_items = [
         (i, item)
         for i, item in enumerate(items)
         if item.get_closest_marker("e2e_telegram") is not None
     ]
-    if not telegram_items:
+    if telegram_items:
+
+        def order_key(entry: tuple[int, pytest.Item]) -> tuple[int, int]:
+            idx, item = entry
+            nodeid = item.nodeid
+            if "profile_update" in nodeid:
+                return (1, idx)
+            return (0, idx)
+
+        telegram_items.sort(key=order_key)
+        reordered_ids = [item.nodeid for _, item in telegram_items]
+        id_to_item = {item.nodeid: item for item in items}
+        remaining = [item for item in items if item.nodeid not in reordered_ids]
+        items[:] = remaining + [id_to_item[nid] for nid in reordered_ids]
+
+    # --- Miniapp e2e ordering ---
+    miniapp_items = []
+    for i, item in enumerate(items):
+        cls = getattr(item, "cls", None)
+        if cls and cls.__name__ in _MINIAPP_CLASS_ORDER:
+            miniapp_items.append((i, item))
+    if not miniapp_items:
         return
 
-    def order_key(entry: tuple[int, pytest.Item]) -> tuple[int, int]:
+    def miniapp_order_key(entry: tuple[int, pytest.Item]) -> tuple[int, int]:
         idx, item = entry
-        nodeid = item.nodeid
-        # profile_update tests run last (higher key)
-        if "profile_update" in nodeid:
-            return (1, idx)
-        return (0, idx)
+        cls = getattr(item, "cls", None)
+        cls_order = _MINIAPP_CLASS_ORDER.get(cls.__name__, 99) if cls else 99
+        return (cls_order, idx)
 
-    telegram_items.sort(key=order_key)
-    # Build set of telegram item ids to reorder only those in items
-    reordered_ids = [item.nodeid for _, item in telegram_items]
+    miniapp_items.sort(key=miniapp_order_key)
+    reordered_ids = [item.nodeid for _, item in miniapp_items]
     id_to_item = {item.nodeid: item for item in items}
-    # Remove telegram items from original positions, then append in new order
     remaining = [item for item in items if item.nodeid not in reordered_ids]
     items[:] = remaining + [id_to_item[nid] for nid in reordered_ids]
 
@@ -172,3 +197,37 @@ def base_url() -> str:
     """Base URL for admin app (local or Docker)."""
     env_url = os.environ.get("E2E_BASE_URL", "").strip()
     return env_url if env_url else BASE_URL
+
+
+# --- Mini App E2E fixtures ---
+
+MINIAPP_TEST_USER_IDS = {
+    "advertiser": {"ru": 990000001, "en": 990000002},
+    "blogger": {"ru": 990000011, "en": 990000012},
+}
+
+
+def _miniapp_base_url() -> str | None:
+    return os.environ.get("E2E_MINIAPP_URL", "").strip() or None
+
+
+def _miniapp_bot_token() -> str | None:
+    return os.environ.get("E2E_BOT_TOKEN", "").strip() or None
+
+
+@pytest.fixture(scope="session")
+def miniapp_base_url() -> str:
+    """Base URL for Mini App. Skips if E2E_MINIAPP_URL not set."""
+    url = _miniapp_base_url()
+    if not url:
+        pytest.skip("E2E_MINIAPP_URL not set")
+    return url
+
+
+@pytest.fixture(scope="session")
+def miniapp_bot_token() -> str:
+    """Bot token for signing initData. Skips if E2E_BOT_TOKEN not set."""
+    token = _miniapp_bot_token()
+    if not token:
+        pytest.skip("E2E_BOT_TOKEN not set")
+    return token
