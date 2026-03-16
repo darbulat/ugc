@@ -83,6 +83,13 @@ def build_receipt_provider_data(
     return json.dumps(receipt, ensure_ascii=False)
 
 
+def _get_provider_token(user_country: str | None, config: AppConfig) -> str:
+    """Return RU or international provider token based on user country."""
+    if (user_country or "").lower() == "ru":
+        return config.bot.telegram_provider_token
+    return config.bot.telegram_provider_token_intl
+
+
 async def send_order_invoice(
     incoming_message,
     messenger_client: MessengerClient,
@@ -93,8 +100,10 @@ async def send_order_invoice(
     bot_texts_service: BotTextsService,
     receipt_description: str | None = None,
     user_locale: str = "ru",
+    user_country: str | None = None,
+    order_currency: str | None = None,
 ) -> None:
-    """Send invoice for order with 54-FZ receipt (email via Telegram form)."""
+    """Send invoice: 54-FZ receipt for RU, plain invoice for international."""
     locale = user_locale
 
     if not incoming_message.chat_id:
@@ -125,17 +134,23 @@ async def send_order_invoice(
         )
         return
 
-    currency = config.market.payment_currency
-    currency_symbol = config.market.currency_symbol
+    is_ru = (user_country or "").lower() == "ru"
+    currency = order_currency or config.market.payment_currency
+    currency_symbol = config.market.currency_symbol if is_ru else currency
+    provider_token = _get_provider_token(user_country, config)
     receipt_desc = (
         (receipt_description or "").strip()
         or config.market.receipt_service_description
         or DEFAULT_RECEIPT_SERVICE_DESCRIPTION
     )
-    provider_data = build_receipt_provider_data(
-        total_amount=price_value,
-        currency=currency,
-        receipt_description=receipt_desc,
+    provider_data = (
+        build_receipt_provider_data(
+            total_amount=price_value,
+            currency=currency,
+            receipt_description=receipt_desc,
+        )
+        if is_ru
+        else None
     )
 
     try:
@@ -145,7 +160,7 @@ async def send_order_invoice(
                 title=await bot_texts_service.get("msg_title_payment", locale),
                 description=offer_text[:255],
                 payload=str(order_id),
-                provider_token=config.bot.telegram_provider_token,
+                provider_token=provider_token,
                 currency=currency,
                 items=[
                     InvoiceItem(
@@ -279,7 +294,7 @@ async def start_pay_order_link(
             text=msg_pricing,
         )
         return
-    if not config.bot.telegram_provider_token:
+    if not _get_provider_token(user.country, config):
         msg_provider = await bot_texts_service.get(
             "msg_payment_provider_not_configured", locale
         )
@@ -301,6 +316,8 @@ async def start_pay_order_link(
         bot_texts_service=bot_texts_service,
         receipt_description=receipt_desc,
         user_locale=user_locale,
+        user_country=user.country,
+        order_currency=order.currency,
     )
 
 
@@ -414,7 +431,7 @@ async def pay_order(
         )
         return
 
-    if not config.bot.telegram_provider_token:
+    if not _get_provider_token(user.country, config):
         msg_provider = await bot_texts_service.get(
             "msg_payment_provider_not_configured", locale
         )
@@ -437,6 +454,8 @@ async def pay_order(
         bot_texts_service=bot_texts_service,
         receipt_description=receipt_desc,
         user_locale=user_locale,
+        user_country=user.country,
+        order_currency=order.currency,
     )
 
 
@@ -548,7 +567,7 @@ async def pay_order_callback(
         )
         return
 
-    if not config.bot.telegram_provider_token:
+    if not _get_provider_token(user.country, config):
         msg_provider = await bot_texts_service.get(
             "msg_payment_provider_not_configured", locale
         )
@@ -571,6 +590,8 @@ async def pay_order_callback(
         bot_texts_service=bot_texts_service,
         receipt_description=receipt_desc,
         user_locale=user_locale,
+        user_country=user.country,
+        order_currency=order.currency,
     )
 
 

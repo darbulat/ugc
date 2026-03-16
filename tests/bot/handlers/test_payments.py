@@ -98,6 +98,7 @@ async def test_pay_order_success(
         user_id=UUID("00000000-0000-0000-0000-000000000500"),
         external_id="1",
         username="adv",
+        country="ru",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
@@ -180,6 +181,7 @@ async def test_start_pay_order_link_sends_invoice(
         user_id=UUID("00000000-0000-0000-0000-000000000500"),
         external_id="1",
         username="adv",
+        country="ru",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
@@ -1754,6 +1756,7 @@ async def test_pay_order_callback_success(
         user_id=UUID("00000000-0000-0000-0000-000000000540"),
         external_id="40",
         username="adv",
+        country="ru",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
