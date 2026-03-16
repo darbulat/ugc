@@ -106,6 +106,9 @@ class ConfigResponse(BaseModel):
     docs_offer_url: str = ""
     docs_privacy_url: str = ""
     docs_consent_url: str = ""
+    docs_offer_url_intl: str = ""
+    docs_privacy_url_intl: str = ""
+    docs_consent_url_intl: str = ""
     admin_instagram_username: str = ""
     countries: list[dict[str, str]] = []
 
@@ -465,6 +468,15 @@ async def config(request: Request, body: InitDataBody) -> ConfigResponse:
     docs_offer_url = (docs.docs_offer_url or "").strip() if docs else ""
     docs_privacy_url = (docs.docs_privacy_url or "").strip() if docs else ""
     docs_consent_url = (docs.docs_consent_url or "").strip() if docs else ""
+    docs_offer_url_intl = (
+        (docs.docs_offer_url_intl or "").strip() if docs else ""
+    )
+    docs_privacy_url_intl = (
+        (docs.docs_privacy_url_intl or "").strip() if docs else ""
+    )
+    docs_consent_url_intl = (
+        (docs.docs_consent_url_intl or "").strip() if docs else ""
+    )
     instagram_cfg = getattr(cfg, "instagram", None)
     admin_instagram_username = (
         (instagram_cfg.admin_instagram_username or "").strip().lstrip("@")
@@ -492,6 +504,9 @@ async def config(request: Request, body: InitDataBody) -> ConfigResponse:
         docs_offer_url=docs_offer_url,
         docs_privacy_url=docs_privacy_url,
         docs_consent_url=docs_consent_url,
+        docs_offer_url_intl=docs_offer_url_intl,
+        docs_privacy_url_intl=docs_privacy_url_intl,
+        docs_consent_url_intl=docs_consent_url_intl,
         admin_instagram_username=admin_instagram_username,
         countries=countries_list,
     )

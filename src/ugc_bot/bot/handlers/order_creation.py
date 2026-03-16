@@ -191,6 +191,7 @@ async def start_order_creation(
             config,
             intro=msg_confirm_intro,
             texts=agree_texts,
+            country_code=user.country,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -288,6 +289,7 @@ async def start_order_creation_from_profile_callback(
             config,
             intro=msg_confirm_intro,
             texts=agree_texts,
+            country_code=user.country,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

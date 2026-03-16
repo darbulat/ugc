@@ -408,6 +408,9 @@ class TestConfigEndpointCountries:
         docs.docs_offer_url = ""
         docs.docs_privacy_url = ""
         docs.docs_consent_url = ""
+        docs.docs_offer_url_intl = ""
+        docs.docs_privacy_url_intl = ""
+        docs.docs_consent_url_intl = ""
         cfg.docs = docs
         cfg.instagram.admin_instagram_username = ""
 

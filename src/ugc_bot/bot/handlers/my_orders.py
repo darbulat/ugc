@@ -175,6 +175,7 @@ async def _send_my_orders_content(
             config,
             intro=agree_texts.get("msg_confirm_agreement"),
             texts=agree_texts,
+            country_code=getattr(user, "country", None),
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
