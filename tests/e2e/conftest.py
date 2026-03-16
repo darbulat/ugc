@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import sync_playwright
 from sqlalchemy import create_engine
 
 from ugc_bot.infrastructure.db.base import Base
@@ -256,10 +255,8 @@ def browser_context_args(browser_context_args: dict) -> dict:  # type: ignore[ty
 
 
 @pytest.fixture()
-def miniapp_page():
-    """Fresh Playwright browser/context/page for miniapp tests."""
-    pw = sync_playwright().start()
-    browser = pw.chromium.launch()
+def miniapp_page(browser):
+    """Fresh context/page that blocks telegram-web-app.js SDK."""
     ctx = browser.new_context(ignore_https_errors=True)
     ctx.route(
         "**/telegram-web-app.js",
@@ -270,5 +267,3 @@ def miniapp_page():
     page = ctx.new_page()
     yield page
     ctx.close()
-    browser.close()
-    pw.stop()
