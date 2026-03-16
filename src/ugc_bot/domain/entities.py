@@ -1,6 +1,6 @@
 """Domain entities for the UGC bot."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -39,6 +39,8 @@ class Country:
     name_native: str
     currency_code: str
     currency_symbol: str
+    locale: str = "ru"
+    tax_rate: Decimal = field(default_factory=lambda: Decimal("0"))
     enabled: bool = True
 
 
