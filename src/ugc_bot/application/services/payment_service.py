@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
@@ -20,6 +21,26 @@ from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_invoice_total(
+    contact_pricing_price: Decimal,
+    order_price: Decimal,
+    bloggers_needed: int,
+    tax_rate: Decimal,
+    is_ru: bool,
+) -> Decimal:
+    """Calculate invoice total. Single source of truth for pricing.
+
+    RU: total = contact_pricing_price
+    International: total = (contact_pricing + order_price * bloggers_needed) * (1 + tax_rate)
+    """
+    if is_ru:
+        return contact_pricing_price
+    base = contact_pricing_price + order_price * bloggers_needed
+    return (base * (1 + tax_rate)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
 
 @dataclass(slots=True)
