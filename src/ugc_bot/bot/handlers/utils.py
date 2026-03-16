@@ -398,6 +398,7 @@ def format_agreements_message(
     config: AppConfig,
     intro: str | None = None,
     texts: dict[str, str] | None = None,
+    country_code: str | None = None,
 ) -> str:
     """Build agreements text with clickable document links (HTML).
 
@@ -428,19 +429,17 @@ def format_agreements_message(
         "Please confirm your agreement with the platform documents.",
     )
 
+    offer_url, privacy_url, consent_url = config.docs.get_urls_for_country(
+        country_code
+    )
+
     parts = [intro, ""]
-    if config.docs.docs_offer_url:
-        parts.append(
-            f'<a href="{config.docs.docs_offer_url}">{offer_label}</a>'
-        )
-    if config.docs.docs_privacy_url:
-        parts.append(
-            f'<a href="{config.docs.docs_privacy_url}">{privacy_label}</a>'
-        )
-    if config.docs.docs_consent_url:
-        parts.append(
-            f'<a href="{config.docs.docs_consent_url}">{consent_label}</a>'
-        )
+    if offer_url:
+        parts.append(f'<a href="{offer_url}">{offer_label}</a>')
+    if privacy_url:
+        parts.append(f'<a href="{privacy_url}">{privacy_label}</a>')
+    if consent_url:
+        parts.append(f'<a href="{consent_url}">{consent_label}</a>')
     if len(parts) == 2:
         parts.append(fallback)
     return "\n".join(parts)

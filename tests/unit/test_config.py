@@ -134,6 +134,71 @@ def test_admin_config_rejects_weak_secret() -> None:
             AppConfig.model_validate({**base, "ADMIN_SECRET": weak})
 
 
+def test_docs_config_get_urls_for_country_ru() -> None:
+    """get_urls_for_country returns RU URLs for 'ru' and None."""
+    from ugc_bot.config import DocsConfig
+
+    docs = DocsConfig.model_validate(
+        {
+            "DOCS_OFFER_URL": "https://ru/offer",
+            "DOCS_PRIVACY_URL": "https://ru/privacy",
+            "DOCS_CONSENT_URL": "https://ru/consent",
+            "DOCS_OFFER_URL_INTL": "https://intl/offer",
+            "DOCS_PRIVACY_URL_INTL": "https://intl/privacy",
+            "DOCS_CONSENT_URL_INTL": "https://intl/consent",
+        }
+    )
+    assert docs.get_urls_for_country("ru") == (
+        "https://ru/offer",
+        "https://ru/privacy",
+        "https://ru/consent",
+    )
+    assert docs.get_urls_for_country(None) == (
+        "https://ru/offer",
+        "https://ru/privacy",
+        "https://ru/consent",
+    )
+
+
+def test_docs_config_get_urls_for_country_intl() -> None:
+    """get_urls_for_country returns INTL URLs for non-RU country."""
+    from ugc_bot.config import DocsConfig
+
+    docs = DocsConfig.model_validate(
+        {
+            "DOCS_OFFER_URL": "https://ru/offer",
+            "DOCS_PRIVACY_URL": "https://ru/privacy",
+            "DOCS_CONSENT_URL": "https://ru/consent",
+            "DOCS_OFFER_URL_INTL": "https://intl/offer",
+            "DOCS_PRIVACY_URL_INTL": "https://intl/privacy",
+            "DOCS_CONSENT_URL_INTL": "https://intl/consent",
+        }
+    )
+    assert docs.get_urls_for_country("kz") == (
+        "https://intl/offer",
+        "https://intl/privacy",
+        "https://intl/consent",
+    )
+
+
+def test_docs_config_get_urls_for_country_intl_fallback() -> None:
+    """get_urls_for_country falls back to RU when INTL is empty."""
+    from ugc_bot.config import DocsConfig
+
+    docs = DocsConfig.model_validate(
+        {
+            "DOCS_OFFER_URL": "https://ru/offer",
+            "DOCS_PRIVACY_URL": "https://ru/privacy",
+            "DOCS_CONSENT_URL": "https://ru/consent",
+        }
+    )
+    assert docs.get_urls_for_country("kz") == (
+        "https://ru/offer",
+        "https://ru/privacy",
+        "https://ru/consent",
+    )
+
+
 def test_order_config_rejects_non_integer_allowed_blogger_counts() -> None:
     """OrderConfig.parse_allowed_counts raises when value is not an integer."""
     from ugc_bot.config import OrderConfig

@@ -229,7 +229,9 @@ async def _advertiser_start_impl(
             keyboard=advertiser_menu_inline_keyboard(texts),
         )
         return
-    await state_store.update_data(user_id=user_id)
+    await state_store.update_data(
+        user_id=user_id, user_country=getattr(user, "country", None)
+    )
     if username and len(username.strip()) >= 2:
         await state_store.update_data(name=username)
         phone_prompt = texts.get("msg_phone_request", "")
@@ -642,7 +644,9 @@ async def handle_site_link(
         "msg_confirm_docs_fallback",
     ]
     texts = await bot_texts_service.get_many(agreement_keys, user_locale)
-    text = format_agreements_message(config, texts=texts)
+    text = format_agreements_message(
+        config, texts=texts, country_code=data.get("user_country")
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,

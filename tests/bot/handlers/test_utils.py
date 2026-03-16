@@ -20,6 +20,7 @@ from ugc_bot.bot.handlers.utils import (
     _resolve_user_lookup_from_callback,
     _resolve_user_lookup_from_message,
     _send_text_or_answer,
+    format_agreements_message,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
     parse_user_id_from_state,
@@ -598,3 +599,69 @@ async def test_resolve_currency_symbol_no_country_returns_default() -> None:
     )
     symbol = await resolve_currency_symbol(user, country_repo)
     assert symbol == "₽"
+
+
+def _make_config_with_docs(**docs_kwargs: str):
+    """Build minimal AppConfig with custom docs URLs."""
+    from ugc_bot.config import AppConfig
+
+    env = {
+        "BOT_TOKEN": "t",
+        "DATABASE_URL": "sqlite:///",
+        "ADMIN_USERNAME": "a",
+        "ADMIN_PASSWORD": "p",
+        "ADMIN_SECRET": "s",
+    }
+    env.update(docs_kwargs)
+    return AppConfig.model_validate(env)
+
+
+def test_format_agreements_message_ru_country_uses_ru_urls() -> None:
+    """format_agreements_message uses RU URLs for country_code='ru'."""
+    config = _make_config_with_docs(
+        DOCS_OFFER_URL="https://ru/offer",
+        DOCS_PRIVACY_URL="https://ru/privacy",
+        DOCS_CONSENT_URL="https://ru/consent",
+        DOCS_OFFER_URL_INTL="https://intl/offer",
+        DOCS_PRIVACY_URL_INTL="https://intl/privacy",
+        DOCS_CONSENT_URL_INTL="https://intl/consent",
+    )
+    result = format_agreements_message(config, country_code="ru")
+    assert "https://ru/offer" in result
+    assert "https://intl/offer" not in result
+
+
+def test_format_agreements_message_intl_country_uses_intl_urls() -> None:
+    """format_agreements_message uses INTL URLs for non-RU country."""
+    config = _make_config_with_docs(
+        DOCS_OFFER_URL="https://ru/offer",
+        DOCS_PRIVACY_URL="https://ru/privacy",
+        DOCS_CONSENT_URL="https://ru/consent",
+        DOCS_OFFER_URL_INTL="https://intl/offer",
+        DOCS_PRIVACY_URL_INTL="https://intl/privacy",
+        DOCS_CONSENT_URL_INTL="https://intl/consent",
+    )
+    result = format_agreements_message(config, country_code="kz")
+    assert "https://intl/offer" in result
+    assert "https://ru/offer" not in result
+
+
+def test_format_agreements_message_none_country_uses_ru_urls() -> None:
+    """format_agreements_message uses RU URLs when country_code is None."""
+    config = _make_config_with_docs(
+        DOCS_OFFER_URL="https://ru/offer",
+        DOCS_OFFER_URL_INTL="https://intl/offer",
+    )
+    result = format_agreements_message(config, country_code=None)
+    assert "https://ru/offer" in result
+
+
+def test_format_agreements_message_intl_fallback_to_ru() -> None:
+    """format_agreements_message falls back to RU when INTL is empty."""
+    config = _make_config_with_docs(
+        DOCS_OFFER_URL="https://ru/offer",
+        DOCS_PRIVACY_URL="https://ru/privacy",
+        DOCS_CONSENT_URL="https://ru/consent",
+    )
+    result = format_agreements_message(config, country_code="kz")
+    assert "https://ru/offer" in result

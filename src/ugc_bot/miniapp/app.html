@@ -559,9 +559,11 @@
         var fallbackEl = fallbackId ? document.getElementById(fallbackId) : null;
         if (!container) return;
         var cfg = window._config || {};
-        var offer = (cfg.docs_offer_url || '').trim();
-        var privacy = (cfg.docs_privacy_url || '').trim();
-        var consent = (cfg.docs_consent_url || '').trim();
+        var me = window._me || {};
+        var isRu = !me.country || me.country === 'ru';
+        var offer = ((isRu ? cfg.docs_offer_url : (cfg.docs_offer_url_intl || cfg.docs_offer_url)) || '').trim();
+        var privacy = ((isRu ? cfg.docs_privacy_url : (cfg.docs_privacy_url_intl || cfg.docs_privacy_url)) || '').trim();
+        var consent = ((isRu ? cfg.docs_consent_url : (cfg.docs_consent_url_intl || cfg.docs_consent_url)) || '').trim();
         container.innerHTML = '';
         if (offer) {
           var a = document.createElement('a');

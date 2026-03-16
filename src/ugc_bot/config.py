@@ -98,6 +98,9 @@ _FLAT_KEYS = {
         "DOCS_OFFER_URL",
         "DOCS_PRIVACY_URL",
         "DOCS_CONSENT_URL",
+        "DOCS_OFFER_URL_INTL",
+        "DOCS_PRIVACY_URL_INTL",
+        "DOCS_CONSENT_URL_INTL",
     ],
     "webhook": ["WEBHOOK_BASE_URL", "WEBHOOK_SECRET"],
     "outbox": [
@@ -432,6 +435,29 @@ class DocsConfig(BaseSettings):
     docs_offer_url: str = Field(default="", alias="DOCS_OFFER_URL")
     docs_privacy_url: str = Field(default="", alias="DOCS_PRIVACY_URL")
     docs_consent_url: str = Field(default="", alias="DOCS_CONSENT_URL")
+    docs_offer_url_intl: str = Field(default="", alias="DOCS_OFFER_URL_INTL")
+    docs_privacy_url_intl: str = Field(
+        default="", alias="DOCS_PRIVACY_URL_INTL"
+    )
+    docs_consent_url_intl: str = Field(
+        default="", alias="DOCS_CONSENT_URL_INTL"
+    )
+
+    def get_urls_for_country(
+        self, country_code: str | None
+    ) -> tuple[str, str, str]:
+        """Return (offer, privacy, consent) URLs based on country code."""
+        if country_code == "ru" or not country_code:
+            return (
+                self.docs_offer_url,
+                self.docs_privacy_url,
+                self.docs_consent_url,
+            )
+        return (
+            self.docs_offer_url_intl or self.docs_offer_url,
+            self.docs_privacy_url_intl or self.docs_privacy_url,
+            self.docs_consent_url_intl or self.docs_consent_url,
+        )
 
 
 class WebhookConfig(BaseSettings):

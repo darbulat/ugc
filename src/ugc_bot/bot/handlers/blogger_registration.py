@@ -295,7 +295,11 @@ async def _start_registration_flow_impl(
     step_name = await bot_texts_service.get("msg_step_ask_name", locale)
     user_id = getattr(user, "user_id", None)
     external_id = getattr(user, "external_id", None)
-    await state_store.update_data(user_id=user_id, external_id=external_id)
+    await state_store.update_data(
+        user_id=user_id,
+        external_id=external_id,
+        user_country=getattr(user, "country", None),
+    )
     await messenger_client.send_text(
         chat_id=chat_id,
         text=step_name,
@@ -1702,7 +1706,10 @@ async def handle_work_format_callback(
     agree_texts = await bot_texts_service.get_many(agree_keys, user_locale)
     agreements_intro = agree_texts.get("msg_agreements_intro_creator", "")
     agreements_text = format_agreements_message(
-        config, intro=agreements_intro, texts=agree_texts
+        config,
+        intro=agreements_intro,
+        texts=agree_texts,
+        country_code=data.get("user_country"),
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -1827,6 +1834,7 @@ async def handle_work_format(
         config,
         intro=agreements_intro,
         texts=agree_texts,
+        country_code=data.get("user_country"),
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,

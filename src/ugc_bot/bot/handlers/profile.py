@@ -1186,6 +1186,7 @@ async def show_profile(
             config,
             intro=agree_texts.get("msg_confirm_agreement"),
             texts=agree_texts,
+            country_code=user.country,
         )
         await message_ctx.answer(
             agreements_text,
@@ -1501,6 +1502,7 @@ async def handle_profile_my_profile_callback(
             config,
             intro=agree_texts.get("msg_confirm_agreement"),
             texts=agree_texts,
+            country_code=user.country,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
