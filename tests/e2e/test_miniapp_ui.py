@@ -20,15 +20,8 @@ def _open_miniapp(
     """Open mini app with mocked Telegram.WebApp."""
     init_data = generate_init_data(bot_token, user_id, username)
     script = build_telegram_mock_script(init_data, user_id, username)
-    # Block the real Telegram SDK so our mock isn't overwritten
-    page.route(
-        "**/telegram-web-app.js",
-        lambda route: route.fulfill(
-            status=200, body="", content_type="text/javascript"
-        ),
-    )
     page.add_init_script(script=script)
-    page.goto(f"{base_url}/miniapp/app.html")
+    page.goto(f"{base_url}/miniapp/app.html", wait_until="load")
 
 
 def _select_country(page: Page, locale: str) -> None:

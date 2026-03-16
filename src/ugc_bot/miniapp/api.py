@@ -348,13 +348,19 @@ async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
         external_id=external_id, messenger_type=MessengerType.TELEGRAM
     )
     if user is None:
-        await user_role_service.set_user(
-            external_id=external_id,
-            messenger_type=MessengerType.TELEGRAM,
-            username=f"user_{external_id}",
-            role_chosen=False,
-            telegram_username=telegram_username,
-        )
+        try:
+            await user_role_service.set_user(
+                external_id=external_id,
+                messenger_type=MessengerType.TELEGRAM,
+                username=f"user_{external_id}",
+                role_chosen=False,
+                telegram_username=telegram_username,
+            )
+        except Exception:
+            logger.debug(
+                "set_user race for external_id=%s, retrying GET",
+                external_id,
+            )
         user = await user_role_service.get_user(
             external_id=external_id, messenger_type=MessengerType.TELEGRAM
         )
