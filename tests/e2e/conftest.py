@@ -246,3 +246,9 @@ def miniapp_bot_token() -> str:
     if not token:
         pytest.skip("E2E_BOT_TOKEN not set")
     return token
+
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args: dict) -> dict:  # type: ignore[type-arg]
+    """Allow plain HTTP connections (Chromium HTTPS-First may upgrade them)."""
+    return {**browser_context_args, "ignore_https_errors": True}
