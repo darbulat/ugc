@@ -81,6 +81,37 @@ Pytest timeout is 5 seconds per test. Coverage threshold is 98%.
 
 ## Workflow
 
+### Development workflow (REQUIRED)
+
+**NEVER make changes directly in `main` branch.** Always use a feature branch:
+
+```bash
+# 1. Create and switch to a feature branch
+git checkout -b feature/your-branch-name
+
+# 2. Make changes, then verify locally
+make fix  # format + format-check + lint + typecheck + coverage (use before committing)
+
+# 3. Commit and push
+git add <files>
+git commit -m "..."
+git push -u origin feature/your-branch-name
+
+# 4. SSH to dev server and deploy
+ssh root@45.130.145.27
+cd ugc
+git pull
+git checkout feature/your-branch-name
+make dev-up
+
+# 5. Run tests on dev server
+DEV_NETWORK=ugc_default make test-all-docker-dev
+
+# 6. Review test results; fix any failures and repeat from step 2
+```
+
+### Local code quality
+
 After making any code changes, always run `make fix` to auto-format and verify (matches CI):
 
 ```bash
