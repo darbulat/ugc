@@ -249,6 +249,14 @@ def miniapp_bot_token() -> str:
 
 
 @pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args: dict) -> dict:  # type: ignore[type-arg]
+    """Disable Chromium HTTPS-First to allow plain HTTP to app:9999."""
+    args = list(browser_type_launch_args.get("args", []))
+    args.append("--disable-features=HttpsUpgrades")
+    return {**browser_type_launch_args, "args": args}
+
+
+@pytest.fixture(scope="session")
 def browser_context_args(browser_context_args: dict) -> dict:  # type: ignore[type-arg]
-    """Allow plain HTTP connections (Chromium HTTPS-First may upgrade them)."""
+    """Ignore HTTPS errors for self-signed certs in Docker."""
     return {**browser_context_args, "ignore_https_errors": True}
