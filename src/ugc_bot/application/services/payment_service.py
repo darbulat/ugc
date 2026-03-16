@@ -240,14 +240,32 @@ class PaymentService:
             if existing and existing.status == PaymentStatus.PAID:
                 return existing
 
+            country_code = (user.country or "ru").lower()
+            is_ru = country_code == "ru"
             pricing = await self.pricing_repo.get_by_bloggers_count(
-                order.bloggers_needed, session=session
+                order.bloggers_needed,
+                country_code=country_code,
+                session=session,
             )
             if pricing is None:
                 raise OrderCreationError(
                     "Contact pricing not configured for this bloggers count."
                 )
-            expected_amount_minor = round(pricing.price * 100)
+            tax_rate = Decimal("0")
+            if not is_ru and self.country_repo is not None:
+                country_obj = await self.country_repo.get_by_code(
+                    user.country, session=session
+                )
+                if country_obj:
+                    tax_rate = country_obj.tax_rate
+            expected = calculate_invoice_total(
+                pricing.price,
+                Decimal(str(order.price)),
+                order.bloggers_needed,
+                tax_rate,
+                is_ru,
+            )
+            expected_amount_minor = int(expected * 100)
             if total_amount != expected_amount_minor:
                 raise OrderCreationError(
                     "Payment amount does not match order price."

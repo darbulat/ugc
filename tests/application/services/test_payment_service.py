@@ -10,8 +10,10 @@ import pytest
 
 from tests.helpers.factories import (
     create_test_advertiser,
+    create_test_advertiser_profile,
     create_test_contact_pricing,
     create_test_order,
+    create_test_user,
 )
 from tests.helpers.services import build_payment_service
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
@@ -19,6 +21,7 @@ from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     ContactPricing,
+    Country,
     Order,
     Payment,
     User,
@@ -547,3 +550,44 @@ async def test_confirm_payment_pricing_not_configured(
             total_amount=100000,
             currency="RUB",
         )
+
+
+@pytest.mark.asyncio
+async def test_confirm_payment_intl_formula(
+    user_repo, advertiser_repo, order_repo, payment_repo,
+    pricing_repo, country_repo, fake_tm,
+):
+    """International payment validates against full formula."""
+    country_repo.countries["ge"] = Country(
+        code="ge", name_native="Georgia",
+        currency_code="GEL", currency_symbol="₾",
+        tax_rate=Decimal("0.18"),
+    )
+    pricing_repo.prices[("ge", 3)] = ContactPricing(
+        country_code="ge", bloggers_count=3,
+        price=Decimal("200"), currency="GEL",
+        updated_at=datetime.now(timezone.utc),
+    )
+    user = await create_test_user(
+        user_repo, external_id="1", country="ge",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    order = await create_test_order(
+        order_repo, user.user_id, price=500.0,
+        bloggers_needed=3, status=OrderStatus.NEW,
+    )
+    service = build_payment_service(
+        user_repo, advertiser_repo, order_repo,
+        payment_repo, pricing_repo, fake_tm,
+        country_repo=country_repo,
+    )
+    # (200 + 500 * 3) * (1 + 0.18) = 2006.00 → 200600 minor
+    payment = await service.confirm_telegram_payment(
+        user_id=user.user_id,
+        order_id=order.order_id,
+        provider_payment_charge_id="ext_123",
+        total_amount=200600,
+        currency="GEL",
+    )
+    assert payment.amount == 2006.00
+    assert payment.currency == "GEL"
