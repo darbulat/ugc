@@ -554,31 +554,49 @@ async def test_confirm_payment_pricing_not_configured(
 
 @pytest.mark.asyncio
 async def test_confirm_payment_intl_formula(
-    user_repo, advertiser_repo, order_repo, payment_repo,
-    pricing_repo, country_repo, fake_tm,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    pricing_repo,
+    country_repo,
+    fake_tm,
 ):
     """International payment validates against full formula."""
     country_repo.countries["ge"] = Country(
-        code="ge", name_native="Georgia",
-        currency_code="GEL", currency_symbol="₾",
+        code="ge",
+        name_native="Georgia",
+        currency_code="GEL",
+        currency_symbol="₾",
         tax_rate=Decimal("0.18"),
     )
     pricing_repo.prices[("ge", 3)] = ContactPricing(
-        country_code="ge", bloggers_count=3,
-        price=Decimal("200"), currency="GEL",
+        country_code="ge",
+        bloggers_count=3,
+        price=Decimal("200"),
+        currency="GEL",
         updated_at=datetime.now(timezone.utc),
     )
     user = await create_test_user(
-        user_repo, external_id="1", country="ge",
+        user_repo,
+        external_id="1",
+        country="ge",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     order = await create_test_order(
-        order_repo, user.user_id, price=500.0,
-        bloggers_needed=3, status=OrderStatus.NEW,
+        order_repo,
+        user.user_id,
+        price=500.0,
+        bloggers_needed=3,
+        status=OrderStatus.NEW,
     )
     service = build_payment_service(
-        user_repo, advertiser_repo, order_repo,
-        payment_repo, pricing_repo, fake_tm,
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
         country_repo=country_repo,
     )
     # (200 + 500 * 3) * (1 + 0.18) = 2006.00 → 200600 minor
@@ -591,3 +609,56 @@ async def test_confirm_payment_intl_formula(
     )
     assert payment.amount == 2006.00
     assert payment.currency == "GEL"
+
+
+@pytest.mark.asyncio
+async def test_confirm_payment_updates_existing_pending(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    payment_repo,
+    pricing_repo,
+    outbox_repo,
+) -> None:
+    """Existing PENDING payment is updated to PAID on confirmation."""
+
+    await create_test_contact_pricing(
+        pricing_repo, bloggers_count=3, price=1000.0
+    )
+    user_id = await create_test_advertiser(user_repo, advertiser_repo)
+    order = await create_test_order(order_repo, user_id)
+
+    existing_payment = Payment(
+        payment_id=UUID("00000000-0000-0000-0000-000000000460"),
+        order_id=order.order_id,
+        provider="yookassa_telegram",
+        status=PaymentStatus.PENDING,
+        amount=0.0,
+        currency="RUB",
+        external_id="",
+        created_at=datetime.now(timezone.utc),
+        paid_at=None,
+    )
+    await payment_repo.save(existing_payment)
+
+    service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        fake_tm,
+    )
+    payment = await service.confirm_telegram_payment(
+        user_id=user_id,
+        order_id=order.order_id,
+        provider_payment_charge_id="charge_updated",
+        total_amount=100000,
+        currency="RUB",
+    )
+
+    assert payment.payment_id == existing_payment.payment_id
+    assert payment.status == PaymentStatus.PAID
+    assert payment.external_id == "charge_updated"
+    assert payment.amount == 1000.0

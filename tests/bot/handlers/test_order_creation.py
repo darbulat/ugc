@@ -23,9 +23,6 @@ from tests.helpers.services import (
     build_payment_service,
     build_profile_service,
 )
-from ugc_bot.infrastructure.memory_repositories import (
-    InMemoryPaymentRepository,
-)
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -83,6 +80,9 @@ from ugc_bot.bot.handlers.order_creation_states import (
 from ugc_bot.bot.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryPaymentRepository,
+)
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
@@ -103,6 +103,7 @@ def _make_payment_service(user_repo, advertiser_repo, order_repo, pricing_repo):
         pricing_repo,
         fake_transaction_manager(),
     )
+
 
 # Order config for handler tests
 TEST_ALLOWED_BLOGGER_COUNTS = frozenset({1, 3, 5, 10})

@@ -78,10 +78,10 @@ def calculate_invoice_total(
     tax_rate: Decimal,
     is_ru: bool,
 ) -> Decimal:
-    """Calculate invoice total. Single source of truth for pricing.
+    """Calculate invoice total. Single source of truth.
 
     RU: total = contact_pricing_price
-    International: total = (contact_pricing + order_price * bloggers_needed) * (1 + tax_rate)
+    Intl: (pricing + order_price * bloggers) * (1 + tax_rate)
     """
     if is_ru:
         return contact_pricing_price
@@ -202,6 +202,45 @@ class PaymentService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def _validate_payment_amount(
+        self,
+        user: Any,
+        order: Order,
+        total_amount: int,
+        session: object,
+    ) -> None:
+        """Validate that total_amount matches expected invoice total."""
+        country_code = (user.country or "ru").lower()
+        is_ru = country_code == "ru"
+        pricing = await self.pricing_repo.get_by_bloggers_count(
+            order.bloggers_needed,
+            country_code=country_code,
+            session=session,
+        )
+        if pricing is None:
+            raise OrderCreationError(
+                "Contact pricing not configured for this bloggers count."
+            )
+        tax_rate = Decimal("0")
+        if not is_ru and self.country_repo is not None and user.country:
+            country_obj = await self.country_repo.get_by_code(
+                user.country, session=session
+            )
+            if country_obj:
+                tax_rate = country_obj.tax_rate
+        expected = calculate_invoice_total(
+            pricing.price,
+            Decimal(str(order.price)),
+            order.bloggers_needed,
+            tax_rate,
+            is_ru,
+        )
+        expected_amount_minor = int(expected * 100)
+        if total_amount != expected_amount_minor:
+            raise OrderCreationError(
+                "Payment amount does not match order price."
+            )
+
     async def _confirm_telegram_payment_impl(
         self,
         user_id: UUID,
@@ -240,36 +279,9 @@ class PaymentService:
             if existing and existing.status == PaymentStatus.PAID:
                 return existing
 
-            country_code = (user.country or "ru").lower()
-            is_ru = country_code == "ru"
-            pricing = await self.pricing_repo.get_by_bloggers_count(
-                order.bloggers_needed,
-                country_code=country_code,
-                session=session,
+            await self._validate_payment_amount(
+                user, order, total_amount, session
             )
-            if pricing is None:
-                raise OrderCreationError(
-                    "Contact pricing not configured for this bloggers count."
-                )
-            tax_rate = Decimal("0")
-            if not is_ru and self.country_repo is not None:
-                country_obj = await self.country_repo.get_by_code(
-                    user.country, session=session
-                )
-                if country_obj:
-                    tax_rate = country_obj.tax_rate
-            expected = calculate_invoice_total(
-                pricing.price,
-                Decimal(str(order.price)),
-                order.bloggers_needed,
-                tax_rate,
-                is_ru,
-            )
-            expected_amount_minor = int(expected * 100)
-            if total_amount != expected_amount_minor:
-                raise OrderCreationError(
-                    "Payment amount does not match order price."
-                )
 
             now = datetime.now(timezone.utc)
             if existing is not None:

@@ -540,10 +540,6 @@ async def test_pay_order_missing_provider_token(
     )
 
     # Override price for 3 bloggers to be positive so provider check is needed
-    from datetime import datetime, timezone
-    from decimal import Decimal
-
-    from ugc_bot.domain.entities import ContactPricing
 
     await pricing_repo.save(
         ContactPricing(

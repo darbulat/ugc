@@ -949,9 +949,7 @@ class InMemoryPaymentRepository(PaymentRepository):
 class InMemoryContactPricingRepository(ContactPricingRepository):
     """In-memory contact pricing repository."""
 
-    prices: Dict[tuple[str, int], ContactPricing] = field(
-        default_factory=dict
-    )
+    prices: Dict[tuple[str, int], ContactPricing] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Initialize with default prices."""

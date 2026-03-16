@@ -5,11 +5,10 @@ from decimal import Decimal
 
 import pytest
 
-from ugc_bot.application.services.payment_service import InvoiceData
-from ugc_bot.domain.entities import ContactPricing, Country
-from ugc_bot.domain.enums import OrderStatus
 from tests.helpers.factories import create_test_order, create_test_user
 from tests.helpers.services import build_payment_service
+from ugc_bot.domain.entities import ContactPricing, Country
+from ugc_bot.domain.enums import OrderStatus
 
 NOW = datetime.now(timezone.utc)
 

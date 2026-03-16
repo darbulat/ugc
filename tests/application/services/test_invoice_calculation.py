@@ -2,8 +2,6 @@
 
 from decimal import Decimal
 
-import pytest
-
 from ugc_bot.application.services.payment_service import (
     calculate_invoice_total,
 )

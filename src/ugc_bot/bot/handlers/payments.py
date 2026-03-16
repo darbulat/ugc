@@ -199,14 +199,17 @@ async def start_pay_order_link(
         )
         return
     invoice_data = await payment_service.calculate_invoice_data(
-        order, user.country, config,
+        order,
+        user.country,
+        config,
     )
     if invoice_data is None:
         msg_pricing = await bot_texts_service.get(
             "msg_pricing_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=msg_pricing,
+            chat_id=incoming.chat_id,
+            text=msg_pricing,
         )
         return
     if not invoice_data.provider_token:
@@ -214,7 +217,8 @@ async def start_pay_order_link(
             "msg_payment_provider_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=msg_provider,
+            chat_id=incoming.chat_id,
+            text=msg_provider,
         )
         return
     await send_order_invoice(
@@ -325,14 +329,17 @@ async def pay_order(
         return
 
     invoice_data = await payment_service.calculate_invoice_data(
-        order, user.country, config,
+        order,
+        user.country,
+        config,
     )
     if invoice_data is None:
         msg_pricing = await bot_texts_service.get(
             "msg_pricing_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=msg_pricing,
+            chat_id=incoming.chat_id,
+            text=msg_pricing,
         )
         return
     if not invoice_data.provider_token:
@@ -340,7 +347,8 @@ async def pay_order(
             "msg_payment_provider_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=msg_provider,
+            chat_id=incoming.chat_id,
+            text=msg_provider,
         )
         return
     await send_order_invoice(
@@ -449,14 +457,17 @@ async def pay_order_callback(
         return
 
     invoice_data = await payment_service.calculate_invoice_data(
-        order, user.country, config,
+        order,
+        user.country,
+        config,
     )
     if invoice_data is None:
         msg_pricing = await bot_texts_service.get(
             "msg_pricing_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=msg_pricing,
+            chat_id=incoming.chat_id,
+            text=msg_pricing,
         )
         return
     if not invoice_data.provider_token:
@@ -464,7 +475,8 @@ async def pay_order_callback(
             "msg_payment_provider_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=msg_provider,
+            chat_id=incoming.chat_id,
+            text=msg_provider,
         )
         return
     await send_order_invoice(

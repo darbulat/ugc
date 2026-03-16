@@ -1480,7 +1480,9 @@ async def handle_geography(
     user_obj = await user_role_service.get_user_by_id(user_id)
     user_country = user_obj.country if user_obj else None
     invoice_data = await payment_service.calculate_invoice_data(
-        order, user_country, config,
+        order,
+        user_country,
+        config,
     )
     if invoice_data is None or invoice_data.total <= 0:
         msg_pricing = await bot_texts_service.get(
@@ -1496,7 +1498,8 @@ async def handle_geography(
             "msg_payment_provider_not_configured", user_locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=msg_provider,
+            chat_id=incoming.chat_id,
+            text=msg_provider,
         )
         return
     await send_order_invoice(
