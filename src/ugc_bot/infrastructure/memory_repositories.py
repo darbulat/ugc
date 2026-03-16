@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
@@ -948,40 +949,38 @@ class InMemoryPaymentRepository(PaymentRepository):
 class InMemoryContactPricingRepository(ContactPricingRepository):
     """In-memory contact pricing repository."""
 
-    prices: Dict[int, ContactPricing] = field(default_factory=dict)
+    prices: Dict[tuple[str, int], ContactPricing] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         """Initialize with default prices."""
 
         if not self.prices:
             now = datetime.now(timezone.utc)
-            self.prices = {
-                3: ContactPricing(bloggers_count=3, price=0.0, updated_at=now),
-                10: ContactPricing(
-                    bloggers_count=10, price=0.0, updated_at=now
-                ),
-                20: ContactPricing(
-                    bloggers_count=20, price=0.0, updated_at=now
-                ),
-                30: ContactPricing(
-                    bloggers_count=30, price=0.0, updated_at=now
-                ),
-                50: ContactPricing(
-                    bloggers_count=50, price=0.0, updated_at=now
-                ),
-            }
+            for count in (3, 10, 20, 30, 50):
+                self.prices[("ru", count)] = ContactPricing(
+                    country_code="ru",
+                    bloggers_count=count,
+                    price=Decimal("0"),
+                    currency="RUB",
+                    updated_at=now,
+                )
 
     async def get_by_bloggers_count(
-        self, bloggers_count: int, session: object | None = None
+        self,
+        bloggers_count: int,
+        country_code: str = "ru",
+        session: object | None = None,
     ) -> Optional[ContactPricing]:
-        """Fetch pricing by bloggers count."""
+        """Fetch pricing by bloggers count and country."""
 
-        return self.prices.get(bloggers_count)
+        return self.prices.get((country_code, bloggers_count))
 
     async def save(self, pricing: ContactPricing) -> None:
         """Persist pricing in memory."""
 
-        self.prices[pricing.bloggers_count] = pricing
+        self.prices[(pricing.country_code, pricing.bloggers_count)] = pricing
 
 
 @dataclass

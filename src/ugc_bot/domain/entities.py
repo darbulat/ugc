@@ -333,8 +333,10 @@ class ContactPricing:
     for updates use dataclasses.replace(pricing, ...). Update repo mapping.
     """
 
+    country_code: str
     bloggers_count: int
-    price: float
+    price: Decimal
+    currency: str
     updated_at: datetime
     created_at: Optional[datetime] = None
 

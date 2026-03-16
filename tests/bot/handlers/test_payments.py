@@ -544,6 +544,7 @@ async def test_pay_order_missing_provider_token(
     """Reject when provider token missing."""
 
     from datetime import datetime, timezone
+    from decimal import Decimal
     from uuid import UUID
 
     from ugc_bot.domain.entities import ContactPricing
@@ -568,7 +569,11 @@ async def test_pay_order_missing_provider_token(
     # Override price for 3 bloggers to be positive so provider check is needed
     await contact_pricing_service.pricing_repo.save(
         ContactPricing(
-            bloggers_count=3, price=100.0, updated_at=datetime.now(timezone.utc)
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("100"),
+            currency="RUB",
+            updated_at=datetime.now(timezone.utc),
         )
     )
 

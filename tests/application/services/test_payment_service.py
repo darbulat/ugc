@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
@@ -268,8 +269,10 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
     pricing_repo = Mock()
     pricing_repo.get_by_bloggers_count = AsyncMock(
         return_value=ContactPricing(
+            country_code="ru",
             bloggers_count=3,
-            price=1000.0,
+            price=Decimal("1000"),
+            currency="RUB",
             updated_at=datetime.now(timezone.utc),
         )
     )

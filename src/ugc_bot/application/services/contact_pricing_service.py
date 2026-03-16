@@ -16,13 +16,15 @@ class ContactPricingService:
     pricing_repo: ContactPricingRepository
     transaction_manager: TransactionManager | None = None
 
-    async def get_price(self, bloggers_count: int) -> float | None:
-        """Get price for bloggers count."""
+    async def get_price(
+        self, bloggers_count: int, country_code: str = "ru"
+    ) -> float | None:
+        """Get price for bloggers count and country."""
 
         async def _run(session: object | None):
             pricing = await self.pricing_repo.get_by_bloggers_count(
-                bloggers_count, session=session
+                bloggers_count, country_code=country_code, session=session
             )
-            return pricing.price if pricing else None
+            return float(pricing.price) if pricing else None
 
         return await with_optional_tx(self.transaction_manager, _run)

@@ -422,8 +422,14 @@ class ContactPricingModel(Base):
 
     __tablename__ = "contact_pricing"
 
+    country_code: Mapped[str] = mapped_column(
+        String(2), primary_key=True, server_default=text("'ru'")
+    )
     bloggers_count: Mapped[int] = mapped_column(Integer, primary_key=True)
-    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, server_default=text("'RUB'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

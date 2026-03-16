@@ -879,16 +879,20 @@ class SqlAlchemyContactPricingRepository(ContactPricingRepository):
     session_factory: async_sessionmaker[AsyncSession]
 
     async def get_by_bloggers_count(
-        self, bloggers_count: int, session: object | None = None
+        self,
+        bloggers_count: int,
+        country_code: str = "ru",
+        session: object | None = None,
     ) -> Optional[ContactPricing]:
-        """Fetch pricing by bloggers count."""
+        """Fetch pricing by bloggers count and country."""
 
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
             exec_result = await db_session.execute(
                 select(ContactPricingModel).where(
-                    ContactPricingModel.bloggers_count == bloggers_count
+                    ContactPricingModel.country_code == country_code,
+                    ContactPricingModel.bloggers_count == bloggers_count,
                 )
             )
             result = exec_result.scalar_one_or_none()
@@ -1803,8 +1807,10 @@ def _to_contact_pricing_entity(model: ContactPricingModel) -> ContactPricing:
     """Map contact pricing ORM model to entity."""
 
     return ContactPricing(
+        country_code=model.country_code,
         bloggers_count=model.bloggers_count,
-        price=float(model.price),
+        price=model.price,
+        currency=model.currency,
         created_at=getattr(model, "created_at", model.updated_at),
         updated_at=model.updated_at,
     )

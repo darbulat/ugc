@@ -649,9 +649,12 @@ class ContactPricingRepository(ABC):
 
     @abstractmethod
     async def get_by_bloggers_count(
-        self, bloggers_count: int, session: object | None = None
+        self,
+        bloggers_count: int,
+        country_code: str = "ru",
+        session: object | None = None,
     ) -> Optional[ContactPricing]:
-        """Fetch pricing by bloggers count."""
+        """Fetch pricing by bloggers count and country."""
 
 
 class BotTextsRepository(ABC):

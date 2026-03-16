@@ -1,6 +1,7 @@
 """Factories for creating test entities."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from ugc_bot.domain.entities import (
@@ -282,6 +283,8 @@ async def create_test_contact_pricing(
     bloggers_count: int,
     price: float,
     updated_at: datetime | None = None,
+    country_code: str = "ru",
+    currency: str = "RUB",
 ) -> ContactPricing:
     """Create and save contact pricing.
 
@@ -290,6 +293,8 @@ async def create_test_contact_pricing(
         bloggers_count: Number of bloggers
         price: Price
         updated_at: Update timestamp
+        country_code: Country code
+        currency: Currency code
 
     Returns:
         Created contact pricing
@@ -298,8 +303,10 @@ async def create_test_contact_pricing(
         updated_at = datetime.now(timezone.utc)
 
     pricing = ContactPricing(
+        country_code=country_code,
         bloggers_count=bloggers_count,
-        price=price,
+        price=Decimal(str(price)),
+        currency=currency,
         updated_at=updated_at,
     )
     await pricing_repo.save(pricing)

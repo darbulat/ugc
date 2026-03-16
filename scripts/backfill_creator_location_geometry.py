@@ -14,11 +14,14 @@ import argparse
 import asyncio
 import logging
 import sys
-
 from dataclasses import replace
+
 from sqlalchemy import select
 
-from ugc_bot.application.geography import GEO_TOKEN_SPLIT_RE, normalize_geo_token
+from ugc_bot.application.geography import (
+    GEO_TOKEN_SPLIT_RE,
+    normalize_geo_token,
+)
 from ugc_bot.application.ports import GeocoderPort
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_coords
 from ugc_bot.config import load_config

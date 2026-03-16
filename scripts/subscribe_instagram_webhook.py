@@ -9,6 +9,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 import httpx
+
 from ugc_bot.config import load_config
 
 
@@ -22,10 +23,10 @@ def subscribe_to_messages(page_id: str | None = None) -> None:
         sys.exit(1)
 
     # Use /me if page_id not provided
-    endpoint = f"/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
+    endpoint = "/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
     url = f"https://graph.instagram.com/v24.0{endpoint}"
 
-    print(f"📡 Subscribing to Instagram webhook field 'messages'...")
+    print("📡 Subscribing to Instagram webhook field 'messages'...")
     print(f"   Endpoint: {url}")
     print(f"   Page ID: {page_id or 'me (current user)'}")
 
@@ -71,10 +72,10 @@ def list_subscriptions(page_id: str | None = None) -> None:
         print("❌ Error: INSTAGRAM_ACCESS_TOKEN is not configured")
         sys.exit(1)
 
-    endpoint = f"/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
+    endpoint = "/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
     url = f"https://graph.instagram.com/v24.0{endpoint}"
 
-    print(f"📋 Listing current subscriptions...")
+    print("📋 Listing current subscriptions...")
     print(f"   Endpoint: {url}")
 
     try:

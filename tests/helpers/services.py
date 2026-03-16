@@ -1,6 +1,7 @@
 """Service builders and fixtures for tests."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
@@ -154,8 +155,10 @@ async def build_contact_pricing_service(
         for count, price in prices.items():
             await pricing_repo.save(
                 ContactPricing(
+                    country_code="ru",
                     bloggers_count=count,
-                    price=price,
+                    price=Decimal(str(price)),
+                    currency="RUB",
                     updated_at=datetime.now(timezone.utc),
                 )
             )
