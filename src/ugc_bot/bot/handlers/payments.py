@@ -77,7 +77,12 @@ async def send_order_invoice(
         return
 
     try:
-        label = f"💳 {int(invoice_data.total)} {invoice_data.currency_symbol}"
+        total_display = (
+            int(invoice_data.total)
+            if invoice_data.total == int(invoice_data.total)
+            else invoice_data.total
+        )
+        label = f"💳 {total_display} {invoice_data.currency_symbol}"
         await messenger_client.send_invoice(
             chat_id=incoming_message.chat_id,
             invoice=Invoice(
@@ -583,13 +588,21 @@ async def successful_payment_handler(
 
     order = await payment_service.get_order(order_id)
     if order:
+        invoice_data = await payment_service.calculate_invoice_data(
+            order, user.country, config
+        )
+        symbol = (
+            invoice_data.currency_symbol
+            if invoice_data
+            else config.market.currency_symbol
+        )
         await notify_admins_about_order_paid(
             order=order,
             messenger_client=messenger_client,
             user_role_service=user_role_service,
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
-            currency_symbol=config.market.currency_symbol,
+            currency_symbol=symbol,
         )
 
     msg_success = await bot_texts_service.get(

@@ -224,7 +224,7 @@ class PaymentService:
         tax_rate = Decimal("0")
         if not is_ru and self.country_repo is not None and user.country:
             country_obj = await self.country_repo.get_by_code(
-                user.country, session=session
+                country_code, session=session
             )
             if country_obj:
                 tax_rate = country_obj.tax_rate
