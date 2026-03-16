@@ -1,4 +1,4 @@
-"""Helpers for Mini App E2E tests: initData generation and Playwright utilities."""
+"""Mini App E2E helpers: initData generation and Playwright utilities."""
 
 import hashlib
 import hmac
@@ -31,7 +31,8 @@ def generate_init_data(bot_token: str, user_id: int, username: str) -> str:
     )
     data_check_string = "\n".join(data_check_parts)
 
-    # HMAC: secret = HMAC(WebAppData, bot_token), hash = HMAC(secret, data_check_string)
+    # HMAC: secret = HMAC(WebAppData, bot_token),
+    # hash = HMAC(secret, data_check_string)
     secret_key = hmac.new(
         _WEBAPP_DATA_KEY.encode(), bot_token.encode(), hashlib.sha256
     ).digest()
@@ -43,13 +44,17 @@ def generate_init_data(bot_token: str, user_id: int, username: str) -> str:
     return urlencode(params)
 
 
-def build_telegram_mock_script(init_data: str, user_id: int, username: str) -> str:
-    """Return JS code that mocks window.Telegram.WebApp for Playwright injection."""
+def build_telegram_mock_script(
+    init_data: str, user_id: int, username: str
+) -> str:
+    """Return JS to mock window.Telegram.WebApp for Playwright injection."""
     return f"""
     window.Telegram = {{
         WebApp: {{
             initData: {json.dumps(init_data)},
-            initDataUnsafe: {{ user: {{ id: {user_id}, username: {json.dumps(username)} }} }},
+            initDataUnsafe: {{
+                user: {{ id: {user_id}, username: {json.dumps(username)} }}
+            }},
             ready: function() {{}},
             expand: function() {{}},
             close: function() {{}},

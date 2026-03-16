@@ -38,10 +38,20 @@ class TestMiniAppAdvertiser:
     """Advertiser flow: register → create order → view orders."""
 
     def test_register_advertiser(
-        self, page: Page, miniapp_base_url: str, miniapp_bot_token: str, locale: str
+        self,
+        page: Page,
+        miniapp_base_url: str,
+        miniapp_bot_token: str,
+        locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
-        _open_miniapp(page, miniapp_base_url, miniapp_bot_token, user_id, f"e2e_adv_{locale}")
+        _open_miniapp(
+            page,
+            miniapp_base_url,
+            miniapp_bot_token,
+            user_id,
+            f"e2e_adv_{locale}",
+        )
 
         # Country selection
         _select_country(page, locale)
@@ -66,10 +76,20 @@ class TestMiniAppAdvertiser:
         wait_for_screen(page, "screen-advertiser-dashboard")
 
     def test_create_order(
-        self, page: Page, miniapp_base_url: str, miniapp_bot_token: str, locale: str
+        self,
+        page: Page,
+        miniapp_base_url: str,
+        miniapp_bot_token: str,
+        locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
-        _open_miniapp(page, miniapp_base_url, miniapp_bot_token, user_id, f"e2e_adv_{locale}")
+        _open_miniapp(
+            page,
+            miniapp_base_url,
+            miniapp_bot_token,
+            user_id,
+            f"e2e_adv_{locale}",
+        )
 
         # Already registered → should land on dashboard
         wait_for_screen(page, "screen-advertiser-dashboard")
@@ -90,10 +110,20 @@ class TestMiniAppAdvertiser:
         assert success_text  # Non-empty success message
 
     def test_view_orders(
-        self, page: Page, miniapp_base_url: str, miniapp_bot_token: str, locale: str
+        self,
+        page: Page,
+        miniapp_base_url: str,
+        miniapp_bot_token: str,
+        locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
-        _open_miniapp(page, miniapp_base_url, miniapp_bot_token, user_id, f"e2e_adv_{locale}")
+        _open_miniapp(
+            page,
+            miniapp_base_url,
+            miniapp_bot_token,
+            user_id,
+            f"e2e_adv_{locale}",
+        )
 
         wait_for_screen(page, "screen-advertiser-dashboard")
 
@@ -122,10 +152,20 @@ class TestMiniAppBlogger:
     """Blogger (creator) registration flow."""
 
     def test_register_blogger(
-        self, page: Page, miniapp_base_url: str, miniapp_bot_token: str, locale: str
+        self,
+        page: Page,
+        miniapp_base_url: str,
+        miniapp_bot_token: str,
+        locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["blogger"][locale]
-        _open_miniapp(page, miniapp_base_url, miniapp_bot_token, user_id, f"e2e_blg_{locale}")
+        _open_miniapp(
+            page,
+            miniapp_base_url,
+            miniapp_bot_token,
+            user_id,
+            f"e2e_blg_{locale}",
+        )
 
         # Country selection
         _select_country(page, locale)
@@ -148,7 +188,9 @@ class TestMiniAppBlogger:
         # City: use search instead of map click
         page.locator("#btn-blogger-city-map").click()
         page.wait_for_selector("#block-blogger-city-map", state="visible")
-        page.locator("#blg-city-search").fill("Moscow" if locale == "en" else "Москва")
+        page.locator("#blg-city-search").fill(
+            "Moscow" if locale == "en" else "Москва"
+        )
         page.locator("#btn-blogger-city-search").click()
 
         # Wait for city field to be populated by geocode API
@@ -176,11 +218,21 @@ class TestMiniAppNavigation:
     """Navigation and role switching (requires existing advertiser profile)."""
 
     def test_switch_role(
-        self, page: Page, miniapp_base_url: str, miniapp_bot_token: str, locale: str
+        self,
+        page: Page,
+        miniapp_base_url: str,
+        miniapp_bot_token: str,
+        locale: str,
     ) -> None:
         # Use advertiser user_id (has profile from TestMiniAppAdvertiser)
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
-        _open_miniapp(page, miniapp_base_url, miniapp_bot_token, user_id, f"e2e_adv_{locale}")
+        _open_miniapp(
+            page,
+            miniapp_base_url,
+            miniapp_bot_token,
+            user_id,
+            f"e2e_adv_{locale}",
+        )
 
         # Should land on advertiser dashboard (already registered)
         wait_for_screen(page, "screen-advertiser-dashboard")
@@ -189,6 +241,7 @@ class TestMiniAppNavigation:
         page.locator("#btn-change-role-from-adv").click()
         wait_for_screen(page, "screen-role-choice")
 
-        # Click blogger — should go to registration (no blogger profile for this user)
+        # Click blogger — should go to registration
+        # (no blogger profile for this user)
         page.locator('[data-role="blogger"]').click()
         wait_for_screen(page, "screen-register-blogger")

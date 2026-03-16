@@ -11,7 +11,6 @@ from sqlalchemy import create_engine
 
 from ugc_bot.infrastructure.db.base import Base
 
-
 _MINIAPP_CLASS_ORDER = {
     "TestMiniAppAdvertiser": 0,
     "TestMiniAppBlogger": 1,
