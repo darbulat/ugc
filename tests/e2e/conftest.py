@@ -65,9 +65,12 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Clean DB users before E2E Telegram tests when E2E_DATABASE_URL is set."""
-    if not os.environ.get("E2E_DATABASE_URL"):
+    """Clean DB users before E2E tests when E2E_DATABASE_URL is set."""
+    db_url = os.environ.get("E2E_DATABASE_URL")
+    if not db_url:
         return
+
+    # Existing telegram e2e cleanup
     try:
         items = session.items
     except Exception:
@@ -75,23 +78,39 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     has_telegram = any(
         item.get_closest_marker("e2e_telegram") is not None for item in items
     )
-    if not has_telegram:
-        return
-    root = Path(__file__).resolve().parent.parent.parent
-    script = root / "scripts" / "clean_e2e_users.py"
-    if not script.exists():
-        return
-    cmd = [sys.executable, str(script)]
-    clean_telegram = os.environ.get("E2E_CLEAN_TELEGRAM", "").strip()
-    if clean_telegram:
-        cmd.extend(["--telegram", clean_telegram])
-    subprocess.run(
-        cmd,
-        cwd=str(root),
-        env=os.environ.copy(),
-        check=False,
-        capture_output=True,
-    )
+    if has_telegram:
+        root = Path(__file__).resolve().parent.parent.parent
+        script = root / "scripts" / "clean_e2e_users.py"
+        if script.exists():
+            cmd = [sys.executable, str(script)]
+            clean_telegram = os.environ.get("E2E_CLEAN_TELEGRAM", "").strip()
+            if clean_telegram:
+                cmd.extend(["--telegram", clean_telegram])
+            subprocess.run(
+                cmd,
+                cwd=str(root),
+                env=os.environ.copy(),
+                check=False,
+                capture_output=True,
+            )
+
+    # Miniapp e2e cleanup: delete test users by external_id
+    miniapp_user_ids = []
+    for role_ids in MINIAPP_TEST_USER_IDS.values():
+        miniapp_user_ids.extend(str(uid) for uid in role_ids.values())
+    if miniapp_user_ids:
+        try:
+            from sqlalchemy import text
+
+            engine = create_engine(db_url)
+            with engine.begin() as conn:
+                conn.execute(
+                    text("DELETE FROM users WHERE external_id = ANY(:ids)"),
+                    {"ids": miniapp_user_ids},
+                )
+            engine.dispose()
+        except Exception:
+            pass  # Cleanup is best-effort
 
 
 E2E_PORT = 8001
