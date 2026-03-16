@@ -1,7 +1,6 @@
 """Telegram payment handlers."""
 
 import logging
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import cast
 from uuid import UUID
 
@@ -23,16 +22,12 @@ from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_order_paid,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
-from ugc_bot.application.services.contact_pricing_service import (
-    ContactPricingService,
-)
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.payment_service import (
-    DEFAULT_RECEIPT_SERVICE_DESCRIPTION,
+    InvoiceData,
     PaymentService,
-    build_receipt_provider_data,
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -55,47 +50,22 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-def _get_provider_token(user_country: str | None, config: AppConfig) -> str:
-    """Return RU or international provider token based on user country."""
-    if (user_country or "").lower() == "ru":
-        return config.bot.telegram_provider_token
-    return config.bot.telegram_provider_token_intl
-
-
 async def send_order_invoice(
     incoming_message,
     messenger_client: MessengerClient,
     order_id: UUID,
     offer_text: str,
-    price_value: float,
-    config: AppConfig,
+    invoice_data: InvoiceData,
     bot_texts_service: BotTextsService,
-    receipt_description: str | None = None,
     user_locale: str = "ru",
-    user_country: str | None = None,
-    order_currency: str | None = None,
 ) -> None:
-    """Send invoice: 54-FZ receipt for RU, plain invoice for international."""
+    """Send invoice using pre-calculated InvoiceData."""
     locale = user_locale
 
     if not incoming_message.chat_id:
         return
 
-    try:
-        price_decimal = Decimal(str(price_value)).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-    except InvalidOperation:
-        msg_invalid = await bot_texts_service.get(
-            "msg_invalid_order_amount", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming_message.chat_id,
-            text=msg_invalid,
-        )
-        return
-
-    price = int(price_decimal * 100)
+    price = int(invoice_data.total * 100)
     if price > 100_000_000:
         msg_too_large = await bot_texts_service.get(
             "msg_order_amount_too_large", locale
@@ -106,45 +76,20 @@ async def send_order_invoice(
         )
         return
 
-    is_ru = (user_country or "").lower() == "ru"
-    currency = order_currency or config.market.payment_currency
-    currency_symbol = config.market.currency_symbol if is_ru else currency
-    provider_token = _get_provider_token(user_country, config)
-    receipt_desc = (
-        (receipt_description or "").strip()
-        or config.market.receipt_service_description
-        or DEFAULT_RECEIPT_SERVICE_DESCRIPTION
-    )
-    provider_data = (
-        build_receipt_provider_data(
-            total_amount=price_value,
-            currency=currency,
-            receipt_description=receipt_desc,
-        )
-        if is_ru
-        else None
-    )
-
     try:
+        label = f"💳 {int(invoice_data.total)} {invoice_data.currency_symbol}"
         await messenger_client.send_invoice(
             chat_id=incoming_message.chat_id,
             invoice=Invoice(
                 title=await bot_texts_service.get("msg_title_payment", locale),
                 description=offer_text[:255],
                 payload=str(order_id),
-                provider_token=provider_token,
-                currency=currency,
-                items=[
-                    InvoiceItem(
-                        label=(
-                            f"💳 Заплатить {int(price_value)} {currency_symbol}"
-                        ),
-                        amount_minor=price,
-                    )
-                ],
-                provider_data=provider_data,
-                need_email=True,
-                send_email_to_provider=True,
+                provider_token=invoice_data.provider_token,
+                currency=invoice_data.currency,
+                items=[InvoiceItem(label=label, amount_minor=price)],
+                provider_data=invoice_data.provider_data,
+                need_email=invoice_data.need_email,
+                send_email_to_provider=invoice_data.need_email,
             ),
         )
     except Exception:
@@ -184,7 +129,6 @@ async def start_pay_order_link(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     payment_service: PaymentService,
-    contact_pricing_service: ContactPricingService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
     user_locale: str = "ru",
@@ -254,42 +198,33 @@ async def start_pay_order_link(
             text=msg_not_new,
         )
         return
-    contact_price = await contact_pricing_service.get_price(
-        order.bloggers_needed
+    invoice_data = await payment_service.calculate_invoice_data(
+        order, user.country, config,
     )
-    if contact_price is None:
+    if invoice_data is None:
         msg_pricing = await bot_texts_service.get(
             "msg_pricing_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_pricing,
+            chat_id=incoming.chat_id, text=msg_pricing,
         )
         return
-    if not _get_provider_token(user.country, config):
+    if not invoice_data.provider_token:
         msg_provider = await bot_texts_service.get(
             "msg_payment_provider_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_provider,
+            chat_id=incoming.chat_id, text=msg_provider,
         )
         return
-    receipt_desc = (
-        await bot_texts_service.get("receipt_description", locale)
-    ).strip() or None
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
         order_id=order.order_id,
         offer_text=order.offer_text,
-        price_value=contact_price,
-        config=config,
+        invoice_data=invoice_data,
         bot_texts_service=bot_texts_service,
-        receipt_description=receipt_desc,
         user_locale=user_locale,
-        user_country=user.country,
-        order_currency=order.currency,
     )
 
 
@@ -299,7 +234,6 @@ async def pay_order(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     payment_service: PaymentService,
-    contact_pricing_service: ContactPricingService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
     user_locale: str = "ru",
@@ -390,44 +324,33 @@ async def pay_order(
         )
         return
 
-    contact_price = await contact_pricing_service.get_price(
-        order.bloggers_needed
+    invoice_data = await payment_service.calculate_invoice_data(
+        order, user.country, config,
     )
-    if contact_price is None:
+    if invoice_data is None:
         msg_pricing = await bot_texts_service.get(
             "msg_pricing_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_pricing,
+            chat_id=incoming.chat_id, text=msg_pricing,
         )
         return
-
-    if not _get_provider_token(user.country, config):
+    if not invoice_data.provider_token:
         msg_provider = await bot_texts_service.get(
             "msg_payment_provider_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_provider,
+            chat_id=incoming.chat_id, text=msg_provider,
         )
         return
-
-    receipt_desc = (
-        await bot_texts_service.get("receipt_description", locale)
-    ).strip() or None
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
         order_id=order.order_id,
         offer_text=order.offer_text,
-        price_value=contact_price,
-        config=config,
+        invoice_data=invoice_data,
         bot_texts_service=bot_texts_service,
-        receipt_description=receipt_desc,
         user_locale=user_locale,
-        user_country=user.country,
-        order_currency=order.currency,
     )
 
 
@@ -441,7 +364,6 @@ async def pay_order_callback(
     user_role_service: UserRoleService,
     profile_service: ProfileService,
     payment_service: PaymentService,
-    contact_pricing_service: ContactPricingService,
     config: AppConfig,
     bot_texts_service: BotTextsService,
     user_locale: str = "ru",
@@ -526,44 +448,33 @@ async def pay_order_callback(
         )
         return
 
-    contact_price = await contact_pricing_service.get_price(
-        order.bloggers_needed
+    invoice_data = await payment_service.calculate_invoice_data(
+        order, user.country, config,
     )
-    if contact_price is None:
+    if invoice_data is None:
         msg_pricing = await bot_texts_service.get(
             "msg_pricing_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_pricing,
+            chat_id=incoming.chat_id, text=msg_pricing,
         )
         return
-
-    if not _get_provider_token(user.country, config):
+    if not invoice_data.provider_token:
         msg_provider = await bot_texts_service.get(
             "msg_payment_provider_not_configured", locale
         )
         await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_provider,
+            chat_id=incoming.chat_id, text=msg_provider,
         )
         return
-
-    receipt_desc = (
-        await bot_texts_service.get("receipt_description", locale)
-    ).strip() or None
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
         order_id=order.order_id,
         offer_text=order.offer_text,
-        price_value=contact_price,
-        config=config,
+        invoice_data=invoice_data,
         bot_texts_service=bot_texts_service,
-        receipt_description=receipt_desc,
         user_locale=user_locale,
-        user_country=user.country,
-        order_currency=order.currency,
     )
 
 

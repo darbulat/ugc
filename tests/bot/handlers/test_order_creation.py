@@ -20,7 +20,11 @@ from tests.helpers.fakes import (
 from tests.helpers.services import (
     build_contact_pricing_service,
     build_order_service,
+    build_payment_service,
     build_profile_service,
+)
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryPaymentRepository,
 )
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
@@ -85,6 +89,20 @@ from ugc_bot.infrastructure.messenger.telegram.adapter import (
 
 # Valid offer text: min 20 chars per validator
 VALID_OFFER_TEXT = "Видео с распаковкой продукта и личным отзывом."
+
+
+def _make_payment_service(user_repo, advertiser_repo, order_repo, pricing_repo):
+    """Create a PaymentService for order-creation tests."""
+    from tests.conftest import fake_transaction_manager
+
+    return build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        InMemoryPaymentRepository(),
+        pricing_repo,
+        fake_transaction_manager(),
+    )
 
 # Order config for handler tests
 TEST_ALLOWED_BLOGGER_COUNTS = frozenset({1, 3, 5, 10})
@@ -415,6 +433,9 @@ async def test_order_creation_flow_new_advertiser(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
     assert bot.invoices
     assert len(order_repo.orders) == 1
@@ -545,6 +566,9 @@ async def test_order_creation_flow_with_barter(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
     assert bot.invoices
     assert len(order_repo.orders) == 2
@@ -962,6 +986,9 @@ async def test_order_creation_flow_coop_both(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
 
     assert bot.invoices
@@ -1154,6 +1181,9 @@ async def test_handle_geography_empty(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
 
     assert message.answers
@@ -1219,6 +1249,9 @@ async def test_handle_geography_invalid_order_type(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
 
     assert len(order_repo.orders) == 1
@@ -1344,6 +1377,9 @@ async def test_order_creation_flow_ugc_plus_placement(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
 
     assert len(order_repo.orders) == 1
@@ -1398,6 +1434,9 @@ async def test_handle_geography_session_expired(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
 
     assert message.answers
@@ -1456,6 +1495,9 @@ async def test_handle_geography_contact_price_not_configured(
         bot_texts_service,
         pricing_service,
         content_moderation_service=ContentModerationService(),
+        payment_service=_make_payment_service(
+            user_repo, advertiser_repo, order_repo, pricing_repo
+        ),
     )
 
     assert len(order_repo.orders) == 1
