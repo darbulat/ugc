@@ -1,16 +1,20 @@
 """Service for Telegram payments and order activation."""
 
+from __future__ import annotations
+
+import json
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     ContactPricingRepository,
+    CountryRepository,
     OrderRepository,
     PaymentRepository,
     TransactionManager,
@@ -20,7 +24,51 @@ from ugc_bot.domain.entities import Order, Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
+if TYPE_CHECKING:
+    from ugc_bot.config import AppConfig
+
 logger = logging.getLogger(__name__)
+
+DEFAULT_RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
+
+
+def build_receipt_provider_data(
+    total_amount: float,
+    currency: str,
+    receipt_description: str,
+) -> str:
+    """Build provider_data JSON for YooKassa receipt (54-FZ)."""
+    amount_str = f"{total_amount:.2f}"
+    receipt = {
+        "receipt": {
+            "items": [
+                {
+                    "description": receipt_description
+                    or DEFAULT_RECEIPT_SERVICE_DESCRIPTION,
+                    "quantity": 1,
+                    "amount": {"value": amount_str, "currency": currency},
+                    "vat_code": 2,
+                    "payment_mode": "full_prepayment",
+                    "payment_subject": "service",
+                }
+            ],
+            "internet": "true",
+        }
+    }
+    return json.dumps(receipt, ensure_ascii=False)
+
+
+@dataclass(frozen=True)
+class InvoiceData:
+    """All data needed to send a Telegram invoice."""
+
+    total: Decimal
+    currency: str
+    currency_symbol: str
+    provider_token: str
+    provider_data: str | None
+    need_email: bool
+    is_ru: bool
 
 
 def calculate_invoice_total(
@@ -52,6 +100,7 @@ class PaymentService:
     order_repo: OrderRepository
     payment_repo: PaymentRepository
     pricing_repo: ContactPricingRepository
+    country_repo: CountryRepository | None = None
     provider: str = "yookassa_telegram"
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
@@ -84,6 +133,72 @@ class PaymentService:
 
         async def _run(session: object | None):
             return await self.order_repo.get_by_id(order_id, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def calculate_invoice_data(
+        self,
+        order: Order,
+        user_country: str | None,
+        config: AppConfig,
+    ) -> InvoiceData | None:
+        """Build invoice data for an order. Returns None if pricing missing."""
+        country_code = (user_country or "ru").lower()
+        is_ru = country_code == "ru"
+
+        async def _run(session: object | None) -> InvoiceData | None:
+            pricing = await self.pricing_repo.get_by_bloggers_count(
+                order.bloggers_needed,
+                country_code=country_code,
+                session=session,
+            )
+            if pricing is None:
+                return None
+
+            tax_rate = Decimal("0")
+            currency_symbol = config.market.currency_symbol
+            if not is_ru and self.country_repo is not None:
+                country = await self.country_repo.get_by_code(
+                    country_code, session=session
+                )
+                if country:
+                    tax_rate = country.tax_rate
+                    currency_symbol = country.currency_symbol
+
+            total = calculate_invoice_total(
+                contact_pricing_price=pricing.price,
+                order_price=Decimal(str(order.price)),
+                bloggers_needed=order.bloggers_needed,
+                tax_rate=tax_rate,
+                is_ru=is_ru,
+            )
+
+            if is_ru:
+                provider_token = config.bot.telegram_provider_token
+            else:
+                provider_token = config.bot.telegram_provider_token_intl
+
+            receipt_desc = (
+                config.market.receipt_service_description
+                or DEFAULT_RECEIPT_SERVICE_DESCRIPTION
+            )
+            provider_data = (
+                build_receipt_provider_data(
+                    float(total), pricing.currency, receipt_desc
+                )
+                if is_ru
+                else None
+            )
+
+            return InvoiceData(
+                total=total,
+                currency=pricing.currency,
+                currency_symbol=currency_symbol,
+                provider_token=provider_token,
+                provider_data=provider_data,
+                need_email=is_ru,
+                is_ru=is_ru,
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)
 

@@ -1,6 +1,5 @@
 """Telegram payment handlers."""
 
-import json
 import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import cast
@@ -30,7 +29,11 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
-from ugc_bot.application.services.payment_service import PaymentService
+from ugc_bot.application.services.payment_service import (
+    DEFAULT_RECEIPT_SERVICE_DESCRIPTION,
+    PaymentService,
+    build_receipt_provider_data,
+)
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
@@ -50,37 +53,6 @@ from ugc_bot.infrastructure.messenger.telegram.adapter import (
 
 router = Router()
 logger = logging.getLogger(__name__)
-
-DEFAULT_RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
-
-
-def build_receipt_provider_data(
-    total_amount: float,
-    currency: str,
-    receipt_description: str,
-) -> str:
-    """Build provider_data JSON for YooKassa receipt (54-FZ).
-
-    Email is collected by Telegram via need_email and passed to provider.
-    """
-    amount_str = f"{total_amount:.2f}"
-    receipt = {
-        "receipt": {
-            "items": [
-                {
-                    "description": receipt_description
-                    or DEFAULT_RECEIPT_SERVICE_DESCRIPTION,
-                    "quantity": 1,
-                    "amount": {"value": amount_str, "currency": currency},
-                    "vat_code": 2,
-                    "payment_mode": "full_prepayment",
-                    "payment_subject": "service",
-                }
-            ],
-            "internet": "true",
-        }
-    }
-    return json.dumps(receipt, ensure_ascii=False)
 
 
 def _get_provider_token(user_country: str | None, config: AppConfig) -> str:

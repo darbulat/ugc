@@ -377,6 +377,7 @@ def build_bot_services(
             order_repo=repos["order_repo"],
             payment_repo=repos["payment_repo"],
             pricing_repo=repos["pricing_repo"],
+            country_repo=repos.get("country_repo"),
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),

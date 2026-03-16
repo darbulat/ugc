@@ -111,6 +111,7 @@ def build_payment_service(
     payment_repo: InMemoryPaymentRepository,
     pricing_repo: InMemoryContactPricingRepository,
     transaction_manager: object,
+    country_repo: InMemoryCountryRepository | None = None,
 ) -> PaymentService:
     """Build payment service for tests.
 
@@ -121,6 +122,7 @@ def build_payment_service(
         payment_repo: Payment repository
         pricing_repo: Contact pricing repository (for amount validation)
         transaction_manager: Transaction manager (required)
+        country_repo: Optional country repository
 
     Returns:
         Payment service instance
@@ -131,6 +133,7 @@ def build_payment_service(
         order_repo=order_repo,
         payment_repo=payment_repo,
         pricing_repo=pricing_repo,
+        country_repo=country_repo,
         transaction_manager=transaction_manager,
     )
 
