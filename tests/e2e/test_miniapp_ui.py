@@ -99,7 +99,9 @@ class TestMiniAppAdvertiser:
         miniapp_page.wait_for_selector("#block-create-order", state="visible")
 
         # Wait for config to populate bloggers select
-        miniapp_page.wait_for_selector("#ord-bloggers option", timeout=10000)
+        miniapp_page.wait_for_selector(
+            "#ord-bloggers option", state="attached", timeout=10000
+        )
 
         # Fill order form
         miniapp_page.locator("#ord-link").fill("https://example.com/product")
@@ -107,10 +109,18 @@ class TestMiniAppAdvertiser:
         miniapp_page.locator("#ord-price").fill("5000")
         miniapp_page.locator("#btn-submit-order").click()
 
-        # Assert success
-        miniapp_page.wait_for_selector(
-            "#ord-success:not(:empty)", timeout=10000
+        # Wait for either success or error response
+        miniapp_page.wait_for_function(
+            """() => {
+                const ok = document.getElementById('ord-success');
+                const err = document.getElementById('ord-error');
+                return (ok && ok.textContent.trim()) ||
+                       (err && err.textContent.trim());
+            }""",
+            timeout=15000,
         )
+        err_text = miniapp_page.locator("#ord-error").inner_text()
+        assert not err_text, f"Order creation error: {err_text}"
         success_text = miniapp_page.locator("#ord-success").inner_text()
         assert success_text  # Non-empty success message
 
