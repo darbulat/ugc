@@ -6,6 +6,7 @@ from typing import Any
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
@@ -206,6 +207,7 @@ async def notify_admins_about_order_created(
     content_moderation: ContentModerationService,
     admin_base_url: str = "",
     currency_symbol: str = "₽",
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Send new order notification to all Telegram admins (no Activate button).
 
@@ -216,6 +218,7 @@ async def notify_admins_about_order_created(
         content_moderation: Service to check for banned content.
         admin_base_url: Optional base URL for admin panel links.
         currency_symbol: Symbol for price display (e.g. ₽, $).
+        country_repo: Country repo to resolve currency from order.
     """
     admins = await user_role_service.list_admins(
         messenger_type=MessengerType.TELEGRAM
@@ -223,6 +226,12 @@ async def notify_admins_about_order_created(
     if not admins:
         logger.debug("No Telegram admins to notify about order created")
         return
+
+    # Resolve currency symbol from order, not from global config
+    if country_repo is not None:
+        country = await country_repo.get_by_currency_code(order.currency)
+        if country is not None:
+            currency_symbol = country.currency_symbol
 
     advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
     advertiser_name = (

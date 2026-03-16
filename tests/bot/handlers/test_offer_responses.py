@@ -100,6 +100,7 @@ async def test_contact_sent_immediately(
     offer_dispatch_repo,
     interaction_repo,
     messenger_client,
+    bot_texts_service,
 ) -> None:
     """Send contact immediately after each response."""
 
@@ -146,6 +147,7 @@ async def test_contact_sent_immediately(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     # Check contact sent (TZ: "Новый отклик", Креатор, Профиль креатора)
@@ -181,6 +183,7 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
     offer_dispatch_repo,
     interaction_repo,
     messenger_client,
+    bot_texts_service,
 ) -> None:
     """Blogger gets advertiser Telegram and phone when accepted into order."""
 
@@ -236,6 +239,7 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     sent_to_blogger = [
@@ -1300,7 +1304,7 @@ async def test_offer_response_handler_exception(
 
 @pytest.mark.asyncio
 async def test_send_contact_order_not_found(
-    fake_tm: object, messenger_client
+    fake_tm: object, messenger_client, bot_texts_service
 ) -> None:
     """Handle missing user or profile gracefully."""
 
@@ -1336,6 +1340,7 @@ async def test_send_contact_order_not_found(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     assert not bot.answers
@@ -1343,7 +1348,7 @@ async def test_send_contact_order_not_found(
 
 @pytest.mark.asyncio
 async def test_send_contact_order_not_active(
-    fake_tm: object, messenger_client
+    fake_tm: object, messenger_client, bot_texts_service
 ) -> None:
     """Skip sending contacts when advertiser is missing."""
 
@@ -1393,6 +1398,7 @@ async def test_send_contact_order_not_active(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     assert not bot.answers
@@ -1400,7 +1406,7 @@ async def test_send_contact_order_not_active(
 
 @pytest.mark.asyncio
 async def test_maybe_send_contacts_missing_user_or_profile(
-    fake_tm: object, messenger_client
+    fake_tm: object, messenger_client, bot_texts_service
 ) -> None:
     """Skip sending contacts when user or profile is missing."""
 
@@ -1447,6 +1453,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     # Contact should not be sent when user/profile is missing
@@ -1672,6 +1679,7 @@ async def test_send_contact_ugc_plus_placement_format(
     offer_dispatch_repo,
     interaction_repo,
     messenger_client,
+    bot_texts_service,
 ) -> None:
     """_send_contact_immediately shows UGC+размещение for ugc_plus_placement."""
 
@@ -1719,6 +1727,7 @@ async def test_send_contact_ugc_plus_placement_format(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     assert any(
@@ -1736,6 +1745,7 @@ async def test_send_contact_empty_instagram_url(
     offer_dispatch_repo,
     interaction_repo,
     messenger_client,
+    bot_texts_service,
 ) -> None:
     """_send_contact when instagram_url empty (no profile button)."""
 
@@ -1782,6 +1792,7 @@ async def test_send_contact_empty_instagram_url(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     assert any(
@@ -1799,6 +1810,7 @@ async def test_send_contact_instagram_url_without_http(
     offer_dispatch_repo,
     interaction_repo,
     messenger_client,
+    bot_texts_service,
 ) -> None:
     """_send_contact adds https:// when instagram_url has no scheme."""
 
@@ -1848,6 +1860,7 @@ async def test_send_contact_instagram_url_without_http(
         interaction_service=interaction_service,
         messenger_client=messenger_client,
         texts={},
+        bot_texts_service=bot_texts_service,
     )
 
     assert any(

@@ -994,6 +994,7 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             "Sending admin notification for miniapp order",
             extra={"order_id": str(order.order_id)},
         )
+        country_repo = dispatcher.get("country_repo")
         await notify_admins_about_order_created(
             order=order,
             messenger_client=messenger_client,
@@ -1001,6 +1002,7 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
             currency_symbol=config.market.currency_symbol,
+            country_repo=country_repo,
         )
         support_chat_id = config.referral.referral_support_chat_id
         if support_chat_id.strip():

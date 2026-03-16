@@ -157,6 +157,7 @@ async def _reply_offer_response_result(
             interaction_service=interaction_service,
             messenger_client=messenger_client,
             texts=contact_texts,
+            bot_texts_service=bot_texts_service,
             manager=manager,
         )
 
@@ -420,6 +421,7 @@ async def _send_contact_immediately(
     interaction_service: InteractionService | None,
     messenger_client: MessengerClient,
     texts: dict[str, str],
+    bot_texts_service: BotTextsService,
     manager: User | None = None,
 ) -> None:
     """Send contact to advertiser after each response (TZ format).
@@ -436,9 +438,17 @@ async def _send_contact_immediately(
         )
         return
 
-    t = texts
-    creator_name = user.username or t.get("lbl_creator_fallback", "Креатор")
-    ugc_format = _format_ugc_type(order, t)
+    advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
+
+    # Resolve per-recipient texts in their own locale
+    adv_locale = (advertiser.language if advertiser else None) or "ru"
+    adv_texts = await bot_texts_service.get_many(
+        list(_SEND_CONTACT_TEXTS_KEYS), adv_locale
+    )
+
+    t_adv = adv_texts
+    creator_name = user.username or t_adv.get("lbl_creator_fallback", "Креатор")
+    ugc_format = _format_ugc_type(order, t_adv)
     contact_text, open_profile_kb = _build_advertiser_contact_content(
         order,
         creator_name=creator_name,
@@ -447,10 +457,9 @@ async def _send_contact_immediately(
         profile_url=profile.instagram_url,
         has_telegram=bool(user.telegram and user.telegram.strip()),
         telegram_handle=user.telegram or "",
-        texts=t,
+        texts=t_adv,
     )
 
-    advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
     if advertiser and advertiser.external_id.isdigit():
         await send_with_retry(
             messenger_client,
@@ -463,7 +472,7 @@ async def _send_contact_immediately(
             extra={"order_id": str(order.order_id)},
         )
         if response_count == 1:
-            warning = t.get("msg_advertiser_contacts_warning", "")
+            warning = t_adv.get("msg_advertiser_contacts_warning", "")
             if warning:
                 await send_with_retry(
                     messenger_client,
@@ -477,11 +486,30 @@ async def _send_contact_immediately(
                 )
 
     if manager and manager.external_id.isdigit():
+        mgr_locale = manager.language or "ru"
+        mgr_texts = await bot_texts_service.get_many(
+            list(_SEND_CONTACT_TEXTS_KEYS), mgr_locale
+        )
+        t_mgr = mgr_texts
+        mgr_creator_name = user.username or t_mgr.get(
+            "lbl_creator_fallback", "Креатор"
+        )
+        mgr_ugc_format = _format_ugc_type(order, t_mgr)
+        mgr_contact_text, mgr_kb = _build_advertiser_contact_content(
+            order,
+            creator_name=mgr_creator_name,
+            city=profile.city or "—",
+            ugc_format=mgr_ugc_format,
+            profile_url=profile.instagram_url,
+            has_telegram=bool(user.telegram and user.telegram.strip()),
+            telegram_handle=user.telegram or "",
+            texts=t_mgr,
+        )
         await send_with_retry(
             messenger_client,
             chat_id=manager.external_id,
-            text=contact_text,
-            keyboard=open_profile_kb,
+            text=mgr_contact_text,
+            keyboard=mgr_kb,
             retries=_send_retries,
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
@@ -499,7 +527,7 @@ async def _send_contact_immediately(
         advertiser_phone=advertiser_profile.phone
         if advertiser_profile
         else None,
-        texts=t,
+        texts=texts,
     )
     await send_with_retry(
         messenger_client,

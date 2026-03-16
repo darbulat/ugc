@@ -1368,6 +1368,7 @@ async def handle_geography(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Handle geography and create order."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -1443,6 +1444,7 @@ async def handle_geography(
         content_moderation=content_moderation_service,
         admin_base_url=config.admin.admin_base_url,
         currency_symbol=config.market.currency_symbol,
+        country_repo=country_repo,
     )
 
     support_chat_id = config.referral.referral_support_chat_id
