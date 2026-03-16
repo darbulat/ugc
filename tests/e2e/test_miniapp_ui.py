@@ -11,7 +11,7 @@ from tests.e2e.miniapp_helpers import (
 )
 
 # Country buttons: text displayed in the country selector grid
-_COUNTRY_FOR_LOCALE = {"ru": "Россия", "en": "Georgia"}
+_COUNTRY_FOR_LOCALE = {"ru": "Россия", "en": "საქართველო"}
 
 
 def _open_miniapp(
@@ -97,6 +97,9 @@ class TestMiniAppAdvertiser:
         # Open create order form
         miniapp_page.locator("#btn-show-create-order").click()
         miniapp_page.wait_for_selector("#block-create-order", state="visible")
+
+        # Wait for config to populate bloggers select
+        miniapp_page.wait_for_selector("#ord-bloggers option", timeout=10000)
 
         # Fill order form
         miniapp_page.locator("#ord-link").fill("https://example.com/product")
