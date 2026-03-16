@@ -4,6 +4,13 @@
 
 Advertisers outside Russia must pay through a separate Telegram payment provider (`TELEGRAM_PROVIDER_TOKEN_INTL`) because YooKassa works only for RU. International invoices must include UGC video cost and country-specific tax on top of the contact pricing. Russian advertisers keep the current flow unchanged.
 
+## Design Decisions
+
+- **`user.country = None` fallback:** Users without a country are treated as Russian (fallback to `"ru"`). This matches the current user base where most users are RU.
+- **Rounding:** All monetary calculations use `Decimal` to avoid floating-point drift. Both invoice-sending and payment validation use the same `calculate_invoice_total` function with `Decimal` arithmetic, ensuring identical results.
+- **`Order.price` stays `float`:** Existing field with many dependents. Converted to `Decimal` at calculation boundaries via `Decimal(str(order.price))`. Full migration to `Decimal` is a separate refactor.
+- **`ContactPricing.price` and `Country.tax_rate` are `Decimal`:** New/changed fields — typed correctly from the start.
+
 ## Pricing Formula
 
 **For RU advertisers:**
@@ -36,7 +43,8 @@ class Country:
     name_native: str
     currency_code: str
     currency_symbol: str
-    tax_rate: float = 0.0    # 0.0 = 0%, 0.12 = 12%
+    locale: str = "ru"
+    tax_rate: Decimal = Decimal("0")  # 0 = 0%, 0.12 = 12%
     enabled: bool = True
 ```
 
@@ -49,7 +57,7 @@ Migration adds `tax_rate NUMERIC(5,4) NOT NULL DEFAULT 0` to `countries` table. 
 class ContactPricing:
     country_code: str        # part of composite PK
     bloggers_count: int      # part of composite PK
-    price: float
+    price: Decimal
     currency: str            # invoice currency (RUB, GEL, KZT...)
     updated_at: datetime
     created_at: datetime | None = None
@@ -58,7 +66,7 @@ class ContactPricing:
 Migration:
 1. Add `country_code VARCHAR(2) NOT NULL DEFAULT 'ru'` to `contact_pricing`
 2. Add `currency VARCHAR(3) NOT NULL DEFAULT 'RUB'` to `contact_pricing`
-3. Drop old PK `(bloggers_count)`, create new PK `(country_code, bloggers_count)`
+3. Drop old PK `(bloggers_count)`, create new PK `(country_code, bloggers_count)` — done in a single migration step; table is small and rarely written
 4. Add FK `country_code` -> `countries(code)`
 5. Existing rows become `country_code='ru'`, `currency='RUB'`
 
@@ -68,28 +76,31 @@ Migration:
 
 ```python
 def calculate_invoice_total(
-    contact_pricing_price: float,
-    order_price: float,
+    contact_pricing_price: Decimal,
+    order_price: Decimal,
     bloggers_needed: int,
-    tax_rate: float,
+    tax_rate: Decimal,
     is_ru: bool,
-) -> float:
+) -> Decimal:
     if is_ru:
         return contact_pricing_price
-    return (contact_pricing_price + order_price * bloggers_needed) * (1 + tax_rate)
+    base = contact_pricing_price + order_price * bloggers_needed
+    return (base * (1 + tax_rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 ```
 
-No IO, easily testable.
+No IO, easily testable. Uses `Decimal` to avoid floating-point drift between invoice-sending and payment validation.
 
 ### InvoiceData DTO
 
 ```python
 @dataclass(frozen=True)
 class InvoiceData:
-    total: float              # final amount to charge
-    currency: str             # invoice currency
+    total: Decimal            # final amount to charge
+    currency: str             # invoice currency code (RUB, GEL, KZT)
+    currency_symbol: str      # display symbol (₽, ₾, ₸)
     provider_token: str       # RU or intl Telegram provider token
     provider_data: str | None # 54-FZ YooKassa receipt (RU only) or None
+    need_email: bool          # True for RU (YooKassa), False for intl
     is_ru: bool
 ```
 
@@ -104,11 +115,12 @@ async def calculate_invoice_data(
 Steps:
 1. Determine `is_ru` from `user_country`
 2. Look up `ContactPricing` by `(country_code, bloggers_needed)`
-3. Look up `Country` for `tax_rate` (if not RU)
+3. Look up `Country` for `tax_rate` and `currency_symbol` (if not RU)
 4. Calculate total via `calculate_invoice_total()`
 5. Select provider token via `_get_provider_token()`
 6. Build `provider_data` (RU only)
-7. Return `InvoiceData` or `None` if pricing not configured
+7. Set `need_email=True` for RU, `False` for international
+8. Return `InvoiceData` or `None` if pricing not configured
 
 ### PaymentService — new dependency
 
@@ -118,21 +130,26 @@ Steps:
 
 ```python
 is_ru = (user.country or "").lower() == "ru"
+country_code = (user.country or "ru").lower()
 pricing = await self.pricing_repo.get_by_bloggers_count(
-    order.bloggers_needed, country_code=user.country or "ru"
+    order.bloggers_needed, country_code=country_code, session=session
 )
-country = await self.country_repo.get_by_code(user.country) if not is_ru else None
-tax_rate = country.tax_rate if country else 0.0
+country = await self.country_repo.get_by_code(user.country, session=session) if not is_ru else None
+tax_rate = country.tax_rate if country else Decimal("0")
 
 expected = calculate_invoice_total(
-    pricing.price, order.price, order.bloggers_needed, tax_rate, is_ru
+    pricing.price,              # already Decimal
+    Decimal(str(order.price)),  # Order.price is float, convert at boundary
+    order.bloggers_needed,
+    tax_rate,                   # already Decimal
+    is_ru,
 )
-expected_minor = round(expected * 100)
+expected_minor = int(expected * 100)
 if total_amount != expected_minor:
     raise OrderCreationError("amount mismatch")
 ```
 
-Same `calculate_invoice_total` — single source of truth.
+Same `calculate_invoice_total` — single source of truth. All repo calls pass `session=session` to stay within the transaction.
 
 ### ContactPricingRepository
 
@@ -172,7 +189,9 @@ await send_order_invoice(invoice_data=invoice_data, ...)
 
 ### `send_order_invoice` accepts `InvoiceData`
 
-No longer calculates currency, provider token, or receipt internally. All comes from `InvoiceData`.
+No longer calculates currency, provider token, or receipt internally. All comes from `InvoiceData`. Uses `invoice_data.currency_symbol` for the label. Uses `invoice_data.need_email` and `send_email_to_provider=invoice_data.need_email` (YooKassa-specific, only for RU).
+
+Invoice label uses `bot_texts_service` for localized text instead of hardcoded Russian.
 
 ## Rollback from Current PR
 
@@ -185,13 +204,14 @@ The current `feature/intl-payment-provider-routing` branch contains `order_curre
 
 ## Admin Panel
 
-- `CountryModel`: add `tax_rate` to displayed columns
-- `ContactPricingModel`: composite PK `(country_code, bloggers_count)` — verify SQLAdmin handles this correctly
+- `CountryModel`: add `tax_rate` to `column_list`, `form_columns`, `column_labels`
+- `ContactPricingModel`: add `country_code` and `currency` to `column_list`, `form_columns`, `column_labels`. Composite PK `(country_code, bloggers_count)` — sqladmin supports composite PKs for list/detail/edit views. If issues arise, fallback: add surrogate `id` serial PK with unique constraint on `(country_code, bloggers_count)`.
 
 ## Testing
 
-- `calculate_invoice_total`: unit tests for RU and international formulas, edge cases (tax_rate=0, price=0)
-- `PaymentService.calculate_invoice_data`: test with RU user, international user, missing pricing
-- `PaymentService.confirm_telegram_payment`: test validation with both formulas
+- `calculate_invoice_total`: unit tests for RU and international formulas, edge cases (tax_rate=0, price=0, large values)
+- `PaymentService.calculate_invoice_data`: test with RU user, international user, missing pricing, user.country=None
+- `PaymentService.confirm_telegram_payment`: test validation with both formulas, verify Decimal rounding matches
 - Existing payment handler tests: update to use `country="ru"` in test users (already done)
 - New handler tests: international user scenarios
+- Update in-memory fakes: `InMemoryContactPricingRepository` in `memory_repositories.py` and `tests/helpers/fakes.py` to support `country_code` parameter
