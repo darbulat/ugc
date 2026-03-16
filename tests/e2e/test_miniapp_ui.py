@@ -46,14 +46,14 @@ class TestMiniAppAdvertiser:
 
     def test_register_advertiser(
         self,
-        page: Page,
+        miniapp_page: Page,
         miniapp_base_url: str,
         miniapp_bot_token: str,
         locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
         _open_miniapp(
-            page,
+            miniapp_page,
             miniapp_base_url,
             miniapp_bot_token,
             user_id,
@@ -61,37 +61,37 @@ class TestMiniAppAdvertiser:
         )
 
         # Country selection
-        _select_country(page, locale)
+        _select_country(miniapp_page, locale)
 
         # Role choice
-        wait_for_screen(page, "screen-role-choice")
-        page.locator('[data-role="advertiser"]').click()
+        wait_for_screen(miniapp_page, "screen-role-choice")
+        miniapp_page.locator('[data-role="advertiser"]').click()
 
         # Registration form
-        wait_for_screen(page, "screen-register-advertiser")
-        page.locator("#adv-name").fill("E2E Advertiser")
-        page.locator("#adv-phone").fill("89001234567")
-        page.locator("#adv-brand").fill("E2E Brand")
-        page.locator("#btn-submit-advertiser").click()
+        wait_for_screen(miniapp_page, "screen-register-advertiser")
+        miniapp_page.locator("#adv-name").fill("E2E Advertiser")
+        miniapp_page.locator("#adv-phone").fill("89001234567")
+        miniapp_page.locator("#adv-brand").fill("E2E Brand")
+        miniapp_page.locator("#btn-submit-advertiser").click()
 
         # Agreements
-        wait_for_screen(page, "screen-agreements-advertiser")
-        page.locator("#adv-agree-checkbox").check()
-        page.locator("#btn-confirm-adv-agreement").click()
+        wait_for_screen(miniapp_page, "screen-agreements-advertiser")
+        miniapp_page.locator("#adv-agree-checkbox").check()
+        miniapp_page.locator("#btn-confirm-adv-agreement").click()
 
         # Dashboard
-        wait_for_screen(page, "screen-advertiser-dashboard")
+        wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
 
     def test_create_order(
         self,
-        page: Page,
+        miniapp_page: Page,
         miniapp_base_url: str,
         miniapp_bot_token: str,
         locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
         _open_miniapp(
-            page,
+            miniapp_page,
             miniapp_base_url,
             miniapp_bot_token,
             user_id,
@@ -99,56 +99,58 @@ class TestMiniAppAdvertiser:
         )
 
         # Already registered → should land on dashboard
-        wait_for_screen(page, "screen-advertiser-dashboard")
+        wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
 
         # Open create order form
-        page.locator("#btn-show-create-order").click()
-        page.wait_for_selector("#block-create-order", state="visible")
+        miniapp_page.locator("#btn-show-create-order").click()
+        miniapp_page.wait_for_selector("#block-create-order", state="visible")
 
         # Fill order form
-        page.locator("#ord-link").fill("https://example.com/product")
-        page.locator("#ord-offer").fill("E2E test offer text")
-        page.locator("#ord-price").fill("5000")
-        page.locator("#btn-submit-order").click()
+        miniapp_page.locator("#ord-link").fill("https://example.com/product")
+        miniapp_page.locator("#ord-offer").fill("E2E test offer text")
+        miniapp_page.locator("#ord-price").fill("5000")
+        miniapp_page.locator("#btn-submit-order").click()
 
         # Assert success
-        page.wait_for_selector("#ord-success:not(:empty)", timeout=10000)
-        success_text = page.locator("#ord-success").inner_text()
+        miniapp_page.wait_for_selector(
+            "#ord-success:not(:empty)", timeout=10000
+        )
+        success_text = miniapp_page.locator("#ord-success").inner_text()
         assert success_text  # Non-empty success message
 
     def test_view_orders(
         self,
-        page: Page,
+        miniapp_page: Page,
         miniapp_base_url: str,
         miniapp_bot_token: str,
         locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
         _open_miniapp(
-            page,
+            miniapp_page,
             miniapp_base_url,
             miniapp_bot_token,
             user_id,
             f"e2e_adv_{locale}",
         )
 
-        wait_for_screen(page, "screen-advertiser-dashboard")
+        wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
 
         # Open orders list
-        page.locator("#btn-show-orders-list").click()
-        page.wait_for_selector("#block-orders-list", state="visible")
+        miniapp_page.locator("#btn-show-orders-list").click()
+        miniapp_page.wait_for_selector("#block-orders-list", state="visible")
 
         # Should have at least one order from test_create_order
-        page.wait_for_selector("#orders-list li", timeout=10000)
-        orders = page.locator("#orders-list li")
+        miniapp_page.wait_for_selector("#orders-list li", timeout=10000)
+        orders = miniapp_page.locator("#orders-list li")
         assert orders.count() >= 1
 
         # Click first order to open detail
         orders.first.click()
-        wait_for_screen(page, "screen-order-detail")
+        wait_for_screen(miniapp_page, "screen-order-detail")
 
         # Verify fields are populated
-        link_value = page.locator("#ord-detail-link").input_value()
+        link_value = miniapp_page.locator("#ord-detail-link").input_value()
         assert link_value  # Non-empty
 
 
@@ -160,14 +162,14 @@ class TestMiniAppBlogger:
 
     def test_register_blogger(
         self,
-        page: Page,
+        miniapp_page: Page,
         miniapp_base_url: str,
         miniapp_bot_token: str,
         locale: str,
     ) -> None:
         user_id = MINIAPP_TEST_USER_IDS["blogger"][locale]
         _open_miniapp(
-            page,
+            miniapp_page,
             miniapp_base_url,
             miniapp_bot_token,
             user_id,
@@ -175,47 +177,49 @@ class TestMiniAppBlogger:
         )
 
         # Country selection
-        _select_country(page, locale)
+        _select_country(miniapp_page, locale)
 
         # Role choice
-        wait_for_screen(page, "screen-role-choice")
-        page.locator('[data-role="blogger"]').click()
+        wait_for_screen(miniapp_page, "screen-role-choice")
+        miniapp_page.locator('[data-role="blogger"]').click()
 
         # Registration form
-        wait_for_screen(page, "screen-register-blogger")
-        page.locator("#blg-name").fill("E2E Creator")
-        page.locator("#blg-instagram").fill(f"e2e_creator_{locale}")
-        page.locator("#blg-birth-day").select_option("15")
-        page.locator("#blg-birth-month").select_option("6")
-        page.locator("#blg-birth-year").select_option("1995")
-        page.locator("#blg-topics").fill("beauty, fashion")
-        page.locator("#blg-audience-geo").fill("Russia")
-        page.locator("#blg-price").fill("10000")
+        wait_for_screen(miniapp_page, "screen-register-blogger")
+        miniapp_page.locator("#blg-name").fill("E2E Creator")
+        miniapp_page.locator("#blg-instagram").fill(f"e2e_creator_{locale}")
+        miniapp_page.locator("#blg-birth-day").select_option("15")
+        miniapp_page.locator("#blg-birth-month").select_option("6")
+        miniapp_page.locator("#blg-birth-year").select_option("1995")
+        miniapp_page.locator("#blg-topics").fill("beauty, fashion")
+        miniapp_page.locator("#blg-audience-geo").fill("Russia")
+        miniapp_page.locator("#blg-price").fill("10000")
 
         # City: use search instead of map click
-        page.locator("#btn-blogger-city-map").click()
-        page.wait_for_selector("#block-blogger-city-map", state="visible")
-        page.locator("#blg-city-search").fill(
+        miniapp_page.locator("#btn-blogger-city-map").click()
+        miniapp_page.wait_for_selector(
+            "#block-blogger-city-map", state="visible"
+        )
+        miniapp_page.locator("#blg-city-search").fill(
             "Moscow" if locale == "en" else "Москва"
         )
-        page.locator("#btn-blogger-city-search").click()
+        miniapp_page.locator("#btn-blogger-city-search").click()
 
         # Wait for city field to be populated by geocode API
-        page.wait_for_function(
+        miniapp_page.wait_for_function(
             "document.getElementById('blg-city').value.length > 0",
             timeout=15000,
         )
 
         # Submit
-        page.locator("#btn-submit-blogger").click()
+        miniapp_page.locator("#btn-submit-blogger").click()
 
         # Agreements
-        wait_for_screen(page, "screen-agreements-blogger")
-        page.locator("#blg-agree-checkbox").check()
-        page.locator("#btn-confirm-blg-agreement").click()
+        wait_for_screen(miniapp_page, "screen-agreements-blogger")
+        miniapp_page.locator("#blg-agree-checkbox").check()
+        miniapp_page.locator("#btn-confirm-blg-agreement").click()
 
         # Blogger dashboard
-        wait_for_screen(page, "screen-blogger-dashboard")
+        wait_for_screen(miniapp_page, "screen-blogger-dashboard")
 
 
 @pytest.mark.e2e
@@ -226,7 +230,7 @@ class TestMiniAppNavigation:
 
     def test_switch_role(
         self,
-        page: Page,
+        miniapp_page: Page,
         miniapp_base_url: str,
         miniapp_bot_token: str,
         locale: str,
@@ -234,7 +238,7 @@ class TestMiniAppNavigation:
         # Use advertiser user_id (has profile from TestMiniAppAdvertiser)
         user_id = MINIAPP_TEST_USER_IDS["advertiser"][locale]
         _open_miniapp(
-            page,
+            miniapp_page,
             miniapp_base_url,
             miniapp_bot_token,
             user_id,
@@ -242,13 +246,13 @@ class TestMiniAppNavigation:
         )
 
         # Should land on advertiser dashboard (already registered)
-        wait_for_screen(page, "screen-advertiser-dashboard")
+        wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
 
         # Switch role
-        page.locator("#btn-change-role-from-adv").click()
-        wait_for_screen(page, "screen-role-choice")
+        miniapp_page.locator("#btn-change-role-from-adv").click()
+        wait_for_screen(miniapp_page, "screen-role-choice")
 
         # Click blogger — should go to registration
         # (no blogger profile for this user)
-        page.locator('[data-role="blogger"]').click()
-        wait_for_screen(page, "screen-register-blogger")
+        miniapp_page.locator('[data-role="blogger"]').click()
+        wait_for_screen(miniapp_page, "screen-register-blogger")

@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import Browser
 from sqlalchemy import create_engine
 
 from ugc_bot.infrastructure.db.base import Base
@@ -249,14 +250,15 @@ def miniapp_bot_token() -> str:
 
 
 @pytest.fixture(scope="session")
-def browser_type_launch_args(browser_type_launch_args: dict) -> dict:  # type: ignore[type-arg]
-    """Disable Chromium HTTPS-First to allow plain HTTP to app:9999."""
-    args = list(browser_type_launch_args.get("args", []))
-    args.append("--disable-features=HttpsUpgrades")
-    return {**browser_type_launch_args, "args": args}
-
-
-@pytest.fixture(scope="session")
 def browser_context_args(browser_context_args: dict) -> dict:  # type: ignore[type-arg]
     """Ignore HTTPS errors for self-signed certs in Docker."""
     return {**browser_context_args, "ignore_https_errors": True}
+
+
+@pytest.fixture()
+def miniapp_page(browser: Browser):
+    """Fresh Playwright page with ignore_https_errors for miniapp."""
+    ctx = browser.new_context(ignore_https_errors=True)
+    page = ctx.new_page()
+    yield page
+    ctx.close()
