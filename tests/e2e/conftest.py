@@ -219,10 +219,7 @@ def base_url() -> str:
 
 # --- Mini App E2E fixtures ---
 
-MINIAPP_TEST_USER_IDS = {
-    "advertiser": {"ru": 990000001, "en": 990000002},
-    "blogger": {"ru": 990000011, "en": 990000012},
-}
+from tests.e2e.miniapp_helpers import MINIAPP_TEST_USER_IDS  # noqa: E402
 
 
 def _miniapp_base_url() -> str | None:

@@ -3,8 +3,8 @@
 import pytest
 from playwright.sync_api import Page
 
-from tests.e2e.conftest import MINIAPP_TEST_USER_IDS
 from tests.e2e.miniapp_helpers import (
+    MINIAPP_TEST_USER_IDS,
     build_telegram_mock_script,
     generate_init_data,
     wait_for_screen,

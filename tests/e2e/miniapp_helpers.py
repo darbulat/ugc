@@ -10,6 +10,11 @@ from playwright.sync_api import Page
 
 _WEBAPP_DATA_KEY = "WebAppData"
 
+MINIAPP_TEST_USER_IDS: dict[str, dict[str, int]] = {
+    "advertiser": {"ru": 990000001, "en": 990000002},
+    "blogger": {"ru": 990000011, "en": 990000012},
+}
+
 
 def generate_init_data(bot_token: str, user_id: int, username: str) -> str:
     """Generate a valid Telegram WebApp initData string with HMAC signature.
