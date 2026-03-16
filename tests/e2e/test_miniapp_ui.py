@@ -105,7 +105,9 @@ class TestMiniAppAdvertiser:
 
         # Fill order form
         miniapp_page.locator("#ord-link").fill("https://example.com/product")
-        miniapp_page.locator("#ord-offer").fill("E2E test offer text")
+        miniapp_page.locator("#ord-offer").fill(
+            "E2E test offer text for product review"
+        )
         miniapp_page.locator("#ord-price").fill("5000")
         miniapp_page.locator("#btn-submit-order").click()
 
