@@ -11,38 +11,65 @@ from sqlalchemy import create_engine
 
 from ugc_bot.infrastructure.db.base import Base
 
+_MINIAPP_CLASS_ORDER = {
+    "TestMiniAppAdvertiser": 0,
+    "TestMiniAppBlogger": 1,
+    "TestMiniAppNavigation": 2,
+}
+
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Run profile_update e2e_telegram tests after registration tests."""
+    """Order e2e_telegram and miniapp tests."""
+    # --- Telegram e2e ordering (existing) ---
     telegram_items = [
         (i, item)
         for i, item in enumerate(items)
         if item.get_closest_marker("e2e_telegram") is not None
     ]
-    if not telegram_items:
+    if telegram_items:
+
+        def order_key(entry: tuple[int, pytest.Item]) -> tuple[int, int]:
+            idx, item = entry
+            nodeid = item.nodeid
+            if "profile_update" in nodeid:
+                return (1, idx)
+            return (0, idx)
+
+        telegram_items.sort(key=order_key)
+        reordered_ids = [item.nodeid for _, item in telegram_items]
+        id_to_item = {item.nodeid: item for item in items}
+        remaining = [item for item in items if item.nodeid not in reordered_ids]
+        items[:] = remaining + [id_to_item[nid] for nid in reordered_ids]
+
+    # --- Miniapp e2e ordering ---
+    miniapp_items = []
+    for i, item in enumerate(items):
+        cls = getattr(item, "cls", None)
+        if cls and cls.__name__ in _MINIAPP_CLASS_ORDER:
+            miniapp_items.append((i, item))
+    if not miniapp_items:
         return
 
-    def order_key(entry: tuple[int, pytest.Item]) -> tuple[int, int]:
+    def miniapp_order_key(entry: tuple[int, pytest.Item]) -> tuple[int, int]:
         idx, item = entry
-        nodeid = item.nodeid
-        # profile_update tests run last (higher key)
-        if "profile_update" in nodeid:
-            return (1, idx)
-        return (0, idx)
+        cls = getattr(item, "cls", None)
+        cls_order = _MINIAPP_CLASS_ORDER.get(cls.__name__, 99) if cls else 99
+        return (cls_order, idx)
 
-    telegram_items.sort(key=order_key)
-    # Build set of telegram item ids to reorder only those in items
-    reordered_ids = [item.nodeid for _, item in telegram_items]
+    miniapp_items.sort(key=miniapp_order_key)
+    reordered_ids = [item.nodeid for _, item in miniapp_items]
     id_to_item = {item.nodeid: item for item in items}
-    # Remove telegram items from original positions, then append in new order
     remaining = [item for item in items if item.nodeid not in reordered_ids]
     items[:] = remaining + [id_to_item[nid] for nid in reordered_ids]
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Clean DB users before E2E Telegram tests when E2E_DATABASE_URL is set."""
-    if not os.environ.get("E2E_DATABASE_URL"):
+    """Clean DB users before E2E tests when E2E_DATABASE_URL is set."""
+    db_url = os.environ.get("E2E_DATABASE_URL")
+    if not db_url:
         return
+
+    # Existing telegram e2e cleanup
     try:
         items = session.items
     except Exception:
@@ -50,23 +77,39 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     has_telegram = any(
         item.get_closest_marker("e2e_telegram") is not None for item in items
     )
-    if not has_telegram:
-        return
-    root = Path(__file__).resolve().parent.parent.parent
-    script = root / "scripts" / "clean_e2e_users.py"
-    if not script.exists():
-        return
-    cmd = [sys.executable, str(script)]
-    clean_telegram = os.environ.get("E2E_CLEAN_TELEGRAM", "").strip()
-    if clean_telegram:
-        cmd.extend(["--telegram", clean_telegram])
-    subprocess.run(
-        cmd,
-        cwd=str(root),
-        env=os.environ.copy(),
-        check=False,
-        capture_output=True,
-    )
+    if has_telegram:
+        root = Path(__file__).resolve().parent.parent.parent
+        script = root / "scripts" / "clean_e2e_users.py"
+        if script.exists():
+            cmd = [sys.executable, str(script)]
+            clean_telegram = os.environ.get("E2E_CLEAN_TELEGRAM", "").strip()
+            if clean_telegram:
+                cmd.extend(["--telegram", clean_telegram])
+            subprocess.run(
+                cmd,
+                cwd=str(root),
+                env=os.environ.copy(),
+                check=False,
+                capture_output=True,
+            )
+
+    # Miniapp e2e cleanup: delete test users by external_id
+    miniapp_user_ids = []
+    for role_ids in MINIAPP_TEST_USER_IDS.values():
+        miniapp_user_ids.extend(str(uid) for uid in role_ids.values())
+    if miniapp_user_ids:
+        try:
+            from sqlalchemy import text
+
+            engine = create_engine(db_url)
+            with engine.begin() as conn:
+                conn.execute(
+                    text("DELETE FROM users WHERE external_id = ANY(:ids)"),
+                    {"ids": miniapp_user_ids},
+                )
+            engine.dispose()
+        except Exception:
+            pass  # Cleanup is best-effort
 
 
 E2E_PORT = 8001
@@ -172,3 +215,55 @@ def base_url() -> str:
     """Base URL for admin app (local or Docker)."""
     env_url = os.environ.get("E2E_BASE_URL", "").strip()
     return env_url if env_url else BASE_URL
+
+
+# --- Mini App E2E fixtures ---
+
+from tests.e2e.miniapp_helpers import MINIAPP_TEST_USER_IDS  # noqa: E402
+
+
+def _miniapp_base_url() -> str | None:
+    return os.environ.get("E2E_MINIAPP_URL", "").strip() or None
+
+
+def _miniapp_bot_token() -> str | None:
+    return os.environ.get("E2E_BOT_TOKEN", "").strip() or None
+
+
+@pytest.fixture(scope="session")
+def miniapp_base_url() -> str:
+    """Base URL for Mini App. Skips if E2E_MINIAPP_URL not set."""
+    url = _miniapp_base_url()
+    if not url:
+        pytest.skip("E2E_MINIAPP_URL not set")
+    return url
+
+
+@pytest.fixture(scope="session")
+def miniapp_bot_token() -> str:
+    """Bot token for signing initData. Skips if E2E_BOT_TOKEN not set."""
+    token = _miniapp_bot_token()
+    if not token:
+        pytest.skip("E2E_BOT_TOKEN not set")
+    return token
+
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args: dict) -> dict:  # type: ignore[type-arg]
+    """Ignore HTTPS errors for self-signed certs in Docker."""
+    return {**browser_context_args, "ignore_https_errors": True}
+
+
+@pytest.fixture()
+def miniapp_page(browser):
+    """Fresh context/page that blocks telegram-web-app.js SDK."""
+    ctx = browser.new_context(ignore_https_errors=True)
+    ctx.route(
+        "**/telegram-web-app.js",
+        lambda route: route.fulfill(
+            status=200, body="", content_type="text/javascript"
+        ),
+    )
+    page = ctx.new_page()
+    yield page
+    ctx.close()
