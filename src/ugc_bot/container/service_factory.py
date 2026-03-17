@@ -17,11 +17,11 @@ from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
-from ugc_bot.application.services.exchange_rate_service import (
-    ExchangeRateService,
-)
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
+)
+from ugc_bot.application.services.exchange_rate_service import (
+    ExchangeRateService,
 )
 from ugc_bot.application.services.geocoder import NominatimGeocoder
 from ugc_bot.application.services.geocoder_cache import CachingGeocoder
@@ -319,9 +319,7 @@ def build_exchange_rate_service(
         cache = RedisExchangeRateCache(redis=redis_client)
         return ExchangeRateService(provider=provider, cache=cache)
     except Exception:
-        logger.warning(
-            "Could not build ExchangeRateService", exc_info=True
-        )
+        logger.warning("Could not build ExchangeRateService", exc_info=True)
         return None
 
 

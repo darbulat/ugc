@@ -1,6 +1,7 @@
 """Tests for interaction service."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -10,10 +11,18 @@ from ugc_bot.application.errors import (
     InteractionNotFoundError,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
-from ugc_bot.domain.entities import Interaction
-from ugc_bot.domain.enums import InteractionStatus
+from ugc_bot.domain.entities import Interaction, Order, User
+from ugc_bot.domain.enums import (
+    InteractionStatus,
+    MessengerType,
+    OrderStatus,
+    OrderType,
+    UserStatus,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryInteractionRepository,
+    InMemoryOrderRepository,
+    InMemoryUserRepository,
 )
 
 
@@ -668,3 +677,153 @@ async def test_get_or_create_with_transaction_manager(fake_tm: object) -> None:
         found_in_repo is not None
         and found_in_repo.interaction_id == interaction.interaction_id
     )
+
+
+@pytest.mark.asyncio
+async def test_record_advertiser_feedback_ok_triggers_referral_income() -> None:
+    """OK feedback from advertiser calls record_creator_referral_income."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000002001")
+    blogger_id = UUID("00000000-0000-0000-0000-000000002002")
+    advertiser_id = UUID("00000000-0000-0000-0000-000000002003")
+
+    interaction_repo = InMemoryInteractionRepository()
+    order_repo = InMemoryOrderRepository()
+    user_repo = InMemoryUserRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+    )
+    await order_repo.save(order)
+
+    advertiser = User(
+        user_id=advertiser_id,
+        external_id="adv_ext",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        country="ru",
+    )
+    await user_repo.save(advertiser)
+
+    # Pre-save interaction with blogger already gave OK
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000002004"),
+        order_id=order_id,
+        blogger_id=blogger_id,
+        advertiser_id=advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger="✅ Всё прошло нормально",
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    await interaction_repo.save(interaction)
+
+    referral_income_service = AsyncMock()
+    service = InteractionService(
+        interaction_repo=interaction_repo,
+        order_repo=order_repo,
+        user_repo=user_repo,
+        referral_income_service=referral_income_service,
+    )
+
+    updated = await service.record_advertiser_feedback(
+        interaction.interaction_id, "✅ Всё прошло нормально"
+    )
+
+    assert updated.status == InteractionStatus.OK
+    referral_income_service.record_creator_referral_income.assert_awaited_once()
+    call_kwargs = (
+        referral_income_service.record_creator_referral_income.call_args.kwargs
+    )
+    assert call_kwargs["creator_id"] == blogger_id
+    assert call_kwargs["advertiser_country_code"] == "ru"
+
+
+@pytest.mark.asyncio
+async def test_record_blogger_feedback_ok_triggers_referral_income() -> None:
+    """OK feedback from blogger calls record_creator_referral_income."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000002011")
+    blogger_id = UUID("00000000-0000-0000-0000-000000002012")
+    advertiser_id = UUID("00000000-0000-0000-0000-000000002013")
+
+    interaction_repo = InMemoryInteractionRepository()
+    order_repo = InMemoryOrderRepository()
+    user_repo = InMemoryUserRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+    )
+    await order_repo.save(order)
+
+    advertiser = User(
+        user_id=advertiser_id,
+        external_id="adv_ext_2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser2",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        country="ru",
+    )
+    await user_repo.save(advertiser)
+
+    # Pre-save interaction with advertiser already gave OK
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000002014"),
+        order_id=order_id,
+        blogger_id=blogger_id,
+        advertiser_id=advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser="✅ Всё прошло нормально",
+        from_blogger=None,
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    await interaction_repo.save(interaction)
+
+    referral_income_service = AsyncMock()
+    service = InteractionService(
+        interaction_repo=interaction_repo,
+        order_repo=order_repo,
+        user_repo=user_repo,
+        referral_income_service=referral_income_service,
+    )
+
+    updated = await service.record_blogger_feedback(
+        interaction.interaction_id, "✅ Всё прошло нормально"
+    )
+
+    assert updated.status == InteractionStatus.OK
+    referral_income_service.record_creator_referral_income.assert_awaited_once()
+    call_kwargs = (
+        referral_income_service.record_creator_referral_income.call_args.kwargs
+    )
+    assert call_kwargs["creator_id"] == blogger_id
+    assert call_kwargs["advertiser_country_code"] == "ru"

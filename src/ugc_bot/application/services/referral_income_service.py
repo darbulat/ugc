@@ -690,8 +690,10 @@ class ReferralIncomeService:
         """Get referral stats broken down by currency."""
         assert self.referral_income_entry_repo is not None
 
-        creators_count = await self.user_referral_binding_repo.count_by_referrer(
-            referrer_user_id
+        creators_count = (
+            await self.user_referral_binding_repo.count_by_referrer(
+                referrer_user_id
+            )
         )
         income_by_currency = (
             await self.referral_income_entry_repo.get_totals_by_currency(

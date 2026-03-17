@@ -341,7 +341,7 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
     async def save(
         self, entry: ReferralIncomeEntry, session: object | None = None
     ) -> None:
-        """Save entry. Ignore if (order_id, referrer_user_id, income_type) exists."""
+        """Save entry; skip if duplicate key."""
         key = (entry.order_id, entry.referrer_user_id, entry.income_type)
         if key in self._seen:
             return
@@ -355,7 +355,9 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         totals: dict[str, Decimal] = {}
         for e in self.entries:
             if e.referrer_user_id == referrer_user_id:
-                totals[e.currency] = totals.get(e.currency, Decimal("0")) + e.commission_amount
+                totals[e.currency] = (
+                    totals.get(e.currency, Decimal("0")) + e.commission_amount
+                )
         return totals
 
     async def get_orders_count_by_currency(
@@ -375,11 +377,18 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
     ) -> dict[str, Decimal]:
         """Return {currency: total_commission_this_month} for referrer."""
         now = datetime.now(timezone.utc)
-        first_day = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        first_day = now.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
         totals: dict[str, Decimal] = {}
         for e in self.entries:
-            if e.referrer_user_id == referrer_user_id and e.created_at >= first_day:
-                totals[e.currency] = totals.get(e.currency, Decimal("0")) + e.commission_amount
+            if (
+                e.referrer_user_id == referrer_user_id
+                and e.created_at >= first_day
+            ):
+                totals[e.currency] = (
+                    totals.get(e.currency, Decimal("0")) + e.commission_amount
+                )
         return totals
 
 

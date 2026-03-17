@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from decimal import Decimal
 from typing import (
     TYPE_CHECKING,
     AsyncContextManager,
@@ -12,7 +13,6 @@ from typing import (
     Protocol,
     Tuple,
 )
-from decimal import Decimal
 from uuid import UUID
 
 from ugc_bot.domain.entities import (
@@ -37,7 +37,10 @@ from ugc_bot.domain.entities import (
     UserReferralBinding,
     UserReferralPending,
 )
-from ugc_bot.domain.enums import MessengerType, PayoutRequestStatus, ReferralIncomeType
+from ugc_bot.domain.enums import (
+    MessengerType,
+    PayoutRequestStatus,
+)
 
 if TYPE_CHECKING:
     from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus
@@ -954,7 +957,7 @@ class ReferralIncomeEntryRepository(ABC):
     async def save(
         self, entry: ReferralIncomeEntry, session: object | None = None
     ) -> None:
-        """Save entry. Ignore if (order_id, referrer_user_id, income_type) exists."""
+        """Save entry; skip if duplicate key."""
 
     @abstractmethod
     async def get_totals_by_currency(
@@ -1136,7 +1139,9 @@ class ExchangeRateCache(ABC):
         """Return cached rates or None if expired/missing."""
 
     @abstractmethod
-    async def set_rates(self, base_currency: str, rates: dict[str, Decimal]) -> None:
+    async def set_rates(
+        self, base_currency: str, rates: dict[str, Decimal]
+    ) -> None:
         """Store rates with TTL."""
 
 

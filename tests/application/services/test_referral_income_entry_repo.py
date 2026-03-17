@@ -42,9 +42,27 @@ async def test_save_and_get_totals_by_currency() -> None:
     repo = InMemoryReferralIncomeEntryRepository()
     uid = uuid4()
 
-    await repo.save(_make_entry(referrer_user_id=uid, currency="RUB", commission_amount=Decimal("100.00")))
-    await repo.save(_make_entry(referrer_user_id=uid, currency="RUB", commission_amount=Decimal("50.00")))
-    await repo.save(_make_entry(referrer_user_id=uid, currency="GEL", commission_amount=Decimal("30.00")))
+    await repo.save(
+        _make_entry(
+            referrer_user_id=uid,
+            currency="RUB",
+            commission_amount=Decimal("100.00"),
+        )
+    )
+    await repo.save(
+        _make_entry(
+            referrer_user_id=uid,
+            currency="RUB",
+            commission_amount=Decimal("50.00"),
+        )
+    )
+    await repo.save(
+        _make_entry(
+            referrer_user_id=uid,
+            currency="GEL",
+            commission_amount=Decimal("30.00"),
+        )
+    )
 
     totals = await repo.get_totals_by_currency(uid)
 
@@ -53,7 +71,7 @@ async def test_save_and_get_totals_by_currency() -> None:
 
 @pytest.mark.asyncio
 async def test_save_idempotent_on_conflict() -> None:
-    """Saving same (order_id, referrer_user_id, income_type) twice keeps first."""
+    """Duplicate key is silently ignored."""
     repo = InMemoryReferralIncomeEntryRepository()
     uid = uuid4()
     oid = uuid4()
@@ -85,9 +103,15 @@ async def test_get_orders_count_by_currency() -> None:
     uid = uuid4()
 
     oid1, oid2, oid3 = uuid4(), uuid4(), uuid4()
-    await repo.save(_make_entry(referrer_user_id=uid, order_id=oid1, currency="RUB"))
-    await repo.save(_make_entry(referrer_user_id=uid, order_id=oid2, currency="RUB"))
-    await repo.save(_make_entry(referrer_user_id=uid, order_id=oid3, currency="GEL"))
+    await repo.save(
+        _make_entry(referrer_user_id=uid, order_id=oid1, currency="RUB")
+    )
+    await repo.save(
+        _make_entry(referrer_user_id=uid, order_id=oid2, currency="RUB")
+    )
+    await repo.save(
+        _make_entry(referrer_user_id=uid, order_id=oid3, currency="GEL")
+    )
 
     counts = await repo.get_orders_count_by_currency(uid)
     assert counts == {"RUB": 2, "GEL": 1}

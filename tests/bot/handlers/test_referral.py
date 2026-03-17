@@ -2110,3 +2110,292 @@ def __user(
         admin=admin,
         telegram=telegram,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests for helper functions
+# ---------------------------------------------------------------------------
+
+
+def test_build_mc_stats_text_two_currencies_paid_and_pending() -> None:
+    """_build_mc_stats_text formats income lines, paid, and pending."""
+    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+
+    mc = _mc_stats(
+        creators_count=3,
+        income_by_currency={
+            "RUB": Decimal("1000.00"),
+            "USD": Decimal("20.00"),
+        },
+        orders_by_currency={"RUB": 5, "USD": 2},
+        paid_by_currency={"RUB": Decimal("200.00")},
+        pending_by_currency={"USD": Decimal("10.00")},
+    )
+    symbols = {"RUB": "₽", "USD": "$"}
+    texts = {
+        "lbl_referral_stats": "Stats",
+        "lbl_referral_creators": "Creators",
+        "lbl_referral_income_line": "• {amount} {symbol} ({count} orders)",
+        "lbl_referral_paid_currency": "Paid: {amount} {symbol}",
+        "lbl_referral_pending_currency": "Pending: {amount} {symbol}",
+    }
+
+    result = _build_mc_stats_text(mc, symbols, texts)
+
+    assert "Stats" in result
+    assert "Creators: 3" in result
+    assert "1000.00 ₽ (5 orders)" in result
+    assert "20.00 $ (2 orders)" in result
+    assert "Paid: 200.00 ₽" in result
+    assert "Pending: 10.00 $" in result
+
+
+def test_build_mc_stats_text_includes_approx_line() -> None:
+    """_build_mc_stats_text appends approx_line when provided."""
+    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+
+    mc = _mc_stats(creators_count=1)
+    result = _build_mc_stats_text(mc, {}, {}, approx_line="≈ 500.00 ₽")
+
+    assert "≈ 500.00 ₽" in result
+
+
+def test_build_mc_stats_text_no_approx_when_empty() -> None:
+    """_build_mc_stats_text omits approx line when empty string."""
+    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+
+    mc = _mc_stats(creators_count=0)
+    result = _build_mc_stats_text(mc, {}, {}, approx_line="")
+
+    assert "≈" not in result
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_no_exchange_service_returns_empty() -> None:
+    """_build_approx_line returns '' when exchange_rate_service is None."""
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={"RUB": Decimal("100.00")})
+    user = __user(external_id="1", username="u")
+    result = await _build_approx_line(mc, user, None, None, {}, {})
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_empty_available_returns_empty() -> None:
+    """_build_approx_line returns '' when available_by_currency is empty."""
+    from unittest.mock import MagicMock
+
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={})
+    user = __user(external_id="1", username="u")
+    mock_svc = MagicMock()
+    result = await _build_approx_line(mc, user, None, mock_svc, {}, {})
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_convert_returns_value() -> None:
+    """_build_approx_line returns formatted string from convert_many."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={"USD": Decimal("20.00")})
+    user = __user(external_id="1", username="u")
+    mock_svc = MagicMock()
+    mock_svc.convert_many = AsyncMock(return_value=Decimal("1800.00"))
+    symbols = {"RUB": "₽"}
+    texts = {
+        "lbl_referral_approx_total": "≈ {amount} {symbol} (approx)",
+    }
+
+    result = await _build_approx_line(mc, user, None, mock_svc, symbols, texts)
+
+    assert result == "≈ 1800.00 ₽ (approx)"
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_convert_returns_none() -> None:
+    """_build_approx_line returns '' when convert_many returns None."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={"USD": Decimal("20.00")})
+    user = __user(external_id="1", username="u")
+    mock_svc = MagicMock()
+    mock_svc.convert_many = AsyncMock(return_value=None)
+
+    result = await _build_approx_line(mc, user, None, mock_svc, {}, {})
+
+    assert result == ""
+
+
+def test_build_mc_payout_keyboard_with_available_currencies() -> None:
+    """_build_mc_payout_keyboard returns keyboard with payout buttons."""
+    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+
+    mc = _mc_stats(
+        available_by_currency={
+            "RUB": Decimal("500.00"),
+            "USD": Decimal("10.00"),
+        },
+    )
+    symbols = {"RUB": "₽", "USD": "$"}
+    btn_tpl = "Withdraw {amount} {symbol}"
+
+    keyboard = _build_mc_payout_keyboard(mc, symbols, btn_tpl)
+
+    assert keyboard is not None
+    all_texts = [btn.text for row in keyboard.rows for btn in row]
+    assert any("500.00 ₽" in t for t in all_texts)
+    assert any("10.00 $" in t for t in all_texts)
+
+
+def test_build_mc_payout_keyboard_hides_currency_with_today_request() -> None:
+    """_build_mc_payout_keyboard omits button when has_request_today."""
+    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+
+    mc = _mc_stats(
+        available_by_currency={
+            "RUB": Decimal("500.00"),
+            "USD": Decimal("10.00"),
+        },
+        has_request_today_by_currency={"RUB": True},
+    )
+    symbols = {"RUB": "₽", "USD": "$"}
+    btn_tpl = "Withdraw {amount} {symbol}"
+
+    keyboard = _build_mc_payout_keyboard(mc, symbols, btn_tpl)
+
+    assert keyboard is not None
+    all_texts = [btn.text for row in keyboard.rows for btn in row]
+    assert not any("₽" in t for t in all_texts)
+    assert any("10.00 $" in t for t in all_texts)
+
+
+def test_build_mc_payout_keyboard_returns_none_when_all_hidden() -> None:
+    """_build_mc_payout_keyboard returns None when no buttons remain."""
+    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+
+    mc = _mc_stats(
+        available_by_currency={"RUB": Decimal("500.00")},
+        has_request_today_by_currency={"RUB": True},
+    )
+
+    keyboard = _build_mc_payout_keyboard(mc, {"RUB": "₽"}, "{amount} {symbol}")
+
+    assert keyboard is None
+
+
+@pytest.mark.asyncio
+async def test_build_currency_symbols_none_repo_returns_empty() -> None:
+    """_build_currency_symbols returns {} when country_repo is None."""
+    from ugc_bot.bot.handlers.referral import _build_currency_symbols
+
+    result = await _build_currency_symbols(None)
+
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_build_currency_symbols_maps_code_to_symbol() -> None:
+    """_build_currency_symbols maps currency_code to currency_symbol."""
+    from ugc_bot.bot.handlers.referral import _build_currency_symbols
+    from ugc_bot.domain.entities import Country
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryCountryRepository,
+    )
+
+    repo = InMemoryCountryRepository(
+        countries={
+            "RU": Country(
+                code="RU",
+                name_native="Россия",
+                currency_code="RUB",
+                currency_symbol="₽",
+            ),
+            "US": Country(
+                code="US",
+                name_native="United States",
+                currency_code="USD",
+                currency_symbol="$",
+            ),
+        }
+    )
+
+    result = await _build_currency_symbols(repo)
+
+    assert result == {"RUB": "₽", "USD": "$"}
+
+
+def test_parse_telegram_arg_none_text() -> None:
+    """None text returns None."""
+    from ugc_bot.bot.handlers.referral import (
+        _parse_telegram_arg_from_command,
+    )
+
+    assert _parse_telegram_arg_from_command(None, "/ref") is None
+    assert _parse_telegram_arg_from_command("", "/ref") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_non_admin() -> None:
+    """Non-admin user always gets themselves back."""
+    from ugc_bot.bot.handlers.referral import (
+        _resolve_referral_target_user,
+    )
+    from ugc_bot.domain.entities import User
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+
+    user = User(
+        user_id=uuid4(),
+        external_id="123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="test",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=False,
+    )
+    result = await _resolve_referral_target_user(
+        current_user=user,
+        telegram_arg="@someone",
+        user_role_service=AsyncMock(),
+        messenger_client=AsyncMock(),
+        chat_id="123",
+    )
+    assert result is user
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_admin_no_arg() -> None:
+    """Admin without telegram_arg gets themselves back."""
+    from ugc_bot.bot.handlers.referral import (
+        _resolve_referral_target_user,
+    )
+    from ugc_bot.domain.entities import User
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+
+    user = User(
+        user_id=uuid4(),
+        external_id="456",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    result = await _resolve_referral_target_user(
+        current_user=user,
+        telegram_arg=None,
+        user_role_service=AsyncMock(),
+        messenger_client=AsyncMock(),
+        chat_id="456",
+    )
+    assert result is user

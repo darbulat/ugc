@@ -74,3 +74,24 @@ async def test_redis_cache_roundtrip() -> None:
     result = await cache.get_rates("USD")
 
     assert result == {"USD": Decimal("1"), "RUB": Decimal("90.0")}
+
+
+@pytest.mark.asyncio
+async def test_open_er_api_provider_error_response() -> None:
+    """Provider raises on non-success API result."""
+    response_data = {"result": "error", "error-type": "invalid"}
+
+    mock_resp = AsyncMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = AsyncMock(return_value=response_data)
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    session = MagicMock()
+    session.get.return_value = mock_cm
+
+    provider = OpenERApiProvider(session)
+    with pytest.raises(RuntimeError, match="Exchange rate API"):
+        await provider.fetch_rates("INVALID")

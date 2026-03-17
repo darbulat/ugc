@@ -38,7 +38,6 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     PayoutRequestStatus,
-    ReferralIncomeType,
     UserStatus,
     WorkFormat,
 )
@@ -832,12 +831,8 @@ class ReferralIncomeEntryModel(Base):
         ForeignKey("orders.order_id"),
         nullable=False,
     )
-    income_type: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )
-    currency: Mapped[str] = mapped_column(
-        String(3), nullable=False
-    )
+    income_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
     platform_revenue: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), nullable=False
     )

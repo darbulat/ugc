@@ -23,7 +23,9 @@ class OpenERApiProvider(ExchangeRateProvider):
             data = await resp.json()
         if data.get("result") != "success":
             raise RuntimeError(f"Exchange rate API error: {data}")
-        return {code: Decimal(str(rate)) for code, rate in data["rates"].items()}
+        return {
+            code: Decimal(str(rate)) for code, rate in data["rates"].items()
+        }
 
 
 class RedisExchangeRateCache(ExchangeRateCache):
@@ -40,7 +42,9 @@ class RedisExchangeRateCache(ExchangeRateCache):
         data = json.loads(raw)
         return {code: Decimal(val) for code, val in data.items()}
 
-    async def set_rates(self, base_currency: str, rates: dict[str, Decimal]) -> None:
+    async def set_rates(
+        self, base_currency: str, rates: dict[str, Decimal]
+    ) -> None:
         data = {code: str(val) for code, val in rates.items()}
         await self._redis.set(
             f"exchange_rates:{base_currency}",

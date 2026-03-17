@@ -5,7 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ugc_bot.application.services.exchange_rate_service import ExchangeRateService
+from ugc_bot.application.services.exchange_rate_service import (
+    ExchangeRateService,
+)
 
 RATES = {"USD": Decimal("1.0"), "RUB": Decimal("90.0"), "GEL": Decimal("2.7")}
 
@@ -82,4 +84,24 @@ async def test_convert_returns_none_when_api_fails() -> None:
 
     result = await svc.convert(Decimal("100"), "USD", "RUB")
 
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_rate_unknown_currency() -> None:
+    """Unknown currency in rates → None."""
+    svc, _, _ = _make_service(cache_rates=RATES)
+    result = await svc.get_rate("USD", "XYZ")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_convert_many_none_on_failure() -> None:
+    """convert_many returns None if any currency fails."""
+    svc, _, _ = _make_service(cache_rates=RATES)
+    amounts = {
+        "RUB": Decimal("100"),
+        "XYZ": Decimal("50"),
+    }
+    result = await svc.convert_many(amounts, "USD")
     assert result is None

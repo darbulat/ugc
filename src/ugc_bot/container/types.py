@@ -3,9 +3,6 @@
 from typing import Any, TypedDict
 
 from ugc_bot.application.ports import CountryRepository, LanguageRepository
-from ugc_bot.application.services.exchange_rate_service import (
-    ExchangeRateService,
-)
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -19,6 +16,9 @@ from ugc_bot.application.services.contact_pricing_service import (
 )
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
+)
+from ugc_bot.application.services.exchange_rate_service import (
+    ExchangeRateService,
 )
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,

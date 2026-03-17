@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import (
     Any,
     Callable,
@@ -19,8 +20,6 @@ from typing import (
     cast as typing_cast,
 )
 from uuid import UUID
-
-from decimal import Decimal
 
 from geoalchemy2 import shape
 from geoalchemy2.elements import WKBElement, WKTElement
@@ -2555,23 +2554,27 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
     async def save(
         self, entry: ReferralIncomeEntry, session: object | None = None
     ) -> None:
-        """Save entry. Ignore if (order_id, referrer_user_id, income_type) exists."""
+        """Save entry; skip if duplicate key."""
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
-            stmt = pg_insert(ReferralIncomeEntryModel).values(
-                entry_id=entry.entry_id,
-                referrer_user_id=entry.referrer_user_id,
-                referred_user_id=entry.referred_user_id,
-                order_id=entry.order_id,
-                income_type=entry.income_type,
-                currency=entry.currency,
-                platform_revenue=entry.platform_revenue,
-                commission_rate=entry.commission_rate,
-                commission_amount=entry.commission_amount,
-                created_at=entry.created_at,
-            ).on_conflict_do_nothing(
-                constraint="uq_referral_income_order_referrer_type"
+            stmt = (
+                pg_insert(ReferralIncomeEntryModel)
+                .values(
+                    entry_id=entry.entry_id,
+                    referrer_user_id=entry.referrer_user_id,
+                    referred_user_id=entry.referred_user_id,
+                    order_id=entry.order_id,
+                    income_type=entry.income_type,
+                    currency=entry.currency,
+                    platform_revenue=entry.platform_revenue,
+                    commission_rate=entry.commission_rate,
+                    commission_amount=entry.commission_amount,
+                    created_at=entry.created_at,
+                )
+                .on_conflict_do_nothing(
+                    constraint="uq_referral_income_order_referrer_type"
+                )
             )
             await db_session.execute(stmt)
 
@@ -2588,7 +2591,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     func.sum(ReferralIncomeEntryModel.commission_amount),
                 )
                 .where(
-                    ReferralIncomeEntryModel.referrer_user_id == referrer_user_id
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id
                 )
                 .group_by(ReferralIncomeEntryModel.currency)
             )
@@ -2610,7 +2614,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     ),
                 )
                 .where(
-                    ReferralIncomeEntryModel.referrer_user_id == referrer_user_id
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id
                 )
                 .group_by(ReferralIncomeEntryModel.currency)
             )
@@ -2634,7 +2639,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     func.sum(ReferralIncomeEntryModel.commission_amount),
                 )
                 .where(
-                    ReferralIncomeEntryModel.referrer_user_id == referrer_user_id,
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id,
                     ReferralIncomeEntryModel.created_at >= first_day,
                 )
                 .group_by(ReferralIncomeEntryModel.currency)

@@ -113,55 +113,6 @@ MULTICURRENCY_TEXT_KEYS = (
 )
 
 
-def _referral_stats_text(
-    creators_count: int,
-    orders_count: int,
-    income_current_month: float,
-    income_total: float,
-    paid_total: float,
-    balance: float,
-    currency_symbol: str = "₽",
-    texts: dict[str, str] | None = None,
-) -> str:
-    """Format referral stats message."""
-    t = texts or {}
-    return (
-        f"{t.get('lbl_referral_stats', '')}\n\n"
-        f"{t.get('lbl_referral_creators', '')}: {creators_count}\n"
-        f"{t.get('lbl_referral_orders', '')}: {orders_count}\n\n"
-        f"{t.get('lbl_referral_income_month', '')}: "
-        f"{income_current_month:.2f} {currency_symbol}\n"
-        f"{t.get('lbl_referral_income_total', '')}: "
-        f"{income_total:.2f} {currency_symbol}\n"
-        f"{t.get('lbl_referral_paid', '')}: "
-        f"{paid_total:.2f} {currency_symbol}\n"
-        f"{t.get('lbl_referral_balance', '')}: "
-        f"{balance:.2f} {currency_symbol}"
-    )
-
-
-def _referral_keyboard(
-    balance: float,
-    has_pending_payout: bool,
-    has_request_today: bool,
-    payout_button_text: str = "Выплатить",
-) -> Keyboard | None:
-    """Payout button only when balance > 0, no pending and no request today."""
-    if balance <= 0 or has_pending_payout or has_request_today:
-        return None
-    return Keyboard(
-        kind=KeyboardKind.INLINE,
-        rows=[
-            [
-                Button(
-                    text=payout_button_text,
-                    callback_data=REFERRAL_PAYOUT_CALLBACK,
-                )
-            ],
-        ],
-    )
-
-
 async def _build_currency_symbols(
     country_repo: CountryRepository | None,
 ) -> dict[str, str]:
