@@ -49,7 +49,10 @@ Add column `currency: str(3)`, default `"RUB"` (existing rows are all RUB).
 
 ### 2. Commission Calculation
 
-Triggered when order transitions to `CLOSED` status. Called from the order-close handler as a direct call to `ReferralIncomeService.record_referral_income(order)`. Idempotency guaranteed by the unique constraint + `ON CONFLICT DO NOTHING`.
+Two triggers, idempotency guaranteed by unique constraint + `ON CONFLICT DO NOTHING`:
+
+1. **Order → CLOSED**: call `ReferralIncomeService.record_advertiser_referral_income(order)` — records advertiser-referral entry (interaction status not required)
+2. **Interaction → OK**: call `ReferralIncomeService.record_creator_referral_income(order, creator_id)` — records creator-referral entry (only when interaction confirmed)
 
 #### ContactPricing lookup
 
@@ -60,6 +63,7 @@ If no ContactPricing found for a given `(country_code, bloggers_count)` — skip
 #### Creator-referral
 
 - For each creator on the order, check if they have a referrer via `UserReferralBinding`
+- **Interaction must have status `OK`** (deal confirmed by at least one side). If interaction is missing or status != OK — skip
 - `platform_revenue = contact_pricing.price / order.bloggers_needed` (per-creator share of total platform fee)
 - `commission_rate = user.referral_payout_rate ?? (first_year ? 0.10 : 0.03)`
 - `first_year` = order closed within 1 year of the referred user's registration date
@@ -69,6 +73,7 @@ If no ContactPricing found for a given `(country_code, bloggers_count)` — skip
 #### Advertiser-referral
 
 - Check if order owner has a referrer via `UserReferralBinding`
+- Interaction status is **not checked** (commission earned regardless of deal outcome)
 - `platform_revenue = contact_pricing.price` (full platform fee)
 - `commission_rate` — same logic (based on referred advertiser's registration date)
 - `commission_amount = platform_revenue * commission_rate`
