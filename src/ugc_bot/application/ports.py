@@ -12,6 +12,7 @@ from typing import (
     Protocol,
     Tuple,
 )
+from decimal import Decimal
 from uuid import UUID
 
 from ugc_bot.domain.entities import (
@@ -1070,6 +1071,26 @@ class LanguageRepository(ABC):
         self, code: str, session: object | None = None
     ) -> Optional[Language]:
         """Fetch language by code."""
+
+
+class ExchangeRateProvider(ABC):
+    """External API for fetching exchange rates."""
+
+    @abstractmethod
+    async def fetch_rates(self, base_currency: str) -> dict[str, Decimal]:
+        """Fetch current rates relative to base_currency."""
+
+
+class ExchangeRateCache(ABC):
+    """Cache for exchange rates with TTL."""
+
+    @abstractmethod
+    async def get_rates(self, base_currency: str) -> dict[str, Decimal] | None:
+        """Return cached rates or None if expired/missing."""
+
+    @abstractmethod
+    async def set_rates(self, base_currency: str, rates: dict[str, Decimal]) -> None:
+        """Store rates with TTL."""
 
 
 class TransactionManager(Protocol):
