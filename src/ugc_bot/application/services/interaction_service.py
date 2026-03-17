@@ -14,10 +14,15 @@ from ugc_bot.application.feedback_utils import (
     needs_feedback_reminder,
     next_reminder_datetime,
 )
-from ugc_bot.application.ports import InteractionRepository, TransactionManager
+from ugc_bot.application.ports import (
+    InteractionRepository,
+    OrderRepository,
+    TransactionManager,
+    UserRepository,
+)
 from ugc_bot.config import FeedbackConfig
 from ugc_bot.domain.entities import Interaction
-from ugc_bot.domain.enums import InteractionStatus
+from ugc_bot.domain.enums import InteractionStatus, OrderStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
@@ -33,6 +38,9 @@ class InteractionService:
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
     feedback_config: Optional[FeedbackConfig] = None
+    order_repo: OrderRepository | None = None
+    user_repo: UserRepository | None = None
+    referral_income_service: Optional[Any] = None
 
     async def _save(self, interaction: Interaction) -> None:
         """Persist interaction using an optional transaction boundary."""
@@ -198,6 +206,12 @@ class InteractionService:
         )
         await self._save(updated)
 
+        if (
+            updated.status == InteractionStatus.OK
+            and self.referral_income_service
+        ):
+            await self._try_record_creator_referral_income(updated)
+
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
             self.metrics_collector.record_interaction_issue(
@@ -254,6 +268,12 @@ class InteractionService:
             updated_at=now,
         )
         await self._save(updated)
+
+        if (
+            updated.status == InteractionStatus.OK
+            and self.referral_income_service
+        ):
+            await self._try_record_creator_referral_income(updated)
 
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
@@ -319,6 +339,23 @@ class InteractionService:
             )
 
         return updated
+
+    async def _try_record_creator_referral_income(
+        self, interaction: Interaction
+    ) -> None:
+        """Record creator referral income if order is CLOSED."""
+        if self.order_repo is None or self.user_repo is None:
+            return
+        order = await self.order_repo.get_by_id(interaction.order_id)
+        if order and order.status == OrderStatus.CLOSED:
+            advertiser = await self.user_repo.get_by_id(order.advertiser_id)
+            if advertiser and advertiser.country:
+                svc: Any = self.referral_income_service
+                await svc.record_creator_referral_income(
+                    order=order,
+                    creator_id=interaction.blogger_id,
+                    advertiser_country_code=advertiser.country,
+                )
 
     async def _require(self, interaction_id: UUID) -> Interaction:
         interaction = await self._get_by_id(interaction_id)

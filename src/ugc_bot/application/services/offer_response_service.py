@@ -15,6 +15,7 @@ from ugc_bot.application.ports import (
     OfferDispatchRepository,
     OrderRepository,
     TransactionManager,
+    UserRepository,
 )
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus
@@ -43,6 +44,8 @@ class OfferResponseService:
     manager_order_repo: ManagerOrderRepository | None = None
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
+    user_repo: UserRepository | None = None
+    referral_income_service: Optional[Any] = None
 
     async def respond(self, order_id: UUID, blogger_id: UUID) -> OfferDispatch:
         """Record response and return the updated dispatch."""
@@ -106,6 +109,26 @@ class OfferResponseService:
             return None
         return managers[order.last_round_robin_index % len(managers)].user_id
 
+    async def _record_advertiser_referral(
+        self,
+        order: Order,
+        advertiser_id: UUID,
+        session: object | None,
+    ) -> None:
+        """Record advertiser referral income if applicable."""
+        assert self.user_repo is not None
+        advertiser = await self.user_repo.get_by_id(
+            advertiser_id, session=session
+        )
+        if advertiser and advertiser.country:
+            svc: Any = self.referral_income_service
+            await svc.record_advertiser_referral_income(
+                order=order,
+                advertiser_id=advertiser_id,
+                advertiser_country_code=advertiser.country,
+                session=session,
+            )
+
     async def respond_and_finalize(
         self, order_id: UUID, blogger_id: UUID
     ) -> OfferResponseResult:
@@ -168,6 +191,15 @@ class OfferResponseService:
 
             if updated is not order:
                 await self.order_repo.save(updated, session=session)
+
+            if (
+                updated.status == OrderStatus.CLOSED
+                and self.referral_income_service
+                and self.user_repo is not None
+            ):
+                await self._record_advertiser_referral(
+                    updated, order.advertiser_id, session
+                )
 
         if self.metrics_collector:
             self.metrics_collector.record_blogger_response(
