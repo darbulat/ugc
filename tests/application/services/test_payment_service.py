@@ -72,6 +72,7 @@ async def test_confirm_payment_success(
 
     assert payment.status == PaymentStatus.PAID
     assert payment.amount == 1000.0
+    assert payment.provider == "yookassa_telegram"
 
     # Order goes to PENDING_MODERATION after payment
     order = await order_repo.get_by_id(order_id)
@@ -609,6 +610,7 @@ async def test_confirm_payment_intl_formula(
     )
     assert payment.amount == 2006.00
     assert payment.currency == "GEL"
+    assert payment.provider == "telegram_payments"
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RECEIPT_SERVICE_DESCRIPTION = "Услуги платформы Use My Content"
 
+PROVIDER_RU = "yookassa_telegram"
+PROVIDER_INTL = "telegram_payments"
+
 
 def build_receipt_provider_data(
     total_amount: float,
@@ -101,7 +104,6 @@ class PaymentService:
     payment_repo: PaymentRepository
     pricing_repo: ContactPricingRepository
     country_repo: CountryRepository | None = None
-    provider: str = "yookassa_telegram"
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
 
@@ -283,6 +285,10 @@ class PaymentService:
                 user, order, total_amount, session
             )
 
+            country_code = (user.country or "ru").lower()
+            is_ru = country_code == "ru"
+            provider = PROVIDER_RU if is_ru else PROVIDER_INTL
+
             now = datetime.now(timezone.utc)
             if existing is not None:
                 payment = replace(
@@ -291,6 +297,7 @@ class PaymentService:
                     amount=round(total_amount / 100, 2),
                     currency=currency,
                     external_id=provider_payment_charge_id,
+                    provider=provider,
                     paid_at=now,
                     updated_at=now,
                 )
@@ -298,7 +305,7 @@ class PaymentService:
                 payment = Payment(
                     payment_id=uuid4(),
                     order_id=order_id,
-                    provider=self.provider,
+                    provider=provider,
                     status=PaymentStatus.PAID,
                     amount=round(total_amount / 100, 2),
                     currency=currency,
