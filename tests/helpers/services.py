@@ -1,6 +1,7 @@
 """Service builders and fixtures for tests."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
@@ -110,6 +111,7 @@ def build_payment_service(
     payment_repo: InMemoryPaymentRepository,
     pricing_repo: InMemoryContactPricingRepository,
     transaction_manager: object,
+    country_repo: InMemoryCountryRepository | None = None,
 ) -> PaymentService:
     """Build payment service for tests.
 
@@ -120,6 +122,7 @@ def build_payment_service(
         payment_repo: Payment repository
         pricing_repo: Contact pricing repository (for amount validation)
         transaction_manager: Transaction manager (required)
+        country_repo: Optional country repository
 
     Returns:
         Payment service instance
@@ -130,6 +133,7 @@ def build_payment_service(
         order_repo=order_repo,
         payment_repo=payment_repo,
         pricing_repo=pricing_repo,
+        country_repo=country_repo,
         transaction_manager=transaction_manager,
     )
 
@@ -154,8 +158,10 @@ async def build_contact_pricing_service(
         for count, price in prices.items():
             await pricing_repo.save(
                 ContactPricing(
+                    country_code="ru",
                     bloggers_count=count,
-                    price=price,
+                    price=Decimal(str(price)),
+                    currency="RUB",
                     updated_at=datetime.now(timezone.utc),
                 )
             )

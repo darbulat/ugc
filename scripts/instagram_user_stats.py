@@ -59,7 +59,7 @@ def _apply_httpx_proxies_compat() -> None:
         _orig(self, *args, **kwargs)  # type: ignore[misc]
 
     httpx.AsyncClient.__init__ = _patched  # type: ignore[method-assign]
-    setattr(httpx.AsyncClient, "_ugc_proxies_patched", True)
+    httpx.AsyncClient._ugc_proxies_patched = True
 
 
 async def _fetch_user_async(
@@ -90,7 +90,7 @@ async def _fetch_user_async(
         user = await cl.user_info_by_username_v1(username)
     except UserNotFound as e:
         raise RuntimeError(f"User '{username}' not found") from e
-    except LoginRequired as e:
+    except LoginRequired:
         logger.info("Session expired, re-logging in...")
         cl = Client()
         try:

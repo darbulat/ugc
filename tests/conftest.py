@@ -32,6 +32,7 @@ from tests.helpers.repositories import (  # noqa: E402, F401
     advertiser_repo,
     blogger_repo,
     complaint_repo,
+    country_repo,
     instagram_verification_repo,
     interaction_repo,
     offer_dispatch_repo,

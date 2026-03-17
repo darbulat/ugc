@@ -1,6 +1,7 @@
 """Tests for contact pricing service."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -19,8 +20,10 @@ async def test_get_price_without_transaction_manager() -> None:
     repo = InMemoryContactPricingRepository()
     await repo.save(
         ContactPricing(
+            country_code="ru",
             bloggers_count=3,
-            price=1500.0,
+            price=Decimal("1500"),
+            currency="RUB",
             updated_at=datetime.now(timezone.utc),
         )
     )
@@ -35,8 +38,10 @@ async def test_get_price_with_transaction_manager(fake_tm) -> None:
     repo = InMemoryContactPricingRepository()
     await repo.save(
         ContactPricing(
+            country_code="ru",
             bloggers_count=5,
-            price=2500.0,
+            price=Decimal("2500"),
+            currency="RUB",
             updated_at=datetime.now(timezone.utc),
         )
     )

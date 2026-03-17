@@ -1,6 +1,6 @@
 """Domain entities for the UGC bot."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -39,6 +39,8 @@ class Country:
     name_native: str
     currency_code: str
     currency_symbol: str
+    locale: str = "ru"
+    tax_rate: Decimal = field(default_factory=lambda: Decimal("0"))
     enabled: bool = True
 
 
@@ -331,8 +333,10 @@ class ContactPricing:
     for updates use dataclasses.replace(pricing, ...). Update repo mapping.
     """
 
+    country_code: str
     bloggers_count: int
-    price: float
+    price: Decimal
+    currency: str
     updated_at: datetime
     created_at: Optional[datetime] = None
 

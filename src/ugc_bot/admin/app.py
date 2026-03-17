@@ -1888,19 +1888,25 @@ class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     name = "Цена контакта"
     name_plural = "Цены контактов"
     column_list = [
+        ContactPricingModel.country_code,
         ContactPricingModel.bloggers_count,
         ContactPricingModel.price,
+        ContactPricingModel.currency,
         ContactPricingModel.updated_at,
     ]
     column_sortable_list = list(column_list)
     column_labels = {
+        ContactPricingModel.country_code: "Страна",
         ContactPricingModel.bloggers_count: "Кол-во креаторов",
         ContactPricingModel.price: "Цена",
+        ContactPricingModel.currency: "Валюта",
         ContactPricingModel.updated_at: "Обновлено",
     }
     form_columns = [
+        ContactPricingModel.country_code,
         ContactPricingModel.bloggers_count,
         ContactPricingModel.price,
+        ContactPricingModel.currency,
     ]
 
 

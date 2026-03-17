@@ -19,13 +19,13 @@ from tests.helpers.fakes import (
     FakeUser,
 )
 from tests.helpers.services import (
-    build_contact_pricing_service,
     build_payment_service,
     build_profile_service,
 )
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.payment_service import InvoiceData
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.payments import (
     pay_order,
@@ -89,15 +89,13 @@ async def test_pay_order_success(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000500"),
         external_id="1",
         username="adv",
+        country="ru",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
@@ -135,7 +133,6 @@ async def test_pay_order_success(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -171,15 +168,13 @@ async def test_start_pay_order_link_sends_invoice(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000500"),
         external_id="1",
         username="adv",
+        country="ru",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
@@ -217,7 +212,6 @@ async def test_start_pay_order_link_sends_invoice(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -251,9 +245,6 @@ async def test_start_pay_order_link_invalid_uuid_no_invoice(
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
-    )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
     )
 
     user = await create_test_user(
@@ -289,7 +280,6 @@ async def test_start_pay_order_link_invalid_uuid_no_invoice(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -324,9 +314,6 @@ async def test_start_pay_order_link_order_not_found(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
@@ -360,7 +347,6 @@ async def test_start_pay_order_link_order_not_found(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -394,9 +380,6 @@ async def test_start_pay_order_link_wrong_owner(
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
-    )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
     )
 
     user_a = await create_test_user(
@@ -444,7 +427,6 @@ async def test_start_pay_order_link_wrong_owner(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -478,9 +460,6 @@ async def test_start_pay_order_link_no_advertiser_profile(
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
-    )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
     )
 
     user = await create_test_user(
@@ -521,7 +500,6 @@ async def test_start_pay_order_link_no_advertiser_profile(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -542,6 +520,7 @@ async def test_pay_order_missing_provider_token(
     """Reject when provider token missing."""
 
     from datetime import datetime, timezone
+    from decimal import Decimal
     from uuid import UUID
 
     from ugc_bot.domain.entities import ContactPricing
@@ -559,14 +538,16 @@ async def test_pay_order_missing_provider_token(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     # Override price for 3 bloggers to be positive so provider check is needed
-    await contact_pricing_service.pricing_repo.save(
+
+    await pricing_repo.save(
         ContactPricing(
-            bloggers_count=3, price=100.0, updated_at=datetime.now(timezone.utc)
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("100"),
+            currency="RUB",
+            updated_at=datetime.now(timezone.utc),
         )
     )
 
@@ -610,7 +591,6 @@ async def test_pay_order_missing_provider_token(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -642,9 +622,6 @@ async def test_pay_order_invalid_args(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
@@ -668,7 +645,6 @@ async def test_pay_order_invalid_args(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -700,9 +676,6 @@ async def test_pay_order_invalid_uuid(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
@@ -726,7 +699,6 @@ async def test_pay_order_invalid_uuid(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -758,9 +730,6 @@ async def test_pay_order_order_not_found(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
@@ -786,7 +755,6 @@ async def test_pay_order_order_not_found(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -817,9 +785,6 @@ async def test_pay_order_wrong_owner(
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
-    )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
     )
 
     user = await create_test_user(
@@ -861,7 +826,6 @@ async def test_pay_order_wrong_owner(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -892,9 +856,6 @@ async def test_pay_order_not_new_status(
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
-    )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
     )
 
     user = await create_test_user(
@@ -929,7 +890,6 @@ async def test_pay_order_not_new_status(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -961,9 +921,6 @@ async def test_pay_order_blocked_user(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     from ugc_bot.domain.enums import UserStatus
 
@@ -992,7 +949,6 @@ async def test_pay_order_blocked_user(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -1024,9 +980,6 @@ async def test_pay_order_paused_user(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     from ugc_bot.domain.enums import UserStatus
 
@@ -1055,7 +1008,6 @@ async def test_pay_order_paused_user(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -1087,9 +1039,6 @@ async def test_pay_order_missing_profile(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     await create_test_user(
         user_repo,
@@ -1114,7 +1063,6 @@ async def test_pay_order_missing_profile(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -1343,14 +1291,18 @@ async def test_send_order_invoice_bot_none_returns_early(
     messenger_client, event_adapter, bot_texts_service
 ) -> None:
     """send_order_invoice returns when message.bot is None."""
+    from decimal import Decimal
+
     message = FakeMessage(text="/pay", user=FakeUser(1), bot=None)
     message.chat = type("Chat", (), {"id": 1})()
-    config = FakeConfig.model_validate(
-        {
-            "BOT_TOKEN": "token",
-            "DATABASE_URL": "postgresql://test",
-            "TELEGRAM_PROVIDER_TOKEN": "provider",
-        }
+    invoice_data = InvoiceData(
+        total=Decimal("1000"),
+        currency="RUB",
+        currency_symbol="\u20bd",
+        provider_token="provider",
+        provider_data=None,
+        need_email=True,
+        is_ru=True,
     )
     incoming = event_adapter.from_message(message)
     await send_order_invoice(
@@ -1358,8 +1310,7 @@ async def test_send_order_invoice_bot_none_returns_early(
         messenger_client,
         UUID("00000000-0000-0000-0000-000000000530"),
         "Offer",
-        1000.0,
-        config,
+        invoice_data,
         bot_texts_service,
     )
     assert not message.answers
@@ -1370,15 +1321,19 @@ async def test_send_order_invoice_no_chat_id_returns_early(
     messenger_client, bot_texts_service
 ) -> None:
     """send_order_invoice returns without sending when chat_id is falsy."""
+    from decimal import Decimal
+
     from ugc_bot.application.messenger.dto import IncomingMessage, IncomingUser
     from ugc_bot.domain.enums import MessengerType
 
-    config = FakeConfig.model_validate(
-        {
-            "BOT_TOKEN": "token",
-            "DATABASE_URL": "postgresql://test",
-            "TELEGRAM_PROVIDER_TOKEN": "provider",
-        }
+    invoice_data = InvoiceData(
+        total=Decimal("1000"),
+        currency="RUB",
+        currency_symbol="\u20bd",
+        provider_token="provider",
+        provider_data=None,
+        need_email=True,
+        is_ru=True,
     )
     incoming = IncomingMessage(
         chat_id="",
@@ -1392,8 +1347,7 @@ async def test_send_order_invoice_no_chat_id_returns_early(
         messenger_client,
         UUID("00000000-0000-0000-0000-000000000531"),
         "Offer",
-        1000.0,
-        config,
+        invoice_data,
         bot_texts_service,
     )
     assert len(messenger_client.sent_text) == 0
@@ -1404,15 +1358,19 @@ async def test_send_order_invoice_price_too_large(
     messenger_client, event_adapter, bot_texts_service
 ) -> None:
     """send_order_invoice rejects price over 100M."""
+    from decimal import Decimal
+
     bot = FakeBot()
     message = FakeMessage(text="/pay", user=FakeUser(1), bot=bot)
     message.chat = type("Chat", (), {"id": 1})()
-    config = FakeConfig.model_validate(
-        {
-            "BOT_TOKEN": "token",
-            "DATABASE_URL": "postgresql://test",
-            "TELEGRAM_PROVIDER_TOKEN": "provider",
-        }
+    invoice_data = InvoiceData(
+        total=Decimal("150000000"),
+        currency="RUB",
+        currency_symbol="\u20bd",
+        provider_token="provider",
+        provider_data=None,
+        need_email=True,
+        is_ru=True,
     )
     incoming = event_adapter.from_message(message)
     await send_order_invoice(
@@ -1420,8 +1378,7 @@ async def test_send_order_invoice_price_too_large(
         messenger_client,
         UUID("00000000-0000-0000-0000-000000000532"),
         "Offer",
-        150_000_000.0,
-        config,
+        invoice_data,
         bot_texts_service,
     )
     assert "слишком большая" in message.answers[0]
@@ -1478,40 +1435,6 @@ async def test_successful_payment_handler_no_payment_returns(
     assert not message.answers
 
 
-@pytest.mark.asyncio
-async def test_send_order_invoice_invalid_price(
-    messenger_client, event_adapter, bot_texts_service
-) -> None:
-    """send_order_invoice rejects invalid price (InvalidOperation)."""
-
-    class BadPrice:
-        def __str__(self) -> str:
-            return "not-a-number"
-
-    bot = FakeBot()
-    message = FakeMessage(text="/pay", user=FakeUser(1), bot=bot)
-    message.chat = type("Chat", (), {"id": 1})()
-    config = FakeConfig.model_validate(
-        {
-            "BOT_TOKEN": "token",
-            "DATABASE_URL": "postgresql://test",
-            "TELEGRAM_PROVIDER_TOKEN": "provider",
-        }
-    )
-    incoming = event_adapter.from_message(message)
-    await send_order_invoice(
-        incoming,
-        messenger_client,
-        UUID("00000000-0000-0000-0000-000000000533"),
-        "Offer",
-        BadPrice(),
-        config,
-        bot_texts_service,
-    )
-    assert message.answers
-    assert "Некорректная сумма" in message.answers[0]
-
-
 class FakeBotRaisingInvoice(FakeBot):
     """Fake bot that raises when send_invoice is called."""
 
@@ -1524,6 +1447,7 @@ async def test_send_order_invoice_send_fails(
     event_adapter, bot_texts_service
 ) -> None:
     """send_order_invoice handles send_invoice exception."""
+    from decimal import Decimal
 
     class FailingMessengerClient:
         def __init__(self, msg: FakeMessage) -> None:
@@ -1539,12 +1463,14 @@ async def test_send_order_invoice_send_fails(
         text="/pay", user=FakeUser(1), bot=FakeBotRaisingInvoice()
     )
     message.chat = type("Chat", (), {"id": 1})()
-    config = FakeConfig.model_validate(
-        {
-            "BOT_TOKEN": "token",
-            "DATABASE_URL": "postgresql://test",
-            "TELEGRAM_PROVIDER_TOKEN": "provider",
-        }
+    invoice_data = InvoiceData(
+        total=Decimal("1000"),
+        currency="RUB",
+        currency_symbol="\u20bd",
+        provider_token="provider",
+        provider_data=None,
+        need_email=True,
+        is_ru=True,
     )
     incoming = event_adapter.from_message(message)
     await send_order_invoice(
@@ -1552,8 +1478,7 @@ async def test_send_order_invoice_send_fails(
         FailingMessengerClient(message),
         UUID("00000000-0000-0000-0000-000000000534"),
         "Offer",
-        1000.0,
-        config,
+        invoice_data,
         bot_texts_service,
     )
     assert message.answers
@@ -1586,9 +1511,6 @@ async def test_pay_order_contact_price_not_configured(
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
-    )
-    contact_pricing_service = await build_contact_pricing_service(
-        {3: 100.0}, pricing_repo
     )
 
     user = await create_test_user(
@@ -1631,7 +1553,6 @@ async def test_pay_order_contact_price_not_configured(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
     )
@@ -1745,15 +1666,13 @@ async def test_pay_order_callback_success(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000540"),
         external_id="40",
         username="adv",
+        country="ru",
     )
     await create_test_advertiser_profile(advertiser_repo, user.user_id)
     await user_service.set_user(
@@ -1794,7 +1713,6 @@ async def test_pay_order_callback_success(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
         messenger_client=messenger_client,
@@ -1833,9 +1751,6 @@ async def test_pay_order_callback_order_not_new(
     )
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
-    )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
     )
 
     user = await create_test_user(
@@ -1881,7 +1796,6 @@ async def test_pay_order_callback_order_not_new(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
         messenger_client=messenger_client,
@@ -1919,9 +1833,6 @@ async def test_pay_order_callback_invalid_uuid(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
 
     user = await create_test_user(
         user_repo,
@@ -1957,7 +1868,6 @@ async def test_pay_order_callback_invalid_uuid(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
         messenger_client=messenger_client,
@@ -1997,10 +1907,6 @@ async def test_pay_order_callback_order_not_found(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
-
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000545"),
@@ -2035,7 +1941,6 @@ async def test_pay_order_callback_order_not_found(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
         messenger_client=messenger_client,
@@ -2075,10 +1980,6 @@ async def test_pay_order_callback_no_advertiser_profile(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
-
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000546"),
@@ -2120,7 +2021,6 @@ async def test_pay_order_callback_no_advertiser_profile(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
         messenger_client=messenger_client,
@@ -2160,10 +2060,6 @@ async def test_pay_order_callback_wrong_owner(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
-
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000548"),
@@ -2213,7 +2109,6 @@ async def test_pay_order_callback_wrong_owner(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
         messenger_client=messenger_client,
@@ -2253,10 +2148,6 @@ async def test_pay_order_callback_no_provider_token(
     profile_service = build_profile_service(
         user_repo, advertiser_repo=advertiser_repo
     )
-    contact_pricing_service = await build_contact_pricing_service(
-        None, pricing_repo
-    )
-
     user = await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-00000000054b"),
@@ -2300,7 +2191,6 @@ async def test_pay_order_callback_no_provider_token(
         user_service,
         profile_service,
         payment_service,
-        contact_pricing_service,
         config,
         bot_texts_service,
         messenger_client=messenger_client,

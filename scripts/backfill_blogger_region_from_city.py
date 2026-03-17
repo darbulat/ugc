@@ -12,7 +12,6 @@ import argparse
 import asyncio
 import logging
 import sys
-
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update

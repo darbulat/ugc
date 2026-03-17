@@ -151,6 +151,9 @@ class BotConfig(BaseSettings):
     telegram_provider_token: str = Field(
         default="", alias="TELEGRAM_PROVIDER_TOKEN"
     )
+    telegram_provider_token_intl: str = Field(
+        default="", alias="TELEGRAM_PROVIDER_TOKEN_INTL"
+    )
     bot_username: str = Field(default="", alias="TELEGRAM_BOT_USERNAME")
 
     @field_validator("bot_token")

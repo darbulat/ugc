@@ -24,7 +24,6 @@ from sqlalchemy import select
 
 from ugc_bot.config import load_config
 from ugc_bot.container import repository_factory
-from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import BloggerGender
 from ugc_bot.infrastructure.db.models import BloggerProfileModel, UserModel
 from ugc_bot.infrastructure.db.session import create_session_factory

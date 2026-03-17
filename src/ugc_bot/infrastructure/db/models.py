@@ -394,6 +394,12 @@ class CountryModel(Base):
     name_native: Mapped[str] = mapped_column(String, nullable=False)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     currency_symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    locale: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default=text("'ru'")
+    )
+    tax_rate: Mapped[Decimal] = mapped_column(
+        Numeric(5, 4), nullable=False, server_default=text("0")
+    )
     enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
@@ -416,8 +422,14 @@ class ContactPricingModel(Base):
 
     __tablename__ = "contact_pricing"
 
+    country_code: Mapped[str] = mapped_column(
+        String(2), primary_key=True, server_default=text("'ru'")
+    )
     bloggers_count: Mapped[int] = mapped_column(Integer, primary_key=True)
-    price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, server_default=text("'RUB'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

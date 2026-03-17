@@ -9,6 +9,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryComplaintRepository,
     InMemoryContactPricingRepository,
+    InMemoryCountryRepository,
     InMemoryInstagramVerificationRepository,
     InMemoryInteractionRepository,
     InMemoryOfferDispatchRepository,
@@ -116,6 +117,12 @@ def instagram_verification_repo() -> InMemoryInstagramVerificationRepository:
 def complaint_repo() -> InMemoryComplaintRepository:
     """Fixture for complaint repository."""
     return InMemoryComplaintRepository()
+
+
+@pytest.fixture
+def country_repo() -> InMemoryCountryRepository:
+    """Fixture for country repository."""
+    return InMemoryCountryRepository()
 
 
 @pytest.fixture

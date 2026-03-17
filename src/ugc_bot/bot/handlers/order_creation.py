@@ -28,6 +28,7 @@ from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.order_service import OrderService
+from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.filters import TextEqualsKey
@@ -1367,6 +1368,7 @@ async def handle_geography(
     bot_texts_service: BotTextsService,
     contact_pricing_service: ContactPricingService,
     content_moderation_service: ContentModerationService,
+    payment_service: PaymentService,
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -1475,8 +1477,14 @@ async def handle_geography(
         text=msg_order_created or ORDER_CREATED_MESSAGE,
         parse_mode="Markdown",
     )
-    contact_price = await contact_pricing_service.get_price(bloggers_needed)
-    if contact_price is None or contact_price <= 0:
+    user_obj = await user_role_service.get_user_by_id(user_id)
+    user_country = user_obj.country if user_obj else None
+    invoice_data = await payment_service.calculate_invoice_data(
+        order,
+        user_country,
+        config,
+    )
+    if invoice_data is None or invoice_data.total <= 0:
         msg_pricing = await bot_texts_service.get(
             "msg_pricing_not_configured", user_locale
         )
@@ -1485,12 +1493,21 @@ async def handle_geography(
             text=msg_pricing,
         )
         return
+    if not invoice_data.provider_token:
+        msg_provider = await bot_texts_service.get(
+            "msg_payment_provider_not_configured", user_locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg_provider,
+        )
+        return
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
         order_id=order.order_id,
         offer_text=order.offer_text,
-        price_value=contact_price,
-        config=config,
+        invoice_data=invoice_data,
         bot_texts_service=bot_texts_service,
+        user_locale=user_locale,
     )
