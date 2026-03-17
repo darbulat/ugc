@@ -31,12 +31,13 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     PayoutRequest,
+    ReferralIncomeEntry,
     ReferralOrderIncomeRow,
     User,
     UserReferralBinding,
     UserReferralPending,
 )
-from ugc_bot.domain.enums import MessengerType, PayoutRequestStatus
+from ugc_bot.domain.enums import MessengerType, PayoutRequestStatus, ReferralIncomeType
 
 if TYPE_CHECKING:
     from ugc_bot.domain.enums import ComplaintStatus, InteractionStatus
@@ -926,6 +927,52 @@ class PayoutRequestRepository(ABC):
         for uid in user_ids:
             result.extend(await self.list_by_user(uid, session=session))
         return result
+
+    @abstractmethod
+    async def get_paid_totals_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: sum_of_paid_amounts} for user."""
+
+    @abstractmethod
+    async def get_pending_totals_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: sum_of_pending_amounts} for user."""
+
+    @abstractmethod
+    async def has_request_today_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, bool]:
+        """Return {currency: True} for currencies with a request today."""
+
+
+class ReferralIncomeEntryRepository(ABC):
+    """Repository for referral income entries."""
+
+    @abstractmethod
+    async def save(
+        self, entry: ReferralIncomeEntry, session: object | None = None
+    ) -> None:
+        """Save entry. Ignore if (order_id, referrer_user_id, income_type) exists."""
+
+    @abstractmethod
+    async def get_totals_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: total_commission_amount} for referrer."""
+
+    @abstractmethod
+    async def get_orders_count_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, int]:
+        """Return {currency: distinct_order_count} for referrer."""
+
+    @abstractmethod
+    async def get_current_month_totals_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: total_commission_this_month} for referrer."""
 
 
 class ReferralOrderIncomeRowLoader(Protocol):
