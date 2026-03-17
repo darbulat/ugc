@@ -32,7 +32,10 @@ from ugc_bot.container import (
     repository_factory,
     service_factory,
 )
-from ugc_bot.infrastructure.db.session import SessionTransactionManager
+from ugc_bot.infrastructure.db.session import (
+    SessionTransactionManager,
+    get_engine,
+)
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
 
 
@@ -192,6 +195,16 @@ class Container:
             offer_dispatch_repo=repos["offer_dispatch_repo"],
             transaction_manager=self._transaction_manager,
         )
+
+    async def dispose(self) -> None:
+        """Dispose the async engine, closing all pooled DB connections.
+
+        Call this during application shutdown to prevent connection leaks.
+        """
+        if self._session_factory is not None:
+            engine = get_engine(self._session_factory)
+            if engine is not None:
+                await engine.dispose()
 
     def build_bot_services(self) -> "BotServices":
         """Build all services and repos for the bot dispatcher."""

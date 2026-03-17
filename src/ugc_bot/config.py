@@ -252,6 +252,18 @@ class KafkaConfig(BaseSettings):
     kafka_send_retry_delay_seconds: float = Field(
         default=1.0, alias="KAFKA_SEND_RETRY_DELAY_SECONDS"
     )
+    kafka_producer_retries: int = Field(
+        default=3, alias="KAFKA_PRODUCER_RETRIES"
+    )
+    kafka_producer_retry_backoff_ms: int = Field(
+        default=500, alias="KAFKA_PRODUCER_RETRY_BACKOFF_MS"
+    )
+    kafka_consumer_heartbeat_interval_ms: int = Field(
+        default=3000, alias="KAFKA_CONSUMER_HEARTBEAT_INTERVAL_MS"
+    )
+    kafka_consumer_session_timeout_ms: int = Field(
+        default=30000, alias="KAFKA_CONSUMER_SESSION_TIMEOUT_MS"
+    )
 
 
 class FeedbackConfig(BaseSettings):
@@ -293,6 +305,15 @@ class RedisConfig(BaseSettings):
 
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
     use_redis_storage: bool = Field(default=True, alias="USE_REDIS_STORAGE")
+    redis_max_connections: int = Field(
+        default=20, alias="REDIS_MAX_CONNECTIONS"
+    )
+    redis_socket_timeout: float = Field(
+        default=5.0, alias="REDIS_SOCKET_TIMEOUT"
+    )
+    redis_socket_connect_timeout: float = Field(
+        default=5.0, alias="REDIS_SOCKET_CONNECT_TIMEOUT"
+    )
 
 
 class InstagramConfig(BaseSettings):

@@ -204,6 +204,33 @@ class PaymentService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def validate_order_for_invoice(
+        self,
+        order_id: UUID,
+        user_id: UUID,
+        user_country: str | None,
+        config: AppConfig,
+    ) -> tuple[Order, InvoiceData] | str:
+        """Validate order and build invoice data.
+
+        Returns (order, invoice_data) on success or an error key string.
+        """
+        order = await self.get_order(order_id)
+        if order is None:
+            return "msg_order_not_found"
+        if order.advertiser_id != user_id:
+            return "msg_order_not_yours"
+        if order.status != OrderStatus.NEW:
+            return "msg_order_not_new"
+        invoice_data = await self.calculate_invoice_data(
+            order, user_country, config
+        )
+        if invoice_data is None:
+            return "msg_pricing_not_configured"
+        if not invoice_data.provider_token:
+            return "msg_payment_provider_not_configured"
+        return order, invoice_data
+
     async def _validate_payment_amount(
         self,
         user: Any,

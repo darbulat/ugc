@@ -41,7 +41,6 @@ from ugc_bot.bot.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
@@ -177,55 +176,14 @@ async def start_pay_order_link(
             text=msg_fill,
         )
         return
-    order = await payment_service.get_order(order_id)
-    if order is None:
-        msg_not_found = await bot_texts_service.get(
-            "msg_order_not_found", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_found,
-        )
-        return
-    if order.advertiser_id != user.user_id:
-        msg_not_yours = await bot_texts_service.get(
-            "msg_order_not_yours", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_yours,
-        )
-        return
-    if order.status != OrderStatus.NEW:
-        msg_not_new = await bot_texts_service.get("msg_order_not_new", locale)
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_new,
-        )
-        return
-    invoice_data = await payment_service.calculate_invoice_data(
-        order,
-        user.country,
-        config,
+    result = await payment_service.validate_order_for_invoice(
+        order_id, user.user_id, user.country, config
     )
-    if invoice_data is None:
-        msg_pricing = await bot_texts_service.get(
-            "msg_pricing_not_configured", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_pricing,
-        )
+    if isinstance(result, str):
+        msg = await bot_texts_service.get(result, locale)
+        await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
         return
-    if not invoice_data.provider_token:
-        msg_provider = await bot_texts_service.get(
-            "msg_payment_provider_not_configured", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_provider,
-        )
-        return
+    order, invoice_data = result
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
@@ -306,56 +264,14 @@ async def pay_order(
         )
         return
 
-    order = await payment_service.get_order(order_id)
-    if order is None:
-        msg_not_found = await bot_texts_service.get(
-            "msg_order_not_found", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_found,
-        )
-        return
-    if order.advertiser_id != user.user_id:
-        msg_not_yours = await bot_texts_service.get(
-            "msg_order_not_yours", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_yours,
-        )
-        return
-    if order.status != OrderStatus.NEW:
-        msg_not_new = await bot_texts_service.get("msg_order_not_new", locale)
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_new,
-        )
-        return
-
-    invoice_data = await payment_service.calculate_invoice_data(
-        order,
-        user.country,
-        config,
+    result = await payment_service.validate_order_for_invoice(
+        order_id, user.user_id, user.country, config
     )
-    if invoice_data is None:
-        msg_pricing = await bot_texts_service.get(
-            "msg_pricing_not_configured", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_pricing,
-        )
+    if isinstance(result, str):
+        msg = await bot_texts_service.get(result, locale)
+        await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
         return
-    if not invoice_data.provider_token:
-        msg_provider = await bot_texts_service.get(
-            "msg_payment_provider_not_configured", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_provider,
-        )
-        return
+    order, invoice_data = result
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,
@@ -434,56 +350,14 @@ async def pay_order_callback(
         )
         return
 
-    order = await payment_service.get_order(order_id)
-    if order is None:
-        msg_not_found = await bot_texts_service.get(
-            "msg_order_not_found", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_found,
-        )
-        return
-    if order.advertiser_id != user.user_id:
-        msg_not_yours = await bot_texts_service.get(
-            "msg_order_not_yours", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_yours,
-        )
-        return
-    if order.status != OrderStatus.NEW:
-        msg_not_new = await bot_texts_service.get("msg_order_not_new", locale)
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_not_new,
-        )
-        return
-
-    invoice_data = await payment_service.calculate_invoice_data(
-        order,
-        user.country,
-        config,
+    result = await payment_service.validate_order_for_invoice(
+        order_id, user.user_id, user.country, config
     )
-    if invoice_data is None:
-        msg_pricing = await bot_texts_service.get(
-            "msg_pricing_not_configured", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_pricing,
-        )
+    if isinstance(result, str):
+        msg = await bot_texts_service.get(result, locale)
+        await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
         return
-    if not invoice_data.provider_token:
-        msg_provider = await bot_texts_service.get(
-            "msg_payment_provider_not_configured", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_provider,
-        )
-        return
+    order, invoice_data = result
     await send_order_invoice(
         incoming_message=incoming,
         messenger_client=messenger_client,

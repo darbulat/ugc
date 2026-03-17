@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
         logger=logger, service_name="instagram-webhook", config=config
     )
     yield
-    # Shutdown (if needed in the future)
+    await app.state.container.dispose()
 
 
 app = FastAPI(title="Instagram Webhook", lifespan=lifespan)

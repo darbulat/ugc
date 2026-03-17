@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from ugc_bot.application.bot_texts_defaults import DEFAULT_TEXTS
 from ugc_bot.application.ports import BotTextsRepository
-from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)

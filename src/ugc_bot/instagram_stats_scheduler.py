@@ -83,12 +83,15 @@ def main() -> None:  # pragma: no cover - entry point, not unit-tested
     service = deps["instagram_stats_update_service"]
     interval = deps["interval_seconds"]
 
-    asyncio.run(
-        run_loop(
-            service,
-            interval_seconds=interval,
+    try:
+        asyncio.run(
+            run_loop(
+                service,
+                interval_seconds=interval,
+            )
         )
-    )
+    finally:
+        asyncio.run(container.dispose())
 
 
 if __name__ == "__main__":

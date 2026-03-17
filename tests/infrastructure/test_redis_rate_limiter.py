@@ -100,7 +100,10 @@ async def test_get_redis_lazy_init() -> None:
 
         await limiter.allow("k1")
         from_url.assert_called_once_with(
-            "redis://localhost:6379", decode_responses=True
+            "redis://localhost:6379",
+            decode_responses=True,
+            socket_timeout=5.0,
+            socket_connect_timeout=5.0,
         )
         assert limiter._redis is mock_redis
 

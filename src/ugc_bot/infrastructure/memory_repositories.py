@@ -9,6 +9,7 @@ from uuid import UUID
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    BotTextsRepository,
     ComplaintRepository,
     ContactPricingRepository,
     CountryRepository,
@@ -1440,3 +1441,20 @@ class InMemoryManagerOrderRepository(ManagerOrderRepository):
     ) -> bool:
         """Check if manager has any order assignments."""
         return any(uid == user_id for (uid, _) in self._assignments)
+
+
+@dataclass(slots=True)
+class InMemoryBotTextsRepository(BotTextsRepository):
+    """In-memory implementation of BotTextsRepository for testing."""
+
+    _texts: Dict[Tuple[str, str], str] = field(default_factory=dict)
+
+    async def get(
+        self, key: str, locale: str, session: object | None = None
+    ) -> Optional[str]:
+        return self._texts.get((key, locale))
+
+    async def get_all(
+        self, session: object | None = None
+    ) -> List[Tuple[str, str, str]]:
+        return [(k, loc, val) for (k, loc), val in self._texts.items()]

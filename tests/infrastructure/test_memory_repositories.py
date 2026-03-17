@@ -608,3 +608,33 @@ async def test_in_memory_country_repository_get_by_code() -> None:
     assert found is not None
     assert found.code == "ru"
     assert await repo.get_by_code("zz") is None
+
+
+# ---------- BotTextsRepository ----------
+
+
+@pytest.mark.asyncio
+async def test_in_memory_bot_texts_repo_get() -> None:
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryBotTextsRepository,
+    )
+
+    repo = InMemoryBotTextsRepository(_texts={("greeting", "ru"): "Привет"})
+    assert await repo.get("greeting", "ru") == "Привет"
+    assert await repo.get("greeting", "en") is None
+    assert await repo.get("missing", "ru") is None
+
+
+@pytest.mark.asyncio
+async def test_in_memory_bot_texts_repo_get_all() -> None:
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryBotTextsRepository,
+    )
+
+    repo = InMemoryBotTextsRepository(
+        _texts={("k1", "ru"): "v1", ("k2", "en"): "v2"}
+    )
+    rows = await repo.get_all()
+    assert len(rows) == 2
+    assert ("k1", "ru", "v1") in rows
+    assert ("k2", "en", "v2") in rows

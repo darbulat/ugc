@@ -20,7 +20,6 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
-from ugc_bot.config import FeedbackConfig
 from ugc_bot.domain.entities import Interaction
 from ugc_bot.domain.enums import InteractionStatus, OrderStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -37,7 +36,9 @@ class InteractionService:
     max_postpone_count: int = 3
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
-    feedback_config: Optional[FeedbackConfig] = None
+    feedback_reminder_timezone: Optional[str] = None
+    feedback_reminder_hour: int = 10
+    feedback_reminder_minute: int = 0
     order_repo: OrderRepository | None = None
     user_repo: UserRepository | None = None
     referral_income_service: Optional[Any] = None
@@ -187,8 +188,12 @@ class InteractionService:
         if other_needs_reminder:
             effective_status = InteractionStatus.PENDING
             next_check = (
-                next_reminder_datetime(self.feedback_config)
-                if self.feedback_config
+                next_reminder_datetime(
+                    self.feedback_reminder_timezone,
+                    self.feedback_reminder_hour,
+                    self.feedback_reminder_minute,
+                )
+                if self.feedback_reminder_timezone
                 else datetime.now(timezone.utc)
                 + timedelta(minutes=self.postpone_delay_minutes)
             )
@@ -250,8 +255,12 @@ class InteractionService:
         if other_needs_reminder:
             effective_status = InteractionStatus.PENDING
             next_check = (
-                next_reminder_datetime(self.feedback_config)
-                if self.feedback_config
+                next_reminder_datetime(
+                    self.feedback_reminder_timezone,
+                    self.feedback_reminder_hour,
+                    self.feedback_reminder_minute,
+                )
+                if self.feedback_reminder_timezone
                 else datetime.now(timezone.utc)
                 + timedelta(minutes=self.postpone_delay_minutes)
             )
@@ -306,8 +315,15 @@ class InteractionService:
                 if side == "blogger"
                 else interaction.from_blogger is not None
             )
-            if not other_side_responded and self.feedback_config is not None:
-                next_check = next_reminder_datetime(self.feedback_config)
+            if (
+                not other_side_responded
+                and self.feedback_reminder_timezone is not None
+            ):
+                next_check = next_reminder_datetime(
+                    self.feedback_reminder_timezone,
+                    self.feedback_reminder_hour,
+                    self.feedback_reminder_minute,
+                )
             else:
                 next_check = datetime.now(timezone.utc) + timedelta(
                     minutes=self.postpone_delay_minutes
@@ -358,7 +374,7 @@ class InteractionService:
                         advertiser_country_code=advertiser.country,
                     )
         except Exception:
-            logger.warning(
+            logger.error(
                 "Failed to record creator referral income for interaction %s",
                 interaction.interaction_id,
                 exc_info=True,

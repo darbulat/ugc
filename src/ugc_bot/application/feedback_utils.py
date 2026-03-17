@@ -3,8 +3,6 @@
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from ugc_bot.config import FeedbackConfig
-
 
 def needs_feedback_reminder(feedback_text: str | None) -> bool:
     """Return True if feedback reminder needed (no final response yet).
@@ -21,20 +19,24 @@ def needs_feedback_reminder(feedback_text: str | None) -> bool:
     )
 
 
-def next_reminder_datetime(feedback_config: FeedbackConfig) -> datetime:
+def next_reminder_datetime(
+    reminder_timezone: str = "Europe/Moscow",
+    reminder_hour: int = 10,
+    reminder_minute: int = 0,
+) -> datetime:
     """Return next reminder time: tomorrow at configured hour in timezone (UTC).
 
     Ensures reminders are sent every 24h at the configured time (e.g. 10:00).
     """
-    tz = ZoneInfo(feedback_config.feedback_reminder_timezone)
+    tz = ZoneInfo(reminder_timezone)
     now_local = datetime.now(tz)
     tomorrow = now_local.date() + timedelta(days=1)
     next_local = datetime(
         tomorrow.year,
         tomorrow.month,
         tomorrow.day,
-        hour=feedback_config.feedback_reminder_hour,
-        minute=feedback_config.feedback_reminder_minute,
+        hour=reminder_hour,
+        minute=reminder_minute,
         second=0,
         microsecond=0,
         tzinfo=tz,

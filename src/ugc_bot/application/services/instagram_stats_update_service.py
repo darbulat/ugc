@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Optional
 
+from ugc_bot.application.delays import random_delay_seconds
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     InstagramGraphApiClient,
@@ -13,7 +14,6 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.infrastructure.db.session import with_optional_tx
-from ugc_bot.infrastructure.instagram.delays import random_delay_seconds
 
 logger = logging.getLogger(__name__)
 

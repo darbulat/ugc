@@ -19,11 +19,17 @@ class ExchangeRateService:
         self.cache = cache
 
     async def close(self) -> None:
-        """Close underlying provider resources."""
+        """Close underlying provider and cache resources."""
         if hasattr(self.provider, "_session"):
             session = self.provider._session
             if hasattr(session, "close"):
                 await session.close()
+        if hasattr(self.cache, "_redis"):
+            redis = self.cache._redis
+            if hasattr(redis, "aclose"):
+                await redis.aclose()
+            elif hasattr(redis, "close"):
+                await redis.close()
 
     async def _get_rates(self) -> dict[str, Decimal] | None:
         rates = await self.cache.get_rates(_BASE)

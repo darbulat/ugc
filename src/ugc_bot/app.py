@@ -88,6 +88,7 @@ def build_dispatcher(
 
     container = Container(config)
     services = container.build_bot_services()
+    dispatcher["container"] = container
 
     # Register error handling middleware for all updates
     error_handler = ErrorHandlerMiddleware(

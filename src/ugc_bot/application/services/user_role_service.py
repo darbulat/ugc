@@ -261,9 +261,13 @@ class UserRoleService:
         existing = user.telegram.strip().lstrip("@") if user.telegram else None
         if normalized == existing:
             return user
-        updated = replace(user, telegram=normalized)
-        await self.user_repo.save(updated)
-        return updated
+
+        async def _run(session: object | None) -> User:
+            updated = replace(user, telegram=normalized)
+            await self.user_repo.save(updated, session=session)
+            return updated
+
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def set_country(
         self,

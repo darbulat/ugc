@@ -25,11 +25,15 @@ class RedisRateLimiter:
         redis_url: str,
         limit: int = 5,
         window_seconds: float = 10.0,
+        socket_timeout: float = 5.0,
+        socket_connect_timeout: float = 5.0,
     ) -> None:
         self._redis_url = redis_url
         self._limit = limit
         self._window_seconds = window_seconds
         self._redis = None
+        self._socket_timeout = socket_timeout
+        self._socket_connect_timeout = socket_connect_timeout
 
     def _get_redis(self):
         """Lazy-init Redis client."""
@@ -37,7 +41,12 @@ class RedisRateLimiter:
             return self._redis
         from redis.asyncio import Redis
 
-        self._redis = Redis.from_url(self._redis_url, decode_responses=True)
+        self._redis = Redis.from_url(
+            self._redis_url,
+            decode_responses=True,
+            socket_timeout=self._socket_timeout,
+            socket_connect_timeout=self._socket_connect_timeout,
+        )
         return self._redis
 
     async def allow(self, key: str) -> bool:

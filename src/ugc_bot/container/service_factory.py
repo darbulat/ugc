@@ -163,7 +163,9 @@ def build_admin_services(config: AppConfig, repos):
         InteractionService(
             interaction_repo=repos["interaction_repo"],
             postpone_delay_minutes=config.feedback.feedback_delay_minutes,
-            feedback_config=config.feedback,
+            feedback_reminder_timezone=config.feedback.feedback_reminder_timezone,
+            feedback_reminder_hour=config.feedback.feedback_reminder_hour,
+            feedback_reminder_minute=config.feedback.feedback_reminder_minute,
         ),
     )
 
@@ -196,7 +198,9 @@ def build_feedback_scheduler_deps(
             interaction_repo=repos["interaction_repo"],
             postpone_delay_minutes=config.feedback.feedback_delay_minutes,
             transaction_manager=transaction_manager,
-            feedback_config=config.feedback,
+            feedback_reminder_timezone=config.feedback.feedback_reminder_timezone,
+            feedback_reminder_hour=config.feedback.feedback_reminder_hour,
+            feedback_reminder_minute=config.feedback.feedback_reminder_minute,
         ),
         "user_role_service": UserRoleService(
             user_repo=repos["user_repo"],
@@ -421,7 +425,9 @@ def build_bot_services(
             postpone_delay_minutes=config.feedback.feedback_delay_minutes,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
-            feedback_config=config.feedback,
+            feedback_reminder_timezone=config.feedback.feedback_reminder_timezone,
+            feedback_reminder_hour=config.feedback.feedback_reminder_hour,
+            feedback_reminder_minute=config.feedback.feedback_reminder_minute,
             order_repo=repos["order_repo"],
             user_repo=repos["user_repo"],
             referral_income_service=referral_income_service,

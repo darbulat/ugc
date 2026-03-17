@@ -130,6 +130,10 @@ async def _lifespan(app: FastAPI):
         if exchange_svc is not None:
             with suppress(Exception):
                 await exchange_svc.close()
+        container = dispatcher.get("container") if dispatcher else None
+        if container is not None:
+            with suppress(Exception):
+                await container.dispose()
         if storage is not None and hasattr(storage, "close"):
             await storage.close()
 
@@ -240,7 +244,8 @@ async def handle_webhook(
 
     semaphore = getattr(request.app.state, "webhook_semaphore", None)
     if semaphore is None:
-        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_WEBHOOK_UPDATES)
+        logger.error("webhook_semaphore not initialised, rejecting update")
+        raise HTTPException(status_code=503, detail="Server not ready")
 
     async def _process_update_safely() -> None:
         """Process webhook update with bounded concurrency and error logging."""
