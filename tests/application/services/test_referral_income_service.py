@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from ugc_bot.application.services.referral_income_service import (
+    MultiCurrencyReferralStats,
     ReferralIncomeService,
     UserReferralStats,
 )
@@ -1596,3 +1597,164 @@ async def test_record_creator_referral_income_idempotent() -> None:
     )
 
     assert len(entry_repo.entries) == 1
+
+
+def _make_multicurrency_service(
+    binding_repo: InMemoryUserReferralBindingRepository | None = None,
+    entry_repo: InMemoryReferralIncomeEntryRepository | None = None,
+    payout_repo: InMemoryPayoutRequestRepository | None = None,
+) -> ReferralIncomeService:
+    """Create a ReferralIncomeService wired for get_multicurrency_stats tests."""
+    return ReferralIncomeService(
+        user_referral_binding_repo=binding_repo or InMemoryUserReferralBindingRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=payout_repo or InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo or InMemoryReferralIncomeEntryRepository(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_multicurrency_stats_empty() -> None:
+    """get_multicurrency_stats returns empty dicts and zero creators when no data."""
+    service = _make_multicurrency_service()
+    user_id = uuid4()
+
+    stats = await service.get_multicurrency_stats(user_id)
+
+    assert isinstance(stats, MultiCurrencyReferralStats)
+    assert stats.creators_count == 0
+    assert stats.income_by_currency == {}
+    assert stats.orders_by_currency == {}
+    assert stats.paid_by_currency == {}
+    assert stats.pending_by_currency == {}
+    assert stats.available_by_currency == {}
+    assert stats.has_request_today_by_currency == {}
+
+
+@pytest.mark.asyncio
+async def test_get_multicurrency_stats_with_entries() -> None:
+    """get_multicurrency_stats computes income, paid, and available correctly."""
+    referrer_id = uuid4()
+    referred_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=now,
+        )
+    )
+
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+
+    await entry_repo.save(
+        ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            order_id=order_id,
+            income_type=ReferralIncomeType.CREATOR,
+            currency="RUB",
+            platform_revenue=Decimal("1000.00"),
+            commission_rate=Decimal("0.10"),
+            commission_amount=Decimal("100.00"),
+            created_at=now,
+        )
+    )
+
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=referrer_id,
+            requested_at=now - timedelta(days=1),
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("30.00"),
+            currency="RUB",
+        )
+    )
+
+    service = _make_multicurrency_service(
+        binding_repo=binding_repo,
+        entry_repo=entry_repo,
+        payout_repo=payout_repo,
+    )
+
+    stats = await service.get_multicurrency_stats(referrer_id)
+
+    assert stats.creators_count == 1
+    assert stats.income_by_currency == {"RUB": Decimal("100.00")}
+    assert stats.orders_by_currency == {"RUB": 1}
+    assert stats.paid_by_currency == {"RUB": Decimal("30.00")}
+    assert stats.pending_by_currency == {}
+    assert stats.available_by_currency == {"RUB": Decimal("70.00")}
+
+
+@pytest.mark.asyncio
+async def test_get_multicurrency_stats_available_excludes_pending() -> None:
+    """available = income - paid - pending, minimum 0."""
+    referrer_id = uuid4()
+    referred_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=now,
+        )
+    )
+
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+
+    await entry_repo.save(
+        ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            order_id=uuid4(),
+            income_type=ReferralIncomeType.CREATOR,
+            currency="USD",
+            platform_revenue=Decimal("500.00"),
+            commission_rate=Decimal("0.10"),
+            commission_amount=Decimal("50.00"),
+            created_at=now,
+        )
+    )
+
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=referrer_id,
+            requested_at=now,
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("20.00"),
+            currency="USD",
+        )
+    )
+
+    service = _make_multicurrency_service(
+        binding_repo=binding_repo,
+        entry_repo=entry_repo,
+        payout_repo=payout_repo,
+    )
+
+    stats = await service.get_multicurrency_stats(referrer_id)
+
+    assert stats.income_by_currency == {"USD": Decimal("50.00")}
+    assert stats.pending_by_currency == {"USD": Decimal("20.00")}
+    assert stats.paid_by_currency == {}
+    assert stats.available_by_currency == {"USD": Decimal("30.00")}
+    assert stats.has_request_today_by_currency == {"USD": True}

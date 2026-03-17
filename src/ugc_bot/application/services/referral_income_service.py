@@ -66,6 +66,19 @@ def _aggregate_payout_requests(
     return (paid_total, has_pending, has_request_today)
 
 
+@dataclass(slots=True)
+class MultiCurrencyReferralStats:
+    """Referral stats broken down by currency."""
+
+    creators_count: int
+    income_by_currency: dict[str, Decimal]
+    orders_by_currency: dict[str, int]
+    paid_by_currency: dict[str, Decimal]
+    pending_by_currency: dict[str, Decimal]
+    available_by_currency: dict[str, Decimal]
+    has_request_today_by_currency: dict[str, bool]
+
+
 FIRST_YEAR_RATE = 0.10
 AFTER_FIRST_YEAR_RATE = 0.03
 
@@ -670,3 +683,55 @@ class ReferralIncomeService:
             created_at=datetime.now(timezone.utc),
         )
         await self.referral_income_entry_repo.save(entry, session=session)
+
+    async def get_multicurrency_stats(
+        self, referrer_user_id: UUID
+    ) -> MultiCurrencyReferralStats:
+        """Get referral stats broken down by currency."""
+        assert self.referral_income_entry_repo is not None
+
+        creators_count = await self.user_referral_binding_repo.count_by_referrer(
+            referrer_user_id
+        )
+        income_by_currency = (
+            await self.referral_income_entry_repo.get_totals_by_currency(
+                referrer_user_id
+            )
+        )
+        orders_by_currency = (
+            await self.referral_income_entry_repo.get_orders_count_by_currency(
+                referrer_user_id
+            )
+        )
+        paid_by_currency = (
+            await self.payout_request_repo.get_paid_totals_by_currency(
+                referrer_user_id
+            )
+        )
+        pending_by_currency = (
+            await self.payout_request_repo.get_pending_totals_by_currency(
+                referrer_user_id
+            )
+        )
+        has_request_today_by_currency = (
+            await self.payout_request_repo.has_request_today_by_currency(
+                referrer_user_id
+            )
+        )
+
+        available_by_currency: dict[str, Decimal] = {}
+        for currency, income in income_by_currency.items():
+            paid = paid_by_currency.get(currency, Decimal("0"))
+            pending = pending_by_currency.get(currency, Decimal("0"))
+            available = max(income - paid - pending, Decimal("0"))
+            available_by_currency[currency] = available
+
+        return MultiCurrencyReferralStats(
+            creators_count=creators_count,
+            income_by_currency=income_by_currency,
+            orders_by_currency=orders_by_currency,
+            paid_by_currency=paid_by_currency,
+            pending_by_currency=pending_by_currency,
+            available_by_currency=available_by_currency,
+            has_request_today_by_currency=has_request_today_by_currency,
+        )
