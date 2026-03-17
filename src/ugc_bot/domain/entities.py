@@ -17,6 +17,7 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    ReferralIncomeType,
     UserStatus,
     WorkFormat,
 )
@@ -393,6 +394,23 @@ class PayoutRequest:
     status: PayoutRequestStatus
     amount: Optional[Decimal] = None
     updated_at: Optional[datetime] = None
+    currency: str = "RUB"
+
+
+@dataclass(frozen=True)
+class ReferralIncomeEntry:
+    """One referral income record for a completed order."""
+
+    entry_id: UUID
+    referrer_user_id: UUID
+    referred_user_id: UUID
+    order_id: UUID
+    income_type: ReferralIncomeType
+    currency: str
+    platform_revenue: Decimal
+    commission_rate: Decimal
+    commission_amount: Decimal
+    created_at: datetime
 
 
 @dataclass(frozen=True)
