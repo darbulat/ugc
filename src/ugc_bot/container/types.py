@@ -3,6 +3,9 @@
 from typing import Any, TypedDict
 
 from ugc_bot.application.ports import CountryRepository, LanguageRepository
+from ugc_bot.application.services.exchange_rate_service import (
+    ExchangeRateService,
+)
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -81,3 +84,4 @@ class BotServices(TypedDict):
     language_repo: LanguageRepository
     manager_service: ManagerService
     manager_order_repo: Any
+    exchange_rate_service: ExchangeRateService | None

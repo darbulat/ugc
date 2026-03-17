@@ -1,5 +1,6 @@
 """Factory for creating application services."""
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,9 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
+)
+from ugc_bot.application.services.exchange_rate_service import (
+    ExchangeRateService,
 )
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
@@ -146,6 +150,8 @@ def build_referral_income_service(repos, transaction_manager):
         payout_request_repo=repos["payout_request_repo"],
         transaction_manager=transaction_manager,
         referral_order_income_loader=repos.get("referral_order_income_loader"),
+        referral_income_entry_repo=repos.get("referral_income_entry_repo"),
+        contact_pricing_repo=repos.get("pricing_repo"),
     )
 
 
@@ -287,6 +293,38 @@ def build_instagram_stats_collector_scheduler_deps(
     }
 
 
+logger = logging.getLogger(__name__)
+
+
+def build_exchange_rate_service(
+    config: AppConfig,
+) -> ExchangeRateService | None:
+    """Build ExchangeRateService if Redis is configured, else None."""
+    if not config.redis.redis_url:
+        return None
+    try:
+        import aiohttp
+        from redis.asyncio import Redis
+
+        from ugc_bot.infrastructure.exchange_rate import (
+            OpenERApiProvider,
+            RedisExchangeRateCache,
+        )
+
+        session = aiohttp.ClientSession()
+        provider = OpenERApiProvider(session=session)
+        redis_client = Redis.from_url(
+            config.redis.redis_url, decode_responses=True
+        )
+        cache = RedisExchangeRateCache(redis=redis_client)
+        return ExchangeRateService(provider=provider, cache=cache)
+    except Exception:
+        logger.warning(
+            "Could not build ExchangeRateService", exc_info=True
+        )
+        return None
+
+
 def build_bot_services(
     config: AppConfig,
     repos: dict[str, Any],
@@ -305,6 +343,20 @@ def build_bot_services(
         transaction_manager=transaction_manager,
     )
     geocoder = build_geocoder(config)
+    exchange_rate_service = build_exchange_rate_service(config)
+    referral_income_service = ReferralIncomeService(
+        user_referral_binding_repo=repos["user_referral_binding_repo"],
+        offer_dispatch_repo=repos["offer_dispatch_repo"],
+        order_repo=repos["order_repo"],
+        payment_repo=repos["payment_repo"],
+        interaction_repo=repos["interaction_repo"],
+        user_repo=repos["user_repo"],
+        payout_request_repo=repos["payout_request_repo"],
+        transaction_manager=transaction_manager,
+        referral_order_income_loader=repos.get("referral_order_income_loader"),
+        referral_income_entry_repo=repos.get("referral_income_entry_repo"),
+        contact_pricing_repo=repos.get("pricing_repo"),
+    )
     return {
         "metrics_collector": metrics_collector,
         "content_moderation_service": ContentModerationService(),
@@ -363,6 +415,8 @@ def build_bot_services(
             manager_order_repo=repos["manager_order_repo"],
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
+            user_repo=repos["user_repo"],
+            referral_income_service=referral_income_service,
         ),
         "interaction_service": InteractionService(
             interaction_repo=repos["interaction_repo"],
@@ -370,6 +424,9 @@ def build_bot_services(
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
             feedback_config=config.feedback,
+            order_repo=repos["order_repo"],
+            user_repo=repos["user_repo"],
+            referral_income_service=referral_income_service,
         ),
         "payment_service": PaymentService(
             user_repo=repos["user_repo"],
@@ -406,19 +463,7 @@ def build_bot_services(
             user_referral_binding_repo=repos["user_referral_binding_repo"],
             transaction_manager=transaction_manager,
         ),
-        "referral_income_service": ReferralIncomeService(
-            user_referral_binding_repo=repos["user_referral_binding_repo"],
-            offer_dispatch_repo=repos["offer_dispatch_repo"],
-            order_repo=repos["order_repo"],
-            payment_repo=repos["payment_repo"],
-            interaction_repo=repos["interaction_repo"],
-            user_repo=repos["user_repo"],
-            payout_request_repo=repos["payout_request_repo"],
-            transaction_manager=transaction_manager,
-            referral_order_income_loader=repos.get(
-                "referral_order_income_loader"
-            ),
-        ),
+        "referral_income_service": referral_income_service,
         "issue_lock_manager": issue_lock_manager,
         "offer_response_rate_limiter": offer_response_rate_limiter,
         "order_repo": repos["order_repo"],
@@ -450,4 +495,5 @@ def build_bot_services(
             transaction_manager=transaction_manager,
         ),
         "manager_order_repo": repos["manager_order_repo"],
+        "exchange_rate_service": exchange_rate_service,
     }
