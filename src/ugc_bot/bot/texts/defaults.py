@@ -306,6 +306,12 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "lbl_referral_paid": "Выплачено",
         "lbl_referral_balance": "Текущий баланс",
         "lbl_referral_orders_done": "выполнено заказов",
+        "lbl_referral_income_line": "• {amount} {symbol} ({count} заказов)",
+        "lbl_referral_approx_total": "≈ {amount} {symbol} (примерный итог)",
+        "lbl_referral_paid_currency": "Выплачено: {amount} {symbol}",
+        "lbl_referral_pending_currency": "В ожидании: {amount} {symbol}",
+        "btn_referral_payout_currency": "Выплатить {amount} {symbol}",
+        "msg_referral_payout_today_currency": "Вы уже подавали заявку на вывод {currency} сегодня.",
         "msg_offer_new_response": (
             "Новый отклик по вашему заказу 🙌\n\n"
             "👤 Креатор: {creator}\n"
@@ -1144,6 +1150,12 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "lbl_referral_paid": "Paid out",
         "lbl_referral_balance": "Current balance",
         "lbl_referral_orders_done": "orders completed",
+        "lbl_referral_income_line": "• {amount} {symbol} ({count} orders)",
+        "lbl_referral_approx_total": "≈ {amount} {symbol} (approximate total)",
+        "lbl_referral_paid_currency": "Paid: {amount} {symbol}",
+        "lbl_referral_pending_currency": "Pending: {amount} {symbol}",
+        "btn_referral_payout_currency": "Withdraw {amount} {symbol}",
+        "msg_referral_payout_today_currency": "You already requested {currency} payout today.",
         "msg_offer_new_response": (
             "New response to your order 🙌\n\n"
             "👤 Creator: {creator}\n"
@@ -1936,6 +1948,12 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "lbl_referral_paid": "Төленген",
         "lbl_referral_balance": "Ағымдағы баланс",
         "lbl_referral_orders_done": "тапсырыс орындалды",
+        "lbl_referral_income_line": "• {amount} {symbol} ({count} тапсырыс)",
+        "lbl_referral_approx_total": "≈ {amount} {symbol} (шамамен жалпы)",
+        "lbl_referral_paid_currency": "Төленді: {amount} {symbol}",
+        "lbl_referral_pending_currency": "Күтілуде: {amount} {symbol}",
+        "btn_referral_payout_currency": "Төлем {amount} {symbol}",
+        "msg_referral_payout_today_currency": "Сіз бүгін {currency} төлем сұрағыңызды жібердіңіз.",
         "msg_offer_new_response": (
             "Тапсырысыңызға жаңа жауап 🙌\n\n"
             "👤 Креатор: {creator}\n"
@@ -2767,6 +2785,12 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "lbl_referral_paid": "Выплачана",
         "lbl_referral_balance": "Бягучы баланс",
         "lbl_referral_orders_done": "выканана заказаў",
+        "lbl_referral_income_line": "• {amount} {symbol} ({count} заказаў)",
+        "lbl_referral_approx_total": "≈ {amount} {symbol} (прыблізны вынік)",
+        "lbl_referral_paid_currency": "Выплачана: {amount} {symbol}",
+        "lbl_referral_pending_currency": "Чакае: {amount} {symbol}",
+        "btn_referral_payout_currency": "Выплаціць {amount} {symbol}",
+        "msg_referral_payout_today_currency": "Вы ўжо падавалі заяўку на вывад {currency} сёння.",
         "msg_offer_new_response": (
             "Новы адгук па вашым заказе 🙌\n\n"
             "👤 Крэатар: {creator}\n"
@@ -3626,6 +3650,12 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "lbl_referral_paid": "To'langan",
         "lbl_referral_balance": "Joriy balans",
         "lbl_referral_orders_done": "buyurtma bajarildi",
+        "lbl_referral_income_line": "• {amount} {symbol} ({count} buyurtma)",
+        "lbl_referral_approx_total": "≈ {amount} {symbol} (taxminiy jami)",
+        "lbl_referral_paid_currency": "To'landi: {amount} {symbol}",
+        "lbl_referral_pending_currency": "Kutilmoqda: {amount} {symbol}",
+        "btn_referral_payout_currency": "To'lash {amount} {symbol}",
+        "msg_referral_payout_today_currency": "Siz bugun {currency} to'lov so'radingiz.",
         "msg_offer_new_response": (
             "Buyurtmangizga yangi javob 🙌\n\n"
             "👤 Kreator: {creator}\n"

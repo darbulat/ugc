@@ -17,6 +17,9 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.exchange_rate_service import (
+    ExchangeRateService,
+)
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -81,3 +84,4 @@ class BotServices(TypedDict):
     language_repo: LanguageRepository
     manager_service: ManagerService
     manager_order_repo: Any
+    exchange_rate_service: ExchangeRateService | None

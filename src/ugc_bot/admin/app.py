@@ -64,6 +64,7 @@ from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
     PayoutRequestModel,
+    ReferralIncomeEntryModel,
     UserModel,
 )
 from ugc_bot.infrastructure.redis_cache import (
@@ -1998,6 +1999,7 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
         PayoutRequestModel.requested_at,
         PayoutRequestModel.status,
         PayoutRequestModel.amount,
+        PayoutRequestModel.currency,
     ]
     column_sortable_list = list(column_list)
     column_default_sort = (PayoutRequestModel.requested_at, True)
@@ -2011,6 +2013,7 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
         PayoutRequestModel.requested_at: "Дата запроса",
         PayoutRequestModel.status: "Статус",
         PayoutRequestModel.amount: "Сумма",
+        PayoutRequestModel.currency: "Валюта",
     }
 
     def list_query(self, request: Request):
@@ -2030,6 +2033,42 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
         return stmt.where(
             PayoutRequestModel.status != PayoutRequestStatus.DELETED
         )
+
+
+class ReferralIncomeEntryAdmin(ModelView, model=ReferralIncomeEntryModel):
+    """Read-only admin view for referral income entries."""
+
+    name = "Реферальное начисление"
+    name_plural = "Реферальные начисления"
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        ReferralIncomeEntryModel.entry_id,
+        ReferralIncomeEntryModel.referrer_user_id,
+        ReferralIncomeEntryModel.referred_user_id,
+        ReferralIncomeEntryModel.order_id,
+        ReferralIncomeEntryModel.income_type,
+        ReferralIncomeEntryModel.currency,
+        ReferralIncomeEntryModel.platform_revenue,
+        ReferralIncomeEntryModel.commission_rate,
+        ReferralIncomeEntryModel.commission_amount,
+        ReferralIncomeEntryModel.created_at,
+    ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (ReferralIncomeEntryModel.created_at, True)
+    column_labels = {
+        ReferralIncomeEntryModel.entry_id: "ID",
+        ReferralIncomeEntryModel.referrer_user_id: "Реферальщик",
+        ReferralIncomeEntryModel.referred_user_id: "Реферал",
+        ReferralIncomeEntryModel.order_id: "Заказ",
+        ReferralIncomeEntryModel.income_type: "Тип",
+        ReferralIncomeEntryModel.currency: "Валюта",
+        ReferralIncomeEntryModel.platform_revenue: "Доход платформы",
+        ReferralIncomeEntryModel.commission_rate: "Ставка",
+        ReferralIncomeEntryModel.commission_amount: "Комиссия",
+        ReferralIncomeEntryModel.created_at: "Дата",
+    }
 
 
 class DashboardLinkView(BaseView):
@@ -2224,6 +2263,7 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(BotTextAdmin)
     admin.add_view(NpsResponseAdmin)
     admin.add_view(PayoutRequestAdmin)
+    admin.add_view(ReferralIncomeEntryAdmin)
 
 
 def create_admin_app() -> FastAPI:

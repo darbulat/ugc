@@ -97,6 +97,13 @@ class OutboxEventStatus(StrEnum):
     FAILED = "failed"
 
 
+class ReferralIncomeType(StrEnum):
+    """Type of referral income entry."""
+
+    CREATOR = "creator"
+    ADVERTISER = "advertiser"
+
+
 class PayoutRequestStatus(StrEnum):
     """Payout request status for referral managers."""
 

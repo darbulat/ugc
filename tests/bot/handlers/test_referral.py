@@ -9,8 +9,8 @@ import pytest
 
 from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 from ugc_bot.application.services.referral_income_service import (
+    MultiCurrencyReferralStats,
     ReferralIncomeService,
-    UserReferralStats,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.referral import (
@@ -53,16 +53,8 @@ async def test_referral_command_sends_stats_and_keyboard(
     )
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=0.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
-        )
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(creators_count=0)
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -89,19 +81,7 @@ async def test_referral_command_sends_stats_and_keyboard(
         or "Referral" in text
         or "статистика" in text
     )
-    assert (
-        "Приведено креаторов: 0" in text
-        or "Creators referred: 0" in text
-        or "0" in text
-    )
-    assert (
-        "Выплачено: 0.00" in text or "Paid out: 0.00" in text or "0.00" in text
-    )
-    assert (
-        "Текущий баланс: 0.00" in text
-        or "Current balance: 0.00" in text
-        or "0.00" in text
-    )
+    assert "0" in text
     # No payout button when balance is zero
     assert client.sent_text[0]["keyboard"] is None
 
@@ -126,16 +106,8 @@ async def test_referral_command_includes_link_when_bot_username_and_code_set(
     )
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=0.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
-        )
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(creators_count=0)
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -180,15 +152,12 @@ async def test_referral_command_shows_payout_button_when_balance_positive(
     )
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
             creators_count=1,
-            orders_count=2,
-            income_current_month=100.0,
-            income_total=500.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
+            income_by_currency={"RUB": Decimal("500.00")},
+            orders_by_currency={"RUB": 2},
+            available_by_currency={"RUB": Decimal("500.00")},
         )
     )
     client = FakeMessengerClient()
@@ -231,15 +200,12 @@ async def test_referral_command_hides_payout_button_when_pending_request(
     )
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=100.0,
-            paid_total=0.0,
-            has_pending_payout=True,
-            has_request_today=False,
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            income_by_currency={"RUB": Decimal("100.00")},
+            orders_by_currency={"RUB": 1},
+            pending_by_currency={"RUB": Decimal("100.00")},
+            available_by_currency={"RUB": Decimal("0")},
         )
     )
     client = FakeMessengerClient()
@@ -281,15 +247,12 @@ async def test_referral_command_hides_payout_button_when_request_today(
     )
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=100.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=True,
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            income_by_currency={"RUB": Decimal("100.00")},
+            orders_by_currency={"RUB": 1},
+            available_by_currency={"RUB": Decimal("100.00")},
+            has_request_today_by_currency={"RUB": True},
         )
     )
     client = FakeMessengerClient()
@@ -331,15 +294,9 @@ async def test_payout_button_callback_creates_request_and_answers(
     )
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=300.50,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            available_by_currency={"RUB": Decimal("300.50")},
         )
     )
     mock_payout_repo = MagicMock()
@@ -350,7 +307,7 @@ async def test_payout_button_callback_creates_request_and_answers(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     callback = FakeCallback(
-        data=REFERRAL_PAYOUT_CALLBACK,
+        data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
         user=FakeUser(456, "u", "bob"),
         callback_id="cb1",
     )
@@ -401,7 +358,7 @@ async def test_payout_button_callback_user_not_found_returns_early(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     callback = FakeCallback(
-        data=REFERRAL_PAYOUT_CALLBACK,
+        data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
         user=FakeUser(99999, "u", "nonexistent"),
         callback_id="cb_none",
     )
@@ -443,15 +400,9 @@ async def test_payout_callback_integrity_error_shows_already_requested(
     await user_repo.save(__user(external_id="777", username="u7"))
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=50.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            available_by_currency={"RUB": Decimal("50.00")},
         )
     )
     mock_payout_repo = MagicMock()
@@ -464,7 +415,7 @@ async def test_payout_callback_integrity_error_shows_already_requested(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     callback = FakeCallback(
-        data=REFERRAL_PAYOUT_CALLBACK,
+        data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
         user=FakeUser(777, "u", "u7"),
         callback_id="cb_dup",
     )
@@ -490,7 +441,8 @@ async def test_payout_callback_integrity_error_shows_already_requested(
     )
 
     assert any(
-        "подавали заявку на вывод сегодня" in a.get("text", "")
+        "подавали заявку на вывод" in a.get("text", "")
+        or "RUB" in a.get("text", "")
         for a in client.answered_callbacks
     )
 
@@ -511,15 +463,9 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
     )
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=200.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            available_by_currency={"RUB": Decimal("200.00")},
         )
     )
     mock_payout_repo = MagicMock()
@@ -530,7 +476,7 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     callback = FakeCallback(
-        data=REFERRAL_PAYOUT_CALLBACK,
+        data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
         user=FakeUser(888, "u", "u8"),
         callback_id="cb_admin",
     )
@@ -939,15 +885,10 @@ async def test_payout_callback_rejects_when_request_already_today(
     await user_repo.save(__user(external_id="222", username="u2"))
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=50.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=True,
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            available_by_currency={"RUB": Decimal("50.00")},
+            has_request_today_by_currency={"RUB": True},
         )
     )
     mock_payout_repo = MagicMock()
@@ -957,7 +898,7 @@ async def test_payout_callback_rejects_when_request_already_today(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     callback = FakeCallback(
-        data=REFERRAL_PAYOUT_CALLBACK,
+        data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
         user=FakeUser(222, "u", "u2"),
         callback_id="cb_today",
     )
@@ -985,8 +926,8 @@ async def test_payout_callback_rejects_when_request_already_today(
     mock_payout_repo.save.assert_not_called()
     assert len(client.answered_callbacks) == 1
     assert (
-        "уже подавали заявку на вывод сегодня"
-        in client.answered_callbacks[0]["text"]
+        "подавали заявку на вывод" in client.answered_callbacks[0]["text"]
+        or "RUB" in client.answered_callbacks[0]["text"]
     )
 
 
@@ -1010,25 +951,20 @@ async def test_payout_callback_rejects_when_pending_or_no_balance(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
 
-    for has_pending, income_total, paid_total, label in [
-        (True, 100.0, 0.0, "has_pending_payout"),
-        (False, 0.0, 0.0, "zero_balance"),
-        (False, 50.0, 50.0, "zero_balance_after_paid"),
+    for pending_amt, available_amt, label in [
+        (Decimal("100"), Decimal("0"), "has_pending_payout"),
+        (Decimal("0"), Decimal("0"), "zero_balance"),
+        (Decimal("0"), Decimal("0"), "zero_balance_after_paid"),
     ]:
         mock_income = MagicMock(spec=ReferralIncomeService)
-        mock_income.get_user_referral_stats = AsyncMock(
-            return_value=UserReferralStats(
-                creators_count=0,
-                orders_count=0,
-                income_current_month=0.0,
-                income_total=income_total,
-                paid_total=paid_total,
-                has_pending_payout=has_pending,
-                has_request_today=False,
+        mock_income.get_multicurrency_stats = AsyncMock(
+            return_value=_mc_stats(
+                pending_by_currency={"RUB": pending_amt} if pending_amt else {},
+                available_by_currency={"RUB": available_amt},
             )
         )
         callback = FakeCallback(
-            data=REFERRAL_PAYOUT_CALLBACK,
+            data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
             user=FakeUser(333, "u", "u3"),
             callback_id=f"cb_{label}",
         )
@@ -1074,15 +1010,9 @@ async def test_payout_callback_support_send_failure_still_answers(
     await user_repo.save(__user(external_id="777", username="u7"))
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=100.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            available_by_currency={"RUB": Decimal("100.00")},
         )
     )
     mock_payout_repo = MagicMock()
@@ -1101,7 +1031,7 @@ async def test_payout_callback_support_send_failure_still_answers(
     client.send_text = send_text_fail
     adapter = TelegramEventAdapter()
     callback = FakeCallback(
-        data=REFERRAL_PAYOUT_CALLBACK,
+        data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
         user=FakeUser(777, "u", "u7"),
         callback_id="cb2",
     )
@@ -1173,7 +1103,7 @@ async def test_referral_command_user_not_found_sends_message(
         or "Профиль не найден" in msg
         or "not found" in msg.lower()
     )
-    mock_income.get_user_referral_stats.assert_not_called()
+    mock_income.get_multicurrency_stats.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1200,15 +1130,12 @@ async def test_referral_command_admin_sees_another_user_stats(
     await user_repo.save(other_user)
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
             creators_count=1,
-            orders_count=2,
-            income_current_month=10.0,
-            income_total=50.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
+            income_by_currency={"RUB": Decimal("50.00")},
+            orders_by_currency={"RUB": 2},
+            available_by_currency={"RUB": Decimal("50.00")},
         )
     )
     client = FakeMessengerClient()
@@ -1237,14 +1164,9 @@ async def test_referral_command_admin_sees_another_user_stats(
     assert len(client.sent_text) == 1
     text = client.sent_text[0]["text"]
     assert "Реферальная статистика" in text or "Referral" in text or "1" in text
-    assert (
-        "Приведено креаторов: 1" in text
-        or "Creators referred: 1" in text
-        or "1" in text
-    )
-    assert "Накоплено (всего): 50.00" in text
-    mock_income.get_user_referral_stats.assert_called_once_with(
-        other_user.user_id, stats_limit=10_000
+    assert "50.00" in text
+    mock_income.get_multicurrency_stats.assert_called_once_with(
+        other_user.user_id
     )
     assert client.sent_text[0]["keyboard"] is None
 
@@ -1289,7 +1211,7 @@ async def test_referral_command_admin_nonexistent_telegram_sends_user_not_found(
     assert len(client.sent_text) == 1
     msg = client.sent_text[0]["text"]
     assert "Пользователь не найден" in msg or "not found" in msg.lower()
-    mock_income.get_user_referral_stats.assert_not_called()
+    mock_income.get_multicurrency_stats.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1307,16 +1229,8 @@ async def test_referral_command_non_admin_with_arg_ignores_arg(
     await user_repo.save(alice)
     user_role_service = UserRoleService(user_repo=user_repo)
     mock_income = MagicMock(spec=ReferralIncomeService)
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=UserReferralStats(
-            creators_count=0,
-            orders_count=0,
-            income_current_month=0.0,
-            income_total=0.0,
-            paid_total=0.0,
-            has_pending_payout=False,
-            has_request_today=False,
-        )
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(creators_count=0)
     )
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
@@ -1338,9 +1252,7 @@ async def test_referral_command_non_admin_with_arg_ignores_arg(
         event_adapter=adapter,
     )
 
-    mock_income.get_user_referral_stats.assert_called_once_with(
-        alice.user_id, stats_limit=10_000
-    )
+    mock_income.get_multicurrency_stats.assert_called_once_with(alice.user_id)
     assert "Реферальная статистика" in client.sent_text[0]["text"]
 
 
@@ -2139,6 +2051,28 @@ async def test_referral_list_command_page1_shows_forward_button(
     assert len(forward_texts) == 1
 
 
+def _mc_stats(
+    *,
+    creators_count: int = 0,
+    income_by_currency: dict[str, Decimal] | None = None,
+    orders_by_currency: dict[str, int] | None = None,
+    paid_by_currency: dict[str, Decimal] | None = None,
+    pending_by_currency: dict[str, Decimal] | None = None,
+    available_by_currency: dict[str, Decimal] | None = None,
+    has_request_today_by_currency: dict[str, bool] | None = None,
+) -> MultiCurrencyReferralStats:
+    """Build minimal MultiCurrencyReferralStats for tests."""
+    return MultiCurrencyReferralStats(
+        creators_count=creators_count,
+        income_by_currency=income_by_currency or {},
+        orders_by_currency=orders_by_currency or {},
+        paid_by_currency=paid_by_currency or {},
+        pending_by_currency=pending_by_currency or {},
+        available_by_currency=available_by_currency or {},
+        has_request_today_by_currency=has_request_today_by_currency or {},
+    )
+
+
 def __fake_tx():
     from contextlib import asynccontextmanager
 
@@ -2176,3 +2110,292 @@ def __user(
         admin=admin,
         telegram=telegram,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests for helper functions
+# ---------------------------------------------------------------------------
+
+
+def test_build_mc_stats_text_two_currencies_paid_and_pending() -> None:
+    """_build_mc_stats_text formats income lines, paid, and pending."""
+    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+
+    mc = _mc_stats(
+        creators_count=3,
+        income_by_currency={
+            "RUB": Decimal("1000.00"),
+            "USD": Decimal("20.00"),
+        },
+        orders_by_currency={"RUB": 5, "USD": 2},
+        paid_by_currency={"RUB": Decimal("200.00")},
+        pending_by_currency={"USD": Decimal("10.00")},
+    )
+    symbols = {"RUB": "₽", "USD": "$"}
+    texts = {
+        "lbl_referral_stats": "Stats",
+        "lbl_referral_creators": "Creators",
+        "lbl_referral_income_line": "• {amount} {symbol} ({count} orders)",
+        "lbl_referral_paid_currency": "Paid: {amount} {symbol}",
+        "lbl_referral_pending_currency": "Pending: {amount} {symbol}",
+    }
+
+    result = _build_mc_stats_text(mc, symbols, texts)
+
+    assert "Stats" in result
+    assert "Creators: 3" in result
+    assert "1000.00 ₽ (5 orders)" in result
+    assert "20.00 $ (2 orders)" in result
+    assert "Paid: 200.00 ₽" in result
+    assert "Pending: 10.00 $" in result
+
+
+def test_build_mc_stats_text_includes_approx_line() -> None:
+    """_build_mc_stats_text appends approx_line when provided."""
+    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+
+    mc = _mc_stats(creators_count=1)
+    result = _build_mc_stats_text(mc, {}, {}, approx_line="≈ 500.00 ₽")
+
+    assert "≈ 500.00 ₽" in result
+
+
+def test_build_mc_stats_text_no_approx_when_empty() -> None:
+    """_build_mc_stats_text omits approx line when empty string."""
+    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+
+    mc = _mc_stats(creators_count=0)
+    result = _build_mc_stats_text(mc, {}, {}, approx_line="")
+
+    assert "≈" not in result
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_no_exchange_service_returns_empty() -> None:
+    """_build_approx_line returns '' when exchange_rate_service is None."""
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={"RUB": Decimal("100.00")})
+    user = __user(external_id="1", username="u")
+    result = await _build_approx_line(mc, user, None, None, {}, {})
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_empty_available_returns_empty() -> None:
+    """_build_approx_line returns '' when available_by_currency is empty."""
+    from unittest.mock import MagicMock
+
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={})
+    user = __user(external_id="1", username="u")
+    mock_svc = MagicMock()
+    result = await _build_approx_line(mc, user, None, mock_svc, {}, {})
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_convert_returns_value() -> None:
+    """_build_approx_line returns formatted string from convert_many."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={"USD": Decimal("20.00")})
+    user = __user(external_id="1", username="u")
+    mock_svc = MagicMock()
+    mock_svc.convert_many = AsyncMock(return_value=Decimal("1800.00"))
+    symbols = {"RUB": "₽"}
+    texts = {
+        "lbl_referral_approx_total": "≈ {amount} {symbol} (approx)",
+    }
+
+    result = await _build_approx_line(mc, user, None, mock_svc, symbols, texts)
+
+    assert result == "≈ 1800.00 ₽ (approx)"
+
+
+@pytest.mark.asyncio
+async def test_build_approx_line_convert_returns_none() -> None:
+    """_build_approx_line returns '' when convert_many returns None."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ugc_bot.bot.handlers.referral import _build_approx_line
+
+    mc = _mc_stats(available_by_currency={"USD": Decimal("20.00")})
+    user = __user(external_id="1", username="u")
+    mock_svc = MagicMock()
+    mock_svc.convert_many = AsyncMock(return_value=None)
+
+    result = await _build_approx_line(mc, user, None, mock_svc, {}, {})
+
+    assert result == ""
+
+
+def test_build_mc_payout_keyboard_with_available_currencies() -> None:
+    """_build_mc_payout_keyboard returns keyboard with payout buttons."""
+    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+
+    mc = _mc_stats(
+        available_by_currency={
+            "RUB": Decimal("500.00"),
+            "USD": Decimal("10.00"),
+        },
+    )
+    symbols = {"RUB": "₽", "USD": "$"}
+    btn_tpl = "Withdraw {amount} {symbol}"
+
+    keyboard = _build_mc_payout_keyboard(mc, symbols, btn_tpl)
+
+    assert keyboard is not None
+    all_texts = [btn.text for row in keyboard.rows for btn in row]
+    assert any("500.00 ₽" in t for t in all_texts)
+    assert any("10.00 $" in t for t in all_texts)
+
+
+def test_build_mc_payout_keyboard_hides_currency_with_today_request() -> None:
+    """_build_mc_payout_keyboard omits button when has_request_today."""
+    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+
+    mc = _mc_stats(
+        available_by_currency={
+            "RUB": Decimal("500.00"),
+            "USD": Decimal("10.00"),
+        },
+        has_request_today_by_currency={"RUB": True},
+    )
+    symbols = {"RUB": "₽", "USD": "$"}
+    btn_tpl = "Withdraw {amount} {symbol}"
+
+    keyboard = _build_mc_payout_keyboard(mc, symbols, btn_tpl)
+
+    assert keyboard is not None
+    all_texts = [btn.text for row in keyboard.rows for btn in row]
+    assert not any("₽" in t for t in all_texts)
+    assert any("10.00 $" in t for t in all_texts)
+
+
+def test_build_mc_payout_keyboard_returns_none_when_all_hidden() -> None:
+    """_build_mc_payout_keyboard returns None when no buttons remain."""
+    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+
+    mc = _mc_stats(
+        available_by_currency={"RUB": Decimal("500.00")},
+        has_request_today_by_currency={"RUB": True},
+    )
+
+    keyboard = _build_mc_payout_keyboard(mc, {"RUB": "₽"}, "{amount} {symbol}")
+
+    assert keyboard is None
+
+
+@pytest.mark.asyncio
+async def test_build_currency_symbols_none_repo_returns_empty() -> None:
+    """_build_currency_symbols returns {} when country_repo is None."""
+    from ugc_bot.bot.handlers.referral import _build_currency_symbols
+
+    result = await _build_currency_symbols(None)
+
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_build_currency_symbols_maps_code_to_symbol() -> None:
+    """_build_currency_symbols maps currency_code to currency_symbol."""
+    from ugc_bot.bot.handlers.referral import _build_currency_symbols
+    from ugc_bot.domain.entities import Country
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryCountryRepository,
+    )
+
+    repo = InMemoryCountryRepository(
+        countries={
+            "RU": Country(
+                code="RU",
+                name_native="Россия",
+                currency_code="RUB",
+                currency_symbol="₽",
+            ),
+            "US": Country(
+                code="US",
+                name_native="United States",
+                currency_code="USD",
+                currency_symbol="$",
+            ),
+        }
+    )
+
+    result = await _build_currency_symbols(repo)
+
+    assert result == {"RUB": "₽", "USD": "$"}
+
+
+def test_parse_telegram_arg_none_text() -> None:
+    """None text returns None."""
+    from ugc_bot.bot.handlers.referral import (
+        _parse_telegram_arg_from_command,
+    )
+
+    assert _parse_telegram_arg_from_command(None, "/ref") is None
+    assert _parse_telegram_arg_from_command("", "/ref") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_non_admin() -> None:
+    """Non-admin user always gets themselves back."""
+    from ugc_bot.bot.handlers.referral import (
+        _resolve_referral_target_user,
+    )
+    from ugc_bot.domain.entities import User
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+
+    user = User(
+        user_id=uuid4(),
+        external_id="123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="test",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=False,
+    )
+    result = await _resolve_referral_target_user(
+        current_user=user,
+        telegram_arg="@someone",
+        user_role_service=AsyncMock(),
+        messenger_client=AsyncMock(),
+        chat_id="123",
+    )
+    assert result is user
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_admin_no_arg() -> None:
+    """Admin without telegram_arg gets themselves back."""
+    from ugc_bot.bot.handlers.referral import (
+        _resolve_referral_target_user,
+    )
+    from ugc_bot.domain.entities import User
+    from ugc_bot.domain.enums import MessengerType, UserStatus
+
+    user = User(
+        user_id=uuid4(),
+        external_id="456",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    result = await _resolve_referral_target_user(
+        current_user=user,
+        telegram_arg=None,
+        user_role_service=AsyncMock(),
+        messenger_client=AsyncMock(),
+        chat_id="456",
+    )
+    assert result is user

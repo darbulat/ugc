@@ -19,6 +19,7 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     PayoutRequest,
+    ReferralIncomeEntry,
     User,
     UserReferralBinding,
     UserReferralPending,
@@ -34,6 +35,7 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    ReferralIncomeType,
     UserStatus,
     WorkFormat,
 )
@@ -68,6 +70,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyOutboxRepository,
     SqlAlchemyPaymentRepository,
     SqlAlchemyPayoutRequestRepository,
+    SqlAlchemyReferralIncomeEntryRepository,
     SqlAlchemyUserReferralBindingRepository,
     SqlAlchemyUserReferralPendingRepository,
     SqlAlchemyUserRepository,
@@ -3536,3 +3539,125 @@ async def test_country_repo_execute_in_session_no_session() -> None:
     result = await repo.get_by_currency_code("GEL", session=None)
     assert result is not None
     assert result.code == "GE"
+
+
+@pytest.mark.asyncio
+async def test_payout_request_get_paid_totals_by_currency() -> None:
+    """get_paid_totals_by_currency returns dict keyed by currency."""
+    user_id = UUID("00000000-0000-0000-0000-000000000800")
+    result = [
+        ("RUB", Decimal("100.00")),
+        ("GEL", Decimal("50.00")),
+    ]
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory(result)
+    )
+    totals = await repo.get_paid_totals_by_currency(
+        user_id, session=_repo_session(repo)
+    )
+    assert totals == {
+        "RUB": Decimal("100.00"),
+        "GEL": Decimal("50.00"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_payout_request_get_pending_totals_by_currency() -> None:
+    """get_pending_totals_by_currency returns dict keyed by currency."""
+    user_id = UUID("00000000-0000-0000-0000-000000000801")
+    result = [
+        ("RUB", Decimal("200.00")),
+        ("USD", Decimal("75.00")),
+    ]
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory(result)
+    )
+    totals = await repo.get_pending_totals_by_currency(
+        user_id, session=_repo_session(repo)
+    )
+    assert totals == {
+        "RUB": Decimal("200.00"),
+        "USD": Decimal("75.00"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_payout_request_has_request_today_by_currency() -> None:
+    """has_request_today_by_currency returns dict of currency -> True."""
+    user_id = UUID("00000000-0000-0000-0000-000000000802")
+    result = [("RUB",), ("USD",)]
+    repo = SqlAlchemyPayoutRequestRepository(
+        session_factory=_session_factory(result)
+    )
+    today = await repo.has_request_today_by_currency(
+        user_id, session=_repo_session(repo)
+    )
+    assert today == {"RUB": True, "USD": True}
+
+
+@pytest.mark.asyncio
+async def test_referral_income_entry_save() -> None:
+    """ReferralIncomeEntry repo save executes without error."""
+    entry_id = UUID("00000000-0000-0000-0000-000000000803")
+    referrer_id = UUID("00000000-0000-0000-0000-000000000804")
+    referred_id = UUID("00000000-0000-0000-0000-000000000805")
+    order_id = UUID("00000000-0000-0000-0000-000000000806")
+    now = datetime.now(timezone.utc)
+    entry = ReferralIncomeEntry(
+        entry_id=entry_id,
+        referrer_user_id=referrer_id,
+        referred_user_id=referred_id,
+        order_id=order_id,
+        income_type=ReferralIncomeType.CREATOR,
+        currency="RUB",
+        platform_revenue=Decimal("1000"),
+        commission_rate=Decimal("0.10"),
+        commission_amount=Decimal("100"),
+        created_at=now,
+    )
+    repo = SqlAlchemyReferralIncomeEntryRepository(
+        session_factory=_session_factory(None)
+    )
+    await repo.save(entry, session=_repo_session(repo))
+
+
+@pytest.mark.asyncio
+async def test_referral_income_entry_get_totals_by_currency() -> None:
+    """get_totals_by_currency returns dict keyed by currency."""
+    referrer_id = UUID("00000000-0000-0000-0000-000000000807")
+    result = [("RUB", Decimal("500.00"))]
+    repo = SqlAlchemyReferralIncomeEntryRepository(
+        session_factory=_session_factory(result)
+    )
+    totals = await repo.get_totals_by_currency(
+        referrer_id, session=_repo_session(repo)
+    )
+    assert totals == {"RUB": Decimal("500.00")}
+
+
+@pytest.mark.asyncio
+async def test_referral_income_entry_get_orders_count_by_currency() -> None:
+    """get_orders_count_by_currency returns dict keyed by currency."""
+    referrer_id = UUID("00000000-0000-0000-0000-000000000808")
+    result = [("RUB", 3), ("GEL", 1)]
+    repo = SqlAlchemyReferralIncomeEntryRepository(
+        session_factory=_session_factory(result)
+    )
+    counts = await repo.get_orders_count_by_currency(
+        referrer_id, session=_repo_session(repo)
+    )
+    assert counts == {"RUB": 3, "GEL": 1}
+
+
+@pytest.mark.asyncio
+async def test_referral_income_entry_get_current_month_totals() -> None:
+    """get_current_month_totals_by_currency returns dict keyed by currency."""
+    referrer_id = UUID("00000000-0000-0000-0000-000000000809")
+    result = [("RUB", Decimal("200.00"))]
+    repo = SqlAlchemyReferralIncomeEntryRepository(
+        session_factory=_session_factory(result)
+    )
+    totals = await repo.get_current_month_totals_by_currency(
+        referrer_id, session=_repo_session(repo)
+    )
+    assert totals == {"RUB": Decimal("200.00")}

@@ -26,14 +26,17 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.exchange_rate_service import (
+    ExchangeRateService,
+)
 from ugc_bot.application.services.referral_income_service import (
+    MultiCurrencyReferralStats,
     ReferralIncomeService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
-    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
@@ -101,54 +104,141 @@ REFERRAL_STATS_KEYS = (
     "lbl_referral_balance",
 )
 
+MULTICURRENCY_TEXT_KEYS = (
+    "lbl_referral_income_line",
+    "lbl_referral_approx_total",
+    "lbl_referral_paid_currency",
+    "lbl_referral_pending_currency",
+    "btn_referral_payout_currency",
+)
 
-def _referral_stats_text(
-    creators_count: int,
-    orders_count: int,
-    income_current_month: float,
-    income_total: float,
-    paid_total: float,
-    balance: float,
-    currency_symbol: str = "₽",
-    texts: dict[str, str] | None = None,
+
+async def _build_currency_symbols(
+    country_repo: CountryRepository | None,
+) -> dict[str, str]:
+    """Build currency_code -> currency_symbol mapping from enabled countries."""
+    if country_repo is None:
+        return {}
+    countries = await country_repo.list_enabled()
+    return {c.currency_code: c.currency_symbol for c in countries}
+
+
+def _build_mc_stats_text(
+    mc_stats: MultiCurrencyReferralStats,
+    currency_symbols: dict[str, str],
+    texts: dict[str, str],
+    approx_line: str = "",
 ) -> str:
-    """Format referral stats message."""
-    t = texts or {}
-    return (
-        f"{t.get('lbl_referral_stats', '')}\n\n"
-        f"{t.get('lbl_referral_creators', '')}: {creators_count}\n"
-        f"{t.get('lbl_referral_orders', '')}: {orders_count}\n\n"
-        f"{t.get('lbl_referral_income_month', '')}: "
-        f"{income_current_month:.2f} {currency_symbol}\n"
-        f"{t.get('lbl_referral_income_total', '')}: "
-        f"{income_total:.2f} {currency_symbol}\n"
-        f"{t.get('lbl_referral_paid', '')}: "
-        f"{paid_total:.2f} {currency_symbol}\n"
-        f"{t.get('lbl_referral_balance', '')}: "
-        f"{balance:.2f} {currency_symbol}"
+    """Build multi-currency referral stats text."""
+    income_tpl = texts.get(
+        "lbl_referral_income_line", "• {amount} {symbol} ({count} orders)"
     )
+    income_lines: list[str] = []
+    for currency, amount in mc_stats.income_by_currency.items():
+        sym = currency_symbols.get(currency, currency)
+        count = mc_stats.orders_by_currency.get(currency, 0)
+        income_lines.append(
+            income_tpl.format(amount=f"{amount:.2f}", symbol=sym, count=count)
+        )
+
+    paid_tpl = texts.get(
+        "lbl_referral_paid_currency", "Paid: {amount} {symbol}"
+    )
+    pending_tpl = texts.get(
+        "lbl_referral_pending_currency", "Pending: {amount} {symbol}"
+    )
+    paid_lines: list[str] = []
+    for currency in sorted(
+        set(mc_stats.paid_by_currency) | set(mc_stats.pending_by_currency)
+    ):
+        sym = currency_symbols.get(currency, currency)
+        paid_amt = mc_stats.paid_by_currency.get(currency, Decimal("0"))
+        pending_amt = mc_stats.pending_by_currency.get(currency, Decimal("0"))
+        if paid_amt > 0:
+            paid_lines.append(
+                paid_tpl.format(amount=f"{paid_amt:.2f}", symbol=sym)
+            )
+        if pending_amt > 0:
+            paid_lines.append(
+                pending_tpl.format(amount=f"{pending_amt:.2f}", symbol=sym)
+            )
+
+    stats_title = texts.get("lbl_referral_stats", "")
+    creators_lbl = texts.get("lbl_referral_creators", "")
+    text_parts = [
+        f"{stats_title}\n",
+        f"{creators_lbl}: {mc_stats.creators_count}",
+    ]
+    if income_lines:
+        text_parts.append("")
+        text_parts.extend(income_lines)
+    if approx_line:
+        text_parts.append(approx_line)
+    if paid_lines:
+        text_parts.append("")
+        text_parts.extend(paid_lines)
+    return "\n".join(text_parts)
 
 
-def _referral_keyboard(
-    balance: float,
-    has_pending_payout: bool,
-    has_request_today: bool,
-    payout_button_text: str = "Выплатить",
+async def _build_approx_line(
+    mc_stats: MultiCurrencyReferralStats,
+    target: User,
+    country_repo: CountryRepository | None,
+    exchange_rate_service: ExchangeRateService | None,
+    currency_symbols: dict[str, str],
+    texts: dict[str, str],
+) -> str:
+    """Compute approximate total in referrer's currency, or empty string."""
+    if exchange_rate_service is None or not mc_stats.available_by_currency:
+        return ""
+    referrer_currency = "RUB"
+    country_code = getattr(target, "country", None)
+    if country_code and country_repo:
+        country = await country_repo.get_by_code(country_code)
+        if country:
+            referrer_currency = country.currency_code
+    approx_total = await exchange_rate_service.convert_many(
+        mc_stats.available_by_currency, referrer_currency
+    )
+    if approx_total is None:
+        return ""
+    approx_sym = currency_symbols.get(referrer_currency, referrer_currency)
+    approx_tpl = texts.get(
+        "lbl_referral_approx_total",
+        "≈ {amount} {symbol} (approximate total)",
+    )
+    return approx_tpl.format(amount=f"{approx_total:.2f}", symbol=approx_sym)
+
+
+def _build_mc_payout_keyboard(
+    mc_stats: MultiCurrencyReferralStats,
+    currency_symbols: dict[str, str],
+    btn_tpl: str,
 ) -> Keyboard | None:
-    """Payout button only when balance > 0, no pending and no request today."""
-    if balance <= 0 or has_pending_payout or has_request_today:
-        return None
-    return Keyboard(
-        kind=KeyboardKind.INLINE,
-        rows=[
+    """Build per-currency payout buttons keyboard."""
+    payout_rows: list[list[Button]] = []
+    for currency, available in mc_stats.available_by_currency.items():
+        if available <= 0:
+            continue
+        has_pending = (
+            mc_stats.pending_by_currency.get(currency, Decimal("0")) > 0
+        )
+        has_today = mc_stats.has_request_today_by_currency.get(currency, False)
+        if has_pending or has_today:
+            continue
+        sym = currency_symbols.get(currency, currency)
+        btn_text = btn_tpl.format(amount=f"{available:.2f}", symbol=sym)
+        payout_rows.append(
             [
                 Button(
-                    text=payout_button_text,
-                    callback_data=REFERRAL_PAYOUT_CALLBACK,
+                    text=btn_text,
+                    callback_data=f"{REFERRAL_PAYOUT_CALLBACK}:{currency}",
                 )
-            ],
-        ],
-    )
+            ]
+        )
+    if not payout_rows:
+        return None
+    return Keyboard(kind=KeyboardKind.INLINE, rows=payout_rows)
 
 
 @router.message(Command("referral"))
@@ -162,6 +252,7 @@ async def referral_command(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
+    exchange_rate_service: ExchangeRateService | None = None,
 ) -> None:
     """Handle /referral — stats; admin may pass @username to view another."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -204,44 +295,46 @@ async def referral_command(
     if target is None:
         return
 
-    currency_sym = await resolve_currency_symbol(
-        target, country_repo, config.market.currency_symbol
+    mc_stats = await referral_income_service.get_multicurrency_stats(
+        target.user_id
     )
-    stats = await referral_income_service.get_user_referral_stats(
-        target.user_id, stats_limit=config.referral.referral_stats_limit
-    )
-    balance = stats.income_total - stats.paid_total
+    currency_symbols = await _build_currency_symbols(country_repo)
+
     stats_texts = await bot_texts_service.get_many(
-        list(REFERRAL_STATS_KEYS) + ["msg_referral_link_intro", "btn_payout"],
+        list(REFERRAL_STATS_KEYS)
+        + list(MULTICURRENCY_TEXT_KEYS)
+        + ["msg_referral_link_intro", "btn_payout"],
         locale,
     )
-    text = _referral_stats_text(
-        creators_count=stats.creators_count,
-        orders_count=stats.orders_count,
-        income_current_month=stats.income_current_month,
-        income_total=stats.income_total,
-        paid_total=stats.paid_total,
-        balance=balance,
-        currency_symbol=currency_sym,
-        texts=stats_texts,
+
+    approx_line = await _build_approx_line(
+        mc_stats,
+        target,
+        country_repo,
+        exchange_rate_service,
+        currency_symbols,
+        stats_texts,
     )
+    text = _build_mc_stats_text(
+        mc_stats, currency_symbols, stats_texts, approx_line
+    )
+
     is_own_view = target.user_id == user.user_id
     bot_username = (config.referral.referral_bot_username or "").strip()
     if is_own_view and bot_username and target.referral_code:
         link = f"https://t.me/{bot_username}?start=ref_{target.referral_code}"
         intro = stats_texts.get("msg_referral_link_intro", "")
         text = f"{intro}\n{link}\n\n{text}"
-    payout_btn = stats_texts.get("btn_payout", "Выплатить")
-    keyboard = (
-        _referral_keyboard(
-            balance,
-            stats.has_pending_payout,
-            stats.has_request_today,
-            payout_button_text=payout_btn,
+
+    keyboard: Keyboard | None = None
+    if is_own_view:
+        payout_btn_tpl = stats_texts.get(
+            "btn_referral_payout_currency", "Withdraw {amount} {symbol}"
         )
-        if is_own_view
-        else None
-    )
+        keyboard = _build_mc_payout_keyboard(
+            mc_stats, currency_symbols, payout_btn_tpl
+        )
+
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=text,
@@ -249,7 +342,11 @@ async def referral_command(
     )
 
 
-@router.callback_query(lambda c: c.data == REFERRAL_PAYOUT_CALLBACK)
+@router.callback_query(
+    lambda c: (
+        c.data is not None and c.data.startswith(REFERRAL_PAYOUT_CALLBACK + ":")
+    )
+)
 async def payout_button_callback(
     callback: CallbackQuery,
     user_role_service: UserRoleService,
@@ -269,11 +366,19 @@ async def payout_button_callback(
     )
     incoming = event_adapter.from_callback(callback)
     locale = user_locale
+
+    # Parse currency from callback data: "referral:payout:USD" -> "USD"
+    raw_data = incoming.data or ""
+    parts = raw_data.split(":")
+    currency = parts[2] if len(parts) >= 3 and parts[2] else "RUB"
+
     payout_msgs = await bot_texts_service.get_many(
         [
             "msg_user_not_found",
             "msg_referral_payout_blocked",
             "msg_referral_payout_pause",
+            "msg_referral_payout_today_currency",
+            "msg_referral_payout_today",
         ],
         locale,
     )
@@ -288,14 +393,17 @@ async def payout_button_callback(
     if user is None:
         return
 
-    currency_sym = await resolve_currency_symbol(
-        user, country_repo, config.market.currency_symbol
+    currency_symbols = await _build_currency_symbols(country_repo)
+    currency_sym = currency_symbols.get(currency, currency)
+
+    mc_stats = await referral_income_service.get_multicurrency_stats(
+        user.user_id
     )
-    stats = await referral_income_service.get_user_referral_stats(
-        user.user_id, stats_limit=config.referral.referral_stats_limit
-    )
-    if stats.has_request_today:
-        msg = await bot_texts_service.get("msg_referral_payout_today", locale)
+    if mc_stats.has_request_today_by_currency.get(currency, False):
+        msg = payout_msgs.get(
+            "msg_referral_payout_today_currency",
+            payout_msgs.get("msg_referral_payout_today", ""),
+        ).format(currency=currency)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
             text=msg,
@@ -303,8 +411,9 @@ async def payout_button_callback(
         )
         return
 
-    balance = stats.income_total - stats.paid_total
-    if stats.has_pending_payout or balance <= 0:
+    available = mc_stats.available_by_currency.get(currency, Decimal("0"))
+    pending = mc_stats.pending_by_currency.get(currency, Decimal("0"))
+    if pending > 0 or available <= 0:
         msg = await bot_texts_service.get(
             "msg_referral_payout_unavailable", locale
         )
@@ -314,7 +423,7 @@ async def payout_button_callback(
             show_alert=True,
         )
         return
-    request_amount = Decimal(str(round(balance, 2)))
+    request_amount = available.quantize(Decimal("0.01"))
 
     request = PayoutRequest(
         request_id=uuid4(),
@@ -322,6 +431,7 @@ async def payout_button_callback(
         requested_at=datetime.now(timezone.utc),
         status=PayoutRequestStatus.PENDING,
         amount=request_amount,
+        currency=currency,
     )
 
     async def _run(session: object | None) -> None:
@@ -330,7 +440,10 @@ async def payout_button_callback(
     try:
         await with_optional_tx(transaction_manager, _run)
     except IntegrityError:
-        msg = await bot_texts_service.get("msg_referral_payout_today", locale)
+        msg = payout_msgs.get(
+            "msg_referral_payout_today_currency",
+            payout_msgs.get("msg_referral_payout_today", ""),
+        ).format(currency=currency)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
             text=msg,
@@ -347,6 +460,7 @@ async def payout_button_callback(
             f"telegram: @{user.telegram or '—'}\n"
             f"Request ID: {request.request_id}\n"
             f"Сумма: {request_amount:.2f} {currency_sym}\n"
+            f"Валюта: {currency}\n"
             f"Дата: {request.requested_at.strftime('%Y-%m-%d %H:%M')}"
         )
         admin_base = (config.admin.admin_base_url or "").strip()

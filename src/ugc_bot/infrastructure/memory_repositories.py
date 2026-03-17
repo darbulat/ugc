@@ -26,6 +26,7 @@ from ugc_bot.application.ports import (
     OutboxRepository,
     PaymentRepository,
     PayoutRequestRepository,
+    ReferralIncomeEntryRepository,
     UserReferralBindingRepository,
     UserReferralPendingRepository,
     UserRepository,
@@ -46,6 +47,7 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     PayoutRequest,
+    ReferralIncomeEntry,
     User,
     UserReferralBinding,
     UserReferralPending,
@@ -294,6 +296,100 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
     ) -> Iterable[PayoutRequest]:
         """List payout requests by user ID."""
         return [r for r in self._requests.values() if r.user_id == user_id]
+
+    async def get_paid_totals_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: sum_of_paid_amounts} for user."""
+        totals: dict[str, Decimal] = {}
+        for r in self._requests.values():
+            if r.user_id == user_id and r.status == PayoutRequestStatus.PAID:
+                amt = r.amount or Decimal("0")
+                totals[r.currency] = totals.get(r.currency, Decimal("0")) + amt
+        return totals
+
+    async def get_pending_totals_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: sum_of_pending_amounts} for user."""
+        totals: dict[str, Decimal] = {}
+        for r in self._requests.values():
+            if r.user_id == user_id and r.status == PayoutRequestStatus.PENDING:
+                amt = r.amount or Decimal("0")
+                totals[r.currency] = totals.get(r.currency, Decimal("0")) + amt
+        return totals
+
+    async def has_request_today_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, bool]:
+        """Return {currency: True} for currencies with a request today."""
+        today = datetime.now(timezone.utc).date()
+        result: dict[str, bool] = {}
+        for r in self._requests.values():
+            if r.user_id == user_id and r.requested_at.date() == today:
+                result[r.currency] = True
+        return result
+
+
+@dataclass
+class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
+    """In-memory implementation of referral income entry repository."""
+
+    entries: list[ReferralIncomeEntry] = field(default_factory=list)
+    _seen: set[tuple] = field(default_factory=set)
+
+    async def save(
+        self, entry: ReferralIncomeEntry, session: object | None = None
+    ) -> None:
+        """Save entry; skip if duplicate key."""
+        key = (entry.order_id, entry.referrer_user_id, entry.income_type)
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        self.entries.append(entry)
+
+    async def get_totals_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: total_commission_amount} for referrer."""
+        totals: dict[str, Decimal] = {}
+        for e in self.entries:
+            if e.referrer_user_id == referrer_user_id:
+                totals[e.currency] = (
+                    totals.get(e.currency, Decimal("0")) + e.commission_amount
+                )
+        return totals
+
+    async def get_orders_count_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, int]:
+        """Return {currency: distinct_order_count} for referrer."""
+        seen_orders: dict[str, set] = {}
+        for e in self.entries:
+            if e.referrer_user_id == referrer_user_id:
+                if e.currency not in seen_orders:
+                    seen_orders[e.currency] = set()
+                seen_orders[e.currency].add(e.order_id)
+        return {cur: len(oids) for cur, oids in seen_orders.items()}
+
+    async def get_current_month_totals_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: total_commission_this_month} for referrer."""
+        now = datetime.now(timezone.utc)
+        first_day = now.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        totals: dict[str, Decimal] = {}
+        for e in self.entries:
+            if (
+                e.referrer_user_id == referrer_user_id
+                and e.created_at >= first_day
+            ):
+                totals[e.currency] = (
+                    totals.get(e.currency, Decimal("0")) + e.commission_amount
+                )
+        return totals
 
 
 @dataclass

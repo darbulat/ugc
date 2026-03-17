@@ -1,30 +1,43 @@
 """Service for calculating referral user income and stats."""
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import (
+    ContactPricingRepository,
     InteractionRepository,
     OfferDispatchRepository,
     OrderRepository,
     PaymentRepository,
     PayoutRequestRepository,
+    ReferralIncomeEntryRepository,
     ReferralOrderIncomeRowLoader,
     TransactionManager,
     UserReferralBindingRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import PayoutRequest, User, UserReferralBinding
+from ugc_bot.domain.entities import (
+    Order,
+    PayoutRequest,
+    ReferralIncomeEntry,
+    User,
+    UserReferralBinding,
+)
 from ugc_bot.domain.enums import (
     InteractionStatus,
     OrderStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    ReferralIncomeType,
 )
 from ugc_bot.infrastructure.db.session import with_optional_tx
+
+logger = logging.getLogger(__name__)
 
 
 def _aggregate_payout_requests(
@@ -51,6 +64,19 @@ def _aggregate_payout_requests(
         if req_date == now_date:
             has_request_today = True
     return (paid_total, has_pending, has_request_today)
+
+
+@dataclass(slots=True)
+class MultiCurrencyReferralStats:
+    """Referral stats broken down by currency."""
+
+    creators_count: int
+    income_by_currency: dict[str, Decimal]
+    orders_by_currency: dict[str, int]
+    paid_by_currency: dict[str, Decimal]
+    pending_by_currency: dict[str, Decimal]
+    available_by_currency: dict[str, Decimal]
+    has_request_today_by_currency: dict[str, bool]
 
 
 FIRST_YEAR_RATE = 0.10
@@ -110,6 +136,8 @@ class ReferralIncomeService:
     payout_request_repo: PayoutRequestRepository
     transaction_manager: TransactionManager | None = None
     referral_order_income_loader: ReferralOrderIncomeRowLoader | None = None
+    referral_income_entry_repo: ReferralIncomeEntryRepository | None = None
+    contact_pricing_repo: ContactPricingRepository | None = None
 
     async def get_user_referral_stats(
         self,
@@ -128,7 +156,7 @@ class ReferralIncomeService:
         user registration date).
 
         Advertisers: order CLOSED, order.advertiser_id = referred user,
-        payment PAID; commission = full payment.amount * rate (same 10%/3%).
+        payment PAID; commission = pricing.price * rate (same 10%/3%).
 
         stats_limit: max referrals to include in stats (default 10_000;
            0 or None = use default. Set 0 in config for unlimited).
@@ -535,3 +563,181 @@ class ReferralIncomeService:
         if session is not None:
             return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)
+
+    def _resolve_rate(self, referred_user: User, order: Order) -> Decimal:
+        """Return commission rate for a referred user on an order."""
+        if referred_user.referral_payout_rate is not None:
+            return referred_user.referral_payout_rate
+        completed = order.completed_at or datetime.now(timezone.utc)
+        years = _years_since(referred_user.created_at, completed)
+        return Decimal(
+            str(FIRST_YEAR_RATE if years < 1.0 else AFTER_FIRST_YEAR_RATE)
+        )
+
+    async def record_creator_referral_income(
+        self,
+        order: Order,
+        creator_id: UUID,
+        advertiser_country_code: str,
+        session: object | None = None,
+    ) -> None:
+        """Record referral income for a creator's referrer (if any)."""
+        assert self.referral_income_entry_repo is not None
+        assert self.contact_pricing_repo is not None
+
+        binding = await self.user_referral_binding_repo.get_by_referred_user(
+            creator_id, session=session
+        )
+        if binding is None:
+            return
+
+        country = advertiser_country_code.lower()
+        pricing = await self.contact_pricing_repo.get_by_bloggers_count(
+            order.bloggers_needed,
+            country_code=country,
+            session=session,
+        )
+        if pricing is None:
+            logger.warning(
+                "No pricing for bloggers_needed=%d country=%s",
+                order.bloggers_needed,
+                advertiser_country_code,
+            )
+            return
+
+        creator = await self.user_repo.get_by_id(creator_id, session=session)
+        if creator is None:
+            return
+
+        if order.bloggers_needed <= 0:
+            return
+        platform_revenue = pricing.price / order.bloggers_needed
+        rate = self._resolve_rate(creator, order)
+        commission = (platform_revenue * rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        entry = ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=binding.referrer_user_id,
+            referred_user_id=creator_id,
+            order_id=order.order_id,
+            income_type=ReferralIncomeType.CREATOR,
+            currency=pricing.currency,
+            platform_revenue=platform_revenue,
+            commission_rate=rate,
+            commission_amount=commission,
+            created_at=datetime.now(timezone.utc),
+        )
+        await self.referral_income_entry_repo.save(entry, session=session)
+
+    async def record_advertiser_referral_income(
+        self,
+        order: Order,
+        advertiser_id: UUID,
+        advertiser_country_code: str,
+        session: object | None = None,
+    ) -> None:
+        """Record referral income for an advertiser's referrer (if any)."""
+        assert self.referral_income_entry_repo is not None
+        assert self.contact_pricing_repo is not None
+
+        binding = await self.user_referral_binding_repo.get_by_referred_user(
+            advertiser_id, session=session
+        )
+        if binding is None:
+            return
+
+        country = advertiser_country_code.lower()
+        pricing = await self.contact_pricing_repo.get_by_bloggers_count(
+            order.bloggers_needed,
+            country_code=country,
+            session=session,
+        )
+        if pricing is None:
+            logger.warning(
+                "No pricing for bloggers_needed=%d country=%s",
+                order.bloggers_needed,
+                advertiser_country_code,
+            )
+            return
+
+        advertiser = await self.user_repo.get_by_id(
+            advertiser_id, session=session
+        )
+        if advertiser is None:
+            return
+
+        platform_revenue = pricing.price
+        rate = self._resolve_rate(advertiser, order)
+        commission = (platform_revenue * rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        entry = ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=binding.referrer_user_id,
+            referred_user_id=advertiser_id,
+            order_id=order.order_id,
+            income_type=ReferralIncomeType.ADVERTISER,
+            currency=pricing.currency,
+            platform_revenue=platform_revenue,
+            commission_rate=rate,
+            commission_amount=commission,
+            created_at=datetime.now(timezone.utc),
+        )
+        await self.referral_income_entry_repo.save(entry, session=session)
+
+    async def get_multicurrency_stats(
+        self, referrer_user_id: UUID
+    ) -> MultiCurrencyReferralStats:
+        """Get referral stats broken down by currency."""
+        assert self.referral_income_entry_repo is not None
+
+        creators_count = (
+            await self.user_referral_binding_repo.count_by_referrer(
+                referrer_user_id
+            )
+        )
+        income_by_currency = (
+            await self.referral_income_entry_repo.get_totals_by_currency(
+                referrer_user_id
+            )
+        )
+        orders_by_currency = (
+            await self.referral_income_entry_repo.get_orders_count_by_currency(
+                referrer_user_id
+            )
+        )
+        paid_by_currency = (
+            await self.payout_request_repo.get_paid_totals_by_currency(
+                referrer_user_id
+            )
+        )
+        pending_by_currency = (
+            await self.payout_request_repo.get_pending_totals_by_currency(
+                referrer_user_id
+            )
+        )
+        has_request_today_by_currency = (
+            await self.payout_request_repo.has_request_today_by_currency(
+                referrer_user_id
+            )
+        )
+
+        available_by_currency: dict[str, Decimal] = {}
+        for currency, income in income_by_currency.items():
+            paid = paid_by_currency.get(currency, Decimal("0"))
+            pending = pending_by_currency.get(currency, Decimal("0"))
+            available = max(income - paid - pending, Decimal("0"))
+            available_by_currency[currency] = available
+
+        return MultiCurrencyReferralStats(
+            creators_count=creators_count,
+            income_by_currency=income_by_currency,
+            orders_by_currency=orders_by_currency,
+            paid_by_currency=paid_by_currency,
+            pending_by_currency=pending_by_currency,
+            available_by_currency=available_by_currency,
+            has_request_today_by_currency=has_request_today_by_currency,
+        )

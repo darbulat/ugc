@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import (
     Any,
     Callable,
@@ -35,6 +36,7 @@ from sqlalchemy import (
     union_all,
     update,
 )
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -55,6 +57,7 @@ from ugc_bot.application.ports import (
     OutboxRepository,
     PaymentRepository,
     PayoutRequestRepository,
+    ReferralIncomeEntryRepository,
     UserReferralBindingRepository,
     UserReferralPendingRepository,
     UserRepository,
@@ -75,6 +78,7 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     PayoutRequest,
+    ReferralIncomeEntry,
     ReferralOrderIncomeRow,
     User,
     UserReferralBinding,
@@ -110,6 +114,7 @@ from ugc_bot.infrastructure.db.models import (
     OutboxEventModel,
     PaymentModel,
     PayoutRequestModel,
+    ReferralIncomeEntryModel,
     UserModel,
     UserReferralBindingModel,
     UserReferralPendingModel,
@@ -2476,6 +2481,173 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
                 for m in exec_result.scalars().all()
             ]
 
+    async def get_paid_totals_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: sum_of_paid_amounts} for user."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(
+                    PayoutRequestModel.currency,
+                    func.coalesce(func.sum(PayoutRequestModel.amount), 0),
+                )
+                .where(
+                    PayoutRequestModel.user_id == user_id,
+                    PayoutRequestModel.status == PayoutRequestStatus.PAID,
+                )
+                .group_by(PayoutRequestModel.currency)
+            )
+            result = await db_session.execute(stmt)
+            return {row[0]: Decimal(str(row[1])) for row in result.all()}
+
+    async def get_pending_totals_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: sum_of_pending_amounts} for user."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(
+                    PayoutRequestModel.currency,
+                    func.coalesce(func.sum(PayoutRequestModel.amount), 0),
+                )
+                .where(
+                    PayoutRequestModel.user_id == user_id,
+                    PayoutRequestModel.status == PayoutRequestStatus.PENDING,
+                )
+                .group_by(PayoutRequestModel.currency)
+            )
+            result = await db_session.execute(stmt)
+            return {row[0]: Decimal(str(row[1])) for row in result.all()}
+
+    async def has_request_today_by_currency(
+        self, user_id: UUID, session: object | None = None
+    ) -> dict[str, bool]:
+        """Return {currency: True} for currencies with a request today."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            today_start = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            stmt = (
+                select(PayoutRequestModel.currency)
+                .where(
+                    PayoutRequestModel.user_id == user_id,
+                    PayoutRequestModel.requested_at >= today_start,
+                )
+                .group_by(PayoutRequestModel.currency)
+            )
+            result = await db_session.execute(stmt)
+            return {row[0]: True for row in result.all()}
+
+
+@dataclass(slots=True)
+class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
+    """SQLAlchemy-backed referral income entry repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def save(
+        self, entry: ReferralIncomeEntry, session: object | None = None
+    ) -> None:
+        """Save entry; skip if duplicate key."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                pg_insert(ReferralIncomeEntryModel)
+                .values(
+                    entry_id=entry.entry_id,
+                    referrer_user_id=entry.referrer_user_id,
+                    referred_user_id=entry.referred_user_id,
+                    order_id=entry.order_id,
+                    income_type=entry.income_type,
+                    currency=entry.currency,
+                    platform_revenue=entry.platform_revenue,
+                    commission_rate=entry.commission_rate,
+                    commission_amount=entry.commission_amount,
+                    created_at=entry.created_at,
+                )
+                .on_conflict_do_nothing(
+                    constraint="uq_referral_income_order_referrer_type"
+                )
+            )
+            await db_session.execute(stmt)
+
+    async def get_totals_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: total_commission_amount} for referrer."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(
+                    ReferralIncomeEntryModel.currency,
+                    func.sum(ReferralIncomeEntryModel.commission_amount),
+                )
+                .where(
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id
+                )
+                .group_by(ReferralIncomeEntryModel.currency)
+            )
+            result = await db_session.execute(stmt)
+            return {row[0]: Decimal(str(row[1])) for row in result.all()}
+
+    async def get_orders_count_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, int]:
+        """Return {currency: distinct_order_count} for referrer."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(
+                    ReferralIncomeEntryModel.currency,
+                    func.count(
+                        func.distinct(ReferralIncomeEntryModel.order_id)
+                    ),
+                )
+                .where(
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id
+                )
+                .group_by(ReferralIncomeEntryModel.currency)
+            )
+            result = await db_session.execute(stmt)
+            return {row[0]: int(row[1]) for row in result.all()}
+
+    async def get_current_month_totals_by_currency(
+        self, referrer_user_id: UUID, session: object | None = None
+    ) -> dict[str, Decimal]:
+        """Return {currency: total_commission_this_month} for referrer."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            now = datetime.now(timezone.utc)
+            first_day = now.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
+            stmt = (
+                select(
+                    ReferralIncomeEntryModel.currency,
+                    func.sum(ReferralIncomeEntryModel.commission_amount),
+                )
+                .where(
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id,
+                    ReferralIncomeEntryModel.created_at >= first_day,
+                )
+                .group_by(ReferralIncomeEntryModel.currency)
+            )
+            result = await db_session.execute(stmt)
+            return {row[0]: Decimal(str(row[1])) for row in result.all()}
+
 
 @dataclass(slots=True)
 class SqlReferralOrderIncomeLoader:
@@ -2879,6 +3051,7 @@ def _to_payout_request_entity(
         status=model.status,
         amount=model.amount,
         updated_at=getattr(model, "updated_at", model.requested_at),
+        currency=getattr(model, "currency", "RUB"),
     )
 
 
@@ -2892,6 +3065,7 @@ def _to_payout_request_model(request: PayoutRequest) -> PayoutRequestModel:
         status=request.status,
         amount=request.amount,
         updated_at=request.updated_at or request.requested_at,
+        currency=request.currency,
     )
 
 

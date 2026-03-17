@@ -1,7 +1,7 @@
 """Tests for offer response service."""
 
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
@@ -14,11 +14,17 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
-from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import OrderStatus, OrderType
+from ugc_bot.domain.entities import Order, User
+from ugc_bot.domain.enums import (
+    MessengerType,
+    OrderStatus,
+    OrderType,
+    UserStatus,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
+    InMemoryUserRepository,
 )
 
 
@@ -493,3 +499,69 @@ async def test_offer_response_tx_duplicate_response_is_rejected(
         await service.respond_and_finalize(
             order_id=order_id, blogger_id=blogger_id
         )
+
+
+@pytest.mark.asyncio
+async def test_respond_and_finalize_closed_triggers_advertiser_referral(
+    fake_tm: object,
+) -> None:
+    """Closing the order calls record_advertiser_referral_income."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000003001")
+    advertiser_id = UUID("00000000-0000-0000-0000-000000003002")
+    blogger_id = UUID("00000000-0000-0000-0000-000000003003")
+
+    order_repo = InMemoryOrderRepository()
+    dispatch_repo = InMemoryOfferDispatchRepository()
+    user_repo = InMemoryUserRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    await dispatch_repo.record_sent(order_id, blogger_id)
+
+    advertiser = User(
+        user_id=advertiser_id,
+        external_id="adv_ext_3",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser3",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        country="ru",
+    )
+    await user_repo.save(advertiser)
+
+    referral_income_service = AsyncMock()
+    service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=dispatch_repo,
+        transaction_manager=fake_tm,
+        user_repo=user_repo,
+        referral_income_service=referral_income_service,
+    )
+
+    result = await service.respond_and_finalize(
+        order_id=order_id,
+        blogger_id=blogger_id,
+    )
+
+    assert result.order.status == OrderStatus.CLOSED
+    (
+        referral_income_service.record_advertiser_referral_income.assert_awaited_once()
+    )
+    mock_fn = referral_income_service.record_advertiser_referral_income
+    call_kwargs = mock_fn.call_args.kwargs
+    assert call_kwargs["advertiser_id"] == advertiser_id
+    assert call_kwargs["advertiser_country_code"] == "ru"
