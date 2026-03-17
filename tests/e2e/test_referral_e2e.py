@@ -250,6 +250,8 @@ async def test_referral_list_command(
         "empty",
         "нет",
         "no",
+        "няма",
+        "пакуль",
         # Pending block
         "не заполнили",
         "not filled",
