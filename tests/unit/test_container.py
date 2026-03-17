@@ -1,5 +1,7 @@
 """Tests for dependency container error paths."""
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
 from ugc_bot.config import AppConfig
@@ -391,3 +393,27 @@ def test_build_aiograpi_fetcher_returns_none_on_import_error(
     monkeypatch.setattr(builtins, "__import__", mock_import)
     result = service_factory._build_aiograpi_fetcher(config)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_container_dispose_calls_engine_dispose() -> None:
+    """Container.dispose() disposes the async engine."""
+    mock_engine = AsyncMock()
+    mock_session_factory = Mock()
+    mock_session_factory.kw = {"bind": mock_engine}
+
+    config = _config("sqlite:///test.db")
+    container = Container(config)
+    container._session_factory = mock_session_factory
+
+    await container.dispose()
+    mock_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_container_dispose_no_session_factory() -> None:
+    """Container.dispose() is safe when session_factory is None."""
+    config = _config("")
+    container = Container(config)
+    container._session_factory = None
+    await container.dispose()  # Should not raise

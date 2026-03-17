@@ -252,7 +252,11 @@ async def _send_feedback_requests(
         if profile_service
         else None
     )
-    next_reminder = next_reminder_datetime(feedback_config)
+    next_reminder = next_reminder_datetime(
+        feedback_config.feedback_reminder_timezone,
+        feedback_config.feedback_reminder_hour,
+        feedback_config.feedback_reminder_minute,
+    )
     sent_to_adv = False
     sent_to_blog = False
 
@@ -483,6 +487,7 @@ def main() -> None:
         session = getattr(bot, "session", None)
         if session is not None:
             asyncio.run(session.close())
+        asyncio.run(container.dispose())
 
 
 if __name__ == "__main__":  # pragma: no cover

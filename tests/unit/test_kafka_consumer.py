@@ -499,6 +499,7 @@ async def test_run_consumer_processes_activation_message(
     mock_container = type("Container", (), {})()
     mock_container.build_offer_dispatch_service = lambda: mock_offer  # type: ignore[attr-defined]
     mock_container.build_bot_texts_service = lambda: None  # type: ignore[attr-defined]
+    mock_container.dispose = AsyncMock()  # type: ignore[attr-defined]
     monkeypatch.setattr(
         "ugc_bot.kafka_consumer.Container",
         lambda _: mock_container,
@@ -1111,6 +1112,7 @@ async def test_run_consumer_logs_exception_when_send_offers_raises(
     )
     mock_container = Mock()
     mock_container.build_offer_dispatch_service = Mock(return_value=Mock())
+    mock_container.dispose = AsyncMock()
     monkeypatch.setattr(
         "ugc_bot.kafka_consumer.Container", lambda _: mock_container
     )

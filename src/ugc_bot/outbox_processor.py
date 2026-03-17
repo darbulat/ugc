@@ -171,6 +171,7 @@ async def run_processor() -> None:
                 await stop_publisher()
             except Exception:
                 logger.exception("Failed to stop Kafka publisher")
+        await container.dispose()
 
 
 def main() -> None:

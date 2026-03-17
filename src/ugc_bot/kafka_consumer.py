@@ -319,6 +319,8 @@ def _create_kafka_clients(
     dlq_producer = AIOKafkaProducer(
         bootstrap_servers=config.kafka.kafka_bootstrap_servers,
         value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+        retries=config.kafka.kafka_producer_retries,
+        retry_backoff_ms=config.kafka.kafka_producer_retry_backoff_ms,
     )
     consumer = AIOKafkaConsumer(
         config.kafka.kafka_topic,
@@ -327,6 +329,8 @@ def _create_kafka_clients(
         value_deserializer=lambda value: json.loads(value.decode("utf-8")),
         auto_offset_reset="earliest",
         enable_auto_commit=False,
+        heartbeat_interval_ms=config.kafka.kafka_consumer_heartbeat_interval_ms,
+        session_timeout_ms=config.kafka.kafka_consumer_session_timeout_ms,
     )
     return dlq_producer, consumer
 
@@ -439,16 +443,19 @@ async def run_consumer() -> None:
 
     bot = Bot(token=config.bot.bot_token)
     messenger_client = TelegramMessengerClient(bot)
-    await _consume_forever(
-        consumer=consumer,
-        dlq_producer=dlq_producer,
-        bot=bot,
-        messenger_client=messenger_client,
-        offer_dispatch_service=offer_dispatch_service,
-        config=config,
-        bot_texts_service=bot_texts_service,
-        default_locale=config.market.default_locale,
-    )
+    try:
+        await _consume_forever(
+            consumer=consumer,
+            dlq_producer=dlq_producer,
+            bot=bot,
+            messenger_client=messenger_client,
+            offer_dispatch_service=offer_dispatch_service,
+            config=config,
+            bot_texts_service=bot_texts_service,
+            default_locale=config.market.default_locale,
+        )
+    finally:
+        await container.dispose()
 
 
 def main() -> None:

@@ -656,6 +656,7 @@ async def test_webhook_startup_event(
 ) -> None:
     """Startup event loads config and logs."""
     mock_load_config.return_value = test_config
+    mock_container_cls.return_value.dispose = AsyncMock()
     from ugc_bot.instagram_webhook_app import lifespan
 
     app = FastAPI()

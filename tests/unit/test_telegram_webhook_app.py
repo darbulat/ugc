@@ -3790,11 +3790,11 @@ def test_webhook_post_update_returns_200(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_webhook_uses_fallback_semaphore_when_not_in_state(
+def test_webhook_rejects_when_semaphore_not_in_state(
     client: TestClient,
 ) -> None:
-    """When app.state has no webhook_semaphore, handler creates one."""
-    # Simulate missing semaphore (e.g. test or legacy path)
+    """When app.state has no webhook_semaphore, handler returns 503."""
+    # Simulate missing semaphore (e.g. startup not complete)
     if hasattr(app.state, "webhook_semaphore"):
         delattr(app.state, "webhook_semaphore")
     payload = {
@@ -3812,8 +3812,7 @@ def test_webhook_uses_fallback_semaphore_when_not_in_state(
         json=payload,
         headers={"X-Telegram-Bot-Api-Secret-Token": "test_secret"},
     )
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.status_code == 503
 
 
 def test_webhook_background_task_logs_processing_error(

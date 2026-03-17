@@ -327,6 +327,7 @@ class TestRunProcessor:
             "ugc_bot.outbox_processor.configure_logging", Mock()
         )
         fake_container = Mock()
+        fake_container.dispose = AsyncMock()
         fake_container.build_outbox_deps.return_value = (
             mock_outbox_publisher,
             mock_kafka_publisher,
@@ -378,6 +379,7 @@ class TestRunProcessor:
         mock_logger = Mock()
 
         fake_container = Mock()
+        fake_container.dispose = AsyncMock()
         fake_container.build_outbox_deps.return_value = (Mock(), None)
 
         monkeypatch.setattr(
@@ -471,6 +473,7 @@ class TestRunProcessor:
         mock_processor.stop = Mock(side_effect=mock_stop)
 
         fake_container = Mock()
+        fake_container.dispose = AsyncMock()
         fake_container.build_outbox_deps.return_value = (
             mock_outbox_publisher,
             mock_kafka_publisher,

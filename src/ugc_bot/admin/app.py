@@ -2344,6 +2344,9 @@ def create_admin_app() -> FastAPI:
     admin_cache = AdminCache(
         redis_url=config.redis.redis_url,
         enabled=config.redis.use_redis_storage,
+        max_connections=config.redis.redis_max_connections,
+        socket_timeout=config.redis.redis_socket_timeout,
+        socket_connect_timeout=config.redis.redis_socket_connect_timeout,
     )
     _register_dashboard_routes(
         app, auth, dashboard_service, templates, cache=admin_cache
@@ -2360,6 +2363,10 @@ def create_admin_app() -> FastAPI:
     _admin_container = container
 
     _add_admin_views(admin)
+
+    @app.on_event("shutdown")
+    async def _dispose_container() -> None:
+        await container.dispose()
 
     return app
 

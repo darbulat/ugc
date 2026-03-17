@@ -201,4 +201,7 @@ async def test_admin_cache_get_redis_init_success() -> None:
         mock_redis_class.from_url.assert_called_once_with(
             "redis://localhost:6379",
             decode_responses=False,
+            max_connections=20,
+            socket_timeout=5.0,
+            socket_connect_timeout=5.0,
         )

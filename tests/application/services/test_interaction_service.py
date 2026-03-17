@@ -273,18 +273,13 @@ async def test_record_blogger_feedback_pending() -> None:
 async def test_postpone_with_feedback_config_uses_24h_reminder() -> None:
     """Other side not responded: use next_reminder_datetime (24h) not 72h."""
 
-    from ugc_bot.config import FeedbackConfig
-
     repo = InMemoryInteractionRepository()
-    feedback_config = FeedbackConfig(
-        feedback_reminder_hour=10,
-        feedback_reminder_minute=0,
-        feedback_reminder_timezone="UTC",
-    )
     service = InteractionService(
         interaction_repo=repo,
         max_postpone_count=3,
-        feedback_config=feedback_config,
+        feedback_reminder_timezone="UTC",
+        feedback_reminder_hour=10,
+        feedback_reminder_minute=0,
     )
     interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000000974"),
@@ -300,7 +295,7 @@ async def test_postpone_with_feedback_config_uses_24h_reminder() -> None:
     assert updated.next_check_at is not None
     from ugc_bot.application.feedback_utils import next_reminder_datetime
 
-    expected_next = next_reminder_datetime(feedback_config)
+    expected_next = next_reminder_datetime("UTC", 10, 0)
     assert updated.next_check_at == expected_next
 
 
@@ -597,17 +592,12 @@ async def test_record_blogger_feedback_issue_with_metrics() -> None:
 async def test_record_one_side_keeps_next_check_for_other() -> None:
     """One side ok/no_deal: keep status=PENDING and next_check_at for other."""
 
-    from ugc_bot.config import FeedbackConfig
-
     repo = InMemoryInteractionRepository()
-    feedback_config = FeedbackConfig(
-        feedback_reminder_hour=10,
-        feedback_reminder_minute=0,
-        feedback_reminder_timezone="UTC",
-    )
     service = InteractionService(
         interaction_repo=repo,
-        feedback_config=feedback_config,
+        feedback_reminder_timezone="UTC",
+        feedback_reminder_hour=10,
+        feedback_reminder_minute=0,
     )
     interaction = await service.get_or_create(
         order_id=UUID("00000000-0000-0000-0000-000000001151"),

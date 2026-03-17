@@ -51,10 +51,20 @@ class AdminCache:
     Disabled when redis_url is None or enabled=False.
     """
 
-    def __init__(self, redis_url: str | None, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        redis_url: str | None,
+        enabled: bool = True,
+        max_connections: int = 20,
+        socket_timeout: float = 5.0,
+        socket_connect_timeout: float = 5.0,
+    ) -> None:
         self._redis_url = redis_url
         self._enabled = enabled and bool(redis_url)
         self._redis: "Redis | None" = None
+        self._max_connections = max_connections
+        self._socket_timeout = socket_timeout
+        self._socket_connect_timeout = socket_connect_timeout
 
     def _get_redis(self) -> "Redis | None":
         """Lazy-init Redis client."""
@@ -68,6 +78,9 @@ class AdminCache:
             self._redis = Redis.from_url(
                 self._redis_url,
                 decode_responses=False,
+                max_connections=self._max_connections,
+                socket_timeout=self._socket_timeout,
+                socket_connect_timeout=self._socket_connect_timeout,
             )
             return self._redis
         except ImportError:

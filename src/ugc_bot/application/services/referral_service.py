@@ -1,5 +1,6 @@
 """Service for referral link handling and pending bindings."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
@@ -18,6 +19,8 @@ from ugc_bot.domain.entities import (
     UserReferralPending,
 )
 from ugc_bot.infrastructure.db.session import with_optional_tx
+
+logger = logging.getLogger(__name__)
 
 REFERRAL_PREFIX = "ref_"
 
@@ -129,11 +132,17 @@ class ReferralService:
                     binding, session=sess
                 )
             except IntegrityError:
+                logger.warning(
+                    "Concurrent referral binding creation for user %s",
+                    creator_user_id,
+                )
                 existing = (
                     await self.user_referral_binding_repo.get_by_referred_user(
                         creator_user_id, session=sess
                     )
                 )
+                if existing is None:
+                    raise
                 await self.user_referral_pending_repo.delete_by_user(
                     creator_user_id, session=sess
                 )

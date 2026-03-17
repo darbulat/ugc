@@ -857,6 +857,9 @@ def test_main_feedback_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
         def build_bot_texts_service(self) -> Mock:
             return Mock()
 
+        async def dispose(self) -> None:
+            pass
+
     monkeypatch.setattr("ugc_bot.feedback_scheduler.Container", FakeContainer)
 
     def _run(coro) -> None:  # type: ignore[no-untyped-def]

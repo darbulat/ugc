@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Protocol, cast
 
+from ugc_bot.application.delays import random_delay_seconds
 from ugc_bot.application.errors import ScrapeCreatorsAPIError
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
@@ -18,7 +19,6 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import BloggerProfile, InstagramStats
 from ugc_bot.infrastructure.db.session import with_optional_tx
-from ugc_bot.infrastructure.instagram.delays import random_delay_seconds
 
 logger = logging.getLogger(__name__)
 

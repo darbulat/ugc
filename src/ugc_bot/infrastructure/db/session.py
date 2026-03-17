@@ -81,7 +81,12 @@ def create_session_factory(
     pool_timeout: int = 30,
     pool_recycle: int = 3600,
 ) -> async_sessionmaker[AsyncSession]:
-    """Create a configured async session factory."""
+    """Create a configured async session factory.
+
+    The underlying :class:`AsyncEngine` is accessible via the standard
+    SQLAlchemy attribute ``session_factory.kw["bind"]`` so callers can
+    dispose of it at shutdown.
+    """
 
     engine = create_async_db_engine(
         database_url,
@@ -91,6 +96,13 @@ def create_session_factory(
         pool_recycle=pool_recycle,
     )
     return async_sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def get_engine(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncEngine | None:
+    """Extract the AsyncEngine bound to a session factory (if any)."""
+    return session_factory.kw.get("bind")
 
 
 T = TypeVar("T")
