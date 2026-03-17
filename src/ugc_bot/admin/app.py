@@ -57,6 +57,7 @@ from ugc_bot.infrastructure.db.models import (
     BotTextModel,
     ComplaintModel,
     ContactPricingModel,
+    CountryModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     LanguageModel,
@@ -1882,10 +1883,48 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
         return stmt.where(ComplaintModel.status != ComplaintStatus.DELETED)
 
 
+class CountryAdmin(ModelView, model=CountryModel):
+    """Admin view for countries."""
+
+    name = "Страна"
+    name_plural = "Страны"
+    icon = "fa-solid fa-globe"
+    form_include_pk = True
+    column_list = [
+        CountryModel.code,
+        CountryModel.name_native,
+        CountryModel.currency_code,
+        CountryModel.currency_symbol,
+        CountryModel.locale,
+        CountryModel.tax_rate,
+        CountryModel.enabled,
+    ]
+    column_sortable_list = list(column_list)
+    column_labels = {
+        CountryModel.code: "Код",
+        CountryModel.name_native: "Название",
+        CountryModel.currency_code: "Валюта",
+        CountryModel.currency_symbol: "Символ валюты",
+        CountryModel.locale: "Локаль",
+        CountryModel.tax_rate: "Ставка налога",
+        CountryModel.enabled: "Активна",
+    }
+    form_columns = [
+        CountryModel.code,
+        CountryModel.name_native,
+        CountryModel.currency_code,
+        CountryModel.currency_symbol,
+        CountryModel.locale,
+        CountryModel.tax_rate,
+        CountryModel.enabled,
+    ]
+
+
 class ContactPricingAdmin(ModelView, model=ContactPricingModel):
     """Admin view for contact pricing."""
 
     can_delete = False
+    form_include_pk = True
     name = "Цена контакта"
     name_plural = "Цены контактов"
     column_list = [
@@ -1917,6 +1956,7 @@ class LanguageAdmin(ModelView, model=LanguageModel):
     name = "Язык"
     name_plural = "Языки"
     icon = "fa-solid fa-language"
+    form_include_pk = True
     column_list = [
         LanguageModel.code,
         LanguageModel.name_native,
@@ -1927,6 +1967,11 @@ class LanguageAdmin(ModelView, model=LanguageModel):
         LanguageModel.name_native: "Название",
         LanguageModel.enabled: "Активен",
     }
+    form_columns = [
+        LanguageModel.code,
+        LanguageModel.name_native,
+        LanguageModel.enabled,
+    ]
 
 
 class BotTextAdmin(ModelView, model=BotTextModel):
@@ -2258,6 +2303,7 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(InteractionAdmin)
     admin.add_view(InstagramVerificationAdmin)
     admin.add_view(ComplaintAdmin)
+    admin.add_view(CountryAdmin)
     admin.add_view(ContactPricingAdmin)
     admin.add_view(LanguageAdmin)
     admin.add_view(BotTextAdmin)
