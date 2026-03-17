@@ -49,6 +49,11 @@ JOIN contact_pricing cp
     ON cp.country_code = COALESCE(u.country, 'ru')
     AND cp.bloggers_count = o.bloggers_needed
 WHERE o.status = 'closed'
+  AND EXISTS (
+      SELECT 1 FROM payments p
+      WHERE p.order_id = o.order_id AND p.status = 'paid'
+  )
+  AND o.bloggers_needed > 0
 ON CONFLICT (order_id, referrer_user_id, income_type)
     DO NOTHING
 """
@@ -105,6 +110,10 @@ JOIN contact_pricing cp
 WHERE o.status = 'closed'
   AND i.status = 'ok'
   AND o.bloggers_needed > 0
+  AND EXISTS (
+      SELECT 1 FROM payments p
+      WHERE p.order_id = o.order_id AND p.status = 'paid'
+  )
 ON CONFLICT (order_id, referrer_user_id, income_type)
     DO NOTHING
 """

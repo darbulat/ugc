@@ -156,7 +156,7 @@ class ReferralIncomeService:
         user registration date).
 
         Advertisers: order CLOSED, order.advertiser_id = referred user,
-        payment PAID; commission = full payment.amount * rate (same 10%/3%).
+        payment PAID; commission = pricing.price * rate (same 10%/3%).
 
         stats_limit: max referrals to include in stats (default 10_000;
            0 or None = use default. Set 0 in config for unlimited).
@@ -591,9 +591,10 @@ class ReferralIncomeService:
         if binding is None:
             return
 
+        country = advertiser_country_code.lower()
         pricing = await self.contact_pricing_repo.get_by_bloggers_count(
             order.bloggers_needed,
-            country_code=advertiser_country_code,
+            country_code=country,
             session=session,
         )
         if pricing is None:
@@ -608,6 +609,8 @@ class ReferralIncomeService:
         if creator is None:
             return
 
+        if order.bloggers_needed <= 0:
+            return
         platform_revenue = pricing.price / order.bloggers_needed
         rate = self._resolve_rate(creator, order)
         commission = (platform_revenue * rate).quantize(
@@ -645,9 +648,10 @@ class ReferralIncomeService:
         if binding is None:
             return
 
+        country = advertiser_country_code.lower()
         pricing = await self.contact_pricing_repo.get_by_bloggers_count(
             order.bloggers_needed,
-            country_code=advertiser_country_code,
+            country_code=country,
             session=session,
         )
         if pricing is None:

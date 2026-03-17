@@ -346,16 +346,23 @@ class InteractionService:
         """Record creator referral income if order is CLOSED."""
         if self.order_repo is None or self.user_repo is None:
             return
-        order = await self.order_repo.get_by_id(interaction.order_id)
-        if order and order.status == OrderStatus.CLOSED:
-            advertiser = await self.user_repo.get_by_id(order.advertiser_id)
-            if advertiser and advertiser.country:
-                svc: Any = self.referral_income_service
-                await svc.record_creator_referral_income(
-                    order=order,
-                    creator_id=interaction.blogger_id,
-                    advertiser_country_code=advertiser.country,
-                )
+        try:
+            order = await self.order_repo.get_by_id(interaction.order_id)
+            if order and order.status == OrderStatus.CLOSED:
+                advertiser = await self.user_repo.get_by_id(order.advertiser_id)
+                if advertiser and advertiser.country:
+                    svc: Any = self.referral_income_service
+                    await svc.record_creator_referral_income(
+                        order=order,
+                        creator_id=interaction.blogger_id,
+                        advertiser_country_code=advertiser.country,
+                    )
+        except Exception:
+            logger.warning(
+                "Failed to record creator referral income for interaction %s",
+                interaction.interaction_id,
+                exc_info=True,
+            )
 
     async def _require(self, interaction_id: UUID) -> Interaction:
         interaction = await self._get_by_id(interaction_id)

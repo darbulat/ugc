@@ -18,6 +18,13 @@ class ExchangeRateService:
         self.provider = provider
         self.cache = cache
 
+    async def close(self) -> None:
+        """Close underlying provider resources."""
+        if hasattr(self.provider, "_session"):
+            session = self.provider._session
+            if hasattr(session, "close"):
+                await session.close()
+
     async def _get_rates(self) -> dict[str, Decimal] | None:
         rates = await self.cache.get_rates(_BASE)
         if rates is not None:

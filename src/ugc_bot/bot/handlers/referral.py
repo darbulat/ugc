@@ -343,7 +343,9 @@ async def referral_command(
 
 
 @router.callback_query(
-    lambda c: c.data is not None and c.data.startswith(REFERRAL_PAYOUT_CALLBACK)
+    lambda c: (
+        c.data is not None and c.data.startswith(REFERRAL_PAYOUT_CALLBACK + ":")
+    )
 )
 async def payout_button_callback(
     callback: CallbackQuery,

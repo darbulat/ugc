@@ -126,6 +126,10 @@ async def _lifespan(app: FastAPI):
             with suppress(Exception):
                 await bot.delete_webhook()
             await bot.session.close()
+        exchange_svc = dispatcher.get("exchange_rate_service")
+        if exchange_svc is not None:
+            with suppress(Exception):
+                await exchange_svc.close()
         if storage is not None and hasattr(storage, "close"):
             await storage.close()
 

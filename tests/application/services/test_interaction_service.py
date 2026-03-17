@@ -755,6 +755,77 @@ async def test_record_advertiser_feedback_ok_triggers_referral_income() -> None:
 
 
 @pytest.mark.asyncio
+async def test_referral_income_error_does_not_break_feedback() -> None:
+    """Exception in referral income recording is caught and logged."""
+    order_id = UUID("00000000-0000-0000-0000-000000003001")
+    blogger_id = UUID("00000000-0000-0000-0000-000000003002")
+    advertiser_id = UUID("00000000-0000-0000-0000-000000003003")
+
+    interaction_repo = InMemoryInteractionRepository()
+    order_repo = InMemoryOrderRepository()
+    user_repo = InMemoryUserRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=datetime.now(timezone.utc),
+    )
+    await order_repo.save(order)
+
+    advertiser = User(
+        user_id=advertiser_id,
+        external_id="adv_err",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser_err",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        country="ru",
+    )
+    await user_repo.save(advertiser)
+
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000003004"),
+        order_id=order_id,
+        blogger_id=blogger_id,
+        advertiser_id=advertiser_id,
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger="✅ Всё прошло нормально",
+        postpone_count=0,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    await interaction_repo.save(interaction)
+
+    referral_income_service = AsyncMock()
+    referral_income_service.record_creator_referral_income.side_effect = (
+        RuntimeError("DB error")
+    )
+    service = InteractionService(
+        interaction_repo=interaction_repo,
+        order_repo=order_repo,
+        user_repo=user_repo,
+        referral_income_service=referral_income_service,
+    )
+
+    updated = await service.record_advertiser_feedback(
+        interaction.interaction_id, "✅ Всё прошло нормально"
+    )
+
+    # Interaction still saved as OK despite referral error
+    assert updated.status == InteractionStatus.OK
+
+
+@pytest.mark.asyncio
 async def test_record_blogger_feedback_ok_triggers_referral_income() -> None:
     """OK feedback from blogger calls record_creator_referral_income."""
 

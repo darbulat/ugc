@@ -105,3 +105,13 @@ async def test_convert_many_none_on_failure() -> None:
     }
     result = await svc.convert_many(amounts, "USD")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_close_closes_provider_session() -> None:
+    """close() calls provider session close."""
+    svc, provider, _ = _make_service(cache_rates=RATES)
+    mock_session = AsyncMock()
+    provider._session = mock_session
+    await svc.close()
+    mock_session.close.assert_awaited_once()
