@@ -19,6 +19,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -37,6 +38,7 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    ReferralIncomeType,
     UserStatus,
     WorkFormat,
 )
@@ -792,8 +794,70 @@ class PayoutRequestModel(Base):
         Numeric(10, 2),
         nullable=True,
     )
+    currency: Mapped[str] = mapped_column(
+        String(3),
+        nullable=False,
+        server_default=text("'RUB'"),
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=text("now()"),
+    )
+
+
+class ReferralIncomeEntryModel(Base):
+    """Denormalized referral income record per order."""
+
+    __tablename__ = "referral_income_entries"
+
+    entry_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    referrer_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id"),
+        nullable=False,
+        index=True,
+    )
+    referred_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id"),
+        nullable=False,
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("orders.order_id"),
+        nullable=False,
+    )
+    income_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False
+    )
+    platform_revenue: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False
+    )
+    commission_rate: Mapped[Decimal] = mapped_column(
+        Numeric(5, 4), nullable=False
+    )
+    commission_amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "order_id",
+            "referrer_user_id",
+            "income_type",
+            name="uq_referral_income_order_referrer_type",
+        ),
     )
