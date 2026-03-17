@@ -12,6 +12,7 @@ from ugc_bot.application.services.referral_income_service import (
     UserReferralStats,
 )
 from ugc_bot.domain.entities import (
+    ContactPricing,
     Interaction,
     Order,
     Payment,
@@ -27,14 +28,17 @@ from ugc_bot.domain.enums import (
     OrderType,
     PaymentStatus,
     PayoutRequestStatus,
+    ReferralIncomeType,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryContactPricingRepository,
     InMemoryInteractionRepository,
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
     InMemoryPaymentRepository,
     InMemoryPayoutRequestRepository,
+    InMemoryReferralIncomeEntryRepository,
     InMemoryUserReferralBindingRepository,
     InMemoryUserRepository,
 )
@@ -1280,3 +1284,315 @@ async def test_get_referral_balances_batch_fallback_when_no_batch_loader() -> (
     )
     result = await service.get_referral_balances_batch([user_id])
     assert result == {user_id: (0.0, 0.0)}
+
+
+@pytest.mark.asyncio
+async def test_record_creator_referral_income_creates_entry() -> None:
+    """Creator has a referrer — entry created with correct commission."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    creator_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
+
+    # Repos
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            external_id="creator1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="creator1",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=creator_id,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    pricing_repo = InMemoryContactPricingRepository()
+    await pricing_repo.save(
+        ContactPricing(
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("9000"),
+            currency="RUB",
+            updated_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=3000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_creator_referral_income(
+        order=order,
+        creator_id=creator_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 1
+    entry = entry_repo.entries[0]
+    assert entry.referrer_user_id == referrer_id
+    assert entry.referred_user_id == creator_id
+    assert entry.order_id == order_id
+    assert entry.income_type == ReferralIncomeType.CREATOR
+    assert entry.currency == "RUB"
+    # platform_revenue = 9000 / 3 = 3000, rate = 0.10, commission = 300.00
+    assert entry.platform_revenue == Decimal("3000")
+    assert entry.commission_rate == Decimal("0.10")
+    assert entry.commission_amount == Decimal("300.00")
+
+
+@pytest.mark.asyncio
+async def test_record_creator_referral_income_no_binding() -> None:
+    """Creator has no referrer — no entry created."""
+    now = datetime.now(timezone.utc)
+    creator_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            external_id="creator2",
+            messenger_type=MessengerType.TELEGRAM,
+            username="creator2",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+    pricing_repo = InMemoryContactPricingRepository()
+
+    order = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_creator_referral_income(
+        order=order,
+        creator_id=creator_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 0
+
+
+@pytest.mark.asyncio
+async def test_record_advertiser_referral_income_creates_entry() -> None:
+    """Advertiser has a referrer — entry with full platform_revenue."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=advertiser_id,
+            external_id="adv1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="adv1",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=advertiser_id,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    pricing_repo = InMemoryContactPricingRepository()
+    await pricing_repo.save(
+        ContactPricing(
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("9000"),
+            currency="RUB",
+            updated_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=3000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_advertiser_referral_income(
+        order=order,
+        advertiser_id=advertiser_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 1
+    entry = entry_repo.entries[0]
+    assert entry.referrer_user_id == referrer_id
+    assert entry.referred_user_id == advertiser_id
+    assert entry.order_id == order_id
+    assert entry.income_type == ReferralIncomeType.ADVERTISER
+    assert entry.currency == "RUB"
+    # platform_revenue = 9000 (full), rate = 0.10, commission = 900.00
+    assert entry.platform_revenue == Decimal("9000")
+    assert entry.commission_rate == Decimal("0.10")
+    assert entry.commission_amount == Decimal("900.00")
+
+
+@pytest.mark.asyncio
+async def test_record_creator_referral_income_idempotent() -> None:
+    """Calling twice for the same order — only one entry saved."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    creator_id = uuid4()
+    order_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            external_id="creator3",
+            messenger_type=MessengerType.TELEGRAM,
+            username="creator3",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=creator_id,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    pricing_repo = InMemoryContactPricingRepository()
+    await pricing_repo.save(
+        ContactPricing(
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("9000"),
+            currency="RUB",
+            updated_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=3000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_creator_referral_income(
+        order=order,
+        creator_id=creator_id,
+        advertiser_country_code="ru",
+    )
+    await service.record_creator_referral_income(
+        order=order,
+        creator_id=creator_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 1

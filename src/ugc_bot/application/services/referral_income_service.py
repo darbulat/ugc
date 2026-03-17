@@ -1,30 +1,43 @@
 """Service for calculating referral user income and stats."""
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import (
+    ContactPricingRepository,
     InteractionRepository,
     OfferDispatchRepository,
     OrderRepository,
     PaymentRepository,
     PayoutRequestRepository,
+    ReferralIncomeEntryRepository,
     ReferralOrderIncomeRowLoader,
     TransactionManager,
     UserReferralBindingRepository,
     UserRepository,
 )
-from ugc_bot.domain.entities import PayoutRequest, User, UserReferralBinding
+from ugc_bot.domain.entities import (
+    Order,
+    PayoutRequest,
+    ReferralIncomeEntry,
+    User,
+    UserReferralBinding,
+)
 from ugc_bot.domain.enums import (
     InteractionStatus,
     OrderStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    ReferralIncomeType,
 )
 from ugc_bot.infrastructure.db.session import with_optional_tx
+
+logger = logging.getLogger(__name__)
 
 
 def _aggregate_payout_requests(
@@ -110,6 +123,8 @@ class ReferralIncomeService:
     payout_request_repo: PayoutRequestRepository
     transaction_manager: TransactionManager | None = None
     referral_order_income_loader: ReferralOrderIncomeRowLoader | None = None
+    referral_income_entry_repo: ReferralIncomeEntryRepository | None = None
+    contact_pricing_repo: ContactPricingRepository | None = None
 
     async def get_user_referral_stats(
         self,
@@ -535,3 +550,123 @@ class ReferralIncomeService:
         if session is not None:
             return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)
+
+    def _resolve_rate(self, referred_user: User, order: Order) -> Decimal:
+        """Return commission rate for a referred user on an order."""
+        if referred_user.referral_payout_rate is not None:
+            return referred_user.referral_payout_rate
+        completed = order.completed_at or datetime.now(timezone.utc)
+        years = _years_since(referred_user.created_at, completed)
+        return Decimal(
+            str(FIRST_YEAR_RATE if years < 1.0 else AFTER_FIRST_YEAR_RATE)
+        )
+
+    async def record_creator_referral_income(
+        self,
+        order: Order,
+        creator_id: UUID,
+        advertiser_country_code: str,
+        session: object | None = None,
+    ) -> None:
+        """Record referral income for a creator's referrer (if any)."""
+        assert self.referral_income_entry_repo is not None
+        assert self.contact_pricing_repo is not None
+
+        binding = await self.user_referral_binding_repo.get_by_referred_user(
+            creator_id, session=session
+        )
+        if binding is None:
+            return
+
+        pricing = await self.contact_pricing_repo.get_by_bloggers_count(
+            order.bloggers_needed,
+            country_code=advertiser_country_code,
+            session=session,
+        )
+        if pricing is None:
+            logger.warning(
+                "No pricing for bloggers_needed=%d country=%s",
+                order.bloggers_needed,
+                advertiser_country_code,
+            )
+            return
+
+        creator = await self.user_repo.get_by_id(creator_id, session=session)
+        if creator is None:
+            return
+
+        platform_revenue = pricing.price / order.bloggers_needed
+        rate = self._resolve_rate(creator, order)
+        commission = (platform_revenue * rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        entry = ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=binding.referrer_user_id,
+            referred_user_id=creator_id,
+            order_id=order.order_id,
+            income_type=ReferralIncomeType.CREATOR,
+            currency=pricing.currency,
+            platform_revenue=platform_revenue,
+            commission_rate=rate,
+            commission_amount=commission,
+            created_at=datetime.now(timezone.utc),
+        )
+        await self.referral_income_entry_repo.save(entry, session=session)
+
+    async def record_advertiser_referral_income(
+        self,
+        order: Order,
+        advertiser_id: UUID,
+        advertiser_country_code: str,
+        session: object | None = None,
+    ) -> None:
+        """Record referral income for an advertiser's referrer (if any)."""
+        assert self.referral_income_entry_repo is not None
+        assert self.contact_pricing_repo is not None
+
+        binding = await self.user_referral_binding_repo.get_by_referred_user(
+            advertiser_id, session=session
+        )
+        if binding is None:
+            return
+
+        pricing = await self.contact_pricing_repo.get_by_bloggers_count(
+            order.bloggers_needed,
+            country_code=advertiser_country_code,
+            session=session,
+        )
+        if pricing is None:
+            logger.warning(
+                "No pricing for bloggers_needed=%d country=%s",
+                order.bloggers_needed,
+                advertiser_country_code,
+            )
+            return
+
+        advertiser = await self.user_repo.get_by_id(
+            advertiser_id, session=session
+        )
+        if advertiser is None:
+            return
+
+        platform_revenue = pricing.price
+        rate = self._resolve_rate(advertiser, order)
+        commission = (platform_revenue * rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        entry = ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=binding.referrer_user_id,
+            referred_user_id=advertiser_id,
+            order_id=order.order_id,
+            income_type=ReferralIncomeType.ADVERTISER,
+            currency=pricing.currency,
+            platform_revenue=platform_revenue,
+            commission_rate=rate,
+            commission_amount=commission,
+            created_at=datetime.now(timezone.utc),
+        )
+        await self.referral_income_entry_repo.save(entry, session=session)
