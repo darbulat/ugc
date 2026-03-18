@@ -188,13 +188,14 @@ def _build_dispatcher(
         "offer_dispatch_repo": MagicMock(
             get_by_order_and_blogger=AsyncMock(return_value=dispatch),
             set_in_offer=AsyncMock(),
+            set_manager=AsyncMock(),
             count_accepted_by_order=AsyncMock(return_value=in_offer_count),
         ),
         "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
         "user_repo": MagicMock(get_by_id=AsyncMock(return_value=None)),
         "interaction_service": MagicMock(
             cancel_interaction=AsyncMock(),
-            create_for_contacts_sent=AsyncMock(),
+            reactivate_or_create_for_contacts_sent=AsyncMock(),
         ),
         "messenger_client": MagicMock(),
         "bot_texts_service": MagicMock(
@@ -320,9 +321,12 @@ class TestManagerAddCreatorEndpoint:
         dispatcher["offer_dispatch_repo"].set_in_offer.assert_awaited_once_with(
             self._ORDER_ID, self._BLOGGER_ID, True
         )
+        dispatcher["offer_dispatch_repo"].set_manager.assert_awaited_once_with(
+            self._ORDER_ID, self._BLOGGER_ID, self._ORDER_ID
+        )
         dispatcher[
             "interaction_service"
-        ].create_for_contacts_sent.assert_awaited_once()
+        ].reactivate_or_create_for_contacts_sent.assert_awaited_once()
 
     def test_add_409_no_free_slots(self) -> None:
         dispatch = _make_dispatch(

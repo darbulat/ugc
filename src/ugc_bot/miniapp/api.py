@@ -1769,9 +1769,10 @@ async def manager_add_creator(
         )
 
     await dispatch_repo.set_in_offer(order_id, blogger_id, True)
+    await dispatch_repo.set_manager(order_id, blogger_id, user_id)
 
     interaction_service = dispatcher["interaction_service"]
-    await interaction_service.create_for_contacts_sent(
+    await interaction_service.reactivate_or_create_for_contacts_sent(
         order_id, blogger_id, order.advertiser_id
     )
 

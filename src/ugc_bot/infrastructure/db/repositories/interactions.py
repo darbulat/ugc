@@ -356,6 +356,27 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                 )
             )
 
+    async def set_manager(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Set manager_id for a dispatch."""
+        async with _resolve_session(self.session_factory, session) as s:
+            await s.execute(
+                update(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+                .values(
+                    manager_id=manager_id,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+
 
 @dataclass(slots=True)
 class SqlAlchemyInteractionRepository(InteractionRepository):

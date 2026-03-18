@@ -378,6 +378,16 @@ class OfferDispatchRepository(ABC):
     ) -> None:
         """Set in_offer flag on the dispatch for order+blogger."""
 
+    @abstractmethod
+    async def set_manager(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Set manager_id on the dispatch for order+blogger."""
+
 
 class ManagerOrderRepository(ABC):
     """Port for manager-to-order assignment persistence."""

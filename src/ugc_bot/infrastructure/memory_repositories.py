@@ -927,6 +927,23 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
             updated_at=datetime.now(timezone.utc),
         )
 
+    async def set_manager(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Update manager_id on dispatch in memory."""
+        key = (order_id, blogger_id)
+        if key not in self._dispatches:
+            return
+        self._dispatches[key] = replace(
+            self._dispatches[key],
+            manager_id=manager_id,
+            updated_at=datetime.now(timezone.utc),
+        )
+
 
 @dataclass
 class InMemoryInteractionRepository(InteractionRepository):

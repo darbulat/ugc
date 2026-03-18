@@ -119,6 +119,37 @@ class InteractionService:
         await self._save(interaction)
         return interaction
 
+    async def reactivate_or_create_for_contacts_sent(
+        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+    ) -> "Interaction":
+        """Reactivate existing interaction or create a new one.
+
+        Used when a creator is re-added to an order after being removed.
+        Prevents duplicate rows for the same (order, blogger, advertiser).
+        """
+        now = datetime.now(timezone.utc)
+        next_check = now + timedelta(minutes=self.postpone_delay_minutes)
+
+        existing = await self._get_by_participants(
+            order_id, blogger_id, advertiser_id
+        )
+        if existing is not None:
+            reactivated = replace(
+                existing,
+                status=InteractionStatus.PENDING,
+                from_advertiser=None,
+                from_blogger=None,
+                postpone_count=0,
+                next_check_at=next_check,
+                updated_at=now,
+            )
+            await self._save(reactivated)
+            return reactivated
+
+        return await self.create_for_contacts_sent(
+            order_id, blogger_id, advertiser_id
+        )
+
     async def schedule_next_reminder(
         self, interaction_id: UUID, next_check_at: datetime
     ) -> None:
