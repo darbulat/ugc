@@ -504,3 +504,41 @@ class InteractionService:
         )
 
         return resolved
+
+    async def cancel_interaction(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        advertiser_id: UUID,
+    ) -> None:
+        """Set interaction to DELETED when creator is removed from order.
+
+        No-op if interaction does not exist or is already in a terminal
+        state (OK, NO_DEAL, or DELETED).
+        """
+        interaction = await self._get_by_participants(
+            order_id, blogger_id, advertiser_id
+        )
+        if interaction is None:
+            return
+        if interaction.status in (
+            InteractionStatus.OK,
+            InteractionStatus.NO_DEAL,
+            InteractionStatus.DELETED,
+        ):
+            return
+        now = datetime.now(timezone.utc)
+        resolved = replace(
+            interaction,
+            status=InteractionStatus.DELETED,
+            next_check_at=None,
+            updated_at=now,
+        )
+        await self._save(resolved)
+        logger.info(
+            "Interaction cancelled (creator removed from order)",
+            extra={
+                "order_id": str(order_id),
+                "blogger_id": str(blogger_id),
+            },
+        )

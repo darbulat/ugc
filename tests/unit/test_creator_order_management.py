@@ -45,3 +45,52 @@ async def test_set_in_offer_noop_when_missing() -> None:
     await repo.set_in_offer(ORDER_ID, BLOGGER_ID, False)  # no exception
     result = await repo.get_by_order_and_blogger(ORDER_ID, BLOGGER_ID)
     assert result is None
+
+
+from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.domain.enums import InteractionStatus
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryInteractionRepository,
+)
+
+
+def _make_interaction_service() -> InteractionService:
+    """Create InteractionService with InMemory repos."""
+    return InteractionService(
+        interaction_repo=InMemoryInteractionRepository(),
+        transaction_manager=None,
+        postpone_delay_minutes=60,
+        max_postpone_count=3,
+        metrics_collector=None,
+        referral_income_service=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_interaction_sets_deleted() -> None:
+    """cancel_interaction sets PENDING interaction to DELETED."""
+    service = _make_interaction_service()
+    await service.create_for_contacts_sent(ORDER_ID, BLOGGER_ID, ADV_ID)
+    await service.cancel_interaction(ORDER_ID, BLOGGER_ID, ADV_ID)
+    interaction = await service._get_by_participants(ORDER_ID, BLOGGER_ID, ADV_ID)
+    assert interaction is not None
+    assert interaction.status == InteractionStatus.DELETED
+
+
+@pytest.mark.asyncio
+async def test_cancel_interaction_noop_when_already_deleted() -> None:
+    """cancel_interaction is no-op if interaction already DELETED."""
+    service = _make_interaction_service()
+    await service.create_for_contacts_sent(ORDER_ID, BLOGGER_ID, ADV_ID)
+    await service.cancel_interaction(ORDER_ID, BLOGGER_ID, ADV_ID)
+    await service.cancel_interaction(ORDER_ID, BLOGGER_ID, ADV_ID)  # second call
+    interaction = await service._get_by_participants(ORDER_ID, BLOGGER_ID, ADV_ID)
+    assert interaction is not None
+    assert interaction.status == InteractionStatus.DELETED
+
+
+@pytest.mark.asyncio
+async def test_cancel_interaction_noop_when_not_found() -> None:
+    """cancel_interaction is no-op when no interaction exists."""
+    service = _make_interaction_service()
+    await service.cancel_interaction(ORDER_ID, BLOGGER_ID, ADV_ID)  # no exception
