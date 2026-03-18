@@ -457,6 +457,7 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         accepted=model.accepted,
         in_offer=model.in_offer,
         manager_id=model.manager_id,
+        ugc_video_url=model.ugc_video_url,
     )
 
 

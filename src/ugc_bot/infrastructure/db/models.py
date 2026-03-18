@@ -483,6 +483,9 @@ class OfferDispatchModel(Base):
         ForeignKey("users.user_id", ondelete="SET NULL"),
         nullable=True,
     )
+    ugc_video_url: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
 
 
 class ManagerOrderModel(Base):
