@@ -879,6 +879,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "UGC-видео для бренда",
         "btn_offer_accept": "Готов снять UGC",
         "btn_offer_skip": "Пропустить",
+        "msg_ugc_video_saved_creator": "✅ Ваше видео принято менеджером и сохранено.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Креатор {telegram} успешно выполнил заказ!\nСсылка на видео: {url}"
+        ),
         # Complaint button
         "btn_complaint": "Пожаловаться на {name}",
     },
@@ -1662,6 +1666,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "UGC video for brand",
         "btn_offer_accept": "Ready to shoot UGC",
         "btn_offer_skip": "Skip",
+        "msg_ugc_video_saved_creator": "✅ Your video has been accepted by the manager and saved.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Creator {telegram} has successfully completed the order!\nVideo link: {url}"
+        ),
         # Complaint button
         "btn_complaint": "Report {name}",
     },
