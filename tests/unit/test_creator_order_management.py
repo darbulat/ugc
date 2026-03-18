@@ -94,3 +94,185 @@ async def test_cancel_interaction_noop_when_not_found() -> None:
     """cancel_interaction is no-op when no interaction exists."""
     service = _make_interaction_service()
     await service.cancel_interaction(ORDER_ID, BLOGGER_ID, ADV_ID)  # no exception
+
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from fastapi.testclient import TestClient
+
+from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType, UserStatus
+from ugc_bot.miniapp.api import router as miniapp_router
+
+
+def _make_test_user(user_id, external_id="11111", username="user", **kwargs):
+    from ugc_bot.domain.entities import User
+    return User(
+        user_id=user_id,
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username=username,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        **kwargs,
+    )
+
+
+def _make_dispatch(order_id, blogger_id, in_offer: bool = True, manager_id=None):
+    from ugc_bot.domain.entities import OfferDispatch
+    return OfferDispatch(
+        order_id=order_id,
+        blogger_id=blogger_id,
+        created_at=datetime.now(timezone.utc),
+        in_offer=in_offer,
+        manager_id=manager_id,
+    )
+
+
+def _make_order(order_id, advertiser_id, bloggers_needed: int = 3):
+    from ugc_bot.domain.entities import Order
+    from uuid import uuid4
+    return Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Test",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=bloggers_needed,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+
+
+def _build_dispatcher(*, is_manager=True, dispatch=None, order=None, in_offer_count=1):
+    d = {
+        "manager_service": MagicMock(
+            is_manager_for_order=AsyncMock(return_value=is_manager)
+        ),
+        "offer_dispatch_repo": MagicMock(
+            get_by_order_and_blogger=AsyncMock(return_value=dispatch),
+            set_in_offer=AsyncMock(),
+            count_accepted_by_order=AsyncMock(return_value=in_offer_count),
+        ),
+        "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+        "user_repo": MagicMock(get_by_id=AsyncMock(return_value=None)),
+        "interaction_service": MagicMock(
+            cancel_interaction=AsyncMock(),
+            create_for_contacts_sent=AsyncMock(),
+        ),
+        "messenger_client": MagicMock(),
+        "bot_texts_service": MagicMock(
+            get=AsyncMock(return_value="notification text")
+        ),
+    }
+    return d
+
+
+def _app(dispatcher):
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(miniapp_router)
+    app.state.dispatcher = dispatcher
+    return app
+
+
+class TestManagerRemoveCreatorEndpoint:
+    _ORDER_ID = UUID("00000000-0000-0000-0000-000000000e00")
+    _BLOGGER_ID = UUID("00000000-0000-0000-0000-000000000e01")
+    _ADV_ID = UUID("00000000-0000-0000-0000-000000000e02")
+
+    def test_remove_returns_ok(self):
+        dispatch = _make_dispatch(self._ORDER_ID, self._BLOGGER_ID, in_offer=True)
+        order = _make_order(self._ORDER_ID, self._ADV_ID)
+        dispatcher = _build_dispatcher(dispatch=dispatch, order=order)
+
+        with patch("ugc_bot.miniapp.api._ensure_user_and_get_id", AsyncMock(return_value=self._ORDER_ID)):
+            with TestClient(_app(dispatcher)) as client:
+                resp = client.post(
+                    f"/api/manager/orders/{self._ORDER_ID}/creators/{self._BLOGGER_ID}/remove",
+                    json={"init_data": "test"},
+                )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+        dispatcher["offer_dispatch_repo"].set_in_offer.assert_awaited_once_with(
+            self._ORDER_ID, self._BLOGGER_ID, False
+        )
+        dispatcher["interaction_service"].cancel_interaction.assert_awaited_once()
+
+    def test_remove_409_already_in_reserve(self):
+        dispatch = _make_dispatch(self._ORDER_ID, self._BLOGGER_ID, in_offer=False)
+        order = _make_order(self._ORDER_ID, self._ADV_ID)
+        dispatcher = _build_dispatcher(dispatch=dispatch, order=order)
+
+        with patch("ugc_bot.miniapp.api._ensure_user_and_get_id", AsyncMock(return_value=self._ORDER_ID)):
+            with TestClient(_app(dispatcher)) as client:
+                resp = client.post(
+                    f"/api/manager/orders/{self._ORDER_ID}/creators/{self._BLOGGER_ID}/remove",
+                    json={"init_data": "test"},
+                )
+        assert resp.status_code == 409
+
+    def test_remove_404_dispatch_missing(self):
+        order = _make_order(self._ORDER_ID, self._ADV_ID)
+        dispatcher = _build_dispatcher(dispatch=None, order=order)
+
+        with patch("ugc_bot.miniapp.api._ensure_user_and_get_id", AsyncMock(return_value=self._ORDER_ID)):
+            with TestClient(_app(dispatcher)) as client:
+                resp = client.post(
+                    f"/api/manager/orders/{self._ORDER_ID}/creators/{self._BLOGGER_ID}/remove",
+                    json={"init_data": "test"},
+                )
+        assert resp.status_code == 404
+
+
+class TestManagerAddCreatorEndpoint:
+    _ORDER_ID = UUID("00000000-0000-0000-0000-000000000f00")
+    _BLOGGER_ID = UUID("00000000-0000-0000-0000-000000000f01")
+    _ADV_ID = UUID("00000000-0000-0000-0000-000000000f02")
+
+    def test_add_returns_ok(self):
+        dispatch = _make_dispatch(self._ORDER_ID, self._BLOGGER_ID, in_offer=False)
+        order = _make_order(self._ORDER_ID, self._ADV_ID, bloggers_needed=3)
+        dispatcher = _build_dispatcher(dispatch=dispatch, order=order, in_offer_count=1)
+
+        with patch("ugc_bot.miniapp.api._ensure_user_and_get_id", AsyncMock(return_value=self._ORDER_ID)):
+            with TestClient(_app(dispatcher)) as client:
+                resp = client.post(
+                    f"/api/manager/orders/{self._ORDER_ID}/creators/{self._BLOGGER_ID}/add",
+                    json={"init_data": "test"},
+                )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+        dispatcher["offer_dispatch_repo"].set_in_offer.assert_awaited_once_with(
+            self._ORDER_ID, self._BLOGGER_ID, True
+        )
+        dispatcher["interaction_service"].create_for_contacts_sent.assert_awaited_once()
+
+    def test_add_409_no_free_slots(self):
+        dispatch = _make_dispatch(self._ORDER_ID, self._BLOGGER_ID, in_offer=False)
+        order = _make_order(self._ORDER_ID, self._ADV_ID, bloggers_needed=2)
+        dispatcher = _build_dispatcher(dispatch=dispatch, order=order, in_offer_count=2)
+
+        with patch("ugc_bot.miniapp.api._ensure_user_and_get_id", AsyncMock(return_value=self._ORDER_ID)):
+            with TestClient(_app(dispatcher)) as client:
+                resp = client.post(
+                    f"/api/manager/orders/{self._ORDER_ID}/creators/{self._BLOGGER_ID}/add",
+                    json={"init_data": "test"},
+                )
+        assert resp.status_code == 409
+
+    def test_add_409_already_in_order(self):
+        dispatch = _make_dispatch(self._ORDER_ID, self._BLOGGER_ID, in_offer=True)
+        order = _make_order(self._ORDER_ID, self._ADV_ID)
+        dispatcher = _build_dispatcher(dispatch=dispatch, order=order, in_offer_count=1)
+
+        with patch("ugc_bot.miniapp.api._ensure_user_and_get_id", AsyncMock(return_value=self._ORDER_ID)):
+            with TestClient(_app(dispatcher)) as client:
+                resp = client.post(
+                    f"/api/manager/orders/{self._ORDER_ID}/creators/{self._BLOGGER_ID}/add",
+                    json={"init_data": "test"},
+                )
+        assert resp.status_code == 409

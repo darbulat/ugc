@@ -289,6 +289,7 @@ class CreatorDetailResponse(BaseModel):
     instagram_url: str | None = None
     telegram: str | None = None
     ugc_video_url: str | None = None
+    in_offer: bool = True
 
 
 class UgcVideoRequest(BaseModel):
@@ -1601,6 +1602,7 @@ async def manager_creator_detail(
         instagram_url=profile.instagram_url if profile else None,
         telegram=user.telegram if user else None,
         ugc_video_url=dispatch.ugc_video_url,
+        in_offer=dispatch.in_offer,
     )
 
 
@@ -1651,6 +1653,159 @@ async def manager_set_ugc_video(
             video_url=url_str,
             messenger_client=messenger_client,
             bot_texts_service=bot_texts_service,
+        )
+
+    return {"ok": True}
+
+
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}/remove")
+async def manager_remove_creator(
+    request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
+    body: InitDataBody,
+) -> dict[str, bool]:
+    """Move creator to reserve; set Interaction to DELETED; notify creator."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    dispatch_repo = dispatcher["offer_dispatch_repo"]
+    dispatch = await dispatch_repo.get_by_order_and_blogger(
+        order_id, blogger_id
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=404, detail="Creator not found in this order"
+        )
+    if not dispatch.in_offer:
+        raise HTTPException(
+            status_code=409, detail="Creator is already in reserve"
+        )
+
+    await dispatch_repo.set_in_offer(order_id, blogger_id, False)
+
+    interaction_service = dispatcher["interaction_service"]
+    await interaction_service.cancel_interaction(
+        order_id, blogger_id, order.advertiser_id
+    )
+
+    user_repo = dispatcher["user_repo"]
+    creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
+    if creator is not None:
+        locale = creator.language or "ru"
+        bot_texts_service = dispatcher["bot_texts_service"]
+        text = await bot_texts_service.get(
+            "msg_creator_removed_from_order", locale
+        )
+        messenger_client = dispatcher["messenger_client"]
+        await send_with_retry(
+            messenger_client,
+            chat_id=creator.external_id,
+            text=text,
+            retries=3,
+            delay_seconds=1.0,
+            logger=logger,
+            extra={"event": "creator_removed_from_order"},
+        )
+    else:
+        logger.warning(
+            "Creator not found for removal notification",
+            extra={"blogger_id": str(blogger_id)},
+        )
+
+    return {"ok": True}
+
+
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}/add")
+async def manager_add_creator(
+    request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
+    body: InitDataBody,
+) -> dict[str, bool]:
+    """Add reserve creator to active order; create Interaction; notify."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    dispatch_repo = dispatcher["offer_dispatch_repo"]
+    dispatch = await dispatch_repo.get_by_order_and_blogger(
+        order_id, blogger_id
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=404, detail="Creator not found in this order"
+        )
+    if dispatch.in_offer:
+        raise HTTPException(
+            status_code=409, detail="Creator is already in the order"
+        )
+
+    in_offer_count = await dispatch_repo.count_accepted_by_order(order_id)
+    if in_offer_count >= order.bloggers_needed:
+        raise HTTPException(
+            status_code=409, detail="No free slots in this order"
+        )
+
+    await dispatch_repo.set_in_offer(order_id, blogger_id, True)
+
+    interaction_service = dispatcher["interaction_service"]
+    await interaction_service.create_for_contacts_sent(
+        order_id, blogger_id, order.advertiser_id
+    )
+
+    user_repo = dispatcher["user_repo"]
+    creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
+    if creator is not None:
+        manager: UserEntity | None = None
+        if dispatch.manager_id is not None:
+            manager = await user_repo.get_by_id(dispatch.manager_id)
+        manager_telegram = (
+            f"@{manager.telegram}"
+            if manager is not None and manager.telegram
+            else "—"
+        )
+        locale = creator.language or "ru"
+        bot_texts_service = dispatcher["bot_texts_service"]
+        template = await bot_texts_service.get(
+            "msg_creator_added_to_order", locale
+        )
+        text = template.format(manager_telegram=manager_telegram)
+        messenger_client = dispatcher["messenger_client"]
+        await send_with_retry(
+            messenger_client,
+            chat_id=creator.external_id,
+            text=text,
+            retries=3,
+            delay_seconds=1.0,
+            logger=logger,
+            extra={"event": "creator_added_to_order"},
+        )
+    else:
+        logger.warning(
+            "Creator not found for add notification",
+            extra={"blogger_id": str(blogger_id)},
         )
 
     return {"ok": True}
