@@ -19,11 +19,11 @@ Mini app → Менеджер → Мои заказы → Детали зака�
 | Remove action | Moves to reserve (`in_offer=False`); creator notified |
 | Add action | Sets `in_offer=True`; slot check required; creator notified with manager Telegram |
 | Confirmation before remove? | Yes — inline warning with «Убрать» / «Отмена» buttons (no `browser.confirm()`) |
-| Slot check for add? | Yes — `accepted_count < bloggers_needed`; return HTTP 409 if no free slot |
+| Slot check for add? | Yes — `in_offer_count < bloggers_needed`; return HTTP 409 if no free slot |
 | No free slot error | HTTP 409 with `detail="No free slots in this order"` |
 | Already in target state | HTTP 409 (e.g. remove when `in_offer=False`, add when `in_offer=True`) |
 | Notifications | Both actions notify creator; `/add` also includes manager Telegram |
-| Manager Telegram fallback | If `manager_id` is None or manager has no `telegram`, send `{manager_telegram}` as `«—»` |
+| Manager Telegram fallback | If `manager_id` is None or manager has no `telegram`: use `"—"` (bare em-dash) |
 
 ---
 
@@ -115,7 +115,7 @@ Add to all locale sections in `src/ugc_bot/bot/texts/defaults.py`:
 | be | `«Вас дадалі ў заказ! Ваш мэнэджар: {manager_telegram}. Чакаем вашага відэа.»` |
 | uz | `«Siz buyurtmaga qo'shildingiz! Menejeringiz: {manager_telegram}. Videongizni kutamiz.»` |
 
-`{manager_telegram}` is formatted as `@{telegram}` if `manager.telegram` is not None, else `manager.username`. If `manager_id` is None, uses `«—»`.
+`{manager_telegram}` is formatted as `@{telegram}` if `manager.telegram` is not None, else `"—"` (bare em-dash).
 
 ---
 
@@ -136,7 +136,17 @@ class CreatorDetailResponse(BaseModel):
     in_offer: bool                    # new
 ```
 
-The existing `manager_creator_detail` endpoint must populate `in_offer=dispatch.in_offer`.
+The existing `manager_creator_detail` endpoint must be updated to populate `in_offer=dispatch.in_offer` in the return statement:
+
+```python
+return CreatorDetailResponse(
+    blogger_id=str(blogger_id),
+    instagram_url=profile.instagram_url if profile else None,
+    telegram=user.telegram if user else None,
+    ugc_video_url=dispatch.ugc_video_url,
+    in_offer=dispatch.in_offer,    # new
+)
+```
 
 ### `POST /api/manager/orders/{order_id}/creators/{blogger_id}/remove`
 
@@ -159,10 +169,13 @@ Removes a creator from the active order (moves to reserve).
    - If `dispatch.in_offer == False`: return HTTP 409 (`"Creator is already in reserve"`).
 3. Call `dispatch_repo.set_in_offer(order_id, blogger_id, False)`.
 4. Fetch creator `User` via `user_repo.get_by_id(blogger_id)`.
-5. If creator found: send `msg_creator_removed_from_order` via `send_with_retry` (retries=3, delay_seconds=1).
+5. If creator found:
+   a. Determine locale: `creator.language or "ru"`.
+   b. Fetch text via `bot_texts_service.get("msg_creator_removed_from_order", locale)`.
+   c. Send via `send_with_retry(messenger_client, chat_id=creator.external_id, text=text, retries=3, delay_seconds=1, logger=logger, extra={"event": "creator_removed_from_order"})`.
 6. If creator not found: log warning, skip notification.
 
-**Request model:** `CreatorActionRequest(BaseModel)` with `init_data: str`.
+**Request model:** `InitDataBody` (existing model — `init_data: str`).
 
 ### `POST /api/manager/orders/{order_id}/creators/{blogger_id}/add`
 
@@ -184,20 +197,21 @@ Adds a reserve creator to the active order.
 3. Call `dispatch_repo.get_by_order_and_blogger(order_id, blogger_id)`.
    - If `None`: return HTTP 404.
    - If `dispatch.in_offer == True`: return HTTP 409 (`"Creator is already in the order"`).
-4. Check free slot: `accepted_count = await dispatch_repo.count_accepted_by_order(order_id)`.
-   - If `accepted_count >= order.bloggers_needed`: return HTTP 409 (`"No free slots in this order"`).
+4. Check free slot: `in_offer_count = await dispatch_repo.count_accepted_by_order(order_id)`.
+   - If `in_offer_count >= order.bloggers_needed`: return HTTP 409 (`"No free slots in this order"`).
 5. Call `dispatch_repo.set_in_offer(order_id, blogger_id, True)`.
 6. Fetch creator `User` via `user_repo.get_by_id(blogger_id)`.
 7. Fetch manager `User` via `user_repo.get_by_id(dispatch.manager_id)` if `dispatch.manager_id` is not None.
 8. Format `manager_telegram`:
    - If manager found and `manager.telegram` is not None: `f"@{manager.telegram}"`
-   - Elif manager found: `manager.username`
    - Else: `"—"`
 9. Fetch locale: `creator.language or "ru"`.
 10. Fetch text via `bot_texts_service.get("msg_creator_added_to_order", locale)`.
 11. Format text: `template.format(manager_telegram=manager_telegram)`.
-12. Send via `send_with_retry` (retries=3, delay_seconds=1).
+12. Send via `send_with_retry(messenger_client, chat_id=creator.external_id, text=text, retries=3, delay_seconds=1, logger=logger, extra={"event": "creator_added_to_order"})`.
 13. If creator not found: log warning, skip notification.
+
+Both endpoints use **`InitDataBody`** (existing model in `api.py` — `init_data: str`) as the request body model.
 
 ---
 
@@ -221,11 +235,11 @@ In `openCreatorDetail`, after rendering the UGC video section, add a management 
 ### New JS functions
 
 **`removeCreatorFromOrder(orderId, bloggerId)`**
-- Calls `POST .../creators/{bloggerId}/remove` with `{}`
+- Calls `POST .../creators/{bloggerId}/remove` with `{ init_data: initData }` (uses the global `initData` variable already available in the mini app)
 - On success: shows `«✅ Убрано из заказа»` status, then after 1 second calls `loadManagerCreators(orderId, true, 0)` and shows creators screen
 
 **`addCreatorToOrder(orderId, bloggerId)`**
-- Calls `POST .../creators/{bloggerId}/add` with `{}`
+- Calls `POST .../creators/{bloggerId}/add` with `{ init_data: initData }`
 - On success: shows `«✅ Добавлен в заказ»` status, then after 1 second calls `loadManagerCreators(orderId, false, 0)` and shows creators screen
 - On 409 error: shows `«❌ Нет свободных слотов»`
 
@@ -237,13 +251,13 @@ All DOM manipulation uses safe methods only (`createElement`, `textContent`, `se
 
 ### Unit tests (`tests/unit/test_creator_order_management.py`)
 
-- `test_set_in_offer_updates_value` — InMemory repo: set `in_offer=False`, verify returned entity has `in_offer=False`.
+- `test_set_in_offer_updates_value` — InMemory repo: call `set_in_offer(order_id, blogger_id, False)`, then fetch via `get_by_order_and_blogger` and assert `dispatch.in_offer == False`.
 - `test_set_in_offer_noop_when_missing` — no exception if dispatch doesn't exist.
 - `test_remove_endpoint_moves_to_reserve` — mock repo and messenger; call remove endpoint; assert `set_in_offer` called with `False`, creator notified.
 - `test_remove_endpoint_409_already_in_reserve` — dispatch has `in_offer=False`; assert HTTP 409.
 - `test_remove_endpoint_404_dispatch_missing` — dispatch is None; assert HTTP 404.
 - `test_add_endpoint_moves_to_active` — free slot available; assert `set_in_offer` called with `True`, creator notified with manager telegram.
-- `test_add_endpoint_409_no_free_slots` — `accepted_count >= bloggers_needed`; assert HTTP 409.
+- `test_add_endpoint_409_no_free_slots` — `in_offer_count >= bloggers_needed`; assert HTTP 409.
 - `test_add_endpoint_409_already_in_order` — dispatch has `in_offer=True`; assert HTTP 409.
 - `test_add_endpoint_404_dispatch_missing` — dispatch is None; assert HTTP 404.
 - `test_add_notification_includes_manager_telegram` — manager has telegram; assert `@manager_tg` in notification text.
