@@ -16,8 +16,8 @@ Mini app → Менеджер → Мои заказы → Детали зака�
 | Question | Answer |
 |---|---|
 | Where are the buttons? | On the creator detail screen (not inline in the list) |
-| Remove action | Moves to reserve (`in_offer=False`); creator notified |
-| Add action | Sets `in_offer=True`; slot check required; creator notified with manager Telegram |
+| Remove action | Moves to reserve (`in_offer=False`); Interaction → DELETED; creator notified |
+| Add action | Sets `in_offer=True`; Interaction created (PENDING); slot check required; creator notified with manager Telegram |
 | Confirmation before remove? | Yes — inline warning with «Убрать» / «Отмена» buttons (no `browser.confirm()`) |
 | Slot check for add? | Yes — `in_offer_count < bloggers_needed`; return HTTP 409 if no free slot |
 | No free slot error | HTTP 409 with `detail="No free slots in this order"` |
@@ -102,22 +102,26 @@ async def cancel_interaction(
     blogger_id: UUID,
     advertiser_id: UUID,
 ) -> None:
-    """Set interaction to NO_DEAL when creator is removed from order.
+    """Set interaction to DELETED when creator is removed from order by manager.
 
     No-op if interaction does not exist or is already in a terminal state
-    (OK or NO_DEAL).
+    (OK, NO_DEAL, or DELETED).
     """
     interaction = await self._get_by_participants(
         order_id, blogger_id, advertiser_id
     )
     if interaction is None:
         return
-    if interaction.status in (InteractionStatus.OK, InteractionStatus.NO_DEAL):
+    if interaction.status in (
+        InteractionStatus.OK,
+        InteractionStatus.NO_DEAL,
+        InteractionStatus.DELETED,
+    ):
         return
     now = datetime.now(timezone.utc)
     resolved = replace(
         interaction,
-        status=InteractionStatus.NO_DEAL,
+        status=InteractionStatus.DELETED,
         next_check_at=None,
         updated_at=now,
     )
@@ -248,16 +252,19 @@ Adds a reserve creator to the active order.
 4. Check free slot: `in_offer_count = await dispatch_repo.count_accepted_by_order(order_id)`.
    - If `in_offer_count >= order.bloggers_needed`: return HTTP 409 (`"No free slots in this order"`).
 5. Call `dispatch_repo.set_in_offer(order_id, blogger_id, True)`.
-6. Fetch creator `User` via `user_repo.get_by_id(blogger_id)`.
-7. Fetch manager `User` via `user_repo.get_by_id(dispatch.manager_id)` if `dispatch.manager_id` is not None.
-8. Format `manager_telegram`:
+6. Call `interaction_service.create_for_contacts_sent(order_id, blogger_id, order.advertiser_id)` — creates Interaction with status PENDING.
+7. Fetch creator `User` via `user_repo.get_by_id(blogger_id)`.
+8. Fetch manager `User` via `user_repo.get_by_id(dispatch.manager_id)` if `dispatch.manager_id` is not None.
+9. Format `manager_telegram`:
    - If manager found and `manager.telegram` is not None: `f"@{manager.telegram}"`
    - Else: `"—"`
-9. Fetch locale: `creator.language or "ru"`.
-10. Fetch text via `bot_texts_service.get("msg_creator_added_to_order", locale)`.
-11. Format text: `template.format(manager_telegram=manager_telegram)`.
-12. Send via `send_with_retry(messenger_client, chat_id=creator.external_id, text=text, retries=3, delay_seconds=1, logger=logger, extra={"event": "creator_added_to_order"})`.
-13. If creator not found: log warning, skip notification.
+10. Fetch locale: `creator.language or "ru"`.
+11. Fetch text via `bot_texts_service.get("msg_creator_added_to_order", locale)`.
+12. Format text: `template.format(manager_telegram=manager_telegram)`.
+13. Send via `send_with_retry(messenger_client, chat_id=creator.external_id, text=text, retries=3, delay_seconds=1, logger=logger, extra={"event": "creator_added_to_order"})`.
+14. If creator not found: log warning, skip notification.
+
+`interaction_service` is obtained from `dispatcher["interaction_service"]`.
 
 Both endpoints use **`InitDataBody`** (existing model in `api.py` — `init_data: str`) as the request body model.
 
@@ -301,13 +308,13 @@ All DOM manipulation uses safe methods only (`createElement`, `textContent`, `se
 
 - `test_set_in_offer_updates_value` — InMemory repo: call `set_in_offer(order_id, blogger_id, False)`, then fetch via `get_by_order_and_blogger` and assert `dispatch.in_offer == False`.
 - `test_set_in_offer_noop_when_missing` — no exception if dispatch doesn't exist.
-- `test_cancel_interaction_sets_no_deal` — InMemory: create PENDING interaction, call `cancel_interaction`, assert status is NO_DEAL.
-- `test_cancel_interaction_noop_when_already_terminal` — interaction already NO_DEAL; assert no update called.
+- `test_cancel_interaction_sets_deleted` — InMemory: create PENDING interaction, call `cancel_interaction`, assert status is DELETED.
+- `test_cancel_interaction_noop_when_already_terminal` — interaction already DELETED; assert no update called.
 - `test_cancel_interaction_noop_when_not_found` — no interaction exists; assert no exception.
 - `test_remove_endpoint_moves_to_reserve` — mock repo and messenger; call remove endpoint; assert `set_in_offer` called with `False`, `cancel_interaction` called, creator notified.
 - `test_remove_endpoint_409_already_in_reserve` — dispatch has `in_offer=False`; assert HTTP 409.
 - `test_remove_endpoint_404_dispatch_missing` — dispatch is None; assert HTTP 404.
-- `test_add_endpoint_moves_to_active` — free slot available; assert `set_in_offer` called with `True`, creator notified with manager telegram.
+- `test_add_endpoint_moves_to_active` — free slot available; assert `set_in_offer` called with `True`, `create_for_contacts_sent` called, creator notified with manager telegram.
 - `test_add_endpoint_409_no_free_slots` — `in_offer_count >= bloggers_needed`; assert HTTP 409.
 - `test_add_endpoint_409_already_in_order` — dispatch has `in_offer=True`; assert HTTP 409.
 - `test_add_endpoint_404_dispatch_missing` — dispatch is None; assert HTTP 404.
