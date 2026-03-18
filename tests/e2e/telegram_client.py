@@ -25,10 +25,21 @@ def _has_e2e_credentials() -> bool:
     return all(cfg[k] for k in ("api_id", "api_hash", "phone", "bot_username"))
 
 
+_FLOOD_WAIT_SLEEP_THRESHOLD = 120  # seconds; skip if wait > this
+
+
 async def send_to_bot(client, bot_username: str, text: str):
     """Send a message to the bot and return the sent message."""
+    from telethon.errors import FloodWaitError
+
     entity = await client.get_entity(bot_username)
-    return await client.send_message(entity, text)
+    try:
+        return await client.send_message(entity, text)
+    except FloodWaitError as e:
+        if e.seconds > _FLOOD_WAIT_SLEEP_THRESHOLD:
+            raise
+        await asyncio.sleep(e.seconds + 1)
+        return await client.send_message(entity, text)
 
 
 async def get_last_bot_message(
