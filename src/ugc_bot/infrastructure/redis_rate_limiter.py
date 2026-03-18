@@ -27,6 +27,7 @@ class RedisRateLimiter:
         window_seconds: float = 10.0,
         socket_timeout: float = 5.0,
         socket_connect_timeout: float = 5.0,
+        prefix: str = _RATE_LIMIT_PREFIX,
     ) -> None:
         self._redis_url = redis_url
         self._limit = limit
@@ -34,6 +35,7 @@ class RedisRateLimiter:
         self._redis = None
         self._socket_timeout = socket_timeout
         self._socket_connect_timeout = socket_connect_timeout
+        self._prefix = prefix
 
     def _get_redis(self):
         """Lazy-init Redis client."""
@@ -52,7 +54,7 @@ class RedisRateLimiter:
     async def allow(self, key: str) -> bool:
         """Return True when request is allowed (sliding window)."""
         redis = self._get_redis()
-        redis_key = f"{_RATE_LIMIT_PREFIX}{key}"
+        redis_key = f"{self._prefix}{key}"
         now = time.time()
         window_start = now - self._window_seconds
 

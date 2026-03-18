@@ -336,6 +336,7 @@ def build_bot_services(
     outbox_publisher: OutboxPublisher,
     issue_lock_manager: Any,
     offer_response_rate_limiter: Any,
+    geocode_public_rate_limiter: Any,
 ) -> BotServices:
     """Build all services and repos for the bot dispatcher."""
     referral_service = ReferralService(
@@ -470,6 +471,7 @@ def build_bot_services(
         "referral_income_service": referral_income_service,
         "issue_lock_manager": issue_lock_manager,
         "offer_response_rate_limiter": offer_response_rate_limiter,
+        "geocode_public_rate_limiter": geocode_public_rate_limiter,
         "order_repo": repos["order_repo"],
         "offer_dispatch_repo": repos["offer_dispatch_repo"],
         "interaction_repo": repos["interaction_repo"],

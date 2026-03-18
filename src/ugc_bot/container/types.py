@@ -65,6 +65,7 @@ class BotServices(TypedDict):
     referral_income_service: ReferralIncomeService
     issue_lock_manager: Any
     offer_response_rate_limiter: Any
+    geocode_public_rate_limiter: Any
     order_repo: Any
     offer_dispatch_repo: Any
     interaction_repo: Any

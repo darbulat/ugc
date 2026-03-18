@@ -181,6 +181,12 @@ class Container:
             self._config
         )
 
+    def build_geocode_public_rate_limiter(self):
+        """Create per-IP rate limiter for the public geocode endpoint."""
+        return infrastructure_factory.build_geocode_public_rate_limiter(
+            self._config
+        )
+
     def build_instagram_api_client(self):
         """Create Instagram Graph API client if configured."""
         return infrastructure_factory.build_instagram_api_client(self._config)
@@ -215,6 +221,7 @@ class Container:
         instagram_api_client = self.build_instagram_api_client()
         issue_lock_manager = self.build_issue_lock_manager()
         offer_response_rate_limiter = self.build_offer_response_rate_limiter()
+        geocode_public_rate_limiter = self.build_geocode_public_rate_limiter()
         outbox_publisher = OutboxPublisher(
             outbox_repo=repos["outbox_repo"],
             order_repo=repos["order_repo"],
@@ -229,4 +236,5 @@ class Container:
             outbox_publisher,
             issue_lock_manager,
             offer_response_rate_limiter,
+            geocode_public_rate_limiter,
         )

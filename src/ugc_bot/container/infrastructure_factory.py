@@ -73,6 +73,24 @@ def build_offer_response_rate_limiter(config: AppConfig):
     return RateLimiter(limit=5, window_seconds=10.0)
 
 
+def build_geocode_public_rate_limiter(config: AppConfig):
+    """Create per-IP rate limiter for the public geocode endpoint.
+
+    Allows 30 requests per minute per IP to prevent geocoder abuse.
+    """
+    from ugc_bot.bot.handlers.utils import RateLimiter
+    from ugc_bot.infrastructure.redis_rate_limiter import RedisRateLimiter
+
+    if config.redis.use_redis_storage and config.redis.redis_url:
+        return RedisRateLimiter(
+            redis_url=config.redis.redis_url,
+            limit=30,
+            window_seconds=60.0,
+            prefix="ugc:rate_limit:geocode_public:",
+        )
+    return RateLimiter(limit=30, window_seconds=60.0)
+
+
 def build_instagram_api_client(config: AppConfig):
     """Create Instagram Graph API client if configured."""
     if (

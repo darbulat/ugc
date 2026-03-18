@@ -1171,10 +1171,17 @@ async def forward_geocode_public(
     """Geocode city name without auth (e.g. mini app opened in browser).
 
     Same geocoder as /geocode/forward; search works when initData is missing.
+    Rate-limited: 30 requests per minute per IP.
     """
     if not (body.city or "").strip():
         raise HTTPException(status_code=400, detail="city is required")
     dispatcher = request.app.state.dispatcher
+    client_ip = request.headers.get("X-Forwarded-For", "").split(",")[
+        0
+    ].strip() or (request.client.host if request.client else "unknown")
+    rate_limiter = dispatcher["geocode_public_rate_limiter"]
+    if not await rate_limiter.allow_async(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests")
     svc = dispatcher["blogger_registration_service"]
     result = await svc.resolve_city_to_coordinates(
         body.city.strip(),
