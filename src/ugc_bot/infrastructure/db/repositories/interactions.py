@@ -297,6 +297,44 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
             result = exec_result.scalar_one()
             return int(result)
 
+    async def get_by_order_and_blogger(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> OfferDispatch | None:
+        """Fetch a single dispatch by order and blogger."""
+        async with _resolve_session(self.session_factory, session) as s:
+            result = await s.execute(
+                select(OfferDispatchModel).where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+            )
+            row = result.scalar_one_or_none()
+            return _to_offer_dispatch_entity(row) if row else None
+
+    async def set_ugc_video_url(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        url: str | None,
+        session: object | None = None,
+    ) -> None:
+        """Set ugc_video_url for a dispatch."""
+        async with _resolve_session(self.session_factory, session) as s:
+            await s.execute(
+                update(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+                .values(
+                    ugc_video_url=url,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+
 
 @dataclass(slots=True)
 class SqlAlchemyInteractionRepository(InteractionRepository):

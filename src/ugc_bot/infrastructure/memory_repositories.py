@@ -883,6 +883,33 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
             and d.accepted is True
         )
 
+    async def get_by_order_and_blogger(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> OfferDispatch | None:
+        """Return dispatch by composite key or None."""
+        return self._dispatches.get((order_id, blogger_id))
+
+    async def set_ugc_video_url(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        url: str | None,
+        session: object | None = None,
+    ) -> None:
+        """Update ugc_video_url on dispatch in memory."""
+        key = (order_id, blogger_id)
+        if key not in self._dispatches:
+            return
+        d = self._dispatches[key]
+        self._dispatches[key] = replace(
+            d,
+            ugc_video_url=url,
+            updated_at=datetime.now(timezone.utc),
+        )
+
 
 @dataclass
 class InMemoryInteractionRepository(InteractionRepository):
