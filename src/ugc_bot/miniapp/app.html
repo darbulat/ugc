@@ -2299,6 +2299,70 @@
             status.setAttribute('id', 'ugc-save-status');
             status.style.cssText = 'font-size:13px;margin-top:8px';
             body.appendChild(status);
+
+            // Management section: remove or add button based on in_offer
+            var mgmtDiv = document.createElement('div');
+            mgmtDiv.style.cssText = 'margin-top:20px';
+
+            if (data.in_offer) {
+              var removeBtn = document.createElement('button');
+              removeBtn.setAttribute('type', 'button');
+              removeBtn.style.cssText = 'width:100%;padding:11px;background:#ffebee;color:#c62828;border:1.5px solid #ef9a9a;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer';
+              removeBtn.textContent = 'Убрать из заказа';
+              removeBtn.addEventListener('click', function() {
+                mgmtDiv.removeChild(removeBtn);
+
+                var confirmBlock = document.createElement('div');
+                confirmBlock.style.cssText = 'background:#fff3e0;border:1.5px solid #ffcc80;border-radius:9px;padding:10px 12px';
+
+                var warnText = document.createElement('p');
+                var handle = data.telegram ? '@' + data.telegram : data.blogger_id;
+                warnText.textContent = 'Убрать ' + handle + ' из заказа? Он переместится в резерв.';
+                warnText.style.cssText = 'font-size:13px;color:#5d4037;margin:0 0 10px';
+                confirmBlock.appendChild(warnText);
+
+                var btnRow = document.createElement('div');
+                btnRow.style.cssText = 'display:flex;gap:8px';
+
+                var confirmBtn = document.createElement('button');
+                confirmBtn.setAttribute('type', 'button');
+                confirmBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                confirmBtn.textContent = 'Убрать';
+                confirmBtn.addEventListener('click', function() {
+                  removeCreatorFromOrder(orderId, bloggerId);
+                });
+
+                var cancelBtn = document.createElement('button');
+                cancelBtn.setAttribute('type', 'button');
+                cancelBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                cancelBtn.textContent = 'Отмена';
+                cancelBtn.addEventListener('click', function() {
+                  confirmBlock.parentNode.removeChild(confirmBlock);
+                  mgmtDiv.appendChild(removeBtn);
+                });
+
+                btnRow.appendChild(confirmBtn);
+                btnRow.appendChild(cancelBtn);
+                confirmBlock.appendChild(btnRow);
+                mgmtDiv.appendChild(confirmBlock);
+              });
+              mgmtDiv.appendChild(removeBtn);
+            } else {
+              var addBtn = document.createElement('button');
+              addBtn.setAttribute('type', 'button');
+              addBtn.style.cssText = 'width:100%;padding:11px;background:#e8f5e9;color:#2e7d32;border:1.5px solid #a5d6a7;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer';
+              addBtn.textContent = 'Добавить в заказ';
+              addBtn.addEventListener('click', function() {
+                addCreatorToOrder(orderId, bloggerId);
+              });
+              mgmtDiv.appendChild(addBtn);
+            }
+
+            var mgmtStatus = document.createElement('p');
+            mgmtStatus.setAttribute('id', 'mgmt-action-status');
+            mgmtStatus.style.cssText = 'font-size:13px;margin-top:8px';
+            mgmtDiv.appendChild(mgmtStatus);
+            body.appendChild(mgmtDiv);
           })
           .catch(function() {
             if (!body) return;
@@ -2333,6 +2397,57 @@
           .catch(function() {
             if (status) {
               status.textContent = '❌ Ошибка сохранения';
+              status.style.color = '#c62828';
+            }
+          });
+      }
+
+      function removeCreatorFromOrder(orderId, bloggerId) {
+        var status = document.getElementById('mgmt-action-status');
+        api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/remove', {})
+          .then(function(data) {
+            if (data.ok) {
+              if (status) {
+                status.textContent = '✅ Убрано из заказа';
+                status.style.color = '#2e7d32';
+              }
+              setTimeout(function() {
+                loadManagerCreators(orderId, true, 0);
+                showScreen('screen-manager-creators');
+              }, 1000);
+            }
+          })
+          .catch(function(err) {
+            if (status) {
+              var msg = (err && err.detail) ? err.detail : 'Ошибка';
+              status.textContent = '❌ ' + msg;
+              status.style.color = '#c62828';
+            }
+          });
+      }
+
+      function addCreatorToOrder(orderId, bloggerId) {
+        var status = document.getElementById('mgmt-action-status');
+        api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/add', {})
+          .then(function(data) {
+            if (data.ok) {
+              if (status) {
+                status.textContent = '✅ Добавлен в заказ';
+                status.style.color = '#2e7d32';
+              }
+              setTimeout(function() {
+                loadManagerCreators(orderId, false, 0);
+                showScreen('screen-manager-creators');
+              }, 1000);
+            }
+          })
+          .catch(function(err) {
+            if (status) {
+              var msg = '❌ Нет свободных слотов';
+              if (err && err.status && err.status !== 409) {
+                msg = '❌ Ошибка';
+              }
+              status.textContent = msg;
               status.style.color = '#c62828';
             }
           });
