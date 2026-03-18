@@ -39,7 +39,9 @@ async def test_get_by_order_and_blogger_returns_dispatch() -> None:
 async def test_set_ugc_video_url_stores_value() -> None:
     repo = InMemoryOfferDispatchRepository()
     await repo.record_sent(ORDER_ID, BLOGGER_ID)
-    await repo.set_ugc_video_url(ORDER_ID, BLOGGER_ID, "https://example.com/video")
+    await repo.set_ugc_video_url(
+        ORDER_ID, BLOGGER_ID, "https://example.com/video"
+    )
     result = await repo.get_by_order_and_blogger(ORDER_ID, BLOGGER_ID)
     assert result is not None
     assert result.ugc_video_url == "https://example.com/video"
@@ -70,7 +72,9 @@ def messenger_client() -> FakeMessengerClient:
     return FakeMessengerClient()
 
 
-def _make_user(user_id: UUID, external_id: str, username: str, **kwargs) -> User:
+def _make_user(
+    user_id: UUID, external_id: str, username: str, **kwargs
+) -> User:
     """Helper to build a User with required fields."""
     return User(
         user_id=user_id,
@@ -114,10 +118,15 @@ async def test_first_save_notifies_creator_and_advertiser(
         bot_texts_service=bot_texts_service,
     )
 
-    creator_msgs = [s for s in messenger_client.sent_text if s["chat_id"] == "901"]
+    creator_msgs = [
+        s for s in messenger_client.sent_text if s["chat_id"] == "901"
+    ]
     adv_msgs = [s for s in messenger_client.sent_text if s["chat_id"] == "902"]
     assert len(creator_msgs) == 1
-    assert "принято" in creator_msgs[0]["text"] or "accepted" in creator_msgs[0]["text"]
+    assert (
+        "принято" in creator_msgs[0]["text"]
+        or "accepted" in creator_msgs[0]["text"]
+    )
     assert len(adv_msgs) == 1
     assert "@creator_tg" in adv_msgs[0]["text"]
     assert "https://example.com/video" in adv_msgs[0]["text"]
@@ -176,5 +185,7 @@ async def test_notify_advertiser_not_found_skips_advertiser_msg(
     )
 
     assert all(s["chat_id"] != "902" for s in messenger_client.sent_text)
-    creator_msgs = [s for s in messenger_client.sent_text if s["chat_id"] == "901"]
+    creator_msgs = [
+        s for s in messenger_client.sent_text if s["chat_id"] == "901"
+    ]
     assert len(creator_msgs) == 1
