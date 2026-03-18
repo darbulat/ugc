@@ -319,7 +319,6 @@ def _create_kafka_clients(
     dlq_producer = AIOKafkaProducer(
         bootstrap_servers=config.kafka.kafka_bootstrap_servers,
         value_serializer=lambda value: json.dumps(value).encode("utf-8"),
-        retries=config.kafka.kafka_producer_retries,
         retry_backoff_ms=config.kafka.kafka_producer_retry_backoff_ms,
     )
     consumer = AIOKafkaConsumer(
