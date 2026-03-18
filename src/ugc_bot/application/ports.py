@@ -368,6 +368,16 @@ class OfferDispatchRepository(ABC):
     ) -> None:
         """Set ugc_video_url on the dispatch for order+blogger."""
 
+    @abstractmethod
+    async def set_in_offer(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Set in_offer flag on the dispatch for order+blogger."""
+
 
 class ManagerOrderRepository(ABC):
     """Port for manager-to-order assignment persistence."""

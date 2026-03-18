@@ -1,0 +1,47 @@
+"""Unit tests for manager creator order management feature."""
+
+from datetime import datetime, timezone
+from uuid import UUID
+
+import pytest
+
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryOfferDispatchRepository,
+)
+
+ORDER_ID = UUID("00000000-0000-0000-0000-000000000d00")
+BLOGGER_ID = UUID("00000000-0000-0000-0000-000000000d01")
+ADV_ID = UUID("00000000-0000-0000-0000-000000000d02")
+MGR_ID = UUID("00000000-0000-0000-0000-000000000d03")
+
+
+@pytest.mark.asyncio
+async def test_set_in_offer_updates_value() -> None:
+    """set_in_offer updates the in_offer flag to False."""
+    repo = InMemoryOfferDispatchRepository()
+    await repo.record_sent(ORDER_ID, BLOGGER_ID)
+    await repo.set_in_offer(ORDER_ID, BLOGGER_ID, False)
+    result = await repo.get_by_order_and_blogger(ORDER_ID, BLOGGER_ID)
+    assert result is not None
+    assert result.in_offer is False
+
+
+@pytest.mark.asyncio
+async def test_set_in_offer_can_set_true() -> None:
+    """set_in_offer can also set in_offer back to True."""
+    repo = InMemoryOfferDispatchRepository()
+    await repo.record_sent(ORDER_ID, BLOGGER_ID)
+    await repo.set_in_offer(ORDER_ID, BLOGGER_ID, False)
+    await repo.set_in_offer(ORDER_ID, BLOGGER_ID, True)
+    result = await repo.get_by_order_and_blogger(ORDER_ID, BLOGGER_ID)
+    assert result is not None
+    assert result.in_offer is True
+
+
+@pytest.mark.asyncio
+async def test_set_in_offer_noop_when_missing() -> None:
+    """set_in_offer does not raise if dispatch does not exist."""
+    repo = InMemoryOfferDispatchRepository()
+    await repo.set_in_offer(ORDER_ID, BLOGGER_ID, False)  # no exception
+    result = await repo.get_by_order_and_blogger(ORDER_ID, BLOGGER_ID)
+    assert result is None

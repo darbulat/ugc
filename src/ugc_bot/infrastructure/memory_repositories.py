@@ -910,6 +910,23 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
             updated_at=datetime.now(timezone.utc),
         )
 
+    async def set_in_offer(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Update in_offer flag on dispatch in memory."""
+        key = (order_id, blogger_id)
+        if key not in self._dispatches:
+            return
+        self._dispatches[key] = replace(
+            self._dispatches[key],
+            in_offer=in_offer,
+            updated_at=datetime.now(timezone.utc),
+        )
+
 
 @dataclass
 class InMemoryInteractionRepository(InteractionRepository):

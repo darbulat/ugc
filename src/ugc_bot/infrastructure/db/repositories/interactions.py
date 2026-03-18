@@ -335,6 +335,27 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                 )
             )
 
+    async def set_in_offer(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Set in_offer flag for a dispatch."""
+        async with _resolve_session(self.session_factory, session) as s:
+            await s.execute(
+                update(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+                .values(
+                    in_offer=in_offer,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+
 
 @dataclass(slots=True)
 class SqlAlchemyInteractionRepository(InteractionRepository):
