@@ -2495,6 +2495,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "Бренд үшін UGC-бейне",
         "btn_offer_accept": "UGC түсіруге дайын",
         "btn_offer_skip": "Өткізіп жіберу",
+        "msg_ugc_video_saved_creator": "✅ Сіздің бейнеңізді менеджер қабылдап, сақтады.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Креатор {telegram} тапсырысты сәтті орындады!\nБейне сілтемесі: {url}"
+        ),
         "btn_complaint": "{name} туралы шағымдану",
     },
     "be": {
@@ -3366,6 +3370,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "UGC-відэа для брэнда",
         "btn_offer_accept": "Гатовы зняць UGC",
         "btn_offer_skip": "Прапусціць",
+        "msg_ugc_video_saved_creator": "✅ Ваша відэа прынята менеджэрам і захавана.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Крэатар {telegram} паспяхова выканаў заказ!\nСпасылка на відэа: {url}"
+        ),
         # Complaint button
         "btn_complaint": "Скардзіцца на {name}",
     },
@@ -4228,6 +4236,10 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "Brend uchun UGC-video",
         "btn_offer_accept": "UGC suratga olishga tayyor",
         "btn_offer_skip": "O'tkazib yuborish",
+        "msg_ugc_video_saved_creator": "✅ Videongiz menejer tomonidan qabul qilindi va saqlandi.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Kreator {telegram} buyurtmani muvaffaqiyatli bajarib bo'ldi!\nVideo havolasi: {url}"
+        ),
         # Complaint button
         "btn_complaint": "{name} ga shikoyat qilish",
     },
