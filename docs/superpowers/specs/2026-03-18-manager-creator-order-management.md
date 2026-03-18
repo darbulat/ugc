@@ -91,6 +91,50 @@ async def set_in_offer(
 
 ---
 
+## InteractionService — new method
+
+Add a new public method to `InteractionService` (`application/services/interaction_service.py`):
+
+```python
+async def cancel_interaction(
+    self,
+    order_id: UUID,
+    blogger_id: UUID,
+    advertiser_id: UUID,
+) -> None:
+    """Set interaction to NO_DEAL when creator is removed from order.
+
+    No-op if interaction does not exist or is already in a terminal state
+    (OK or NO_DEAL).
+    """
+    interaction = await self._get_by_participants(
+        order_id, blogger_id, advertiser_id
+    )
+    if interaction is None:
+        return
+    if interaction.status in (InteractionStatus.OK, InteractionStatus.NO_DEAL):
+        return
+    now = datetime.now(timezone.utc)
+    resolved = replace(
+        interaction,
+        status=InteractionStatus.NO_DEAL,
+        next_check_at=None,
+        updated_at=now,
+    )
+    await self._save(resolved)
+    logger.info(
+        "Interaction cancelled (creator removed from order)",
+        extra={
+            "order_id": str(order_id),
+            "blogger_id": str(blogger_id),
+        },
+    )
+```
+
+`InteractionStatus`, `replace`, `datetime`, `timezone`, and `logger` are already available in the service file.
+
+---
+
 ## Bot Notification Texts
 
 Add to all locale sections in `src/ugc_bot/bot/texts/defaults.py`:
@@ -164,16 +208,20 @@ Removes a creator from the active order (moves to reserve).
 
 **Logic:**
 1. Validate manager is assigned to order (`is_manager_for_order`). Return 403 if not.
-2. Call `dispatch_repo.get_by_order_and_blogger(order_id, blogger_id)`.
+2. Fetch order via `order_repo.get_by_id(order_id)`. Return 404 if not found.
+3. Call `dispatch_repo.get_by_order_and_blogger(order_id, blogger_id)`.
    - If `None`: return HTTP 404.
    - If `dispatch.in_offer == False`: return HTTP 409 (`"Creator is already in reserve"`).
-3. Call `dispatch_repo.set_in_offer(order_id, blogger_id, False)`.
-4. Fetch creator `User` via `user_repo.get_by_id(blogger_id)`.
-5. If creator found:
+4. Call `dispatch_repo.set_in_offer(order_id, blogger_id, False)`.
+5. Call `interaction_service.cancel_interaction(order_id, blogger_id, order.advertiser_id)`.
+6. Fetch creator `User` via `user_repo.get_by_id(blogger_id)`.
+7. If creator found:
    a. Determine locale: `creator.language or "ru"`.
    b. Fetch text via `bot_texts_service.get("msg_creator_removed_from_order", locale)`.
    c. Send via `send_with_retry(messenger_client, chat_id=creator.external_id, text=text, retries=3, delay_seconds=1, logger=logger, extra={"event": "creator_removed_from_order"})`.
-6. If creator not found: log warning, skip notification.
+8. If creator not found: log warning, skip notification.
+
+`interaction_service` is obtained from `dispatcher["interaction_service"]`.
 
 **Request model:** `InitDataBody` (existing model — `init_data: str`).
 
@@ -253,7 +301,10 @@ All DOM manipulation uses safe methods only (`createElement`, `textContent`, `se
 
 - `test_set_in_offer_updates_value` — InMemory repo: call `set_in_offer(order_id, blogger_id, False)`, then fetch via `get_by_order_and_blogger` and assert `dispatch.in_offer == False`.
 - `test_set_in_offer_noop_when_missing` — no exception if dispatch doesn't exist.
-- `test_remove_endpoint_moves_to_reserve` — mock repo and messenger; call remove endpoint; assert `set_in_offer` called with `False`, creator notified.
+- `test_cancel_interaction_sets_no_deal` — InMemory: create PENDING interaction, call `cancel_interaction`, assert status is NO_DEAL.
+- `test_cancel_interaction_noop_when_already_terminal` — interaction already NO_DEAL; assert no update called.
+- `test_cancel_interaction_noop_when_not_found` — no interaction exists; assert no exception.
+- `test_remove_endpoint_moves_to_reserve` — mock repo and messenger; call remove endpoint; assert `set_in_offer` called with `False`, `cancel_interaction` called, creator notified.
 - `test_remove_endpoint_409_already_in_reserve` — dispatch has `in_offer=False`; assert HTTP 409.
 - `test_remove_endpoint_404_dispatch_missing` — dispatch is None; assert HTTP 404.
 - `test_add_endpoint_moves_to_active` — free slot available; assert `set_in_offer` called with `True`, creator notified with manager telegram.
