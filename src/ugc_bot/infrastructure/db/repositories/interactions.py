@@ -453,10 +453,10 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         order_id=model.order_id,
         blogger_id=model.blogger_id,
         created_at=model.created_at,
-        updated_at=getattr(model, "updated_at", None),
-        accepted=getattr(model, "accepted", None),
-        in_offer=getattr(model, "in_offer", True),
-        manager_id=getattr(model, "manager_id", None),
+        updated_at=model.updated_at,
+        accepted=model.accepted,
+        in_offer=model.in_offer,
+        manager_id=model.manager_id,
     )
 
 

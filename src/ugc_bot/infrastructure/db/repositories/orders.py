@@ -15,7 +15,7 @@ from ugc_bot.application.ports import (
     PaymentRepository,
 )
 from ugc_bot.domain.entities import ContactPricing, Order, Payment
-from ugc_bot.domain.enums import OrderStatus, OrderType
+from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.models import (
     ContactPricingModel,
     OrderModel,
@@ -228,7 +228,7 @@ def _to_order_entity(model: OrderModel) -> Order:
     return Order(
         order_id=model.order_id,
         advertiser_id=model.advertiser_id,
-        order_type=getattr(model, "order_type", None) or OrderType.UGC_ONLY,
+        order_type=model.order_type,
         product_link=model.product_link,
         offer_text=model.offer_text,
         barter_description=model.barter_description,
@@ -236,32 +236,30 @@ def _to_order_entity(model: OrderModel) -> Order:
         bloggers_needed=model.bloggers_needed,
         status=model.status,
         created_at=model.created_at,
-        updated_at=getattr(model, "updated_at", model.created_at),
+        updated_at=model.updated_at,
         completed_at=model.completed_at,
-        content_usage=getattr(model, "content_usage", None),
-        deadlines=getattr(model, "deadlines", None),
-        geography=getattr(model, "geography", None),
-        product_photo_file_id=getattr(model, "product_photo_file_id", None),
-        min_followers=getattr(model, "min_followers", None),
-        max_followers=getattr(model, "max_followers", None),
-        min_age=getattr(model, "min_age", None),
-        max_age=getattr(model, "max_age", None),
-        min_publications=getattr(model, "min_publications", None),
-        max_publications=getattr(model, "max_publications", None),
-        required_blogger_gender=getattr(model, "required_blogger_gender", None),
-        filter_by_price=getattr(model, "filter_by_price", False),
+        content_usage=model.content_usage,
+        deadlines=model.deadlines,
+        geography=model.geography,
+        product_photo_file_id=model.product_photo_file_id,
+        min_followers=model.min_followers,
+        max_followers=model.max_followers,
+        min_age=model.min_age,
+        max_age=model.max_age,
+        min_publications=model.min_publications,
+        max_publications=model.max_publications,
+        required_blogger_gender=model.required_blogger_gender,
+        filter_by_price=model.filter_by_price,
         price_filter_delta=(
-            float(val)
-            if (val := getattr(model, "price_filter_delta", None)) is not None
+            float(model.price_filter_delta)
+            if model.price_filter_delta is not None
             else None
         ),
-        filter_by_placement=getattr(model, "filter_by_placement", False),
-        filter_by_barter=getattr(model, "filter_by_barter", False),
-        location_geometry=_geometry_to_wkt(
-            getattr(model, "location_geometry", None)
-        ),
-        currency=getattr(model, "currency", "RUB"),
-        last_round_robin_index=getattr(model, "last_round_robin_index", 0),
+        filter_by_placement=model.filter_by_placement,
+        filter_by_barter=model.filter_by_barter,
+        location_geometry=_geometry_to_wkt(model.location_geometry),
+        currency=model.currency,
+        last_round_robin_index=model.last_round_robin_index,
     )
 
 
@@ -296,8 +294,8 @@ def _to_order_model(order: Order) -> OrderModel:
         filter_by_placement=order.filter_by_placement,
         filter_by_barter=order.filter_by_barter,
         location_geometry=_wkt_to_geometry_element(order.location_geometry),
-        currency=getattr(order, "currency", "RUB"),
-        last_round_robin_index=getattr(order, "last_round_robin_index", 0),
+        currency=order.currency,
+        last_round_robin_index=order.last_round_robin_index,
     )
 
 
@@ -312,7 +310,7 @@ def _to_payment_entity(model: PaymentModel) -> Payment:
         currency=model.currency,
         external_id=model.external_id,
         created_at=model.created_at,
-        updated_at=getattr(model, "updated_at", model.created_at),
+        updated_at=model.updated_at,
         paid_at=model.paid_at,
     )
 
@@ -340,6 +338,6 @@ def _to_contact_pricing_entity(model: ContactPricingModel) -> ContactPricing:
         bloggers_count=model.bloggers_count,
         price=model.price,
         currency=model.currency,
-        created_at=getattr(model, "created_at", model.updated_at),
+        created_at=model.created_at,
         updated_at=model.updated_at,
     )

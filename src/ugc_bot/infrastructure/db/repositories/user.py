@@ -160,13 +160,13 @@ def _to_user_entity(model: UserModel) -> User:
         created_at=model.created_at,
         role_chosen_at=model.role_chosen_at,
         last_role_reminder_at=model.last_role_reminder_at,
-        telegram=getattr(model, "telegram", None),
-        admin=getattr(model, "admin", False),
-        referral_code=getattr(model, "referral_code", None),
-        referral_payout_rate=getattr(model, "referral_payout_rate", None),
-        updated_at=getattr(model, "updated_at", None),
-        country=getattr(model, "country", None),
-        language=getattr(model, "language", None),
+        telegram=model.telegram,
+        admin=model.admin,
+        referral_code=model.referral_code,
+        referral_payout_rate=model.referral_payout_rate,
+        updated_at=model.updated_at,
+        country=model.country,
+        language=model.language,
     )
 
 
@@ -185,11 +185,10 @@ def _to_user_model(user: User) -> UserModel:
         role_chosen_at=user.role_chosen_at,
         last_role_reminder_at=user.last_role_reminder_at,
         telegram=user.telegram,
-        admin=getattr(user, "admin", False),
-        referral_code=getattr(user, "referral_code", None),
-        referral_payout_rate=getattr(user, "referral_payout_rate", None),
-        updated_at=getattr(user, "updated_at", None)
-        or datetime.now(timezone.utc),
-        country=getattr(user, "country", None),
-        language=getattr(user, "language", None),
+        admin=user.admin,
+        referral_code=user.referral_code,
+        referral_payout_rate=user.referral_payout_rate,
+        updated_at=user.updated_at or datetime.now(timezone.utc),
+        country=user.country,
+        language=user.language,
     )

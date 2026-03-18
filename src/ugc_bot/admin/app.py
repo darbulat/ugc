@@ -1895,7 +1895,6 @@ class CountryAdmin(ModelView, model=CountryModel):
         CountryModel.name_native,
         CountryModel.currency_code,
         CountryModel.currency_symbol,
-        CountryModel.locale,
         CountryModel.tax_rate,
         CountryModel.enabled,
     ]
@@ -1905,7 +1904,6 @@ class CountryAdmin(ModelView, model=CountryModel):
         CountryModel.name_native: "Название",
         CountryModel.currency_code: "Валюта",
         CountryModel.currency_symbol: "Символ валюты",
-        CountryModel.locale: "Локаль",
         CountryModel.tax_rate: "Ставка налога",
         CountryModel.enabled: "Активна",
     }
@@ -1914,7 +1912,6 @@ class CountryAdmin(ModelView, model=CountryModel):
         CountryModel.name_native,
         CountryModel.currency_code,
         CountryModel.currency_symbol,
-        CountryModel.locale,
         CountryModel.tax_rate,
         CountryModel.enabled,
     ]

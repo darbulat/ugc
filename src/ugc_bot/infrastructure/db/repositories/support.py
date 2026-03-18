@@ -282,9 +282,9 @@ def _to_complaint_entity(model: ComplaintModel) -> Complaint:
         reason=model.reason,
         status=model.status,
         created_at=model.created_at,
-        updated_at=getattr(model, "updated_at", model.created_at),
+        updated_at=model.updated_at,
         reviewed_at=model.reviewed_at,
-        file_ids=getattr(model, "file_ids", None),
+        file_ids=model.file_ids,
     )
 
 
@@ -310,5 +310,5 @@ def _to_manager_order_entity(model: ManagerOrderModel) -> ManagerOrder:
         user_id=model.user_id,
         order_id=model.order_id,
         created_at=model.created_at,
-        updated_at=getattr(model, "updated_at", None),
+        updated_at=model.updated_at,
     )

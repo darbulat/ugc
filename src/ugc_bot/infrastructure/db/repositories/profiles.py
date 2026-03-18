@@ -249,7 +249,7 @@ def _to_blogger_profile_entity(
     work_format = model.work_format
     if isinstance(work_format, str):
         work_format = WorkFormat(work_format)
-    blogger_gender = getattr(model, "blogger_gender", None)
+    blogger_gender = model.blogger_gender
     if blogger_gender is not None and isinstance(blogger_gender, str):
         blogger_gender = BloggerGender(blogger_gender)
     return BloggerProfile(
@@ -265,28 +265,20 @@ def _to_blogger_profile_entity(
         price=float(model.price),
         barter=model.barter,
         work_format=work_format,
-        wanted_to_change_terms_count=getattr(
-            model, "wanted_to_change_terms_count", 0
-        ),
-        created_at=getattr(model, "created_at", model.updated_at),
+        wanted_to_change_terms_count=model.wanted_to_change_terms_count,
+        created_at=model.created_at,
         updated_at=model.updated_at,
         blogger_gender=blogger_gender,
-        instagram_user_id=getattr(model, "instagram_user_id", None),
-        instagram_followers_count=getattr(
-            model, "instagram_followers_count", None
-        ),
-        instagram_username=getattr(model, "instagram_username", None),
-        instagram_stats_fetched_at=getattr(
-            model, "instagram_stats_fetched_at", None
-        ),
-        birth_date=getattr(model, "birth_date", None),
-        region=getattr(model, "region", None),
-        location_geometry=_geometry_to_wkt(
-            getattr(model, "location_geometry", None)
-        ),
-        country=getattr(model, "country", ""),
-        currency=getattr(model, "currency", "RUB"),
-        agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
+        instagram_user_id=model.instagram_user_id,
+        instagram_followers_count=model.instagram_followers_count,
+        instagram_username=model.instagram_username,
+        instagram_stats_fetched_at=model.instagram_stats_fetched_at,
+        birth_date=model.birth_date,
+        region=model.region,
+        location_geometry=_geometry_to_wkt(model.location_geometry),
+        country=model.country,
+        currency=model.currency,
+        agreement_confirmed_at=model.agreement_confirmed_at,
     )
 
 
@@ -319,8 +311,8 @@ def _to_blogger_profile_model(
         region=profile.region,
         location_geometry=_wkt_to_geometry_element(profile.location_geometry),
         country=profile.country,
-        currency=getattr(profile, "currency", "RUB"),
-        agreement_confirmed_at=getattr(profile, "agreement_confirmed_at", None),
+        currency=profile.currency,
+        agreement_confirmed_at=profile.agreement_confirmed_at,
     )
 
 
@@ -332,13 +324,12 @@ def _to_advertiser_profile_entity(
         user_id=model.user_id,
         phone=model.contact,
         brand=model.brand or "",
-        site_link=getattr(model, "site_link", None),
-        city=getattr(model, "city", None),
-        company_activity=getattr(model, "company_activity", None),
-        created_at=getattr(model, "created_at", None)
-        or getattr(model, "updated_at", None),
-        updated_at=getattr(model, "updated_at", None),
-        agreement_confirmed_at=getattr(model, "agreement_confirmed_at", None),
+        site_link=model.site_link,
+        city=model.city,
+        company_activity=model.company_activity,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+        agreement_confirmed_at=model.agreement_confirmed_at,
     )
 
 
@@ -355,5 +346,5 @@ def _to_advertiser_profile_model(
         company_activity=profile.company_activity,
         created_at=profile.created_at or datetime.now(timezone.utc),
         updated_at=profile.updated_at or datetime.now(timezone.utc),
-        agreement_confirmed_at=getattr(profile, "agreement_confirmed_at", None),
+        agreement_confirmed_at=profile.agreement_confirmed_at,
     )

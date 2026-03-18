@@ -440,8 +440,20 @@ async def test_blogger_profile_repository_get_with_string_blogger_gender() -> (
         price=1000.0,
         barter=False,
         work_format=WorkFormat.UGC_ONLY,
+        wanted_to_change_terms_count=0,
+        created_at=updated_at,
         updated_at=updated_at,
         blogger_gender="m",  # DB stores enum value
+        instagram_user_id=None,
+        instagram_followers_count=None,
+        instagram_username=None,
+        instagram_stats_fetched_at=None,
+        birth_date=None,
+        region=None,
+        location_geometry=None,
+        country="ru",
+        currency="RUB",
+        agreement_confirmed_at=None,
     )
     repo = SqlAlchemyBloggerProfileRepository(
         session_factory=_session_factory(model)
@@ -3496,7 +3508,6 @@ async def test_country_repo_get_by_currency_code_found() -> None:
     model.name_native = "Россия"
     model.currency_code = "RUB"
     model.currency_symbol = "₽"
-    model.locale = "ru"
     model.enabled = True
 
     repo = SqlAlchemyCountryRepository(session_factory=_session_factory(model))
@@ -3531,7 +3542,6 @@ async def test_country_repo_execute_in_session_no_session() -> None:
     model.name_native = "Georgia"
     model.currency_code = "GEL"
     model.currency_symbol = "₾"
-    model.locale = "en"
     model.enabled = True
 
     repo = SqlAlchemyCountryRepository(session_factory=_session_factory(model))

@@ -94,7 +94,6 @@ async def test_calculate_invoice_data_intl(
         name_native="საქართველო",
         currency_code="GEL",
         currency_symbol="₾",
-        locale="en",
         tax_rate=Decimal("0.18"),
     )
     pricing_repo.prices[("ge", 3)] = ContactPricing(

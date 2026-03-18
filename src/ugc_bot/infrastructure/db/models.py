@@ -395,9 +395,6 @@ class CountryModel(Base):
     name_native: Mapped[str] = mapped_column(String, nullable=False)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     currency_symbol: Mapped[str] = mapped_column(String(10), nullable=False)
-    locale: Mapped[str] = mapped_column(
-        String(8), nullable=False, server_default=text("'ru'")
-    )
     tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 4), nullable=False, server_default=text("0")
     )
