@@ -405,6 +405,12 @@
     <button type="button" class="btn btn-secondary" id="mgr-creators-back">Назад</button>
   </div>
 
+  <div id="screen-creator-detail" class="screen">
+    <h1>Детали креатора</h1>
+    <div id="creator-detail-body"></div>
+    <button type="button" class="btn btn-secondary" id="creator-detail-back">Назад</button>
+  </div>
+
   <script>
     (function() {
       var tg = window.Telegram && window.Telegram.WebApp;
@@ -2185,6 +2191,12 @@
               if (!c.instagram_url && !c.telegram) {
                 li.textContent = '\u2014';
               }
+              (function(bid) {
+                li.style.cursor = 'pointer';
+                li.addEventListener('click', function() {
+                  openCreatorDetail(orderId, bid);
+                });
+              })(c.blogger_id);
               if (ul) ul.appendChild(li);
             });
           }
@@ -2205,6 +2217,127 @@
         });
       }
 
+      function openCreatorDetail(orderId, bloggerId) {
+        window._mgrCurrentBloggerId = bloggerId;
+        var body = document.getElementById('creator-detail-body');
+        if (body) {
+          while (body.firstChild) body.removeChild(body.firstChild);
+          var loading = document.createElement('p');
+          loading.textContent = 'Загрузка...';
+          body.appendChild(loading);
+        }
+        showScreen('screen-creator-detail');
+        api('/manager/orders/' + orderId + '/creators/' + bloggerId, {})
+          .then(function(data) {
+            if (!body) return;
+            while (body.firstChild) body.removeChild(body.firstChild);
+
+            if (data.instagram_url) {
+              var p = document.createElement('p');
+              var icon = document.createTextNode('📸 ');
+              var a = document.createElement('a');
+              a.setAttribute('href', data.instagram_url);
+              a.setAttribute('target', '_blank');
+              a.setAttribute('rel', 'noopener');
+              a.textContent = data.instagram_url;
+              p.appendChild(icon);
+              p.appendChild(a);
+              body.appendChild(p);
+            }
+
+            if (data.telegram) {
+              var p2 = document.createElement('p');
+              var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+              svg.setAttribute('width', '16');
+              svg.setAttribute('height', '16');
+              svg.setAttribute('viewBox', '0 0 24 24');
+              svg.style.verticalAlign = 'middle';
+              svg.style.marginRight = '4px';
+              var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+              path.setAttribute('fill', '#2481cc');
+              path.setAttribute('d', 'M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.984l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.958.575z');
+              svg.appendChild(path);
+              var tgLink = document.createElement('a');
+              tgLink.setAttribute('href', 'https://t.me/' + data.telegram);
+              tgLink.setAttribute('target', '_blank');
+              tgLink.setAttribute('rel', 'noopener');
+              tgLink.textContent = '@' + data.telegram;
+              p2.appendChild(svg);
+              p2.appendChild(tgLink);
+              body.appendChild(p2);
+            }
+
+            var label = document.createElement('p');
+            label.textContent = 'UGC-видео для этого заказа';
+            label.style.cssText = 'font-size:12px;font-weight:600;color:#888;text-transform:uppercase;margin-top:16px';
+            body.appendChild(label);
+
+            var input = document.createElement('input');
+            input.setAttribute('type', 'url');
+            input.setAttribute('id', 'ugc-video-input');
+            input.setAttribute('placeholder', 'https://...');
+            input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #d0d0d0;border-radius:8px;font-size:14px';
+            if (data.ugc_video_url) input.value = data.ugc_video_url;
+            body.appendChild(input);
+
+            var hint = document.createElement('p');
+            hint.textContent = 'Ссылка на готовое видео (Google Drive, YouTube, и т.д.)';
+            hint.style.cssText = 'font-size:12px;color:#999;margin-top:4px';
+            body.appendChild(hint);
+
+            var saveBtn = document.createElement('button');
+            saveBtn.setAttribute('type', 'button');
+            saveBtn.className = 'btn';
+            saveBtn.style.cssText = 'width:100%;margin-top:12px';
+            saveBtn.textContent = 'Сохранить';
+            saveBtn.addEventListener('click', function() {
+              saveCreatorUgcVideo(orderId, bloggerId);
+            });
+            body.appendChild(saveBtn);
+
+            var status = document.createElement('p');
+            status.setAttribute('id', 'ugc-save-status');
+            status.style.cssText = 'font-size:13px;margin-top:8px';
+            body.appendChild(status);
+          })
+          .catch(function() {
+            if (!body) return;
+            while (body.firstChild) body.removeChild(body.firstChild);
+            var err = document.createElement('p');
+            err.className = 'error';
+            err.textContent = 'Ошибка загрузки';
+            body.appendChild(err);
+          });
+      }
+
+      function saveCreatorUgcVideo(orderId, bloggerId) {
+        var input = document.getElementById('ugc-video-input');
+        var status = document.getElementById('ugc-save-status');
+        if (!input) return;
+        var url = input.value.trim();
+        if (!url) {
+          if (status) {
+            status.textContent = 'Введите ссылку';
+            status.style.color = '#c62828';
+          }
+          return;
+        }
+        if (status) status.textContent = '';
+        api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/ugc-video', { url: url })
+          .then(function(data) {
+            if (data.ok && status) {
+              status.textContent = '✅ Сохранено';
+              status.style.color = '#2e7d32';
+            }
+          })
+          .catch(function() {
+            if (status) {
+              status.textContent = '❌ Ошибка сохранения';
+              status.style.color = '#c62828';
+            }
+          });
+      }
+
       document.getElementById('mgr-orders-back').addEventListener('click', function() {
         updateRoleChoiceHint();
         showScreen('screen-role-choice');
@@ -2223,6 +2356,10 @@
       document.getElementById('mgr-creators-back').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
         if (orderId) openManagerOrder(orderId, '');
+      });
+      document.getElementById('creator-detail-back').addEventListener('click', function() {
+        var orderId = window._mgrCurrentOrderId;
+        if (orderId) loadManagerCreators(orderId, true, 0);
       });
 
       document.getElementById('btn-close-blogger').addEventListener('click', function() {
