@@ -877,8 +877,8 @@ def _to_payout_request_entity(
         requested_at=model.requested_at,
         status=model.status,
         amount=model.amount,
-        updated_at=getattr(model, "updated_at", model.requested_at),
-        currency=getattr(model, "currency", "RUB"),
+        updated_at=model.updated_at,
+        currency=model.currency,
     )
 
 

@@ -40,7 +40,6 @@ class Country:
     name_native: str
     currency_code: str
     currency_symbol: str
-    locale: str = "ru"
     tax_rate: Decimal = field(default_factory=lambda: Decimal("0"))
     enabled: bool = True
 
