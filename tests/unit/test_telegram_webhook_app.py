@@ -75,6 +75,9 @@ def client() -> TestClient:
         mock_bot_texts.load_from_db = AsyncMock(return_value=None)
         mock_bot_texts.get_many = AsyncMock(return_value={})
         dp["bot_texts_service"] = mock_bot_texts
+        mock_geocode_limiter = MagicMock()
+        mock_geocode_limiter.allow_async = AsyncMock(return_value=True)
+        dp["geocode_public_rate_limiter"] = mock_geocode_limiter
         mock_build.return_value = dp
         fake_bot = MagicMock()
         fake_bot.set_webhook = AsyncMock(return_value=True)
@@ -1327,6 +1330,24 @@ def test_miniapp_api_geocode_forward_public_404_when_not_found(
         json={"city": "NonexistentCity"},
     )
     assert response.status_code == 404
+
+
+def test_miniapp_api_geocode_forward_public_429_when_rate_limited(
+    client: TestClient,
+) -> None:
+    """POST /geocode/forward/public returns 429 when rate limit exceeded."""
+    dispatcher = app.state.dispatcher
+    mock_rate_limiter = MagicMock()
+    mock_rate_limiter.allow_async = AsyncMock(return_value=False)
+    dispatcher["geocode_public_rate_limiter"] = mock_rate_limiter
+    response = client.post(
+        "/miniapp/api/geocode/forward/public",
+        json={"city": "Москва"},
+    )
+    assert response.status_code == 429
+    # Restore default permissive limiter for subsequent tests
+    mock_rate_limiter.allow_async = AsyncMock(return_value=True)
+    dispatcher["geocode_public_rate_limiter"] = mock_rate_limiter
 
 
 def test_miniapp_api_geocode_forward_400_empty_city(client: TestClient) -> None:
