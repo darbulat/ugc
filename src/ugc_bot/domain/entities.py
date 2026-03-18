@@ -235,6 +235,7 @@ class OfferDispatch:
         True  # Counted toward order; at most bloggers_needed per order
     )
     manager_id: Optional[UUID] = None
+    ugc_video_url: Optional[str] = None
 
 
 @dataclass(frozen=True)

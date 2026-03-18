@@ -297,6 +297,86 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
             result = exec_result.scalar_one()
             return int(result)
 
+    async def get_by_order_and_blogger(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> OfferDispatch | None:
+        """Fetch a single dispatch by order and blogger."""
+        async with _resolve_session(self.session_factory, session) as s:
+            result = await s.execute(
+                select(OfferDispatchModel).where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+            )
+            row = result.scalar_one_or_none()
+            return _to_offer_dispatch_entity(row) if row else None
+
+    async def set_ugc_video_url(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        url: str | None,
+        session: object | None = None,
+    ) -> None:
+        """Set ugc_video_url for a dispatch."""
+        async with _resolve_session(self.session_factory, session) as s:
+            await s.execute(
+                update(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+                .values(
+                    ugc_video_url=url,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+
+    async def set_in_offer(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Set in_offer flag for a dispatch."""
+        async with _resolve_session(self.session_factory, session) as s:
+            await s.execute(
+                update(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+                .values(
+                    in_offer=in_offer,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+
+    async def set_manager(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Set manager_id for a dispatch."""
+        async with _resolve_session(self.session_factory, session) as s:
+            await s.execute(
+                update(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                )
+                .values(
+                    manager_id=manager_id,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+
 
 @dataclass(slots=True)
 class SqlAlchemyInteractionRepository(InteractionRepository):
@@ -457,6 +537,7 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         accepted=model.accepted,
         in_offer=model.in_offer,
         manager_id=model.manager_id,
+        ugc_video_url=model.ugc_video_url,
     )
 
 

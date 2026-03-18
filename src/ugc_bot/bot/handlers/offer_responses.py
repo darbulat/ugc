@@ -519,16 +519,23 @@ async def _send_contact_immediately(
             },
         )
 
-    advertiser_profile = await profile_service.get_advertiser_profile(
-        order.advertiser_id
-    )
-    blogger_contact_text = _build_blogger_contacts_text(
-        advertiser_telegram=advertiser.telegram if advertiser else None,
-        advertiser_phone=advertiser_profile.phone
-        if advertiser_profile
-        else None,
-        texts=texts,
-    )
+    if manager:
+        blogger_contact_text = _build_blogger_contacts_text(
+            advertiser_telegram=manager.telegram,
+            advertiser_phone=None,
+            texts=texts,
+        )
+    else:
+        advertiser_profile = await profile_service.get_advertiser_profile(
+            order.advertiser_id
+        )
+        blogger_contact_text = _build_blogger_contacts_text(
+            advertiser_telegram=advertiser.telegram if advertiser else None,
+            advertiser_phone=advertiser_profile.phone
+            if advertiser_profile
+            else None,
+            texts=texts,
+        )
     await send_with_retry(
         messenger_client,
         chat_id=blogger_chat_id,

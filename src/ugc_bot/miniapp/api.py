@@ -2,10 +2,11 @@
 
 import logging
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
@@ -23,6 +24,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
+from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.bot.validators import (
     VALIDATOR_ERR_KEYS,
     normalize_instagram_url,
@@ -43,6 +45,7 @@ from ugc_bot.bot.validators import (
     validate_site_link,
     validate_topics,
 )
+from ugc_bot.domain.entities import User as UserEntity
 from ugc_bot.domain.enums import (
     AudienceGender,
     BloggerGender,
@@ -261,6 +264,7 @@ class ManagerCreatorsRequest(BaseModel):
 class CreatorItem(BaseModel):
     """Creator summary for manager view."""
 
+    blogger_id: str
     instagram_url: str | None = None
     telegram: str | None = None
 
@@ -270,6 +274,29 @@ class ManagerCreatorsResponse(BaseModel):
 
     creators: list[CreatorItem]
     total: int
+
+
+class CreatorDetailRequest(BaseModel):
+    """Request to fetch a single creator's detail."""
+
+    init_data: str
+
+
+class CreatorDetailResponse(BaseModel):
+    """Creator profile and current UGC video URL."""
+
+    blogger_id: str
+    instagram_url: str | None = None
+    telegram: str | None = None
+    ugc_video_url: str | None = None
+    in_offer: bool = True
+
+
+class UgcVideoRequest(BaseModel):
+    """Request to save a UGC video URL."""
+
+    init_data: str
+    url: AnyHttpUrl
 
 
 def _payment_link_for_order(order_id: str, bot_username: str) -> str:
@@ -367,6 +394,54 @@ async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
     if user is None:
         raise HTTPException(status_code=500, detail="Failed to resolve user")
     return user.user_id
+
+
+async def _notify_ugc_video_saved(
+    creator: UserEntity | None,
+    advertiser: UserEntity | None,
+    video_url: str,
+    messenger_client: Any,
+    bot_texts_service: Any,
+) -> None:
+    """Send first-save notifications to creator and advertiser.
+
+    Called only when ugc_video_url was previously None.
+    Silently skips a recipient when their User record is None.
+    """
+    if creator is not None:
+        locale = creator.language or "ru"
+        text = await bot_texts_service.get(
+            "msg_ugc_video_saved_creator", locale
+        )
+        await send_with_retry(
+            messenger_client,
+            chat_id=creator.external_id,
+            text=text,
+            retries=3,
+            delay_seconds=1.0,
+            logger=logger,
+            extra={"event": "ugc_video_saved_creator"},
+        )
+    if advertiser is not None:
+        locale = advertiser.language or "ru"
+        template = await bot_texts_service.get(
+            "msg_ugc_video_saved_advertiser", locale
+        )
+        creator_handle = (
+            f"@{creator.telegram}"
+            if creator is not None and creator.telegram
+            else (creator.username if creator is not None else "—")
+        )
+        text = template.format(telegram=creator_handle, url=video_url)
+        await send_with_retry(
+            messenger_client,
+            chat_id=advertiser.external_id,
+            text=text,
+            retries=3,
+            delay_seconds=1.0,
+            logger=logger,
+            extra={"event": "ugc_video_saved_advertiser"},
+        )
 
 
 def _blogger_profile_to_dict(blogger, user) -> dict | None:
@@ -1482,9 +1557,256 @@ async def manager_creators(
         profile = profiles_map.get(d.blogger_id)
         creators.append(
             CreatorItem(
+                blogger_id=str(d.blogger_id),
                 instagram_url=profile.instagram_url if profile else None,
                 telegram=user.telegram if user else None,
             )
         )
 
     return ManagerCreatorsResponse(creators=creators, total=total)
+
+
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}")
+async def manager_creator_detail(
+    request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
+    body: CreatorDetailRequest,
+) -> CreatorDetailResponse:
+    """Return creator profile and current ugc_video_url for manager."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    dispatch_repo = dispatcher["offer_dispatch_repo"]
+    dispatch = await dispatch_repo.get_by_order_and_blogger(
+        order_id, blogger_id
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=404, detail="Creator not found in this order"
+        )
+
+    profile_service = dispatcher["profile_service"]
+    user_repo = dispatcher["user_repo"]
+    user = await user_repo.get_by_id(blogger_id)
+    profile = await profile_service.get_blogger_profile(blogger_id)
+
+    return CreatorDetailResponse(
+        blogger_id=str(blogger_id),
+        instagram_url=profile.instagram_url if profile else None,
+        telegram=user.telegram if user else None,
+        ugc_video_url=dispatch.ugc_video_url,
+        in_offer=dispatch.in_offer,
+    )
+
+
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}/ugc-video")
+async def manager_set_ugc_video(
+    request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
+    body: UgcVideoRequest,
+) -> dict[str, bool]:
+    """Save UGC video URL; on first save notifies creator and advertiser."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    dispatch_repo = dispatcher["offer_dispatch_repo"]
+    dispatch = await dispatch_repo.get_by_order_and_blogger(
+        order_id, blogger_id
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=404, detail="Creator not found in this order"
+        )
+
+    previous_url = dispatch.ugc_video_url
+    url_str = str(body.url)
+    await dispatch_repo.set_ugc_video_url(order_id, blogger_id, url_str)
+
+    if previous_url is None:
+        user_repo = dispatcher["user_repo"]
+        messenger_client = dispatcher["messenger_client"]
+        bot_texts_service = dispatcher["bot_texts_service"]
+        creator = await user_repo.get_by_id(blogger_id)
+        advertiser = await user_repo.get_by_id(order.advertiser_id)
+        await _notify_ugc_video_saved(
+            creator=creator,
+            advertiser=advertiser,
+            video_url=url_str,
+            messenger_client=messenger_client,
+            bot_texts_service=bot_texts_service,
+        )
+
+    return {"ok": True}
+
+
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}/remove")
+async def manager_remove_creator(
+    request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
+    body: InitDataBody,
+) -> dict[str, bool]:
+    """Move creator to reserve; set Interaction to DELETED; notify creator."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    dispatch_repo = dispatcher["offer_dispatch_repo"]
+    dispatch = await dispatch_repo.get_by_order_and_blogger(
+        order_id, blogger_id
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=404, detail="Creator not found in this order"
+        )
+    if not dispatch.in_offer:
+        raise HTTPException(
+            status_code=409, detail="Creator is already in reserve"
+        )
+
+    await dispatch_repo.set_in_offer(order_id, blogger_id, False)
+
+    interaction_service = dispatcher["interaction_service"]
+    await interaction_service.cancel_interaction(
+        order_id, blogger_id, order.advertiser_id
+    )
+
+    user_repo = dispatcher["user_repo"]
+    creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
+    if creator is not None:
+        locale = creator.language or "ru"
+        bot_texts_service = dispatcher["bot_texts_service"]
+        text = await bot_texts_service.get(
+            "msg_creator_removed_from_order", locale
+        )
+        messenger_client = dispatcher["messenger_client"]
+        await send_with_retry(
+            messenger_client,
+            chat_id=creator.external_id,
+            text=text,
+            retries=3,
+            delay_seconds=1.0,
+            logger=logger,
+            extra={"event": "creator_removed_from_order"},
+        )
+    else:
+        logger.warning(
+            "Creator not found for removal notification",
+            extra={"blogger_id": str(blogger_id)},
+        )
+
+    return {"ok": True}
+
+
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}/add")
+async def manager_add_creator(
+    request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
+    body: InitDataBody,
+) -> dict[str, bool]:
+    """Add reserve creator to active order; create Interaction; notify."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    dispatch_repo = dispatcher["offer_dispatch_repo"]
+    dispatch = await dispatch_repo.get_by_order_and_blogger(
+        order_id, blogger_id
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=404, detail="Creator not found in this order"
+        )
+    if dispatch.in_offer:
+        raise HTTPException(
+            status_code=409, detail="Creator is already in the order"
+        )
+
+    in_offer_count = await dispatch_repo.count_accepted_by_order(order_id)
+    if in_offer_count >= order.bloggers_needed:
+        raise HTTPException(
+            status_code=409, detail="No free slots in this order"
+        )
+
+    await dispatch_repo.set_in_offer(order_id, blogger_id, True)
+    await dispatch_repo.set_manager(order_id, blogger_id, user_id)
+
+    interaction_service = dispatcher["interaction_service"]
+    await interaction_service.reactivate_or_create_for_contacts_sent(
+        order_id, blogger_id, order.advertiser_id
+    )
+
+    user_repo = dispatcher["user_repo"]
+    creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
+    if creator is not None:
+        manager: UserEntity | None = None
+        if dispatch.manager_id is not None:
+            manager = await user_repo.get_by_id(dispatch.manager_id)
+        manager_telegram = (
+            f"@{manager.telegram}"
+            if manager is not None and manager.telegram
+            else "—"
+        )
+        locale = creator.language or "ru"
+        bot_texts_service = dispatcher["bot_texts_service"]
+        template = await bot_texts_service.get(
+            "msg_creator_added_to_order", locale
+        )
+        text = template.format(manager_telegram=manager_telegram)
+        messenger_client = dispatcher["messenger_client"]
+        await send_with_retry(
+            messenger_client,
+            chat_id=creator.external_id,
+            text=text,
+            retries=3,
+            delay_seconds=1.0,
+            logger=logger,
+            extra={"event": "creator_added_to_order"},
+        )
+    else:
+        logger.warning(
+            "Creator not found for add notification",
+            extra={"blogger_id": str(blogger_id)},
+        )
+
+    return {"ok": True}

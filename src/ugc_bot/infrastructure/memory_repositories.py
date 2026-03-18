@@ -883,6 +883,67 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
             and d.accepted is True
         )
 
+    async def get_by_order_and_blogger(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> OfferDispatch | None:
+        """Return dispatch by composite key or None."""
+        return self._dispatches.get((order_id, blogger_id))
+
+    async def set_ugc_video_url(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        url: str | None,
+        session: object | None = None,
+    ) -> None:
+        """Update ugc_video_url on dispatch in memory."""
+        key = (order_id, blogger_id)
+        if key not in self._dispatches:
+            return
+        d = self._dispatches[key]
+        self._dispatches[key] = replace(
+            d,
+            ugc_video_url=url,
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    async def set_in_offer(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Update in_offer flag on dispatch in memory."""
+        key = (order_id, blogger_id)
+        if key not in self._dispatches:
+            return
+        self._dispatches[key] = replace(
+            self._dispatches[key],
+            in_offer=in_offer,
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    async def set_manager(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Update manager_id on dispatch in memory."""
+        key = (order_id, blogger_id)
+        if key not in self._dispatches:
+            return
+        self._dispatches[key] = replace(
+            self._dispatches[key],
+            manager_id=manager_id,
+            updated_at=datetime.now(timezone.utc),
+        )
+
 
 @dataclass
 class InMemoryInteractionRepository(InteractionRepository):

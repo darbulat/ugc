@@ -879,6 +879,18 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "UGC-видео для бренда",
         "btn_offer_accept": "Готов снять UGC",
         "btn_offer_skip": "Пропустить",
+        "msg_ugc_video_saved_creator": "✅ Ваше видео принято менеджером и сохранено.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Креатор {telegram} успешно выполнил заказ!\nСсылка на видео: {url}"
+        ),
+        # Manager: creator order management
+        "msg_creator_removed_from_order": (
+            "К сожалению, вы были убраны из заказа менеджером."
+        ),
+        "msg_creator_added_to_order": (
+            "Вас добавили в заказ! Ваш менеджер: {manager_telegram}. "
+            "Ждём вашего видео."
+        ),
         # Complaint button
         "btn_complaint": "Пожаловаться на {name}",
     },
@@ -1662,6 +1674,19 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "UGC video for brand",
         "btn_offer_accept": "Ready to shoot UGC",
         "btn_offer_skip": "Skip",
+        "msg_ugc_video_saved_creator": "✅ Your video has been accepted by the manager and saved.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Creator {telegram} has successfully completed the order!\nVideo link: {url}"
+        ),
+        # Manager: creator order management
+        "msg_creator_removed_from_order": (
+            "Unfortunately, you have been removed from the order by the manager."
+        ),
+        "msg_creator_added_to_order": (
+            "You have been added to the order! "
+            "Your manager: {manager_telegram}. "
+            "We look forward to your video."
+        ),
         # Complaint button
         "btn_complaint": "Report {name}",
     },
@@ -2487,6 +2512,18 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "Бренд үшін UGC-бейне",
         "btn_offer_accept": "UGC түсіруге дайын",
         "btn_offer_skip": "Өткізіп жіберу",
+        "msg_ugc_video_saved_creator": "✅ Сіздің бейнеңізді менеджер қабылдап, сақтады.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Креатор {telegram} тапсырысты сәтті орындады!\nБейне сілтемесі: {url}"
+        ),
+        # Manager: creator order management
+        "msg_creator_removed_from_order": (
+            "Өкінішке орай, менеджер сізді тапсырыстан шығарды."
+        ),
+        "msg_creator_added_to_order": (
+            "Сіз тапсырысқа қосылдыңыз! Менеджеріңіз: {manager_telegram}. "
+            "Бейнеңізді күтеміз."
+        ),
         "btn_complaint": "{name} туралы шағымдану",
     },
     "be": {
@@ -3358,6 +3395,18 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "UGC-відэа для брэнда",
         "btn_offer_accept": "Гатовы зняць UGC",
         "btn_offer_skip": "Прапусціць",
+        "msg_ugc_video_saved_creator": "✅ Ваша відэа прынята менеджэрам і захавана.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Крэатар {telegram} паспяхова выканаў заказ!\nСпасылка на відэа: {url}"
+        ),
+        # Manager: creator order management
+        "msg_creator_removed_from_order": (
+            "На жаль, вас выдалілі з заказу мэнэджарам."
+        ),
+        "msg_creator_added_to_order": (
+            "Вас дадалі ў заказ! Ваш мэнэджар: {manager_telegram}. "
+            "Чакаем вашага відэа."
+        ),
         # Complaint button
         "btn_complaint": "Скардзіцца на {name}",
     },
@@ -4220,6 +4269,18 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "offer_format_label_ugc_only": "Brend uchun UGC-video",
         "btn_offer_accept": "UGC suratga olishga tayyor",
         "btn_offer_skip": "O'tkazib yuborish",
+        "msg_ugc_video_saved_creator": "✅ Videongiz menejer tomonidan qabul qilindi va saqlandi.",
+        "msg_ugc_video_saved_advertiser": (
+            "✅ Kreator {telegram} buyurtmani muvaffaqiyatli bajarib bo'ldi!\nVideo havolasi: {url}"
+        ),
+        # Manager: creator order management
+        "msg_creator_removed_from_order": (
+            "Afsuski, siz menejer tomonidan buyurtmadan chiqarildingiz."
+        ),
+        "msg_creator_added_to_order": (
+            "Siz buyurtmaga qo'shildingiz! Menejeringiz: {manager_telegram}. "
+            "Videongizni kutamiz."
+        ),
         # Complaint button
         "btn_complaint": "{name} ga shikoyat qilish",
     },

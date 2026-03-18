@@ -10,10 +10,14 @@ from fastapi import HTTPException
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.miniapp.api import (
+    CreatorDetailRequest,
     ManagerCreatorsRequest,
     ManagerOrdersRequest,
+    UgcVideoRequest,
+    manager_creator_detail,
     manager_creators,
     manager_orders,
+    manager_set_ugc_video,
 )
 
 ORDER_ID = UUID("00000000-0000-0000-0000-000000000b01")
@@ -326,3 +330,319 @@ class TestMeEndpointIsManager:
             result = await me(request, body)
 
         assert result.is_manager is True
+
+
+class TestManagerCreatorDetailEndpoint:
+    """Tests for POST /manager/orders/{order_id}/creators/{blogger_id}."""
+
+    def _make_deps(
+        self,
+        is_manager: bool = True,
+        dispatch: OfferDispatch | None = None,
+        user: MagicMock | None = None,
+        profile: MagicMock | None = None,
+    ) -> tuple[MagicMock, MagicMock]:
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(
+            return_value=is_manager
+        )
+
+        dispatch_repo = MagicMock()
+        dispatch_repo.get_by_order_and_blogger = AsyncMock(
+            return_value=dispatch
+        )
+
+        user_repo = MagicMock()
+        user_repo.get_by_id = AsyncMock(return_value=user)
+
+        profile_service = MagicMock()
+        profile_service.get_blogger_profile = AsyncMock(return_value=profile)
+
+        deps = {
+            "manager_service": manager_service,
+            "offer_dispatch_repo": dispatch_repo,
+            "user_repo": user_repo,
+            "profile_service": profile_service,
+        }
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+        return request, dispatcher
+
+    @pytest.mark.asyncio
+    async def test_returns_creator_detail(self) -> None:
+        dispatch = _make_dispatch()
+        dispatch = OfferDispatch(
+            order_id=dispatch.order_id,
+            blogger_id=dispatch.blogger_id,
+            created_at=dispatch.created_at,
+            in_offer=dispatch.in_offer,
+            manager_id=dispatch.manager_id,
+            ugc_video_url="https://example.com/video",
+        )
+
+        user = MagicMock()
+        user.telegram = "creator_tg"
+
+        profile = MagicMock()
+        profile.instagram_url = "https://instagram.com/creator"
+
+        request, _ = self._make_deps(
+            dispatch=dispatch, user=user, profile=profile
+        )
+        body = CreatorDetailRequest(init_data="x")
+
+        with patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ):
+            result = await manager_creator_detail(
+                request, ORDER_ID, BLOGGER_ID, body
+            )
+
+        assert result.blogger_id == str(BLOGGER_ID)
+        assert result.telegram == "creator_tg"
+        assert result.instagram_url == "https://instagram.com/creator"
+        assert result.ugc_video_url == "https://example.com/video"
+
+    @pytest.mark.asyncio
+    async def test_403_when_not_manager(self) -> None:
+        request, _ = self._make_deps(is_manager=False)
+        body = CreatorDetailRequest(init_data="x")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=MANAGER_ID),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await manager_creator_detail(request, ORDER_ID, BLOGGER_ID, body)
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_404_when_dispatch_missing(self) -> None:
+        request, _ = self._make_deps(dispatch=None)
+        body = CreatorDetailRequest(init_data="x")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=MANAGER_ID),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await manager_creator_detail(request, ORDER_ID, BLOGGER_ID, body)
+
+        assert exc_info.value.status_code == 404
+
+
+class TestManagerSetUgcVideoEndpoint:
+    """Tests for POST /manager/orders/{order_id}/creators/{blogger_id}/ugc-video."""  # noqa: E501
+
+    def _make_request(
+        self,
+        is_manager: bool = True,
+        order: Order | None = None,
+        dispatch: OfferDispatch | None = None,
+        previous_url: str | None = None,
+    ) -> MagicMock:
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(
+            return_value=is_manager
+        )
+
+        if order is None:
+            order = Order(
+                order_id=ORDER_ID,
+                advertiser_id=uuid4(),
+                order_type=OrderType.UGC_ONLY,
+                product_link="https://example.com",
+                offer_text="Offer",
+                barter_description=None,
+                price=500.0,
+                bloggers_needed=2,
+                status=OrderStatus.ACTIVE,
+                created_at=datetime.now(timezone.utc),
+                completed_at=None,
+            )
+
+        order_repo = MagicMock()
+        order_repo.get_by_id = AsyncMock(return_value=order)
+
+        if dispatch is None:
+            dispatch = OfferDispatch(
+                order_id=ORDER_ID,
+                blogger_id=BLOGGER_ID,
+                created_at=datetime.now(timezone.utc),
+                in_offer=True,
+                manager_id=MANAGER_ID,
+                ugc_video_url=previous_url,
+            )
+
+        dispatch_repo = MagicMock()
+        dispatch_repo.get_by_order_and_blogger = AsyncMock(
+            return_value=dispatch
+        )
+        dispatch_repo.set_ugc_video_url = AsyncMock()
+
+        user_repo = MagicMock()
+        user_repo.get_by_id = AsyncMock(return_value=None)
+
+        messenger_client = MagicMock()
+        messenger_client.send_text = AsyncMock()
+
+        bot_texts_service = MagicMock()
+        bot_texts_service.get = MagicMock(return_value="msg")
+
+        deps = {
+            "manager_service": manager_service,
+            "order_repo": order_repo,
+            "offer_dispatch_repo": dispatch_repo,
+            "user_repo": user_repo,
+            "messenger_client": messenger_client,
+            "bot_texts_service": bot_texts_service,
+        }
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+        return request
+
+    @pytest.mark.asyncio
+    async def test_returns_ok_true(self) -> None:
+        request = self._make_request()
+        body = UgcVideoRequest(init_data="x", url="https://example.com/video")
+
+        with patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ):
+            result = await manager_set_ugc_video(
+                request, ORDER_ID, BLOGGER_ID, body
+            )
+
+        assert result == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_403_when_not_manager(self) -> None:
+        request = self._make_request(is_manager=False)
+        body = UgcVideoRequest(init_data="x", url="https://example.com/video")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=MANAGER_ID),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await manager_set_ugc_video(request, ORDER_ID, BLOGGER_ID, body)
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_404_when_order_missing(self) -> None:
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(return_value=True)
+
+        order_repo = MagicMock()
+        order_repo.get_by_id = AsyncMock(return_value=None)
+
+        deps = {
+            "manager_service": manager_service,
+            "order_repo": order_repo,
+        }
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = UgcVideoRequest(init_data="x", url="https://example.com/video")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=MANAGER_ID),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await manager_set_ugc_video(request, ORDER_ID, BLOGGER_ID, body)
+
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_404_when_dispatch_missing(self) -> None:
+        order = Order(
+            order_id=ORDER_ID,
+            advertiser_id=uuid4(),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=500.0,
+            bloggers_needed=2,
+            status=OrderStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            completed_at=None,
+        )
+
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(return_value=True)
+
+        order_repo = MagicMock()
+        order_repo.get_by_id = AsyncMock(return_value=order)
+
+        dispatch_repo = MagicMock()
+        dispatch_repo.get_by_order_and_blogger = AsyncMock(return_value=None)
+
+        deps = {
+            "manager_service": manager_service,
+            "order_repo": order_repo,
+            "offer_dispatch_repo": dispatch_repo,
+        }
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = UgcVideoRequest(init_data="x", url="https://example.com/video")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=MANAGER_ID),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await manager_set_ugc_video(request, ORDER_ID, BLOGGER_ID, body)
+
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_no_notification_on_update(self) -> None:
+        """When previous_url is already set, no notification is sent."""
+        request = self._make_request(previous_url="https://old.com/video")
+        dispatcher = request.app.state.dispatcher
+
+        body = UgcVideoRequest(init_data="x", url="https://new.com/video")
+
+        with patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ):
+            result = await manager_set_ugc_video(
+                request, ORDER_ID, BLOGGER_ID, body
+            )
+
+        assert result == {"ok": True}
+        # messenger_client.send_text should NOT have been called
+        messenger_client = dispatcher["messenger_client"]
+        messenger_client.send_text.assert_not_called()

@@ -349,6 +349,45 @@ class OfferDispatchRepository(ABC):
         When *manager_id* is ``None`` the filter is skipped.
         """
 
+    @abstractmethod
+    async def get_by_order_and_blogger(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        session: object | None = None,
+    ) -> Optional["OfferDispatch"]:
+        """Fetch a single dispatch by order and blogger composite key."""
+
+    @abstractmethod
+    async def set_ugc_video_url(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        url: Optional[str],
+        session: object | None = None,
+    ) -> None:
+        """Set ugc_video_url on the dispatch for order+blogger."""
+
+    @abstractmethod
+    async def set_in_offer(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        in_offer: bool,
+        session: object | None = None,
+    ) -> None:
+        """Set in_offer flag on the dispatch for order+blogger."""
+
+    @abstractmethod
+    async def set_manager(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        manager_id: UUID,
+        session: object | None = None,
+    ) -> None:
+        """Set manager_id on the dispatch for order+blogger."""
+
 
 class ManagerOrderRepository(ABC):
     """Port for manager-to-order assignment persistence."""
