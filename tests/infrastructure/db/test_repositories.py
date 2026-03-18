@@ -1623,7 +1623,7 @@ async def test_blogger_repository_list_confirmed_user_ids() -> None:
     user_id_1 = UUID("00000000-0000-0000-0000-000000000220")
     session = FakeAsyncSessionCompat([user_id_1])
     with patch(
-        "ugc_bot.infrastructure.db.repositories.AsyncSession",
+        "ugc_bot.infrastructure.db.repositories.profiles.AsyncSession",
         FakeAsyncSessionCompat,
     ):
         repo = SqlAlchemyBloggerProfileRepository(
@@ -1646,7 +1646,7 @@ async def test_blogger_repository_list_confirmed_user_ids_with_geometry() -> (
         )
     )
     with patch(
-        "ugc_bot.infrastructure.db.repositories.AsyncSession",
+        "ugc_bot.infrastructure.db.repositories.profiles.AsyncSession",
         FakeAsyncSessionCompat,
     ):
         repo = SqlAlchemyBloggerProfileRepository(
@@ -1672,7 +1672,7 @@ async def test_blogger_repo_list_confirmed_ids_geometry_attr_err_skipped() -> (
 
     session.sync_session = SimpleNamespace(get_bind=get_bind_raises)
     with patch(
-        "ugc_bot.infrastructure.db.repositories.AsyncSession",
+        "ugc_bot.infrastructure.db.repositories.profiles.AsyncSession",
         FakeAsyncSessionCompat,
     ):
         repo = SqlAlchemyBloggerProfileRepository(
