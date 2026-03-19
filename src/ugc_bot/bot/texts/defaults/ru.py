@@ -257,6 +257,7 @@ RU: dict[str, str] = {
     "msg_payment_provider_not_configured": ("Платежный провайдер не настроен."),
     "msg_order_undetermined": "Не удалось определить заказ.",
     "msg_title_payment": "Оплата заказа",
+    "btn_pay_invoice": "Оплатить {amount}",
     # Messages: referral
     "msg_referral_payout_today": "Вы уже подавали заявку на вывод сегодня.",
     "msg_referral_payout_unavailable": (

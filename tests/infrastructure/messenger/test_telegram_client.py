@@ -549,3 +549,28 @@ async def test_send_invoice_with_provider_data_and_email_flags(
     assert call_kwargs["provider_data"] == '{"key": "value"}'
     assert call_kwargs["need_email"] is True
     assert call_kwargs["send_email_to_provider"] is True
+    assert "reply_markup" not in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_send_invoice_with_pay_button_text(
+    fake_bot: MagicMock,
+) -> None:
+    """send_invoice passes reply_markup with Pay button."""
+    client = TelegramMessengerClient(bot=fake_bot)
+    invoice = Invoice(
+        title="Invoice",
+        description="Test",
+        payload="order-pay-btn",
+        provider_token="tok",
+        currency="USD",
+        items=[InvoiceItem(label="Item", amount_minor=5000)],
+        pay_button_text="Pay 50 $",
+    )
+    await client.send_invoice(chat_id="99", invoice=invoice)
+
+    fake_bot.send_invoice.assert_called_once()
+    call_kwargs = fake_bot.send_invoice.call_args[1]
+    markup = call_kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].text == "Pay 50 $"
+    assert markup.inline_keyboard[0][0].pay is True

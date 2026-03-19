@@ -82,6 +82,11 @@ async def send_order_invoice(
             else invoice_data.total
         )
         label = f"💳 {total_display} {invoice_data.currency_symbol}"
+        amount_str = f"{total_display} {invoice_data.currency_symbol}"
+        pay_btn_template = await bot_texts_service.get(
+            "btn_pay_invoice", locale
+        )
+        pay_button_text = pay_btn_template.format(amount=amount_str)
         await messenger_client.send_invoice(
             chat_id=incoming_message.chat_id,
             invoice=Invoice(
@@ -94,6 +99,7 @@ async def send_order_invoice(
                 provider_data=invoice_data.provider_data,
                 need_email=invoice_data.need_email,
                 send_email_to_provider=invoice_data.need_email,
+                pay_button_text=pay_button_text,
             ),
         )
     except Exception:

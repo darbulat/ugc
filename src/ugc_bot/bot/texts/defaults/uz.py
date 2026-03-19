@@ -250,6 +250,7 @@ UZ: dict[str, str] = {
     "msg_payment_provider_not_configured": ("To'lov provayderi sozlanmagan."),
     "msg_order_undetermined": "Buyurtmani aniqlab bo'lmadi.",
     "msg_title_payment": "Buyurtma to'lovi",
+    "btn_pay_invoice": "To'lash {amount}",
     # Messages: referral
     "msg_referral_payout_today": "Siz bugun allaqachon to'lov so'radingiz.",
     "msg_referral_payout_unavailable": (

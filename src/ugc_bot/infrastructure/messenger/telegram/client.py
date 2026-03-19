@@ -206,6 +206,16 @@ class TelegramMessengerClient(MessengerClient):
             kwargs["need_email"] = True
         if invoice.send_email_to_provider:
             kwargs["send_email_to_provider"] = True
+        if invoice.pay_button_text:
+            kwargs["reply_markup"] = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=invoice.pay_button_text, pay=True
+                        )
+                    ]
+                ]
+            )
         await self._with_retry(lambda: self._bot.send_invoice(**kwargs))
 
 

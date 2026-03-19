@@ -256,6 +256,7 @@ BE: dict[str, str] = {
     "msg_payment_provider_not_configured": ("Плацёжны правайдар не настроены."),
     "msg_order_undetermined": "Не ўдалося вызначыць заказ.",
     "msg_title_payment": "Аплата заказу",
+    "btn_pay_invoice": "Аплаціць {amount}",
     # Messages: referral
     "msg_referral_payout_today": "Вы ўжо падавалі заяўку на вывад сёння.",
     "msg_referral_payout_unavailable": (

@@ -241,6 +241,7 @@ EN: dict[str, str] = {
     "msg_payment_provider_not_configured": "Payment provider not configured.",
     "msg_order_undetermined": "Could not determine order.",
     "msg_title_payment": "Order payment",
+    "btn_pay_invoice": "Pay {amount}",
     "msg_referral_payout_today": "You already requested payout today.",
     "msg_referral_payout_unavailable": "Payout unavailable: no balance or request pending.",
     "msg_referral_payout_sent": "Payout request sent to support.",

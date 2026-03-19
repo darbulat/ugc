@@ -244,6 +244,7 @@ KK: dict[str, str] = {
     "msg_payment_provider_not_configured": ("Төлем провайдері бапталмаған."),
     "msg_order_undetermined": "Тапсырысты анықтау мүмкін болмады.",
     "msg_title_payment": "Тапсырыс төлемі",
+    "btn_pay_invoice": "Төлеу {amount}",
     "msg_referral_payout_today": "Сіз бүгін төлем сұрағыңызды жібердіңіз.",
     "msg_referral_payout_unavailable": (
         "Төлем қол жетімсіз: баланс жоқ немесе сұрау бар."
