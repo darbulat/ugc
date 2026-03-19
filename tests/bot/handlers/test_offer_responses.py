@@ -2468,7 +2468,7 @@ async def test_offer_skip_order_id_is_none(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_offer_skip returns early when order_id cannot be parsed (line 185-186)."""
+    """Skip returns early when order_id cannot be parsed."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000b02"),
         external_id="1",
@@ -2518,7 +2518,7 @@ async def test_rejection_reason_too_few_parts(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_rejection_reason returns early when callback data has < 3 parts (lines 291-292)."""
+    """Rejection reason returns early with < 3 callback parts."""
     user_service = UserRoleService(user_repo=user_repo)
     offer_dispatch_service = _build_offer_dispatch_service(user_repo=user_repo)
 
@@ -2552,7 +2552,7 @@ async def test_rejection_reason_invalid_order_uuid(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_rejection_reason returns early when order UUID is invalid (lines 353-354)."""
+    """Rejection reason returns early with invalid UUID."""
     user_service = UserRoleService(user_repo=user_repo)
     offer_dispatch_service = _build_offer_dispatch_service(user_repo=user_repo)
 
@@ -2586,7 +2586,7 @@ async def test_rejection_reason_invalid_reason_value(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_rejection_reason returns early when reason is not a valid enum (lines 357-358)."""
+    """Rejection reason returns early with invalid enum."""
     user_service = UserRoleService(user_repo=user_repo)
     offer_dispatch_service = _build_offer_dispatch_service(user_repo=user_repo)
 
@@ -2650,7 +2650,9 @@ async def test_rejection_reason_user_none(
     )
     # But no skip-with-reason message sent (early return after user is None)
     skip_msgs = [
-        s for s in messenger_client.sent_text if "отказались" in s["text"].lower()
+        s
+        for s in messenger_client.sent_text
+        if "отказались" in s["text"].lower()
     ]
     assert len(skip_msgs) == 0
 
@@ -2663,7 +2665,7 @@ async def test_desired_price_no_order_id_in_state(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_desired_price clears FSM and returns when order_id not in state (lines 448-449)."""
+    """Desired price clears FSM when no order_id in state."""
     user_service = UserRoleService(user_repo=user_repo)
     offer_dispatch_service = _build_offer_dispatch_service(user_repo=user_repo)
 
@@ -2696,7 +2698,7 @@ async def test_desired_price_no_text(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_desired_price sends re-prompt when message has no text (lines 453-458)."""
+    """Desired price re-prompts when message has no text."""
     user_service = UserRoleService(user_repo=user_repo)
     offer_dispatch_repo = InMemoryOfferDispatchRepository()
     order_repo = InMemoryOrderRepository()
@@ -2709,7 +2711,9 @@ async def test_desired_price_no_text(
 
     fsm = FakeFSMContext()
     await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
-    await fsm.update_data(order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
 
     # Message with no text (e.g. a sticker)
     msg = FakeMessage(text=None, user=FakeUser(1))
@@ -2739,7 +2743,7 @@ async def test_desired_price_no_from_user(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_desired_price clears FSM when from_user is None (lines 489-490)."""
+    """Desired price clears FSM when from_user is None."""
     user_service = UserRoleService(user_repo=user_repo)
     offer_dispatch_repo = InMemoryOfferDispatchRepository()
     order_repo = InMemoryOrderRepository()
@@ -2766,7 +2770,9 @@ async def test_desired_price_no_from_user(
 
     fsm = FakeFSMContext()
     await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
-    await fsm.update_data(order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
 
     msg = FakeMessage(text="2000", user=None)
     msg.from_user = None  # explicitly ensure no from_user
@@ -2792,7 +2798,7 @@ async def test_desired_price_user_not_found(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_desired_price clears FSM when user is not found (lines 497-498)."""
+    """Desired price clears FSM when user is not found."""
     # Empty user_repo so user won't be found
     empty_user_repo = InMemoryUserRepository()
     user_service = UserRoleService(user_repo=empty_user_repo)
@@ -2821,7 +2827,9 @@ async def test_desired_price_user_not_found(
 
     fsm = FakeFSMContext()
     await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
-    await fsm.update_data(order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
 
     # external_id 999 not in empty_user_repo
     msg = FakeMessage(text="2000", user=FakeUser(999))
@@ -2850,7 +2858,7 @@ async def test_desired_price_manager_notification(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_desired_price notifies manager when manager_order_repo has an assignment (lines 517-530)."""
+    """Desired price notifies manager when assigned."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000b50"),
         external_id="1",
@@ -2917,7 +2925,9 @@ async def test_desired_price_manager_notification(
 
     fsm = FakeFSMContext()
     await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
-    await fsm.update_data(order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
 
     msg = FakeMessage(text="2000", user=FakeUser(1))
     await handle_desired_price(
@@ -2949,7 +2959,7 @@ async def test_cancel_price_entry_invalid_uuid(
     messenger_client,
     event_adapter,
 ) -> None:
-    """handle_cancel_price_entry handles invalid UUID in callback data (lines 627-630)."""
+    """Cancel handles invalid UUID in callback data."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000b60"),
         external_id="1",
@@ -2969,7 +2979,9 @@ async def test_cancel_price_entry_invalid_uuid(
 
     fsm = FakeFSMContext()
     await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
-    await fsm.update_data(order_id="irrelevant", reason=RejectionReason.LOW_PRICE.value)
+    await fsm.update_data(
+        order_id="irrelevant", reason=RejectionReason.LOW_PRICE.value
+    )
 
     message = FakeMessage()
     # Invalid UUID → order_id will be None, so no skip recorded
@@ -3008,7 +3020,7 @@ async def test_send_contact_with_telegram_handle(
     messenger_client,
     bot_texts_service,
 ) -> None:
-    """_send_contact_immediately includes Telegram button when user has telegram handle (line 695)."""
+    """Contact includes Telegram button with handle."""
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
@@ -3060,7 +3072,9 @@ async def test_send_contact_with_telegram_handle(
 
     # Advertiser should receive a contact message with a Telegram button
     adv_msgs = [
-        s for s in messenger_client.sent_text if s["chat_id"] == advertiser.external_id
+        s
+        for s in messenger_client.sent_text
+        if s["chat_id"] == advertiser.external_id
     ]
     assert len(adv_msgs) >= 1
     # At least one message has a keyboard with a Telegram URL button
@@ -3073,7 +3087,9 @@ async def test_send_contact_with_telegram_handle(
     kb = contact_msg["keyboard"]
     all_buttons = [btn for row in kb.rows for btn in row]
     telegram_buttons = [
-        btn for btn in all_buttons if btn.url and "t.me/blogger_handle" in btn.url
+        btn
+        for btn in all_buttons
+        if btn.url and "t.me/blogger_handle" in btn.url
     ]
     assert len(telegram_buttons) >= 1
 
@@ -3092,15 +3108,10 @@ async def test_handle_offer_response_order_creation_error(
     config,
     bot_texts_service,
 ) -> None:
-    """handle_offer_response handles OrderCreationError gracefully (lines 627-630)."""
+    """Offer response handles OrderCreationError."""
     from ugc_bot.application.errors import OrderCreationError
 
     user_service = UserRoleService(user_repo=user_repo)
-    response_service = OfferResponseService(
-        order_repo=order_repo,
-        dispatch_repo=offer_dispatch_repo,
-        transaction_manager=fake_tm,
-    )
     interaction_service = InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
 
@@ -3115,7 +3126,9 @@ async def test_handle_offer_response_order_creation_error(
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
     )
-    await create_test_blogger_profile(blogger_repo, user.user_id, confirmed=True)
+    await create_test_blogger_profile(
+        blogger_repo, user.user_id, confirmed=True
+    )
 
     order = await create_test_order(
         order_repo,
@@ -3156,5 +3169,6 @@ async def test_handle_offer_response_order_creation_error(
 
     # Order-closed message should be sent
     from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS as _DEFAULT_TEXTS
+
     msg_closed_full = _DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
     assert any(msg_closed_full in s["text"] for s in messenger_client.sent_text)
