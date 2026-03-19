@@ -234,6 +234,7 @@ class BloggerProfileModel(Base):
     agreement_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    phone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class InstagramStatsModel(Base):
