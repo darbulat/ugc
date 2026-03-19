@@ -23,12 +23,14 @@ from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.filters import TextEqualsKey
 from ugc_bot.bot.handlers.keyboards import (
+    CALLBACK_CHANGE_COUNTRY_PREFIX,
     CALLBACK_CHANGE_ROLE,
     CALLBACK_COUNTRY_PREFIX,
     CALLBACK_LANG_PREFIX,
     CALLBACK_SUPPORT,
     advertiser_menu_inline_keyboard,
     build_support_telegram_url,
+    country_change_inline_keyboard,
     country_inline_keyboard,
     language_inline_keyboard,
     main_menu_inline_keyboard,
@@ -291,6 +293,81 @@ async def language_command(
         chat_id=incoming.chat_id,
         text=language_prompt,
         keyboard=language_inline_keyboard(languages),
+    )
+
+
+@router.message(Command("country"))
+async def country_command(
+    message: Message,
+    bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
+    country_repo: CountryRepository | None = None,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle /country — show country selection keyboard."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    countries = await country_repo.list_enabled() if country_repo else []
+    country_prompt = (
+        await bot_texts_service.get("country_prompt", user_locale)
+    ).strip() or "Выберите вашу страну:"
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=country_prompt,
+        keyboard=country_change_inline_keyboard(countries),
+    )
+
+
+@router.callback_query(
+    lambda c: c.data.startswith(CALLBACK_CHANGE_COUNTRY_PREFIX)
+)
+async def country_change_selected(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    bot_texts_service: BotTextsService,
+    country_repo: CountryRepository | None = None,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle country change from /country command — save country."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    country_code = (callback.data or "").removeprefix(
+        CALLBACK_CHANGE_COUNTRY_PREFIX
+    )
+    if not country_code:
+        return
+    if country_repo:
+        country = await country_repo.get_by_code(country_code)
+        if country is None:
+            return
+    try:
+        await user_role_service.set_country(
+            external_id=incoming.user.external_id,
+            messenger_type=incoming.user.messenger_type,
+            country_code=country_code,
+        )
+    except UserNotFoundError:
+        return
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+    country_changed_text = (
+        await bot_texts_service.get("country_changed", user_locale)
+    ).strip() or "Страна изменена."
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=country_changed_text,
     )
 
 

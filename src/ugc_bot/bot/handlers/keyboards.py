@@ -62,6 +62,7 @@ CALLBACK_PROFILE_REGION_PREFIX = "profile:region:"
 CALLBACK_SUPPORT = "support"
 CALLBACK_CHANGE_ROLE = "change_role"
 CALLBACK_COUNTRY_PREFIX = "country:"
+CALLBACK_CHANGE_COUNTRY_PREFIX = "chg_country:"
 CALLBACK_LANG_PREFIX = "lang:"
 
 MINIAPP_OPEN_BUTTON_TEXT = "Открыть приложение"
@@ -643,5 +644,22 @@ def country_inline_keyboard(countries: "list[Country]") -> Keyboard:
         for c in countries
     ]
     # 2 per row
+    rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
+
+
+def country_change_inline_keyboard(countries: "list[Country]") -> Keyboard:
+    """Inline keyboard for /country command (2 per row).
+
+    Button text: name_native (currency_symbol).
+    Callback: chg_country:<code>
+    """
+    buttons = [
+        Button(
+            text=f"{c.name_native} ({c.currency_symbol})",
+            callback_data=f"{CALLBACK_CHANGE_COUNTRY_PREFIX}{c.code}",
+        )
+        for c in countries
+    ]
     rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     return Keyboard(kind=KeyboardKind.INLINE, rows=rows)

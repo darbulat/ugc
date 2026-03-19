@@ -851,6 +851,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         # Language/country selection
         "language_prompt": "Выберите язык / Choose language:",
         "country_prompt": "Выберите вашу страну:",
+        "country_changed": "Страна изменена.",
         # Offer texts
         "offer_header": "Новый заказ",
         "offer_details_header": "📋 Детали заказа:",
@@ -1646,6 +1647,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         # Language/country selection
         "language_prompt": "Choose language:",
         "country_prompt": "Select your country:",
+        "country_changed": "Country changed.",
         # Offer texts
         "offer_header": "New order",
         "offer_details_header": "📋 Order details:",
@@ -2485,6 +2487,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         "msg_user_not_telegram": "Пайдаланушы Telegram-да емес.",
         "language_prompt": "Тілді таңдаңыз:",
         "country_prompt": "Еліңізді таңдаңыз:",
+        "country_changed": "Ел өзгертілді.",
         "offer_header": "Жаңа тапсырыс",
         "offer_details_header": "📋 Тапсырыс детальдары:",
         "offer_format": "🎥 Формат: {format_label}",
@@ -3367,6 +3370,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         # Language/country selection
         "language_prompt": "Выберыце мову / Choose language:",
         "country_prompt": "Выберыце вашу краіну:",
+        "country_changed": "Краіна зменена.",
         # Offer texts
         "offer_header": "Новы заказ",
         "offer_details_header": "📋 Дэталі заказу:",
@@ -4241,6 +4245,7 @@ DEFAULT_TEXTS: dict[str, dict[str, str]] = {
         # Language/country selection
         "language_prompt": "Tilni tanlang / Choose language:",
         "country_prompt": "Mamlakatni tanlang:",
+        "country_changed": "Mamlakat o'zgartirildi.",
         # Offer texts
         "offer_header": "Yangi buyurtma",
         "offer_details_header": "📋 Buyurtma tafsilotlari:",
